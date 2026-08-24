@@ -1,0 +1,23 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - README.md
+    - docs/index.qmd
+    - docs/v1-runtime-contract.qmd
+
+website:
+  title: "SCNSim"
+  navbar:
+    left:
+      - text: "Overview"
+        href: README.md
+      - text: "Review Map"
+        href: docs/index.qmd
+      - text: "V1 Runtime Contract"
+        href: docs/v1-runtime-contract.qmd
+
+format:
+  html:
+    theme: cosmo
+    toc: true

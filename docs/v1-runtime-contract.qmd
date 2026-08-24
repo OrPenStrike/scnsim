@@ -1,0 +1,610 @@
+---
+title: "SCNSim V1 Runtime Contract"
+subtitle: "Candidate Notebook UX, units, reduction, execution, and evidence semantics"
+toc-depth: 3
+---
+
+::: {.callout-warning}
+## CONVERGING contract
+
+This document is the single current candidate authority for the SCNSim V1
+runtime semantics. It is written for Human review and does not claim
+`ACCEPTED`, `STABILIZED`, integration, release, or installability.
+:::
+
+## Reading goal
+
+After reading this contract, a package consumer should understand:
+
+1. which object owns the physical circuit and its parameters;
+2. how one Plan produces several lazy reduction references;
+3. which calls execute work and which calls only resolve sealed evidence;
+4. how every physical value carries a checked unit;
+5. how the same reduced model is realized by Direct and HB analysis; and
+6. which identities and artifacts make a result reproducible across Python
+   processes.
+
+This document defines public product/runtime behavior. Circuit physics,
+scientific Gates, and consumer Design Targets remain in their own authorized
+sources.
+
+## Review map
+
+This candidate proposes the following behavior for Human review; none of it is
+accepted yet:
+
+| Review question | Detailed section |
+|---|---|
+| Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
+| Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
+| How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
+| How does one reduced Ref apply to Direct and HB? | [One reduction meaning, two solver realizations](#one-reduction-meaning-two-solver-realizations) |
+| How are optimization and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
+| What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
+
+Three decisions deliberately remain open: HB sideband elimination scope,
+partial HB batch consumability, and the Direct/HB comparison grid or
+interpolation policy. They are stated precisely under
+[Open Human decisions](#open-human-decisions); examples elsewhere do not choose
+answers for them.
+
+## Product and lifecycle boundary
+
+SCNSim owns:
+
+- Python circuit authoring and runtime interfaces;
+- reusable component and visual catalogs;
+- physical node-flux compilation and Direct C/K/G;
+- coordinate transforms and Schur-complement reduction;
+- Direct and harmonic-balance analysis;
+- Direct optimization, immutable receipts, results, and reports; and
+- a schematic projection of the original circuit plan.
+
+SCNSim does not own:
+
+- consumer Design Targets, optimization Gates, or notebook source;
+- D3/IPF/NCUAS values, layouts, manifests, artifacts, or evidence;
+- SCGSim layout/EM execution or OrPen PDK source;
+- JosephsonCircuits as a library;
+- quantization; or
+- the legacy Circuit Workbench application and repository.
+
+JosephsonCircuits is an HB backend. It is not the authority for SCNSim
+topology, coordinate names, Direct operators, reductions, or public consumer
+contracts.
+
+SCNSim has no previously accepted or delivered Unit or Runtime API to migrate.
+This document revises one `CONVERGING` candidate in place. It does not
+supersede, mutate, redirect, or provide compatibility for the legacy
+Workbench. Reusable implementation may later be transplanted only from the
+exact public handoff with its Git provenance.
+
+## Notebook mental model
+
+### Four responsibilities
+
+| Object | Owns | Does not own |
+|---|---|---|
+| `CircuitPlan` | Components, parameters, connections, ports, and library identities | Execution state or results |
+| `NetworkModelRef` | One immutable Plan reference and ordered reduction lineage | Compilation, workspace writes, or results |
+| `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
+| typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
+
+`CircuitPlan` is the only physical circuit authority. There is no
+`ReducedCircuitPlan`; a Schur-complement model is an analysis reference derived
+from the Plan, not a second circuit.
+
+### Quantity-only authoring
+
+SCNSim publishes one Pint registry:
+
+```python
+from scnsim import units as u
+```
+
+Every public physical value uses that registry. Built-in and custom component
+libraries follow the same contract:
+
+```python
+from scnsim import CircuitLibrary, CircuitPlan, ParameterSpec, units as u
+
+library = CircuitLibrary(...)
+
+library.register_component(
+    "capacitor",
+    parameters={
+        "capacitance": ParameterSpec(
+            unit=u.fF,
+            variable_capable=True,
+        ),
+    },
+    ...,
+)
+
+plan = CircuitPlan(...)
+readout_cap = plan.add(
+    library.capacitor(
+        id="readout_cap",
+        capacitance=92.0 * u.fF,
+    )
+)
+```
+
+`ParameterSpec.unit` declares the expected dimensionality and preferred
+authoring/display unit. The parameter value remains an explicit Quantity.
+SCNSim does not infer a unit from a parameter name, value size, or Notebook
+context.
+
+Public physical inputs do not accept bare numbers. Counts, indices, seeds,
+booleans, enum choices, and other non-physical controls remain ordinary Python
+values. A physically meaningful dimensionless value uses `u.dimensionless`.
+
+Custom libraries must use `scnsim.units`; they cannot supply or mutate another
+`UnitRegistry`. An unknown unit, a foreign-registry Quantity, or incompatible
+dimensionality fails at the authoring boundary.
+
+### Seal one Plan into one Run
+
+`CircuitRun` seals the Plan and binds it to one evidence workspace:
+
+```python
+from scnsim import CircuitRun
+
+run = CircuitRun(
+    plan=plan,
+    workspace="results/example_run",
+)
+
+original = run.original
+```
+
+Opening an existing workspace with a different sealed Plan or runtime identity
+must fail rather than relabel, overwrite, or silently select prior evidence.
+The Run has no global `action`, current Ref, current parameters, or current
+result.
+
+### Declare a Ref graph without executing
+
+`run.original` is the zero-reduction root `NetworkModelRef`. `reduce()` returns
+a new immutable Ref and never compiles, launches Julia, solves, or writes a
+receipt:
+
+```python
+modal = original.reduce(
+    ReductionPipeline().transform(
+        inputs=("phi_a", "phi_b"),
+        outputs={
+            "common": {"phi_a": 0.5, "phi_b": 0.5},
+            "differential": {"phi_a": 1.0, "phi_b": -1.0},
+        },
+        label="modal",
+    )
+)
+
+internal_reduced = modal.reduce(
+    ReductionPipeline().schur_complement(
+        eliminate=("internal_a", "internal_b"),
+        label="internal",
+    )
+)
+
+readout = internal_reduced.reduce(readout_pipeline)
+qubit = internal_reduced.reduce(qubit_pipeline)
+```
+
+The reusable point is the Ref itself: `original -> modal -> internal_reduced ->
+readout`. A Ref may produce any number of child Refs. Pipeline step labels are
+evidence labels, not a second API such as `model.at("checkpoint")`.
+
+## Run operations and durable results
+
+### One execution owner
+
+The Run performs every operation:
+
+```python
+direct = run.solve(readout, DirectSolveSpec(...))
+hb = run.solve(readout, HBSolveSpec(...))
+operator = run.evaluate(readout, OperatorSpec(...))
+optimization = run.optimize(qubit, OptimizationSpec(...))
+```
+
+`solve()`, `evaluate()`, and `optimize()` are real actions. They compute the
+exact request identity, materialize missing dependencies in order, write
+sealed request/receipt/artifact evidence, and return the corresponding typed
+Result. They do not mutate the Plan or Ref and do not save a result as mutable
+state on the Run.
+
+If the same exact request already has a complete verified success receipt, the
+operation reuses it without recomputing or overwriting it. A genuinely new
+attempt uses a new request identity or workspace; V1 has no force-overwrite
+flag.
+
+### Explain before execution
+
+V1 does not expose a public JobRef layer. A consumer can inspect a request
+without executing it:
+
+```python
+run.explain(readout, direct_spec).show()
+```
+
+The explanation identifies the sealed Plan, selected Ref, effective
+parameters, operation/backend, grids, reduction lineage, runtime, and exact
+dependency graph.
+
+### Resolve without execution
+
+`resolve()` accepts the same Ref, spec, and optional ParameterSet as the
+corresponding operation:
+
+```python
+direct = run.resolve(readout, direct_spec)
+```
+
+It recomputes the expected request identity, then reads and verifies the sealed
+workspace request, receipt, and artifacts. It never executes, searches for a
+latest stage, or relies on a process-local cache. The same call must therefore
+work after a Notebook kernel restart when every bound identity remains exact.
+Missing, stale, corrupt, or mismatched evidence fails closed with the missing
+or mismatched identity named.
+
+`run.inventory()` may list known requests and their identities, but listing
+does not establish a hidden current selection.
+
+## Units, identity, and parameter variants
+
+### Canonical SI identity
+
+At every Python trust boundary, SCNSim validates Quantity dimensionality and
+normalizes physical values to coherent SI for compilation, hashing, and Julia
+transport:
+
+```text
+SCNSim-registry Quantity
+-> validate declared dimensionality
+-> canonical SI magnitude + SI unit
+-> compile/request identity
+```
+
+The sealed representation records:
+
+- canonical SI magnitude and unit;
+- physical dimensionality;
+- preferred declaration/display unit; and
+- original input magnitude and unit as provenance.
+
+Receipts do not pickle Pint objects. They serialize magnitudes, units, and
+dimensionality so another process can reconstruct a Quantity with the same
+SCNSim registry. This follows Pint's guidance for a shared application
+registry and durable serialization:
+
+- [Using Pint in a project](https://pint.readthedocs.io/en/latest/getting/pint-in-your-projects.html)
+- [Serializing Pint quantities](https://pint.readthedocs.io/en/stable/advanced/serialization.html)
+
+Physically identical `92.0 * u.fF` and `0.092 * u.pF` produce the same
+computational identity after canonicalization. Their source units remain
+visible provenance and may be displayed differently without splitting the
+physical request identity.
+
+### Static and runtime checks
+
+Public type annotations require `pint.Quantity` with the appropriate magnitude
+container, which lets static analysis reject an ordinary float passed to a
+Quantity-only interface. Pint's generic annotation does not encode physical
+dimensionality, so F-versus-H correctness is enforced at runtime by
+`ParameterSpec`, Plan seal, `ParameterSet`, and operation-boundary validation.
+SCNSim does not add a parallel phantom-type unit system. See
+[Pint typing](https://pint.readthedocs.io/en/stable/advanced/typing.html).
+
+### Explicit ParameterSet variants
+
+The sealed Plan supplies the baseline parameters. An operation may instead
+receive an immutable `ParameterSet` keyed by Plan-derived `ParameterRef`
+objects:
+
+```python
+candidate = ParameterSet({
+    readout_cap.parameter("capacitance"): 95.0 * u.fF,
+})
+
+candidate_direct = run.solve(
+    readout,
+    direct_spec,
+    parameters=candidate,
+)
+```
+
+Omitting `parameters=` uses the sealed baseline. Supplying a ParameterSet does
+not bind or mutate the Ref; the ParameterSet is part of that operation's exact
+request identity. A ParameterSet with unknown refs, incompatible units,
+non-finite values, or a different Plan family fails before execution.
+
+Optimization exposes its selected parameters through the same type:
+
+```python
+optimization = run.optimize(qubit, optimization_spec)
+
+winner_hb = run.solve(
+    readout,
+    final_hb_spec,
+    parameters=optimization.best.parameters,
+)
+```
+
+The new HB request uses the `readout` reduction lineage plus the winner
+ParameterSet. It does not inherit the `qubit` reduction lineage. The
+optimization source remains parameter provenance.
+
+## One reduction meaning, two solver realizations
+
+`ReductionPipeline` always names physical node-flux coordinates and contains
+the same ordered transforms and eliminations regardless of backend. Direct and
+HB realize that declaration on different analysis operators.
+
+### Direct realization
+
+SCNSim compiles the original Plan into an ordered node-flux basis and owns:
+
+```text
+C: capacitance
+K: stiffness / inverse inductance
+G: conductance
+D(omega) = K - omega^2 C - i omega G
+```
+
+For Direct analysis, coordinate transforms and Schur complements are applied
+to `D(omega)` at the requested Quantity-valued sampling points. The same
+declared Ref can be used by `solve()` for observables or by `evaluate()` for
+the operator itself.
+
+### HB realization
+
+For each HB case, a reduced analysis has two phases:
+
+1. solve the nonlinear pump steady state on the full original physical Plan;
+2. construct the sideband-expanded small-signal operator around that operating
+   point, lift the selected Ref's pipeline into the retained sideband basis,
+   apply its transforms and Schur complements, and evaluate the requested
+   S/Y/Z or named observables.
+
+The nonlinear balance is not described as a Schur-reduced nonlinear circuit.
+Reduction applies to the linearized HB analysis operator around the sealed pump
+solution.
+
+An HB receipt for a reduced Ref binds both:
+
+- `balance_model`: original Plan, effective ParameterSet, pump declaration,
+  and nonlinear solution identity; and
+- `analysis_model`: selected Ref, sideband operator, reduction lineage, and
+  requested observables.
+
+Pump-off is an explicit `0 * u.A` drive case through the same HB mechanism as a
+pumped case. It is not a separate solver or fallback.
+
+### Operation support
+
+| Operation | Original Ref | Reduced Ref |
+|---|---:|---:|
+| `run.evaluate(ref, OperatorSpec)` | Yes | Yes |
+| `run.solve(ref, DirectSolveSpec)` | Yes | Yes |
+| `run.solve(ref, HBSolveSpec)` | Yes | Yes |
+| `run.optimize(ref, OptimizationSpec)` | Yes | Yes; Direct objective only in V1 |
+| `ref.render_schematic(...)` | Original only | No; inspect the operator/reduction instead |
+
+Physical compilation belongs to the original Plan and is not presented as a
+separate reduced compile action. Terminal operations materialize or exactly
+resolve the required original and reduced stages internally.
+
+## Operator evaluation and downstream calculation
+
+`run.evaluate()` materializes an operator without requiring an unrelated
+response solve:
+
+```python
+operator = run.evaluate(
+    internal_reduced,
+    OperatorSpec(frequencies=frequency_grid),
+)
+
+matrix = operator.at(6.2 * u.GHz).matrix
+coordinates = operator.coordinates
+```
+
+The typed Result carries sampling identity, ordered coordinates, units,
+ParameterSet, complete reduction lineage, condition evidence, and matrix
+Quantities. The consumer may use `.magnitude` for ordinary NumPy calculation,
+but the Result itself does not expose an unlabelled matrix as its only public
+meaning.
+
+## Optimization and numerical scaling
+
+### Candidate evaluation
+
+V1 optimization evaluates Direct objectives only. For every candidate,
+SCNSim binds the candidate ParameterSet to the original Plan, compiles that
+candidate, replays the selected Ref's complete reduction lineage, and then
+evaluates the objective. A nominal reduced matrix is never reused across
+different candidates.
+
+Optimization resume requires identical Plan, Ref, variable, objective,
+algorithm, controls, seed, runtime, and completed-generation identities. An
+interrupted generation is discarded and replayed deterministically rather
+than published as complete evidence.
+
+### Four distinct scaling contracts
+
+SCNSim keeps these operations separate:
+
+| Operation | Purpose | May change |
+|---|---|---|
+| Unit canonicalization | Give a physical value one SI identity | Representation only |
+| Optimizer coordinate scaling | Prevent raw unit magnitude from controlling search coordinates | Optimizer coordinates only |
+| Objective residual normalization | Make declared metric errors comparable | Only Human/Design-Target-declared objective terms |
+| Linear-algebra conditioning | Improve numerical solution of the same operator | Internal representation only; never physics |
+
+Bounded variables are converted to canonical SI and then mapped to
+dimensionless unit-interval coordinates:
+
+$$
+z_i = \frac{x_i-x_{i,\min}}{x_{i,\max}-x_{i,\min}} \in [0,1].
+$$
+
+Finite physical bounds therefore default to unit-interval optimizer
+coordinates. A logarithmic transform is used only when `OptimizationSpec`
+explicitly declares it. The ledger records both dimensionless optimizer
+coordinates and physical Quantity values.
+
+Objective targets, residual scales, weights, tolerances, and Gates remain
+consumer/Human declarations. Unit conversion cannot invent or silently modify
+them.
+
+### Linear algebra is not unit display
+
+The small magnitude of an fF or nH value does not by itself prove that an
+operator is ill-conditioned. Multiplying an entire equation by a scalar also
+does not change its condition number.
+
+SCNSim therefore does not expose a `ScalingSpec`, ScalingOptimizer, mutable
+scale state, or automatic coordinate equilibration in this V1 candidate.
+Direct and Schur implementations must:
+
+- use factorization/linear solves rather than an explicit inverse;
+- expose matrix norms, condition number, floating-point precision, and
+  reconstruction/backward residual evidence; and
+- keep conditioning evidence distinct from a Human-selected acceptability
+  threshold.
+
+If later public fixtures demonstrate a real raw-SI conditioning problem, the
+shared solve boundary may add a deterministic, reversible equilibration. Its
+map and inverse must be recorded, and it must preserve the physical operator,
+observables, and Notebook API. Such evidence would reopen only that numerical
+implementation scope.
+
+## Results, display, and reports
+
+### Typed Quantity results
+
+Result scalar and array physical values use the SCNSim Pint registry. Consumers
+can convert presentation units without changing result identity:
+
+```python
+frequencies = direct.frequencies.to(u.GHz)
+matrix_si = operator.matrix.to_base_units()
+matrix_values = matrix_si.magnitude
+```
+
+Each Result carries its exact result/ref identity for serialization and audit.
+Passing typed Results is the normal downstream UX; raw receipt paths remain an
+audit surface.
+
+### Display is explicit
+
+`result.show()` immediately presents a readable summary in the active
+environment. Notebook presentation is inline; interactive script presentation
+uses the supported renderer; a headless environment fails with a clear export
+instruction rather than claiming it displayed output.
+
+`plot()` is not a universal Result method. Only a Result subtype with a natural
+figure contract exposes it. Plot methods return the supported figure object so
+the caller can display, save, or further configure it.
+
+### Explicit downstream sources
+
+HB batches use named cases:
+
+```python
+pump_off = hb["pump_off"]
+pump_low = hb["pump_low"]
+```
+
+Reports name every source rather than selecting a latest result:
+
+```python
+report = run.build_report(
+    ReportSpec(inputs=(direct, pump_off, pump_low))
+)
+```
+
+Report assembly records the exact chosen inputs and may be Direct-only, contain
+one HB case, or contain several pump cases.
+
+The Direct/HB comparison operation is intentionally not named yet. Its public
+shape depends on the unresolved comparison-grid decision and must not imply an
+interpolation policy before Human review.
+
+## Schematic projection
+
+`original.render_schematic(CircuitDiagramSpec(...))` renders the original Plan
+only. The diagram is inspection/evidence, not a second topology authority.
+
+The candidate composer uses deterministic Grid + Attach placement, reusable
+component anchors/public terminals, explicit junctions, and orthogonal routes.
+Every visible component, terminal, connection, and port must trace to the
+sealed Plan.
+
+Diagram identity is separate from Plan identity. Changing layout or theme does
+not invalidate numerical receipts, and diagram failure does not block
+numerical stages. Reduced Refs are inspected through their coordinates,
+operators, transforms, eliminations, and observables rather than a fabricated
+equivalent-circuit schematic.
+
+## Failure and evidence contract
+
+SCNSim fails closed for:
+
+- a workspace bound to another Plan or runtime identity;
+- an unsupported component or missing Direct linearization;
+- a bare physical number, unknown unit, foreign registry, or dimensionality
+  mismatch;
+- a ParameterSet containing unknown refs, non-finite values, or another Plan
+  family;
+- invalid port roles or ambiguous physical coordinates;
+- a non-full-rank transform or singular/non-finite Schur partition;
+- a missing or mismatched exact receipt during resolve;
+- an HB backend result that cannot expose or reconstruct the required lifted
+  operator identity;
+- an optimization resume fingerprint or completed-generation mismatch; or
+- a corrupt request, receipt, or artifact hash.
+
+Condition number is published evidence, not an automatic pass/fail decision.
+SCNSim does not invent conditioning thresholds, optimization Gates, search
+envelopes, targets, weights, or acceptance conditions from backend defaults or
+tests.
+
+Diagram failure and an individual numerical-case failure stay on their own
+evidence surfaces. They cannot silently become successful numerical evidence
+or overwrite unrelated success receipts.
+
+## Known V1 limits
+
+- HB reduction acts on the small-signal sideband operator after the original
+  nonlinear balance; nonlinear model-order reduction is not included.
+- HB optimization objectives are not included; optimization is Direct-only.
+- Quantization is not included.
+- Direct and HB may use independent grids; comparison performs no implicit
+  interpolation.
+- No compatibility alias exists for the legacy Workbench import or bare-float
+  physical inputs.
+- No implicit latest-result selector exists.
+- Schematic auto-layout is deterministic Grid + Attach, not a general
+  constraint solver.
+- V1 has no public linear-algebra scaling configuration.
+
+## Open Human decisions
+
+These semantics remain `CONVERGING` and are not decided by the Units/scaling
+revision:
+
+1. When an HB problem retains several sidebands, should eliminating one named
+   physical coordinate remove its replica from every retained sideband, or may
+   a pipeline step select particular sidebands?
+2. If one case in a multi-case HB batch fails numerically, should successful
+   cases remain directly consumable from a partial batch receipt, or should the
+   whole batch be non-consumable?
+3. For numerical Direct/HB comparison, must both solver specs contain an exact
+   shared comparison grid, or should SCNSim provide one explicitly selected
+   interpolation policy?
+
+Until the Human resolves these questions, implementation and durable tests
+must not freeze an answer.

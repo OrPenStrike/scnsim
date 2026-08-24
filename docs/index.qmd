@@ -1,0 +1,29 @@
+---
+title: "SCNSim"
+subtitle: "Superconducting Circuit Network Simulation"
+---
+
+SCNSim is being designed as a public Python package for auditable
+superconducting-circuit network compilation, reduction, Direct/HB simulation,
+optimization, and reporting.
+
+::: {.callout-warning}
+## Candidate semantics
+
+The product, API, Units, reduction, and failure semantics are `CONVERGING`.
+They are not yet accepted, stabilized, integrated, released, or installable.
+:::
+
+## Review map
+
+The [SCNSim V1 Runtime Contract](v1-runtime-contract.qmd) is the single current
+semantic authority. For Human review:
+
+1. start with its [review map](v1-runtime-contract.qmd#review-map);
+2. read the [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
+   and follow the linked details for each proposed behavior; and
+3. decide the three [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
+   before implementation freezes their behavior.
+
+SCNSim keeps product/runtime behavior here and links outward for authoritative
+circuit physics, consumer Design Targets, and private application evidence.
