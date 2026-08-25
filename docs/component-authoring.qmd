@@ -403,9 +403,11 @@ oriented inductive branches, while drive current belongs to an HB case:
 from scnsim import (
     CircuitPlan,
     CircuitRun,
+    CurrentDrive,
+    HBCaseSpec,
+    HBTruncation,
     HBSolveSpec,
-    NoPumpingSpec,
-    PumpingSpec,
+    PumpAxis,
     library as sc,
     units as u,
 )
@@ -449,23 +451,45 @@ plan.couple_inductive(
 )
 
 run = CircuitRun(plan=plan, workspace="results/flux_pumped_resonator")
+pump_axis = PumpAxis(id="pump", frequency=7.0 * u.GHz)
+dc_bias = CurrentDrive(id="dc_bias", at="pump", mode=(0,))
+pump_drive = CurrentDrive(id="pump_drive", at="pump", mode=(1,))
+
 hb = run.solve(
     run.original,
     HBSolveSpec(
         pump_axes=(pump_axis,),
+        drives=(dc_bias, pump_drive),
         frequencies=signal_grid,
         cases=(
-            NoPumpingSpec(id="baseline"),
-            PumpingSpec(id="pump_low", sources=(pump_low,)),
-            PumpingSpec(id="pump_high", sources=(pump_high,)),
+            HBCaseSpec(id="unbiased", currents={}),
+            HBCaseSpec(
+                id="dc_only",
+                currents={dc_bias: 120.0 * u.uA},
+            ),
+            HBCaseSpec(
+                id="dc_pump",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_drive: 0.4 * u.uA,
+                },
+            ),
+        ),
+        truncation=HBTruncation(
+            pump_harmonics=(3,),
+            modulation_harmonics=(1,),
+            three_wave_mixing=True,
+            four_wave_mixing=True,
         ),
     ),
 )
 ```
 
-`pump_axis`, `signal_grid`, and each `PumpSource` are ordinary Runtime request
-objects defined by the [HB case contract](v1-runtime-contract.qmd#named-hb-cases-and-pumped-ptc).
-They do not mutate the component or become component parameters.
+`pump_axis`, `signal_grid`, and each `CurrentDrive` are ordinary Runtime
+request objects defined by the
+[HB drive/case contract](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing).
+The cases bind DC and AC Fourier-current coefficients without mutating the
+component or turning a drive current into a component parameter.
 
 The physical coupling identity is
 `M = k * sqrt(L1 * L2)`, with signed `k` supplying the V1 authoring authority.

@@ -22,9 +22,11 @@ After reading this contract, a package consumer should understand:
 4. how every physical value carries a checked unit;
 5. which topology, coordinate, and boundary operations SCNSim applies to one
    declared circuit;
-6. how one HB request represents and compares several named operating cases;
-   and
-7. which identities and artifacts make a result reproducible across Python
+6. how Direct matrix responses and typed physical quantities share one
+   evaluation contract;
+7. how one HB request represents DC, AC, multi-tone, and mixed operating
+   cases; and
+8. which identities and artifacts make a result reproducible across Python
    processes.
 
 This document defines public product/runtime behavior. Circuit physics,
@@ -43,8 +45,9 @@ accepted yet:
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
 | Which reductions change effective topology, and which only select a mathematical view? | [Shared topology and solver-specific views](#shared-topology-and-solver-specific-views) |
-| How are multiple HB cases, named traces, complete matrices, and displays exposed? | [HB cases, traces, and display](#hb-cases-traces-and-display) |
-| How are optimization and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
+| How are Direct matrices and typed physical quantities exposed? | [Direct matrices and physical quantities](#direct-matrices-and-physical-quantities) |
+| How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
+| How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
 
 Two decisions deliberately remain open: partial HB batch consumability and
@@ -213,7 +216,7 @@ The Run performs every operation:
 ```python
 direct = run.solve(feedline, DirectSolveSpec(...))
 hb = run.solve(feedline, HBSolveSpec(...))
-operator = run.evaluate(feedline, OperatorSpec(...))
+readout = run.evaluate(feedline, DiagonalRootSpec(...))
 optimization = run.optimize(feedline, OptimizationSpec(...))
 ```
 
@@ -249,8 +252,9 @@ SQUID loop orientation, and every bound inductive-coupling `L1`, `L2`, signed
 external-cut capacitance branch, every excluded direct-mutual branch, the
 resolved weights and transform, the transformed reference matrix and principal
 root, and the ordered mode-port realization. Optimization explanations show
-the rule and baseline resolution; candidate-specific resolutions remain in
-candidate receipts.
+the expanded relative or explicit residual scales, quantity dependency graph,
+shared compile/factorization/root work, Julia execution boundary, and baseline
+resolution; candidate-specific resolutions remain in candidate receipts.
 
 ### Resolve without execution
 
@@ -522,25 +526,50 @@ normalization, port order, and version are part of this operator identity.
 Native `returnS` is requested only when the observable or reconciliation
 evidence needs it; it is not a second topology authority.
 
-JosephsonCircuits native scattering waves use a signed-mode-aware
-photon-flux normalization. SCNSim converts them to its generalized power-wave
-surface using the canonical input/output frequency factors documented under
+JosephsonCircuits stores solver-native scattering amplitudes with a
+`1 / sqrt(abs(omega))` frequency scaling; those bytes are not themselves a
+physical photon-flux amplitude. After remapping the solver's input and output
+indices to the selected signed-mode order, SCNSim performs the one-time
+JosephsonCircuits `exp(+i * omega * t)` to SCNSim
+`exp(-i * omega * t)` phasor conversion and then forms
+
+$$
+S_{\mathrm{pw}}^{(-)} =
+W_{\mathrm{out}} [S_{\mathrm{JC}}^{(+)}]^*
+W_{\mathrm{in}}^{-1}.
+$$
+
+Here each diagonal `W` entry is `sqrt(abs(omega))` for the corresponding
+ordered input or output mode. This is the generalized power-wave surface
+documented under
 [JosephsonCircuits photon-flux-to-power normalization](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#josephsoncircuits-photon-flux-to-power-normalization).
-Signed frequencies and mode order remain evidence; only the normalization
-factor uses absolute frequency magnitude. A zero-frequency mode cannot be
-published through this S conversion.
+Signed frequencies, the solver-to-SCNSim mode map, phasor convention, and mode
+order remain evidence; only each `W` factor uses absolute frequency magnitude.
+A zero-frequency mode cannot be published through this S conversion.
 
-### Named HB cases and pumped PTC
+### Named HB drives, cases, mixing, and driven PTC {#named-hb-drives-cases-and-mixing}
 
-One `HBSolveSpec` may contain several named cases, including several distinct
-Pump-on conditions. The spec declares one ordered pump-frequency axis basis
-shared by every case, trace, and returned mode tuple:
+One `HBSolveSpec` owns an ordered frequency lattice, immutable drive channels,
+truncation, and named cases. A drive declares where one Fourier current enters;
+each case supplies that drive's current:
 
 ```python
+pump_a = PumpAxis(id="pump_a", frequency=7.0 * u.GHz)
+pump_b = PumpAxis(id="pump_b", frequency=7.3 * u.GHz)
+
+dc_bias = CurrentDrive(id="dc_bias", at="flux_port", mode=(0, 0))
+pump_a_drive = CurrentDrive(
+    id="pump_a_drive", at="flux_port", mode=(1, 0)
+)
+pump_b_drive = CurrentDrive(
+    id="pump_b_drive", at="flux_port", mode=(0, 1)
+)
+
 hb = run.solve(
     feedline,
     HBSolveSpec(
-        pump_axes=(pump_axis_a, pump_axis_b),
+        pump_axes=(pump_a, pump_b),
+        drives=(dc_bias, pump_a_drive, pump_b_drive),
         frequencies=signal_grid,
         traces=(
             SParameterTrace(
@@ -559,59 +588,126 @@ hb = run.solve(
             ),
         ),
         cases=(
-            NoPumpingSpec(id="baseline"),
-            PumpingSpec(
-                id="pump_low",
-                sources=(pump_a_low, pump_b_off),
+            HBCaseSpec(id="unbiased", currents={}),
+            HBCaseSpec(
+                id="dc_only",
+                currents={dc_bias: 120.0 * u.uA},
             ),
-            PumpingSpec(
-                id="pump_high",
-                sources=(pump_a_high, pump_b_off),
+            HBCaseSpec(
+                id="dc_pump_a_low",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_a_drive: 0.4 * u.uA,
+                },
             ),
-            PumpingSpec(
-                id="two_tone",
-                sources=(pump_a_on, pump_b_on),
+            HBCaseSpec(
+                id="dc_two_tone",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_a_drive: 0.4 * u.uA,
+                    pump_b_drive: 0.2j * u.uA,
+                },
             ),
         ),
-        allow_pumped_ptc=True,
+        truncation=HBTruncation(
+            pump_harmonics=(3, 3),
+            modulation_harmonics=(1, 1),
+            max_intermodulation_order=3,
+            three_wave_mixing=True,
+            four_wave_mixing=True,
+        ),
+        allow_driven_ptc=True,
     ),
 )
 ```
 
-Classification happens independently for every case after ParameterSet
-binding and Quantity validation:
+`PumpAxis` declares one independent strong-tone fundamental. A commensurate
+higher tone is a higher integer mode on the same fundamental, not another
+axis. `CurrentDrive` owns only its ID, physical location, oriented injection
+map, and mode; it never owns a current. An omitted case binding materializes as
+exact `0 * u.A`.
 
-- `NoPumpingSpec` is pump-off;
-- a `PumpingSpec` whose effective source currents are all exactly `0 * u.A` is
-  also pump-off; and
-- any nonzero effective source current makes the case pump-on.
+Case values are complex Fourier-series coefficients, not peak or RMS phasors:
 
-SCNSim does not invent a near-zero tolerance. A batch is purely pump-off only
-when every case is pump-off.
+$$
+i(t)=\sum_{\mathbf m} I_{\mathbf m}
+e^{-i\mathbf m\cdot\boldsymbol\omega_p t}.
+$$
 
-Every `PumpSource` binds one declared axis and source location. Each case is
-materialized on the complete request-global axis basis; an inactive axis has
-an explicit zero-current drive rather than disappearing from the case
-identity. `NoPumpingSpec` is the concise declaration that every effective
-source current on every declared axis is exactly zero. A case with a different
-ordered pump-axis frequency lattice belongs to a different `HBSolveSpec` and
-`HBBatchResult`.
+For a real current, `I[-m] = conj(I[m])`; therefore a single nonzero-mode
+coefficient has physical sinusoidal peak amplitude `2 * abs(I[m])`. SCNSim
+generates the negative-mode conjugate from each declared nonzero-mode drive and
+rejects an independently declared conjugate partner. The all-zero DC
+coefficient is self-conjugate and must be real. The sealed schema records this
+coefficient convention, source phase/calibration provenance, and every
+oriented injection map `B_l`.
 
-Case IDs name user-declared experimental conditions; they are not aliases for
-the derived classification. IDs must be unique within the spec and their
-declaration order is preserved in the Result. SCNSim exposes no special
-`pump_on` case, classification collection, or implicit latest case.
+Sources superpose in the compiled source vector,
 
-`HBSolveSpec.allow_pumped_ptc` defaults to `False`. If a PTC Ref is paired with
-any pump-on case without that explicit authorization, the complete request
-fails during preflight and no case executes.
+$$
+\mathbf u_{\mathbf m}=\sum_\ell
+\mathbf B_\ell I_{\ell,\mathbf m}.
+$$
 
-With authorization, pump-off cases remain exact PTC realizations. A pump-on
-case instead solves nonlinear balance on the original Plan with its probe
-shunts present, then applies PTC only to the linearized response around that
-loaded operating point. Its Result and receipt must call this a compensated
-small-signal view of a loaded pump balance; they must not claim the operating
-point is equivalent to a circuit in which those shunts never existed.
+Only contributions with the same oriented injection map may be collapsed to a
+scalar effective current; different locations or orientations remain distinct
+vector contributions. Accumulation follows drive declaration order and
+evidence retains every contribution, generated conjugate, injection map, and
+effective source vector.
+
+`pump_axes=()` and `mode=()` form the pure-DC case. Otherwise every drive and
+trace tuple rank and order match `pump_axes`. All cases share this request-wide
+basis, drive schema, truncation, and mixing selection; a different basis or
+selection is a different `HBSolveSpec` and `HBBatchResult`.
+If any declared drive uses the all-zero mode, DC terms are enabled for the
+whole batch so every case remains comparable; a case may still bind that drive
+to exact zero.
+
+Classification happens after ParameterSet binding, Quantity validation,
+conjugate generation, and orientation-aware source-vector accumulation:
+
+- any nonzero effective all-zero-mode current makes `BiasState.ON`;
+- any nonzero effective nonzero-mode current makes `PumpState.ON`; and
+- a DC-only case is Bias-on and Pump-off.
+
+Exact cancellation produces the corresponding Off state; SCNSim invents no
+near-zero tolerance. Case IDs remain the only public lookup identity. They name
+declared experimental conditions, not Bias/Pump classifications, and remain in
+declaration order under `hb.cases[id]`.
+
+Three-wave and four-wave mixing are request-global model selections, not pump
+counts or separate runs. `HBTruncation.three_wave_mixing` and
+`four_wave_mixing` are required booleans. When both are enabled, one combined
+Fourier-lattice nonlinear balance and one combined linearized response retain
+both interaction families. When both are disabled, the result is explicitly a
+mixing-disabled comparison and cannot be labeled a nonlinear mixing result.
+The reusable physics remains canonical under
+[source superposition and generated mixing](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#source-superposition-and-generated-mixing).
+
+Per-axis `pump_harmonics` and `modulation_harmonics` keep their separate
+operating-point and small-signal meanings. Optional
+`max_intermodulation_order=N` adds the finite-lattice crop
+
+$$
+\sum_j |m_j| \le N.
+$$
+
+Omitting it applies no additional diamond crop; the per-axis limits still make
+the basis finite. A supplied `N` is a nonnegative integer and must retain every
+declared drive and requested trace mode. `run.explain()` enumerates the actual
+tuples, signed physical frequencies, source/trace bindings, and exact
+tuple-frequency collisions. Exact collisions fail closed; SCNSim does not
+invent a near-commensurability tolerance or Gate. See
+[mixing order versus intermodulation truncation](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#mixing-order-versus-intermodulation-truncation).
+
+`HBSolveSpec.allow_driven_ptc` defaults to `False`. If a selected Ref contains
+PTC and any case has nonzero effective DC or AC operating-point drive, the
+complete request fails preflight unless this override is explicit. Undriven
+cases remain exact PTC realizations. An authorized driven case instead solves
+the static/nonlinear balance on the original Plan with probe shunts present,
+then applies PTC only to the response linearized around that loaded operating
+point. Result and receipt must say `loaded balance` and `compensated analysis
+topology`; they cannot claim an unloaded operating point.
 
 ### Required lineage and receipt evidence
 
@@ -640,12 +736,21 @@ transformed real-SPD reference matrix, principal root and reconstruction
 evidence, and generated coordinate order. These obligations apply whether or
 not the lineage contains PTC.
 
-Every HB Result additionally records the request-global pump-axis basis,
-mode tuples, signed frequencies, mode-port order, solver normalization and
-version, each case ID and effective source bindings/currents, Pump classification, and
-the raw-native, selected-view, and reconciliation identities. A Pump-on PTC
-Result also records `allow_pumped_ptc`, balance topology, and compensated
-analysis topology.
+Every HB Result additionally records the request-global pump-axis and drive
+schemas; operating-point and modulation limits; optional intermodulation crop;
+three-/four-wave-mixing selections; retained mode tuples, signed frequencies,
+and mode-port order; solver normalization and version; and the raw-native,
+selected-view, and reconciliation identities. Each case records its declared
+current contributions, generated conjugates, oriented injection maps,
+effective mode-indexed source vectors, derived Bias/Pump states, and exact case
+identity. A driven PTC Result also records
+`allow_driven_ptc`, loaded balance topology, and compensated analysis topology.
+
+Direct quantity and optimization receipts additionally record quantity-spec
+identity, selector and dimensionality, root/pole/zero branch and anchor,
+continuation and simple-root/slope evidence where applicable, shared dependency
+nodes, expanded residual scale and source, objective weight, candidate failure
+ledger, and the one Julia-process execution identity.
 
 ### Direct and HB component realization
 
@@ -667,48 +772,218 @@ SCNSim records that backend limitation instead of enlarging its guarantee.
 | Selected Ref lineage | Direct solve/evaluate | Direct optimize | HB solve |
 |---|---:|---:|---:|
 | Original | Yes | Yes | Yes |
-| PTC, automatic port transforms, and retained-port views | Yes | Yes | Yes; pump-on PTC requires authorization |
+| PTC, automatic port transforms, and retained-port views | Yes | Yes | Yes; driven PTC requires authorization |
 | Internal-node transform or Schur | Yes | Yes | No |
 
 Physical compilation belongs to the original Plan and is not presented as a
 separate reduced compile action. Terminal operations materialize or exactly
 resolve the required original and selected-view stages internally.
 
-## Operator evaluation and downstream calculation
+## Direct matrices and physical quantities
 
-`run.evaluate()` materializes an operator without requiring an unrelated
-response solve:
+### Common matrix surface
+
+Direct and HB expose the same selected-view S/Y/Z families without pretending
+their enclosing Results are identical:
 
 ```python
+direct.s.view
+direct.y.view
+direct.z.view
+
+case = hb.cases["dc_pump_a_low"]
+case.s.view
+case.y.view
+case.z.view
+```
+
+HB may additionally expose backend-native and reconciliation evidence. Direct
+does not acquire a fake case layer. S display accepts
+`magnitude="linear" | "db"`; dimensionful Y/Z matrices remain linear Quantity
+surfaces.
+
+### Typed Direct quantity catalog
+
+`run.evaluate()` evaluates one declared Direct physical quantity or
+materializes the full dynamic operator without requiring an unrelated response
+sweep:
+
+```python
+readout_root = DiagonalRootSpec(
+    coordinate="readout",
+    anchor=6.2 * u.GHz,
+)
+
+evaluated = run.evaluate(feedline, readout_root)
+
+evaluated.root
+evaluated.frequency
+evaluated.linewidth
+evaluated.slope
+```
+
+`readout_root.frequency` on the Spec is an immutable selector that can be
+placed in an objective; `evaluated.frequency` is the resulting Quantity. Merely
+accessing the selector does not execute or consult process memory.
+
+The V1 catalog is intentionally small:
+
+| Spec | Declared operation | Public result |
+|---|---|---|
+| `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
+| `HybridizedPoleSpec` | Complex root of the determinant of one ordered retained block | pole/root bundle with branch evidence |
+| `TransferZeroSpec` | Complex zero of one explicit cofactor or S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected simple-root branches and one declared evaluation point | complex coupling and magnitude |
+| `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
+| `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
+
+```python
+transmission = ResponseElementSpec(
+    family="S",
+    input_coordinate="feedline_in",
+    output_coordinate="feedline_out",
+    frequency=6.2 * u.GHz,
+)
+
 operator = run.evaluate(
     feedline,
     OperatorSpec(frequencies=frequency_grid),
 )
-
-matrix = operator.at(6.2 * u.GHz).matrix
-coordinates = operator.coordinates
 ```
 
-The typed Result carries sampling identity, ordered coordinates, units,
-ParameterSet, complete reduction lineage, condition evidence, and matrix
-Quantities. The consumer may use `.magnitude` for ordinary NumPy calculation,
-but the Result itself does not expose an unlabelled matrix as its only public
-meaning.
+Root-like bundles expose only physically defined typed scalar selectors such as
+`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
+anchor, continuation, simple-root/slope evidence, units, ParameterSet, selected
+Ref boundary, and operator identity remain attached. An ambiguous, repeated, or
+non-simple branch fails when the requested spec requires a unique simple root.
+`TransferZeroSpec` additionally requires its selected transfer denominator to
+remain finite and nonsingular at the zero. A coincident numerator zero and pole
+is rejected as an unresolved cancellation rather than published as a transfer
+zero.
+For the canonical `exp(-i * Omega * t)` convention, `.root` is the complex
+angular-frequency Quantity, `.frequency` is `real(Omega) / (2 * pi)`, and the
+positive passive linewidth is `-2 * imag(Omega) / (2 * pi)`. The Result records
+the convention instead of inferring a sign from a plotted trace.
+
+`QuantitySum(a, b, ...)` is the only V1 scalar composition. Every term must
+have the same dimensionality. SCNSim exposes no general expression tree or
+Python callable objective. A consumer may still request `OperatorSpec` and use
+its labeled Quantity matrix for ordinary Python/NumPy calculation; a full
+operator or matrix cannot itself become one scalar cost.
+
+The reusable definitions remain canonical in SCQ_Design:
+[anchored diagonal roots and hybridized poles](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#anchored-bare-diagonal-roots-and-hybridized-poles),
+[poles, zeros, and residues](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/poles-zeros-residues.qmd),
+and the
+[local residue-normalized coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/poles-zeros-residues.qmd#local-residue-normalized-open-coupling).
+SCNSim documents only how those quantities are selected, evaluated, and
+evidenced.
 
 ## Optimization and numerical scaling
 
-### Candidate evaluation
+### Quantity objectives and one Julia execution
 
-V1 optimization evaluates Direct objectives only. For every candidate,
-SCNSim binds the candidate ParameterSet to the original Plan, compiles that
-candidate, replays the selected Ref's complete reduction lineage, and then
-evaluates the objective. A nominal reduced matrix is never reused across
-different candidates.
+V1 optimization evaluates Direct objectives only. It accepts one selected
+`NetworkViewRef`, any number of optimization variables, and any number of
+scalar quantity objectives:
 
-Optimization resume requires identical Plan, Ref, variable, objective,
-algorithm, controls, seed, runtime, and completed-generation identities. An
-interrupted generation is discarded and replayed deterministically rather
-than published as complete evidence.
+```python
+qubit_root = DiagonalRootSpec(
+    coordinate="qubit.differential",
+    anchor=5.0 * u.GHz,
+)
+
+optimization_spec = OptimizationSpec(
+    variables=(
+        OptimizationVariable(
+            parameter=resonator.parameter("capacitance"),
+            bounds=(80.0 * u.fF, 120.0 * u.fF),
+        ),
+        OptimizationVariable(
+            parameter=coupler.parameter("coupling_coefficient"),
+            bounds=(
+                0.01 * u.dimensionless,
+                0.20 * u.dimensionless,
+            ),
+        ),
+    ),
+    objectives=(
+        CostObjective(
+            id="readout_frequency",
+            quantity=readout_root.frequency,
+            target=6.2 * u.GHz,
+            weight=100.0 * u.dimensionless,
+        ),
+        CostObjective(
+            id="combined_linewidth",
+            quantity=QuantitySum(
+                qubit_root.linewidth,
+                readout_root.linewidth,
+            ),
+            target=2.0 * u.MHz,
+            weight=10.0 * u.dimensionless,
+        ),
+    ),
+    optimizer=CMAESSpec(...),
+)
+
+optimization = run.optimize(feedline, optimization_spec)
+```
+
+The public `run.evaluate()` contract does not force candidate work back through
+Python. One optimization request launches one Julia process. Parameter binding,
+candidate compilation, Ref-lineage replay, quantity evaluation, shared
+factorization/root work, objective aggregation, and CMA-ES remain inside that
+process. Python submits the sealed request and receives process-local progress
+and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
+daemon. Repeated quantity identities share dependency nodes within a candidate.
+Julia package precompilation may reduce load and first-execution latency but
+does not promise every specialization is already compiled. SCNSim adds no
+special precompile workload until representative measurement shows startup is
+material to this one-process boundary. See Julia's official
+[execution-latency and precompilation guidance](https://docs.julialang.org/en/v1/manual/performance-tips/#Execution-latency,-package-loading-and-package-precompiling-time).
+
+For every candidate, SCNSim binds its ParameterSet to the original Plan,
+compiles that candidate, replays the complete selected Ref lineage, and
+evaluates all objectives. A nominal reduced matrix is never reused across
+different candidates. A singular/non-finite/branch failure is recorded as a
+typed non-evaluable candidate, contributes `Inf` to the optimizer, and does not
+publish stale or fallback quantities. Other candidates continue.
+
+Optimization resume requires identical Plan, Ref, variables, quantity specs,
+objectives, expanded normalization, algorithm, controls, seed, runtime, and
+completed-generation ledger. An interrupted generation is discarded and
+replayed deterministically rather than published as complete evidence.
+
+### Relative objective normalization
+
+Every objective uses
+
+$$
+r_i = \frac{q_i-t_i}{s_i},
+\qquad
+J = \sum_i w_i |r_i|^2.
+$$
+
+Normalization occurs before weighting, so `weight` expresses relative
+importance rather than target magnitude or physical unit:
+
+- for a nonzero target, omitted `scale` expands to `abs(target)`;
+- for an exact zero dimensionless target, omitted `scale` expands to
+  `1 * u.dimensionless`;
+- for an exact zero dimensionful target, omitted `scale` fails closed; and
+- an explicit positive, finite, same-dimensionality `scale` overrides those
+  defaults.
+
+SCNSim never divides by the current candidate `abs(q_i)`: that denominator is
+undefined at zero and destroys optimization direction for a zero target. A
+`CostObjective.weight` is required, positive, finite, and dimensionless. It
+multiplies the squared residual as written above; it is not itself squared.
+Explain/request/receipt surfaces store the expanded scale plus its source:
+`relative_target`, `dimensionless_unity`, or `explicit`. These scales
+nondimensionalize cost; they do not create a Gate, tolerance, or acceptance
+rule. See the canonical
+[normalized weighted objective](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/auditable-scientific-optimization.qmd#normalized-weighted-objective).
 
 ### Four distinct scaling contracts
 
@@ -733,9 +1008,9 @@ coordinates. A logarithmic transform is used only when `OptimizationSpec`
 explicitly declares it. The ledger records both dimensionless optimizer
 coordinates and physical Quantity values.
 
-Objective targets, residual scales, weights, tolerances, and Gates remain
-consumer/Human declarations. Unit conversion cannot invent or silently modify
-them.
+Objective targets and weights remain consumer/Human declarations. The product
+rule above deterministically expands an omitted residual scale; unit conversion
+cannot alter that scale, the target, the weight, a tolerance, or a Gate.
 
 ### Linear algebra is not unit display
 
@@ -768,8 +1043,9 @@ can convert presentation units without changing result identity:
 
 ```python
 frequencies = direct.frequencies.to(u.GHz)
-matrix_si = operator.matrix.to_base_units()
+matrix_si = operator.at(6.2 * u.GHz).matrix.to_base_units()
 matrix_values = matrix_si.magnitude
+root_frequency = evaluated.frequency.to(u.GHz)
 ```
 
 Each Result carries its exact result/ref identity for serialization and audit.
@@ -794,21 +1070,25 @@ index is one ordered, read-only mapping keyed by the unique IDs declared in
 `HBSolveSpec`:
 
 ```python
-baseline = hb.cases["baseline"]
-pump_low = hb.cases["pump_low"]
-pump_high = hb.cases["pump_high"]
-two_tone = hb.cases["two_tone"]
+unbiased = hb.cases["unbiased"]
+dc_only = hb.cases["dc_only"]
+dc_pump_a_low = hb.cases["dc_pump_a_low"]
+dc_two_tone = hb.cases["dc_two_tone"]
 
-assert baseline.pump_state is PumpState.OFF
-assert pump_low.pump_state is PumpState.ON
-assert pump_high.pump_state is PumpState.ON
-assert two_tone.pump_state is PumpState.ON
+assert unbiased.bias_state is BiasState.OFF
+assert unbiased.pump_state is PumpState.OFF
+assert dc_only.bias_state is BiasState.ON
+assert dc_only.pump_state is PumpState.OFF
+assert dc_pump_a_low.bias_state is BiasState.ON
+assert dc_pump_a_low.pump_state is PumpState.ON
+assert dc_two_tone.pump_state is PumpState.ON
 ```
 
 `HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
-classification on each case result, not an alternate lookup key. A
-zero-current `PumpingSpec` therefore remains addressable by its declared case
-ID while reporting `PumpState.OFF`.
+classification on each case result, not an alternate lookup key. `BiasState`
+independently records effective all-zero-mode drive. A case whose declared
+drives sum to zero remains addressable by its declared ID while reporting the
+corresponding Off states.
 
 An `SParameterTrace` names one complex matrix projection across the request's
 frequency grid. Its input/output ports refer to selected-view coordinates and
@@ -821,10 +1101,12 @@ do not launch separate solves, hide the full matrix, or become another
 physical authority:
 
 ```python
-case = hb.cases["pump_low"]
+case = hb.cases["dc_pump_a_low"]
 
 case.traces["signal_gain"].show()
 case.s.view
+case.y.view
+case.z.view
 case.s.backend_native
 case.s.reconciliation
 case.s.show()
@@ -846,8 +1128,8 @@ Batch display supports both declared traces and complete-matrix inspection:
 ```python
 hb.show()                         # magnitude="linear"
 hb.show(magnitude="db")
-hb.cases["pump_low"].show()
-hb.cases["pump_low"].s.show(magnitude="db")
+hb.cases["dc_pump_a_low"].show()
+hb.cases["dc_pump_a_low"].s.show(magnitude="db")
 ```
 
 When traces are declared, `hb.show()` creates one panel per trace and overlays
@@ -877,12 +1159,12 @@ Reports name every source rather than selecting a latest result:
 
 ```python
 report = run.build_report(
-    ReportSpec(inputs=(direct, baseline, pump_low, pump_high))
+    ReportSpec(inputs=(direct, unbiased, dc_only, dc_pump_a_low))
 )
 ```
 
 Report assembly records the exact chosen inputs and may be Direct-only, contain
-one HB case, or contain several pump cases.
+one HB case, or contain several operating cases.
 
 The Direct/HB comparison operation is intentionally not named yet. Its public
 shape depends on the unresolved comparison-grid decision and must not imply an
@@ -936,22 +1218,40 @@ SCNSim fails closed for:
 - a non-finite or singular port transform, a non-real/non-symmetric/non-SPD
   physical or transformed reference matrix, or failed principal-root
   reconstruction;
-- an unknown or duplicate pump axis/source binding, incomplete materialization
-  of the request-global pump-axis basis, a duplicate case or trace ID, an unknown
-  trace coordinate, or a trace mode whose rank/order does not match the
-  declared HB pump axes;
+- an unknown or duplicate pump axis, drive, case, or trace identity; a drive
+  bound outside the request; a non-positive/non-finite axis frequency; or an
+  incomplete request-global drive materialization;
+- a non-integer drive/trace mode, tuple-rank/order mismatch, non-current or
+  non-finite drive Quantity, complex DC coefficient, or unknown drive/trace
+  coordinate;
+- an independently declared negative-mode partner, inconsistent current
+  orientation/injection map, or invalid Fourier-coefficient materialization;
+- an invalid per-axis harmonic declaration, negative/non-integer
+  `max_intermodulation_order`, retained-lattice exclusion of a declared
+  drive/requested trace mode, or exact tuple-frequency collision;
 - an empty, duplicate, or unknown retained-port coordinate list;
-- a PTC Ref paired with a pump-on case without explicit
-  `allow_pumped_ptc=True`;
+- a PTC Ref paired with any nonzero effective DC or AC drive without explicit
+  `allow_driven_ptc=True`;
 - an HB request whose Ref contains an internal-node transform or Schur step;
 - a non-full-rank transform or singular/non-finite Schur partition;
+- a duplicate optimization variable/objective ID, non-variable ParameterRef,
+  invalid physical bounds/coordinate transform, or foreign quantity selector;
+- a bundle, full matrix/operator, or dimensionally invalid composition used as
+  one scalar objective;
+- a target/selector dimensionality mismatch, non-positive/non-finite weight or
+  explicit scale, or a zero dimensionful target without explicit scale;
+- an ambiguous/repeated/non-simple root, pole, or zero when its quantity spec
+  requires one unique simple branch;
+- a transfer-zero candidate with a non-finite or singular denominator, or an
+  unresolved pole-zero cancellation;
 - a missing or mismatched exact receipt during resolve;
 - an HB backend result that cannot bind complete mode-port Z, signed
   frequencies, normalization, or the required lifted operator identity;
 - an attempted reconciliation across unequal topology, PTC/load state,
   boundary, reference plane, reference matrix, frequency, or wave
   normalization;
-- an optimization resume fingerprint or completed-generation mismatch; or
+- an optimization resume fingerprint, expanded-normalization identity, or
+  completed-generation mismatch; or
 - a corrupt request, receipt, or artifact hash.
 
 Condition number is published evidence, not an automatic pass/fail decision.
@@ -975,12 +1275,15 @@ or overwrite unrelated success receipts.
   upstream relatively-untested limitation.
 - HB reduction acts on the small-signal sideband operator after the original
   nonlinear balance; nonlinear model-order reduction is not included.
-- Pump-on PTC is a compensated small-signal view around a pump balance that
-  still contains the selected shunts; it is not an unloaded pump solution.
+- Driven PTC is a compensated small-signal view around a static/nonlinear
+  balance that still contains the selected shunts; it is not an unloaded
+  operating-point solution.
 - Automatic `transform_ports` is limited to the declared reciprocal lumped
   two-node capacitance scope. It is not universal modal diagonalization and
   V1 provides no manual-weight override through this API.
 - HB optimization objectives are not included; optimization is Direct-only.
+- Direct optimization accepts one selected Ref per request and no Python
+  callable, general expression AST, or persistent Julia daemon.
 - Quantization is not included.
 - Direct and HB may use independent grids; comparison performs no implicit
   interpolation.

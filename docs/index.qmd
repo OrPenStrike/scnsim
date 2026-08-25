@@ -32,12 +32,17 @@ authority without duplicating reusable physics. For Human review:
    for the lazy `NetworkViewRef` graph;
 5. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
    for selective Port-Termination Compensation (PTC), automatic floating-pair
-   coordinates, arbitrary N-port retention, Direct/HB realization, and Pump-on
-   authorization;
-6. review [HB cases, traces, and display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
-   for multiple Pump-on conditions, exact case lookup, and matrix presentation;
-   and
-7. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
+   coordinates, arbitrary N-port retention, Direct/HB realization, and
+   nonzero-drive PTC authorization;
+6. review [Direct matrices and physical quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities)
+   and [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling)
+   for parallel S/Y/Z API surfaces, typed quantity selectors, automatic relative
+   residuals, and one-process Julia candidate evaluation;
+7. review [HB drives, cases, and mixing](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
+   and [HB display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
+   for DC/AC superposition, multiple named conditions, 3WM/4WM selection,
+   exact case lookup, and matrix presentation; and
+8. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
    before implementation freezes their behavior.
 
 The current [floating-qubit Ref-graph example](v1-runtime-contract.qmd#floating-qubit-ref-graph)
@@ -51,6 +56,11 @@ The shortest reusable physics path is
 [floating-pair coordinates](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting)
 → [zero-current Schur reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices)
 → [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+
+For evaluation and search semantics, continue with the canonical
+[normalized weighted objective](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/auditable-scientific-optimization.qmd#normalized-weighted-objective)
+and
+[HB source superposition and generated mixing](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#source-superposition-and-generated-mixing).
 
 For component physics, use
 [Josephson element models](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#josephson-model-contracts)

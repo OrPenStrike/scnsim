@@ -58,11 +58,18 @@ plan.add_port(
 
 ```python
 from scnsim import (
+    CMAESSpec,
     CircuitRun,
+    CostObjective,
+    CurrentDrive,
+    DiagonalRootSpec,
     DirectSolveSpec,
+    HBCaseSpec,
+    HBTruncation,
     HBSolveSpec,
-    NoPumpingSpec,
-    PumpingSpec,
+    OptimizationSpec,
+    OptimizationVariable,
+    PumpAxis,
     ReductionPipeline,
     SParameterTrace,
 )
@@ -91,11 +98,45 @@ feedline = qubit_modes.reduce(
     )
 )
 
-direct = run.solve(feedline, DirectSolveSpec(...))
+direct_spec = DirectSolveSpec(...)
+direct = run.solve(feedline, direct_spec)
+
+readout_root = DiagonalRootSpec(
+    coordinate="readout",
+    anchor=6.2 * u.GHz,
+)
+readout = run.evaluate(feedline, readout_root)
+
+optimization = run.optimize(
+    feedline,
+    OptimizationSpec(
+        variables=(
+            OptimizationVariable(
+                parameter=resonator.parameter("subsystem_capacitance"),
+                bounds=(80.0 * u.fF, 140.0 * u.fF),
+            ),
+        ),
+        objectives=(
+            CostObjective(
+                id="readout_frequency",
+                quantity=readout_root.frequency,
+                target=6.2 * u.GHz,
+                weight=1.0 * u.dimensionless,
+            ),
+        ),
+        optimizer=CMAESSpec(...),
+    ),
+)
+
+pump_axis = PumpAxis(id="pump", frequency=7.0 * u.GHz)
+dc_bias = CurrentDrive(id="dc_bias", at="flux_port", mode=(0,))
+pump_drive = CurrentDrive(id="pump_drive", at="flux_port", mode=(1,))
+
 hb = run.solve(
     feedline,
     HBSolveSpec(
         pump_axes=(pump_axis,),
+        drives=(dc_bias, pump_drive),
         frequencies=signal_grid,
         traces=(
             SParameterTrace(
@@ -107,16 +148,31 @@ hb = run.solve(
             ),
         ),
         cases=(
-            NoPumpingSpec(id="baseline"),
-            PumpingSpec(id="pump_low", sources=(pump_low,)),
-            PumpingSpec(id="pump_high", sources=(pump_high,)),
+            HBCaseSpec(id="unbiased", currents={}),
+            HBCaseSpec(
+                id="dc_only",
+                currents={dc_bias: 120.0 * u.uA},
+            ),
+            HBCaseSpec(
+                id="dc_pump",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_drive: 0.4 * u.uA,
+                },
+            ),
         ),
-        allow_pumped_ptc=True,
+        truncation=HBTruncation(
+            pump_harmonics=(3,),
+            modulation_harmonics=(1,),
+            three_wave_mixing=True,
+            four_wave_mixing=True,
+        ),
+        allow_driven_ptc=True,
     ),
 )
 
 hb.show(magnitude="linear")
-hb.cases["pump_low"].s.show(magnitude="db")
+hb.cases["dc_pump"].s.show(magnitude="db")
 ```
 
 Port-Termination Compensation (PTC) is one explicit shared topology step.
@@ -127,18 +183,26 @@ are declared, PTC comes first and the same resolved coordinate transform is
 used by Direct and every retained HB sideband.
 
 `ports()` retains any ordered N-port view and Schur-eliminates every other port
-with zero external current. The same Ref therefore drives Direct and pump-off
-HB without leaving artificial probe loss in a feedline response. Pump-on PTC
-is fail-closed unless the HB request explicitly authorizes the documented
-loaded-balance interpretation.
+with zero external current. The same Ref therefore drives Direct and HB
+without leaving artificial probe loss in a feedline response. PTC combined
+with any nonzero DC or AC operating-point drive is fail-closed unless the HB
+request explicitly authorizes the documented loaded-balance interpretation.
 
 An HB solve returns an ordered collection of user-named cases. Case IDs name
-the experimental condition; Pump-on/Pump-off is a derived result
-classification. Every case shares the request's ordered pump-axis basis;
-inactive axes carry exact zero source currents. `hb.show()` overlays declared
+the experimental condition; Bias and Pump states are independently derived
+from effective DC and nonzero-mode currents. Every case shares the request's
+ordered axes, drive schema, mixing model, and truncation; inactive drives carry
+exact zero current. `hb.show()` overlays declared
 traces across cases and falls back to the requested selected-view matrix
 elements when no traces were named. It never guesses S21, mixes incomparable
 mode-frequency identities, or silently interpolates.
+
+Direct and HB expose parallel selected-view S/Y/Z matrix families; this common
+API does not imply transpose symmetry or reciprocity. Direct
+physical quantities use `run.evaluate()`, and the same typed selectors feed
+Direct optimization without per-candidate Python callbacks. A nonzero target
+automatically normalizes its residual by `abs(target)` before the declared
+weight is applied.
 
 All public physical values use the single `scnsim.units` Pint registry. SCNSim
 normalizes them to canonical SI for compilation and evidence identity while
@@ -161,6 +225,10 @@ Reusable scientific meaning remains canonical in SCQ_Design: the
 [Josephson element models](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#josephson-model-contracts),
 [finite-loop SQUIDs](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid),
 and [signed inductive coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
+The Runtime also deep-links canonical
+[normalized optimization](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/auditable-scientific-optimization.qmd#normalized-weighted-objective)
+and
+[HB source/mixing semantics](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#source-superposition-and-generated-mixing).
 
 ## Provenance and boundaries
 
