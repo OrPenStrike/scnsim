@@ -20,8 +20,11 @@ After reading this contract, a package consumer should understand:
 2. how one Plan produces several lazy reduction references;
 3. which calls execute work and which calls only resolve sealed evidence;
 4. how every physical value carries a checked unit;
-5. which topology and view reductions are shared by Direct and HB; and
-6. which identities and artifacts make a result reproducible across Python
+5. which topology, coordinate, and boundary operations SCNSim applies to one
+   declared circuit;
+6. how one HB request represents and compares several named operating cases;
+   and
+7. which identities and artifacts make a result reproducible across Python
    processes.
 
 This document defines public product/runtime behavior. Circuit physics,
@@ -39,12 +42,12 @@ accepted yet:
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
 | Which reductions change effective topology, and which only select a mathematical view? | [Shared topology and solver-specific views](#shared-topology-and-solver-specific-views) |
+| How are multiple HB cases, named traces, complete matrices, and displays exposed? | [HB cases, traces, and display](#hb-cases-traces-and-display) |
 | How are optimization and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
 
-Three decisions deliberately remain open: automatic `transform_ports`
-weighting, partial HB batch consumability, and the Direct/HB comparison grid
-or interpolation policy. They are stated precisely under
+Two decisions deliberately remain open: partial HB batch consumability and
+the Direct/HB comparison grid or interpolation policy. They are stated under
 [Open Human decisions](#open-human-decisions); examples elsewhere do not choose
 answers for them.
 
@@ -177,14 +180,28 @@ compensated = original.reduce(
     )
 )
 
-feedline = compensated.reduce(
+qubit_modes = compensated.reduce(
+    ReductionPipeline().transform_ports(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
+        id="qubit",
+    )
+)
+
+qubit_differential = qubit_modes.reduce(
+    ReductionPipeline().ports(
+        "qubit.differential",
+    )
+)
+
+feedline = qubit_modes.reduce(
     ReductionPipeline().ports(
         "feedline_in",
         "feedline_out",
     )
 )
 
-monitoring = compensated.reduce(
+monitoring = qubit_modes.reduce(
     ReductionPipeline().ports(
         "feedline_in",
         "feedline_out",
@@ -194,19 +211,18 @@ monitoring = compensated.reduce(
 ```
 
 `ptc()` removes the selected, evidenced probe shunts from the effective
-analysis topology. `ports()` retains an ordered, non-empty set of any N current
-port coordinates and Schur-eliminates every other port coordinate under
-`I_external = 0`. Neither step executes work.
+analysis topology. `transform_ports()` replaces the ordered probe pair with
+the generated `qubit.common` and `qubit.differential` coordinates.
+`ports()` retains an ordered, non-empty set of any N current port coordinates
+and Schur-eliminates every other port coordinate under `I_external = 0`. None
+of these declarations executes work.
 
-The reusable point is the Ref itself: `original -> compensated -> feedline`.
-A Ref may produce any number of child Refs, so the same compensated ancestor
-can support several one-, two-, or N-port views. Pipeline step labels are
-evidence labels, not a second API such as `model.at("checkpoint")`.
-
-Automatic `transform_ports` weighting is deliberately absent from this
-revision. The current contract does not publish a floating-node weighting
-formula or a numeric common/differential example before that semantic scope is
-reviewed separately.
+The reusable point is the Ref itself:
+`original -> compensated -> qubit_modes -> feedline`. A Ref may produce any
+number of child Refs, so the same transformed ancestor can support a one-port
+differential view, a two-port feedline view, and a larger monitoring view.
+Pipeline step labels are evidence labels, not a second API such as
+`model.at("checkpoint")`.
 
 ## Run operations and durable results
 
@@ -241,9 +257,17 @@ without executing it:
 run.explain(feedline, direct_spec).show()
 ```
 
-The explanation identifies the sealed Plan, selected Ref, effective
-parameters, operation/backend, grids, reduction lineage, runtime, and exact
-dependency graph.
+`explain()` performs the same deterministic ParameterSet binding and compile
+preflight needed to resolve topology and coordinate evidence, but it does not
+launch a solver, create a request directory, or write the workspace. The
+explanation identifies the sealed Plan, selected Ref, effective parameters,
+operation/backend, grids, reduction lineage, runtime, and exact dependency
+graph. For an automatic port transform it also shows every included
+external-cut capacitance branch, every excluded direct-mutual branch, the
+resolved weights and transform, the transformed reference matrix and principal
+root, and the ordered mode-port realization. Optimization explanations show
+the rule and baseline resolution; candidate-specific resolutions remain in
+candidate receipts.
 
 ### Resolve without execution
 
@@ -393,6 +417,62 @@ Direct optimization recompiles every candidate ParameterSet and replays the
 complete PTC and view lineage. It never optimizes a nominal matrix that still
 contains the artificial loss channel.
 
+### Automatic floating-pair coordinates are a shared view step
+
+`transform_ports()` declares one ordered pair of directly node-bound port
+coordinates and one output namespace:
+
+```python
+qubit_modes = compensated.reduce(
+    ReductionPipeline().transform_ports(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
+        id="qubit",
+    )
+)
+```
+
+The two inputs are replaced by the ordered outputs `qubit.common` and
+`qubit.differential`. The Ref stores the input pair, output namespace, and the
+automatic rule; it never stores nominal numeric weights and V1 exposes no
+manual-weight override through this operation.
+
+The scientific definition is canonical in
+[Admittance Coordinate Transforms](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting).
+After binding the operation's complete ParameterSet, SCNSim enumerates the
+original compiled reciprocal lumped capacitance branches. Each node's
+external cut includes capacitance to ground/reference and to every node outside
+the selected pair; every direct mutual branch between the selected nodes is
+excluded from the weights but remains in the differential energy and compiled
+operator.
+
+This rule selects deterministic floating-pair coordinates. It does not claim
+to diagonalize a loaded network, a frequency-dependent admittance, an already
+Schur-reduced environment, a distributed model, or an operating-point
+linearization. External coordinates may remain coupled to both generated
+coordinates.
+
+PTC and `transform_ports()` are independent declarations. A transform neither
+requires nor inserts PTC and is valid for physical ports without a removable
+probe shunt. If a lineage contains both, the explicit PTC step comes first so
+the topology change remains visible; PTC changes the evidenced conductance
+stamps and does not change capacitance-derived weights.
+
+Direct operations apply the resolved power-conjugate transform to the selected
+operator. HB repeats that same real transform independently inside every
+retained sideband mode. Direct optimization resolves the external cut again
+from every candidate's original compiled capacitance operator rather than
+reusing baseline weights.
+
+The selected-view S matrix uses the generalized real-SPD matrix-reference
+power-wave contract from
+[Port Reference Impedance Semantics](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+SCNSim transforms the declared physical reference matrix with the resolved
+coordinate map and uses its principal symmetric SPD square root. It does not
+replace a non-diagonal transformed reference with diagonal entries. Direct and
+HB therefore expose the same selected-view wave convention even when the
+backend-native HB convention differs.
+
 ### Retain an arbitrary N-port view
 
 `ports()` accepts any ordered, non-empty set of unique coordinates from the
@@ -421,6 +501,12 @@ If a compensated probe remains in the retained set, a requested S matrix still
 applies its declared matched-wave boundary. Energy coupled into that retained
 external port is correct N-port scattering behavior, not a failed PTC.
 
+Zero-current port elimination is the boundary operation described by
+[Schur Complement and Kron Reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices).
+It is not equivalent to selecting the same rows and columns from a native S
+matrix, because omitted native incident waves leave those ports terminated in
+their wave references.
+
 ### Direct internal-node views
 
 Direct may additionally transform or Schur-eliminate internal node-flux
@@ -431,9 +517,8 @@ sampling points and may be used by `solve()`, `evaluate()`, or Direct
 HB V1 does not expose internal node-coordinate elimination. If an HB request
 receives a Ref containing an internal-node transform or Schur step,
 `run.explain()` and `run.solve()` both fail before backend execution. Port
-transforms remain a planned shared view operation, but their automatic
-weighting contract is the next unresolved semantic scope and is not defined by
-this revision.
+transforms are distinct shared port-view operations and remain supported by
+both Direct and HB.
 
 ### HB PTC operator realization
 
@@ -444,8 +529,9 @@ system rather than using an explicit inverse. It then:
 
 1. subtracts each selected `1 / R` stamp from every retained sideband replica
    of that physical probe;
-2. applies the Ref's port-view lineage to the full mode-port operator; and
-3. derives the requested S, Y, Z, or named observable in the retained port
+2. repeats each resolved port transform within every retained sideband mode;
+3. applies zero-current port retention to the full mode-port operator; and
+4. derives the requested S, Y, Z, or named observable in the retained port
    order.
 
 The solver's mode tuples, signed physical frequencies, frequency
@@ -453,19 +539,55 @@ normalization, port order, and version are part of this operator identity.
 Native `returnS` is requested only when the observable or reconciliation
 evidence needs it; it is not a second topology authority.
 
+JosephsonCircuits native scattering waves use a signed-mode-aware
+photon-flux normalization. SCNSim converts them to its generalized power-wave
+surface using the canonical input/output frequency factors documented under
+[JosephsonCircuits photon-flux-to-power normalization](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#josephsoncircuits-photon-flux-to-power-normalization).
+Signed frequencies and mode order remain evidence; only the normalization
+factor uses absolute frequency magnitude. A zero-frequency mode cannot be
+published through this S conversion.
+
 ### Named HB cases and pumped PTC
 
-One `HBSolveSpec` may contain several named cases:
+One `HBSolveSpec` may contain several named cases, including several distinct
+Pump-on conditions. The spec declares one ordered pump-frequency axis basis
+shared by every case, trace, and returned mode tuple:
 
 ```python
 hb = run.solve(
     feedline,
     HBSolveSpec(
+        pump_axes=(pump_axis_a, pump_axis_b),
+        frequencies=signal_grid,
+        traces=(
+            SParameterTrace(
+                id="signal_gain",
+                input_port="feedline_in",
+                input_mode=(0, 0),
+                output_port="feedline_out",
+                output_mode=(0, 0),
+            ),
+            SParameterTrace(
+                id="idler_conversion",
+                input_port="feedline_in",
+                input_mode=(0, 0),
+                output_port="feedline_out",
+                output_mode=(1, -1),
+            ),
+        ),
         cases=(
-            NoPumpingSpec(id="pump_off"),
+            NoPumpingSpec(id="baseline"),
             PumpingSpec(
-                id="pump_on",
-                sources=(pump_source,),
+                id="pump_low",
+                sources=(pump_a_low, pump_b_off),
+            ),
+            PumpingSpec(
+                id="pump_high",
+                sources=(pump_a_high, pump_b_off),
+            ),
+            PumpingSpec(
+                id="two_tone",
+                sources=(pump_a_on, pump_b_on),
             ),
         ),
         allow_pumped_ptc=True,
@@ -484,6 +606,19 @@ binding and Quantity validation:
 SCNSim does not invent a near-zero tolerance. A batch is purely pump-off only
 when every case is pump-off.
 
+Every `PumpSource` binds one declared axis and source location. Each case is
+materialized on the complete request-global axis basis; an inactive axis has
+an explicit zero-current drive rather than disappearing from the case
+identity. `NoPumpingSpec` is the concise declaration that every effective
+source current on every declared axis is exactly zero. A case with a different
+ordered pump-axis frequency lattice belongs to a different `HBSolveSpec` and
+`HBBatchResult`.
+
+Case IDs name user-declared experimental conditions; they are not aliases for
+the derived classification. IDs must be unique within the spec and their
+declaration order is preserved in the Result. SCNSim exposes no special
+`pump_on` case, classification collection, or implicit latest case.
+
 `HBSolveSpec.allow_pumped_ptc` defaults to `False`. If a PTC Ref is paired with
 any pump-on case without that explicit authorization, the complete request
 fails during preflight and no case executes.
@@ -497,23 +632,33 @@ point is equivalent to a circuit in which those shunts never existed.
 
 ### Required lineage and receipt evidence
 
-Every PTC result records:
+Every terminal Result records the sealed Plan, compiled operator, ParameterSet,
+ordered Ref lineage, retained loads and coordinates, and exact runtime identity.
 
-- selected logical ports, compiled port/resistor rows, resolved resistances,
-  and removal intent;
-- retained loads, retained N-port order, and eliminated coordinates;
-- raw-Z and derived-Y identities plus reconstruction or residual evidence;
-- HB mode tuples, signed frequencies, solver normalization and version;
-- each case's effective source currents and pump-off/pump-on classification;
-  and
-- the `allow_pumped_ptc` value, balance topology, and analysis topology.
+A PTC lineage additionally records selected logical ports, compiled
+port/resistor rows, resolved resistances, removal intent, raw-Z/derived-Y
+identities, and reconstruction or residual evidence.
+
+Every `transform_ports()` lineage additionally records its exact node/port
+bindings and current directions, all included external-cut branches, all
+excluded direct-mutual branches, resolved weights, power-conjugate maps,
+transformed real-SPD reference matrix, principal root and reconstruction
+evidence, and generated coordinate order. These obligations apply whether or
+not the lineage contains PTC.
+
+Every HB Result additionally records the request-global pump-axis basis,
+mode tuples, signed frequencies, mode-port order, solver normalization and
+version, each case ID and effective source bindings/currents, Pump classification, and
+the raw-native, selected-view, and reconciliation identities. A Pump-on PTC
+Result also records `allow_pumped_ptc`, balance topology, and compensated
+analysis topology.
 
 ### Operation support
 
 | Selected Ref lineage | Direct solve/evaluate | Direct optimize | HB solve |
 |---|---:|---:|---:|
 | Original | Yes | Yes | Yes |
-| PTC and retained-port views | Yes | Yes | Yes; pump-on requires authorization |
+| PTC, automatic port transforms, and retained-port views | Yes | Yes | Yes; pump-on PTC requires authorization |
 | Internal-node transform or Schur | Yes | Yes | No |
 
 Physical compilation belongs to the original Plan and is not presented as a
@@ -633,20 +778,97 @@ instruction rather than claiming it displayed output.
 figure contract exposes it. Plot methods return the supported figure object so
 the caller can display, save, or further configure it.
 
-### Explicit downstream sources
+### HB cases, traces, and display {#hb-cases-traces-and-display}
 
-HB batches use named cases:
+A complete successful HB solve returns an `HBBatchResult`. Its public case
+index is one ordered, read-only mapping keyed by the unique IDs declared in
+`HBSolveSpec`:
 
 ```python
-pump_off = hb["pump_off"]
-pump_low = hb["pump_low"]
+baseline = hb.cases["baseline"]
+pump_low = hb.cases["pump_low"]
+pump_high = hb.cases["pump_high"]
+two_tone = hb.cases["two_tone"]
+
+assert baseline.pump_state is PumpState.OFF
+assert pump_low.pump_state is PumpState.ON
+assert pump_high.pump_state is PumpState.ON
+assert two_tone.pump_state is PumpState.ON
 ```
+
+`HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
+classification on each case result, not an alternate lookup key. A
+zero-current `PumpingSpec` therefore remains addressable by its declared case
+ID while reporting `PumpState.OFF`.
+
+An `SParameterTrace` names one complex matrix projection across the request's
+frequency grid. Its input/output ports refer to selected-view coordinates and
+its mode tuples must match the number and ordering of the HB pump axes. Trace
+IDs are unique within the spec. A Direct spec may use the same trace type with
+empty mode tuples.
+
+Named traces are typed projections of the complete selected-view matrix. They
+do not launch separate solves, hide the full matrix, or become another
+physical authority:
+
+```python
+case = hb.cases["pump_low"]
+
+case.traces["signal_gain"].show()
+case.s.view
+case.s.backend_native
+case.s.reconciliation
+case.s.show()
+```
+
+`case.s.view` is the SCNSim selected-view generalized power-wave matrix.
+`case.s.backend_native` preserves the backend-returned matrix, basis, reference,
+and normalization. `case.s.reconciliation` records the exact conversion and
+residual evidence when topology, load, boundary, reference plane, reference
+matrix, frequency, and normalization are comparable.
+
+After `.ports()` imposes a zero-current boundary, a same-name native S
+submatrix is not comparable. The reconciliation surface remains typed and
+reports `comparable=False`, its exact reason, and evidence from the last
+comparable ancestor; it is neither `None` nor a fabricated residual.
+
+Batch display supports both declared traces and complete-matrix inspection:
+
+```python
+hb.show()                         # magnitude="linear"
+hb.show(magnitude="db")
+hb.cases["pump_low"].show()
+hb.cases["pump_low"].s.show(magnitude="db")
+```
+
+When traces are declared, `hb.show()` creates one panel per trace and overlays
+the cases in declaration order. With no named traces, it expands every element
+of each requested selected-view response matrix and overlays the same cases.
+An overlay requires identical selected-view port, mode tuple, signed-frequency,
+reference-plane, reference-matrix, and wave-normalization identities across
+the cases. The request-global pump axes normally establish those identities;
+any backend mismatch fails the presentation with the exact mismatched identity
+rather than drawing incomparable lines. The full-matrix fallback applies the
+same rule. It does not guess S21, truncate the matrix, rerun a request,
+interpolate, or mix backend-native evidence into the selected-view plot.
+
+These display rules apply to a consumable batch and do not decide whether a
+partially failed batch is consumable; that failure policy remains open below.
+
+Complex S display shows magnitude and wrapped phase in `[-180 deg, 180 deg]`.
+The default `magnitude="linear"` displays `abs(S)`. `magnitude="db"` displays
+`20 log10(abs(S))`; an exact zero remains `-inf dB` without an epsilon, floor,
+or clipping, and its phase is shown as undefined rather than zero. This option
+changes presentation only. Dimensionful Y/Z results retain their
+Quantity-valued linear presentation.
+
+### Explicit downstream sources
 
 Reports name every source rather than selecting a latest result:
 
 ```python
 report = run.build_report(
-    ReportSpec(inputs=(direct, pump_off, pump_low))
+    ReportSpec(inputs=(direct, baseline, pump_low, pump_high))
 )
 ```
 
@@ -686,6 +908,18 @@ SCNSim fails closed for:
 - invalid port roles or ambiguous physical coordinates;
 - an unknown, duplicate, terminated, or unevidenced PTC target;
 - repeated PTC or PTC ordered after a transform, port selection, or Schur step;
+- an automatic pair transform with unknown, duplicate, ambiguously node-bound,
+  differently referenced, or inconsistently oriented input ports;
+- incomplete or ambiguous capacitor-branch provenance, a non-finite or
+  negative physical branch capacitance, a non-positive external-cut sum, or a
+  nonreciprocal compiled capacitance operator outside the declared scope;
+- a non-finite or singular port transform, a non-real/non-symmetric/non-SPD
+  physical or transformed reference matrix, or failed principal-root
+  reconstruction;
+- an unknown or duplicate pump axis/source binding, incomplete materialization
+  of the request-global pump-axis basis, a duplicate case or trace ID, an unknown
+  trace coordinate, or a trace mode whose rank/order does not match the
+  declared HB pump axes;
 - an empty, duplicate, or unknown retained-port coordinate list;
 - a PTC Ref paired with a pump-on case without explicit
   `allow_pumped_ptc=True`;
@@ -694,6 +928,9 @@ SCNSim fails closed for:
 - a missing or mismatched exact receipt during resolve;
 - an HB backend result that cannot bind complete mode-port Z, signed
   frequencies, normalization, or the required lifted operator identity;
+- an attempted reconciliation across unequal topology, PTC/load state,
+  boundary, reference plane, reference matrix, frequency, or wave
+  normalization;
 - an optimization resume fingerprint or completed-generation mismatch; or
 - a corrupt request, receipt, or artifact hash.
 
@@ -712,7 +949,9 @@ or overwrite unrelated success receipts.
   nonlinear balance; nonlinear model-order reduction is not included.
 - Pump-on PTC is a compensated small-signal view around a pump balance that
   still contains the selected shunts; it is not an unloaded pump solution.
-- Automatic `transform_ports` weighting is not defined in this revision.
+- Automatic `transform_ports` is limited to the declared reciprocal lumped
+  two-node capacitance scope. It is not universal modal diagonalization and
+  V1 provides no manual-weight override through this API.
 - HB optimization objectives are not included; optimization is Direct-only.
 - Quantization is not included.
 - Direct and HB may use independent grids; comparison performs no implicit
@@ -726,17 +965,14 @@ or overwrite unrelated success receipts.
 
 ## Open Human decisions
 
-These semantics remain `CONVERGING` and are not decided by this PTC/N-port
-revision. PTC and port elimination are no longer open: both apply to every
-retained sideband replica of the selected physical coordinate.
+These semantics remain `CONVERGING`. PTC, automatic floating-pair coordinates,
+port elimination, HB case lookup, and display are no longer open in this
+candidate.
 
-1. Which automatic weighting contract should `transform_ports` use for
-   floating two-node coordinates? No numeric weighting example or public API
-   is current until that scope is reviewed separately.
-2. If one case in a valid multi-case HB batch fails numerically, should
+1. If one case in a valid multi-case HB batch fails numerically, should
    successful cases remain directly consumable from a partial batch receipt,
    or should the whole batch be non-consumable?
-3. For numerical Direct/HB comparison, must both solver specs contain an exact
+2. For numerical Direct/HB comparison, must both solver specs contain an exact
    shared comparison grid, or should SCNSim provide one explicitly selected
    interpolation policy?
 

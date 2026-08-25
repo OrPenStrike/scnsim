@@ -35,7 +35,9 @@ from scnsim import (
     DirectSolveSpec,
     HBSolveSpec,
     NoPumpingSpec,
+    PumpingSpec,
     ReductionPipeline,
+    SParameterTrace,
 )
 
 run = CircuitRun(plan=plan, workspace="results/example")
@@ -47,7 +49,15 @@ compensated = run.original.reduce(
     )
 )
 
-feedline = compensated.reduce(
+qubit_modes = compensated.reduce(
+    ReductionPipeline().transform_ports(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
+        id="qubit",
+    )
+)
+
+feedline = qubit_modes.reduce(
     ReductionPipeline().ports(
         "feedline_in",
         "feedline_out",
@@ -58,30 +68,65 @@ direct = run.solve(feedline, DirectSolveSpec(...))
 hb = run.solve(
     feedline,
     HBSolveSpec(
-        cases=(NoPumpingSpec(id="pump_off"),),
+        pump_axes=(pump_axis,),
+        frequencies=signal_grid,
+        traces=(
+            SParameterTrace(
+                id="signal_gain",
+                input_port="feedline_in",
+                input_mode=(0,),
+                output_port="feedline_out",
+                output_mode=(0,),
+            ),
+        ),
+        cases=(
+            NoPumpingSpec(id="baseline"),
+            PumpingSpec(id="pump_low", sources=(pump_low,)),
+            PumpingSpec(id="pump_high", sources=(pump_high,)),
+        ),
+        allow_pumped_ptc=True,
     ),
 )
+
+hb.show(magnitude="linear")
+hb.cases["pump_low"].s.show(magnitude="db")
 ```
 
 Port-Termination Compensation (PTC) is one explicit shared topology step.
+`transform_ports()` is an independent shared view step that resolves automatic
+floating-pair common/differential weights from the bound Plan's complete
+external capacitance cut. It neither requires nor inserts PTC. When both steps
+are declared, PTC comes first and the same resolved coordinate transform is
+used by Direct and every retained HB sideband.
+
 `ports()` retains any ordered N-port view and Schur-eliminates every other port
 with zero external current. The same Ref therefore drives Direct and pump-off
 HB without leaving artificial probe loss in a feedline response. Pump-on PTC
 is fail-closed unless the HB request explicitly authorizes the documented
 loaded-balance interpretation.
 
+An HB solve returns an ordered collection of user-named cases. Case IDs name
+the experimental condition; Pump-on/Pump-off is a derived result
+classification. Every case shares the request's ordered pump-axis basis;
+inactive axes carry exact zero source currents. `hb.show()` overlays declared
+traces across cases and falls back to the requested selected-view matrix
+elements when no traces were named. It never guesses S21, mixes incomparable
+mode-frequency identities, or silently interpolates.
+
 All public physical values use the single `scnsim.units` Pint registry. SCNSim
 normalizes them to canonical SI for compilation and evidence identity while
 returning typed Quantity results for Python use.
-
-Automatic floating-node `transform_ports` weighting remains an explicit open
-V1 decision and is not implied by this example.
 
 ## Current contract
 
 Review the proposed behavior and unresolved decisions in the
 [SCNSim V1 Runtime Contract](docs/v1-runtime-contract.qmd), the single current
 semantic authority for this `CONVERGING` candidate.
+
+Reusable scientific meaning remains canonical in SCQ_Design: the
+[floating-pair coordinate transform](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting),
+[zero-current Schur boundary](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices),
+and [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
 
 ## Provenance and boundaries
 

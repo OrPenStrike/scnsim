@@ -23,15 +23,23 @@ semantic authority. For Human review:
 2. read the [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
    for the lazy `NetworkViewRef` graph;
 3. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
-   for selective Port-Termination Compensation (PTC), arbitrary N-port
-   retention, Direct/HB realization, and Pump-on authorization; and
-4. decide the three [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
+   for selective Port-Termination Compensation (PTC), automatic floating-pair
+   coordinates, arbitrary N-port retention, Direct/HB realization, and Pump-on
+   authorization;
+4. review [HB cases, traces, and display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
+   for multiple Pump-on conditions, exact case lookup, and matrix presentation;
+   and
+5. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
    before implementation freezes their behavior.
 
 The current [floating-qubit Ref-graph example](v1-runtime-contract.qmd#floating-qubit-ref-graph)
-intentionally stops at two-probe PTC and a probe-free feedline view. Automatic
-`transform_ports` weighting is the next separate semantic review and has no
-numeric fallback in this candidate.
+shows two-probe PTC, automatic common/differential coordinates, and a
+probe-free feedline view without treating any of those operations as a second
+circuit authority.
 
 SCNSim keeps product/runtime behavior here and links outward for authoritative
 circuit physics, consumer Design Targets, and private application evidence.
+The shortest reusable physics path is
+[floating-pair coordinates](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting)
+→ [zero-current Schur reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices)
+→ [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
