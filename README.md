@@ -25,28 +25,57 @@ SCNSim  : network  -> operator / reduction -> solve -> report
 ## Candidate Notebook UX
 
 The proposed UX gives one sealed `CircuitPlan` an immutable graph of lazy
-`NetworkModelRef` reductions. `CircuitRun` is the only execution owner. This
-is a non-executable API sketch; the package does not exist yet:
+`NetworkViewRef` topology and view reductions. `CircuitRun` is the only
+execution owner. This is a non-executable API sketch; the package does not
+exist yet:
 
 ```python
-from scnsim import CircuitRun, ParameterSet, units as u
+from scnsim import (
+    CircuitRun,
+    DirectSolveSpec,
+    HBSolveSpec,
+    NoPumpingSpec,
+    ReductionPipeline,
+)
 
 run = CircuitRun(plan=plan, workspace="results/example")
-readout = run.original.reduce(readout_pipeline)
 
-direct = run.solve(readout, direct_spec)
-hb = run.solve(readout, hb_spec)
-operator = run.evaluate(readout, operator_spec)
+compensated = run.original.reduce(
+    ReductionPipeline().ptc(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
+    )
+)
 
-candidate = ParameterSet({
-    capacitor.parameter("capacitance"): 95.0 * u.fF,
-})
-candidate_direct = run.solve(readout, direct_spec, parameters=candidate)
+feedline = compensated.reduce(
+    ReductionPipeline().ports(
+        "feedline_in",
+        "feedline_out",
+    )
+)
+
+direct = run.solve(feedline, DirectSolveSpec(...))
+hb = run.solve(
+    feedline,
+    HBSolveSpec(
+        cases=(NoPumpingSpec(id="pump_off"),),
+    ),
+)
 ```
+
+Port-Termination Compensation (PTC) is one explicit shared topology step.
+`ports()` retains any ordered N-port view and Schur-eliminates every other port
+with zero external current. The same Ref therefore drives Direct and pump-off
+HB without leaving artificial probe loss in a feedline response. Pump-on PTC
+is fail-closed unless the HB request explicitly authorizes the documented
+loaded-balance interpretation.
 
 All public physical values use the single `scnsim.units` Pint registry. SCNSim
 normalizes them to canonical SI for compilation and evidence identity while
 returning typed Quantity results for Python use.
+
+Automatic floating-node `transform_ports` weighting remains an explicit open
+V1 decision and is not implied by this example.
 
 ## Current contract
 

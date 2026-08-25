@@ -21,9 +21,17 @@ semantic authority. For Human review:
 
 1. start with its [review map](v1-runtime-contract.qmd#review-map);
 2. read the [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
-   and follow the linked details for each proposed behavior; and
-3. decide the three [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
+   for the lazy `NetworkViewRef` graph;
+3. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
+   for selective Port-Termination Compensation (PTC), arbitrary N-port
+   retention, Direct/HB realization, and Pump-on authorization; and
+4. decide the three [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
    before implementation freezes their behavior.
+
+The current [floating-qubit Ref-graph example](v1-runtime-contract.qmd#floating-qubit-ref-graph)
+intentionally stops at two-probe PTC and a probe-free feedline view. Automatic
+`transform_ports` weighting is the next separate semantic review and has no
+numeric fallback in this candidate.
 
 SCNSim keeps product/runtime behavior here and links outward for authoritative
 circuit physics, consumer Design Targets, and private application evidence.

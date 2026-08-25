@@ -20,7 +20,7 @@ After reading this contract, a package consumer should understand:
 2. how one Plan produces several lazy reduction references;
 3. which calls execute work and which calls only resolve sealed evidence;
 4. how every physical value carries a checked unit;
-5. how the same reduced model is realized by Direct and HB analysis; and
+5. which topology and view reductions are shared by Direct and HB; and
 6. which identities and artifacts make a result reproducible across Python
    processes.
 
@@ -38,13 +38,13 @@ accepted yet:
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
-| How does one reduced Ref apply to Direct and HB? | [One reduction meaning, two solver realizations](#one-reduction-meaning-two-solver-realizations) |
+| Which reductions change effective topology, and which only select a mathematical view? | [Shared topology and solver-specific views](#shared-topology-and-solver-specific-views) |
 | How are optimization and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
 
-Three decisions deliberately remain open: HB sideband elimination scope,
-partial HB batch consumability, and the Direct/HB comparison grid or
-interpolation policy. They are stated precisely under
+Three decisions deliberately remain open: automatic `transform_ports`
+weighting, partial HB batch consumability, and the Direct/HB comparison grid
+or interpolation policy. They are stated precisely under
 [Open Human decisions](#open-human-decisions); examples elsewhere do not choose
 answers for them.
 
@@ -86,7 +86,7 @@ exact public handoff with its Git provenance.
 | Object | Owns | Does not own |
 |---|---|---|
 | `CircuitPlan` | Components, parameters, connections, ports, and library identities | Execution state or results |
-| `NetworkModelRef` | One immutable Plan reference and ordered reduction lineage | Compilation, workspace writes, or results |
+| `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
 | typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
 
@@ -163,38 +163,50 @@ must fail rather than relabel, overwrite, or silently select prior evidence.
 The Run has no global `action`, current Ref, current parameters, or current
 result.
 
-### Declare a Ref graph without executing
+### Declare the floating-qubit Ref graph without executing {#floating-qubit-ref-graph}
 
-`run.original` is the zero-reduction root `NetworkModelRef`. `reduce()` returns
+`run.original` is the zero-reduction root `NetworkViewRef`. `reduce()` returns
 a new immutable Ref and never compiles, launches Julia, solves, or writes a
 receipt:
 
 ```python
-modal = original.reduce(
-    ReductionPipeline().transform(
-        inputs=("phi_a", "phi_b"),
-        outputs={
-            "common": {"phi_a": 0.5, "phi_b": 0.5},
-            "differential": {"phi_a": 1.0, "phi_b": -1.0},
-        },
-        label="modal",
+compensated = original.reduce(
+    ReductionPipeline().ptc(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
     )
 )
 
-internal_reduced = modal.reduce(
-    ReductionPipeline().schur_complement(
-        eliminate=("internal_a", "internal_b"),
-        label="internal",
+feedline = compensated.reduce(
+    ReductionPipeline().ports(
+        "feedline_in",
+        "feedline_out",
     )
 )
 
-readout = internal_reduced.reduce(readout_pipeline)
-qubit = internal_reduced.reduce(qubit_pipeline)
+monitoring = compensated.reduce(
+    ReductionPipeline().ports(
+        "feedline_in",
+        "feedline_out",
+        "monitor",
+    )
+)
 ```
 
-The reusable point is the Ref itself: `original -> modal -> internal_reduced ->
-readout`. A Ref may produce any number of child Refs. Pipeline step labels are
+`ptc()` removes the selected, evidenced probe shunts from the effective
+analysis topology. `ports()` retains an ordered, non-empty set of any N current
+port coordinates and Schur-eliminates every other port coordinate under
+`I_external = 0`. Neither step executes work.
+
+The reusable point is the Ref itself: `original -> compensated -> feedline`.
+A Ref may produce any number of child Refs, so the same compensated ancestor
+can support several one-, two-, or N-port views. Pipeline step labels are
 evidence labels, not a second API such as `model.at("checkpoint")`.
+
+Automatic `transform_ports` weighting is deliberately absent from this
+revision. The current contract does not publish a floating-node weighting
+formula or a numeric common/differential example before that semantic scope is
+reviewed separately.
 
 ## Run operations and durable results
 
@@ -203,10 +215,10 @@ evidence labels, not a second API such as `model.at("checkpoint")`.
 The Run performs every operation:
 
 ```python
-direct = run.solve(readout, DirectSolveSpec(...))
-hb = run.solve(readout, HBSolveSpec(...))
-operator = run.evaluate(readout, OperatorSpec(...))
-optimization = run.optimize(qubit, OptimizationSpec(...))
+direct = run.solve(feedline, DirectSolveSpec(...))
+hb = run.solve(feedline, HBSolveSpec(...))
+operator = run.evaluate(feedline, OperatorSpec(...))
+optimization = run.optimize(feedline, OptimizationSpec(...))
 ```
 
 `solve()`, `evaluate()`, and `optimize()` are real actions. They compute the
@@ -226,7 +238,7 @@ V1 does not expose a public JobRef layer. A consumer can inspect a request
 without executing it:
 
 ```python
-run.explain(readout, direct_spec).show()
+run.explain(feedline, direct_spec).show()
 ```
 
 The explanation identifies the sealed Plan, selected Ref, effective
@@ -239,7 +251,7 @@ dependency graph.
 corresponding operation:
 
 ```python
-direct = run.resolve(readout, direct_spec)
+direct = run.resolve(feedline, direct_spec)
 ```
 
 It recomputes the expected request identity, then reads and verifies the sealed
@@ -309,7 +321,7 @@ candidate = ParameterSet({
 })
 
 candidate_direct = run.solve(
-    readout,
+    feedline,
     direct_spec,
     parameters=candidate,
 )
@@ -323,28 +335,52 @@ non-finite values, or a different Plan family fails before execution.
 Optimization exposes its selected parameters through the same type:
 
 ```python
-optimization = run.optimize(qubit, optimization_spec)
+optimization = run.optimize(feedline, optimization_spec)
 
 winner_hb = run.solve(
-    readout,
+    feedline,
     final_hb_spec,
     parameters=optimization.best.parameters,
 )
 ```
 
-The new HB request uses the `readout` reduction lineage plus the winner
-ParameterSet. It does not inherit the `qubit` reduction lineage. The
-optimization source remains parameter provenance.
+The new HB request uses the explicitly selected `feedline` lineage plus the
+winner ParameterSet. A ParameterSet never carries or changes a Ref lineage;
+the optimization source remains parameter provenance.
 
-## One reduction meaning, two solver realizations
+## Shared topology and solver-specific views
 
-`ReductionPipeline` always names physical node-flux coordinates and contains
-the same ordered transforms and eliminations regardless of backend. Direct and
-HB realize that declaration on different analysis operators.
+`ReductionPipeline` is an ordered, typed lineage. A topology step changes the
+effective circuit analyzed by its descendants; a view step changes the
+coordinates or boundary used to inspect that circuit. SCNSim does not present
+both as interchangeable matrix shortcuts.
 
-### Direct realization
+### Selective Port-Termination Compensation (PTC) is a shared topology step
 
-SCNSim compiles the original Plan into an ordered node-flux basis and owns:
+The `ptc()` step explicitly names one or more `nonloading_probe` ports:
+
+```python
+compensated = run.original.reduce(
+    ReductionPipeline().ptc(
+        "qubit_probe_plus",
+        "qubit_probe_minus",
+    )
+)
+```
+
+For every selected port, the sealed compiled artifact must prove one exact
+port row, one colocated resistor shunt, its finite positive resistance, and
+the logical port mapping. The explicit `ptc()` call supplies removal intent;
+the port role or a caller-provided resistance alone does not. Physical and
+environmental loads that are not selected remain in the effective circuit.
+
+A lineage may contain PTC at most once. It must precede coordinate transforms,
+port selection, and Schur complements, and every descendant Ref inherits the
+same compensation set. Unknown, repeated, terminated, or unevidenced targets
+fail before execution.
+
+For Direct analysis, SCNSim removes each evidenced probe conductance stamp from
+the compiled operator before later view reductions. SCNSim owns:
 
 ```text
 C: capacitance
@@ -353,48 +389,136 @@ G: conductance
 D(omega) = K - omega^2 C - i omega G
 ```
 
-For Direct analysis, coordinate transforms and Schur complements are applied
-to `D(omega)` at the requested Quantity-valued sampling points. The same
-declared Ref can be used by `solve()` for observables or by `evaluate()` for
-the operator itself.
+Direct optimization recompiles every candidate ParameterSet and replays the
+complete PTC and view lineage. It never optimizes a nominal matrix that still
+contains the artificial loss channel.
 
-### HB realization
+### Retain an arbitrary N-port view
 
-For each HB case, a reduced analysis has two phases:
+`ports()` accepts any ordered, non-empty set of unique coordinates from the
+current port basis:
 
-1. solve the nonlinear pump steady state on the full original physical Plan;
-2. construct the sideband-expanded small-signal operator around that operating
-   point, lift the selected Ref's pipeline into the retained sideband basis,
-   apply its transforms and Schur complements, and evaluate the requested
-   S/Y/Z or named observables.
+```python
+feedline = compensated.reduce(
+    ReductionPipeline().ports(
+        "feedline_in",
+        "feedline_out",
+    )
+)
+```
 
-The nonlinear balance is not described as a Schur-reduced nonlinear circuit.
-Reduction applies to the linearized HB analysis operator around the sealed pump
-solution.
+The listed coordinates become the result's external port order. Every other
+port coordinate is Schur-eliminated with zero external current while loads
+already present in the effective operator remain. `N=1` and `N=2` are ordinary
+one- and two-port cases, not separate APIs.
 
-An HB receipt for a reduced Ref binds both:
+A probe-free feedline S21 therefore requires both operations:
 
-- `balance_model`: original Plan, effective ParameterSet, pump declaration,
-  and nonlinear solution identity; and
-- `analysis_model`: selected Ref, sideband operator, reduction lineage, and
-  requested observables.
+1. `ptc()` removes the artificial probe shunt; and
+2. `ports()` excludes that probe from the retained external port set.
 
-Pump-off is an explicit `0 * u.A` drive case through the same HB mechanism as a
-pumped case. It is not a separate solver or fallback.
+If a compensated probe remains in the retained set, a requested S matrix still
+applies its declared matched-wave boundary. Energy coupled into that retained
+external port is correct N-port scattering behavior, not a failed PTC.
+
+### Direct internal-node views
+
+Direct may additionally transform or Schur-eliminate internal node-flux
+coordinates. Those steps act on `D(omega)` at the requested Quantity-valued
+sampling points and may be used by `solve()`, `evaluate()`, or Direct
+`optimize()`.
+
+HB V1 does not expose internal node-coordinate elimination. If an HB request
+receives a Ref containing an internal-node transform or Schur step,
+`run.explain()` and `run.solve()` both fail before backend execution. Port
+transforms remain a planned shared view operation, but their automatic
+weighting contract is the next unresolved semantic scope and is not defined by
+this revision.
+
+### HB PTC operator realization
+
+JosephsonCircuits first solves each case on the original compiled Plan. For PTC
+analysis, SCNSim requests the complete solver-normalized `mode × port`
+`returnZ` operator and obtains `Y_raw` by solving the corresponding matrix
+system rather than using an explicit inverse. It then:
+
+1. subtracts each selected `1 / R` stamp from every retained sideband replica
+   of that physical probe;
+2. applies the Ref's port-view lineage to the full mode-port operator; and
+3. derives the requested S, Y, Z, or named observable in the retained port
+   order.
+
+The solver's mode tuples, signed physical frequencies, frequency
+normalization, port order, and version are part of this operator identity.
+Native `returnS` is requested only when the observable or reconciliation
+evidence needs it; it is not a second topology authority.
+
+### Named HB cases and pumped PTC
+
+One `HBSolveSpec` may contain several named cases:
+
+```python
+hb = run.solve(
+    feedline,
+    HBSolveSpec(
+        cases=(
+            NoPumpingSpec(id="pump_off"),
+            PumpingSpec(
+                id="pump_on",
+                sources=(pump_source,),
+            ),
+        ),
+        allow_pumped_ptc=True,
+    ),
+)
+```
+
+Classification happens independently for every case after ParameterSet
+binding and Quantity validation:
+
+- `NoPumpingSpec` is pump-off;
+- a `PumpingSpec` whose effective source currents are all exactly `0 * u.A` is
+  also pump-off; and
+- any nonzero effective source current makes the case pump-on.
+
+SCNSim does not invent a near-zero tolerance. A batch is purely pump-off only
+when every case is pump-off.
+
+`HBSolveSpec.allow_pumped_ptc` defaults to `False`. If a PTC Ref is paired with
+any pump-on case without that explicit authorization, the complete request
+fails during preflight and no case executes.
+
+With authorization, pump-off cases remain exact PTC realizations. A pump-on
+case instead solves nonlinear balance on the original Plan with its probe
+shunts present, then applies PTC only to the linearized response around that
+loaded operating point. Its Result and receipt must call this a compensated
+small-signal view of a loaded pump balance; they must not claim the operating
+point is equivalent to a circuit in which those shunts never existed.
+
+### Required lineage and receipt evidence
+
+Every PTC result records:
+
+- selected logical ports, compiled port/resistor rows, resolved resistances,
+  and removal intent;
+- retained loads, retained N-port order, and eliminated coordinates;
+- raw-Z and derived-Y identities plus reconstruction or residual evidence;
+- HB mode tuples, signed frequencies, solver normalization and version;
+- each case's effective source currents and pump-off/pump-on classification;
+  and
+- the `allow_pumped_ptc` value, balance topology, and analysis topology.
 
 ### Operation support
 
-| Operation | Original Ref | Reduced Ref |
-|---|---:|---:|
-| `run.evaluate(ref, OperatorSpec)` | Yes | Yes |
-| `run.solve(ref, DirectSolveSpec)` | Yes | Yes |
-| `run.solve(ref, HBSolveSpec)` | Yes | Yes |
-| `run.optimize(ref, OptimizationSpec)` | Yes | Yes; Direct objective only in V1 |
-| `ref.render_schematic(...)` | Original only | No; inspect the operator/reduction instead |
+| Selected Ref lineage | Direct solve/evaluate | Direct optimize | HB solve |
+|---|---:|---:|---:|
+| Original | Yes | Yes | Yes |
+| PTC and retained-port views | Yes | Yes | Yes; pump-on requires authorization |
+| Internal-node transform or Schur | Yes | Yes | No |
 
 Physical compilation belongs to the original Plan and is not presented as a
 separate reduced compile action. Terminal operations materialize or exactly
-resolve the required original and reduced stages internally.
+resolve the required original and selected-view stages internally.
 
 ## Operator evaluation and downstream calculation
 
@@ -403,7 +527,7 @@ response solve:
 
 ```python
 operator = run.evaluate(
-    internal_reduced,
+    feedline,
     OperatorSpec(frequencies=frequency_grid),
 )
 
@@ -560,10 +684,16 @@ SCNSim fails closed for:
 - a ParameterSet containing unknown refs, non-finite values, or another Plan
   family;
 - invalid port roles or ambiguous physical coordinates;
+- an unknown, duplicate, terminated, or unevidenced PTC target;
+- repeated PTC or PTC ordered after a transform, port selection, or Schur step;
+- an empty, duplicate, or unknown retained-port coordinate list;
+- a PTC Ref paired with a pump-on case without explicit
+  `allow_pumped_ptc=True`;
+- an HB request whose Ref contains an internal-node transform or Schur step;
 - a non-full-rank transform or singular/non-finite Schur partition;
 - a missing or mismatched exact receipt during resolve;
-- an HB backend result that cannot expose or reconstruct the required lifted
-  operator identity;
+- an HB backend result that cannot bind complete mode-port Z, signed
+  frequencies, normalization, or the required lifted operator identity;
 - an optimization resume fingerprint or completed-generation mismatch; or
 - a corrupt request, receipt, or artifact hash.
 
@@ -580,6 +710,9 @@ or overwrite unrelated success receipts.
 
 - HB reduction acts on the small-signal sideband operator after the original
   nonlinear balance; nonlinear model-order reduction is not included.
+- Pump-on PTC is a compensated small-signal view around a pump balance that
+  still contains the selected shunts; it is not an unloaded pump solution.
+- Automatic `transform_ports` weighting is not defined in this revision.
 - HB optimization objectives are not included; optimization is Direct-only.
 - Quantization is not included.
 - Direct and HB may use independent grids; comparison performs no implicit
@@ -593,15 +726,16 @@ or overwrite unrelated success receipts.
 
 ## Open Human decisions
 
-These semantics remain `CONVERGING` and are not decided by the Units/scaling
-revision:
+These semantics remain `CONVERGING` and are not decided by this PTC/N-port
+revision. PTC and port elimination are no longer open: both apply to every
+retained sideband replica of the selected physical coordinate.
 
-1. When an HB problem retains several sidebands, should eliminating one named
-   physical coordinate remove its replica from every retained sideband, or may
-   a pipeline step select particular sidebands?
-2. If one case in a multi-case HB batch fails numerically, should successful
-   cases remain directly consumable from a partial batch receipt, or should the
-   whole batch be non-consumable?
+1. Which automatic weighting contract should `transform_ports` use for
+   floating two-node coordinates? No numeric weighting example or public API
+   is current until that scope is reviewed separately.
+2. If one case in a valid multi-case HB batch fails numerically, should
+   successful cases remain directly consumable from a partial batch receipt,
+   or should the whole batch be non-consumable?
 3. For numerical Direct/HB comparison, must both solver specs contain an exact
    shared comparison grid, or should SCNSim provide one explicitly selected
    interpolation policy?
