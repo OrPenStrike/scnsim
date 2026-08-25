@@ -16,7 +16,7 @@ runtime semantics. It is written for Human review and does not claim
 
 After reading this contract, a package consumer should understand:
 
-1. which object owns the physical circuit and its parameters;
+1. how the component-authoring contract produces the one physical Plan;
 2. how one Plan produces several lazy reduction references;
 3. which calls execute work and which calls only resolve sealed evidence;
 4. how every physical value carries a checked unit;
@@ -38,6 +38,7 @@ accepted yet:
 
 | Review question | Detailed section |
 |---|---|
+| How are Libraries, components, nets, references, ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
@@ -97,54 +98,33 @@ exact public handoff with its Git provenance.
 `ReducedCircuitPlan`; a Schur-complement model is an analysis reference derived
 from the Plan, not a second circuit.
 
-### Quantity-only authoring
+### Component authoring supplies the Plan
 
-SCNSim publishes one Pint registry:
-
-```python
-from scnsim import units as u
-```
-
-Every public physical value uses that registry. Built-in and custom component
-libraries follow the same contract:
+The [V1 Component Authoring contract](component-authoring.qmd) is the single
+product authority for immutable built-in/custom Libraries, component factories,
+pins, public parameters, named nets, the one node-flux reference, ports, and
+inductive coupling. The shortest authoring route is:
 
 ```python
-from scnsim import CircuitLibrary, CircuitPlan, ParameterSpec, units as u
+from scnsim import CircuitPlan, library as sc, units as u
 
-library = CircuitLibrary(...)
-
-library.register_component(
-    "capacitor",
-    parameters={
-        "capacitance": ParameterSpec(
-            unit=u.fF,
-            variable_capable=True,
-        ),
-    },
-    ...,
-)
-
-plan = CircuitPlan(...)
+plan = CircuitPlan(id="example")
 readout_cap = plan.add(
-    library.capacitor(
+    sc.capacitor(
         id="readout_cap",
         capacitance=92.0 * u.fF,
     )
 )
 ```
 
-`ParameterSpec.unit` declares the expected dimensionality and preferred
-authoring/display unit. The parameter value remains an explicit Quantity.
-SCNSim does not infer a unit from a parameter name, value size, or Notebook
-context.
+Every public physical value uses the one `scnsim.units` Pint registry. Public
+physical inputs do not accept bare numbers; a physically meaningful
+dimensionless value uses `u.dimensionless`. Counts, indices, seeds, booleans,
+enum choices, and other non-physical controls remain ordinary Python values.
 
-Public physical inputs do not accept bare numbers. Counts, indices, seeds,
-booleans, enum choices, and other non-physical controls remain ordinary Python
-values. A physically meaningful dimensionless value uses `u.dimensionless`.
-
-Custom libraries must use `scnsim.units`; they cannot supply or mutate another
-`UnitRegistry`. An unknown unit, a foreign-registry Quantity, or incompatible
-dimensionality fails at the authoring boundary.
+The Runtime consumes the authored Plan. It does not maintain a mutable Library,
+invent child-component parameters, or infer topology or units from a component
+name.
 
 ### Seal one Plan into one Run
 
@@ -262,7 +242,10 @@ preflight needed to resolve topology and coordinate evidence, but it does not
 launch a solver, create a request directory, or write the workspace. The
 explanation identifies the sealed Plan, selected Ref, effective parameters,
 operation/backend, grids, reduction lineage, runtime, and exact dependency
-graph. For an automatic port transform it also shows every included
+graph. It expands every component to its backend rows, shows Library/schema
+identity, component-pin to net/reference/port mapping, Direct/HB realization,
+SQUID loop orientation, and every bound inductive-coupling `L1`, `L2`, signed
+`k`, derived `M`, and backend map. For an automatic port transform it also shows every included
 external-cut capacitance branch, every excluded direct-mutual branch, the
 resolved weights and transform, the transformed reference matrix and principal
 root, and the ordered mode-port realization. Optimization explanations show
@@ -635,6 +618,17 @@ point is equivalent to a circuit in which those shunts never existed.
 Every terminal Result records the sealed Plan, compiled operator, ParameterSet,
 ordered Ref lineage, retained loads and coordinates, and exact runtime identity.
 
+The Plan/compile evidence records every exact Library and component-schema
+identity, component hierarchy and public schema, pin-to-net/reference/port
+mapping, source units and canonical SI values, public ParameterRefs, expanded
+primitive/backend rows, and Direct/HB realization. Composite evidence includes
+the transmission-line pi-ladder convention, section count, and bound section length, all three IDC
+capacitance branches, each JJ and optional parallel `Cj`, the two shared-parameter
+SQUID junctions and finite loop, and every coupled branch orientation with
+bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
+surface and its fail-closed rules are defined in
+[V1 Component Authoring](component-authoring.qmd).
+
 A PTC lineage additionally records selected logical ports, compiled
 port/resistor rows, resolved resistances, removal intent, raw-Z/derived-Y
 identities, and reconstruction or residual evidence.
@@ -652,6 +646,21 @@ version, each case ID and effective source bindings/currents, Pump classificatio
 the raw-native, selected-view, and reconciliation identities. A Pump-on PTC
 Result also records `allow_pumped_ptc`, balance topology, and compensated
 analysis topology.
+
+### Direct and HB component realization
+
+Both backends consume the same expanded Plan. R, L, C, and scalar RLGC ladder
+rows stay linear. Direct realizes each JJ with its declared zero-phase,
+zero-bias `L_J0` and retains any explicit parallel `Cj`; it does not accept an
+arbitrary bias phase in V1. HB retains the nonlinear Josephson rows. A symmetric
+SQUID remains a two-junction finite-loop topology in both paths: Direct uses two
+`L_J0` small-signal branches, while HB keeps both nonlinear junctions, the loop,
+and any mutual pump coupling.
+
+JosephsonCircuits is only the HB backend. Its official
+[flux-pumped JPA example](https://josephsoncircuits.org/stable/#Flux-pumped-Josephson-parametric-amplifier-(JPA))
+describes flux-pump and three-wave-mixing support as relatively untested;
+SCNSim records that backend limitation instead of enlarging its guarantee.
 
 ### Operation support
 
@@ -900,7 +909,18 @@ equivalent-circuit schematic.
 SCNSim fails closed for:
 
 - a workspace bound to another Plan or runtime identity;
-- an unsupported component or missing Direct linearization;
+- a duplicate component, net, reference, port, or coupling identity, or
+  duplicate pin/public-parameter names inside one component schema;
+- an unknown pin, parameter, inductive branch, net, or unbound/foreign Library
+  instance; a pin assigned to different nets; other than one Plan reference;
+  or a port bound to a reference/unknown net or directly to a pin;
+- a non-positive R/L/C/`L_J0`, negative `Cj`, invalid scalar RLGC declaration,
+  or non-positive/non-integer section count;
+- a SQUID without shared junction parameters or a valid finite loop;
+- mutual coupling across Plans, across non-inductive or unoriented branches,
+  or with non-finite/dimensionful `k`, `abs(k) >= 1`, or a complete bound
+  inductance matrix that is not reciprocal positive definite;
+- an unsupported component expansion or missing Direct/HB realization;
 - a bare physical number, unknown unit, foreign registry, or dimensionality
   mismatch;
 - a ParameterSet containing unknown refs, non-finite values, or another Plan
@@ -945,6 +965,14 @@ or overwrite unrelated success receipts.
 
 ## Known V1 limits
 
+- Component authoring is limited to the explicit built-in catalog and custom
+  Library contract in [V1 Component Authoring](component-authoring.qmd); there
+  is no string discovery, mutable global registry, generic resonator topology
+  enum, or arbitrary composite-child injection.
+- Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
+  small-signal realization; arbitrary bias-point linearization is not included.
+- JosephsonCircuits flux-pump and three-wave-mixing behavior retains its
+  upstream relatively-untested limitation.
 - HB reduction acts on the small-signal sideband operator after the original
   nonlinear balance; nonlinear model-order reduction is not included.
 - Pump-on PTC is a compensated small-signal view around a pump balance that

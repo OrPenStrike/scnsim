@@ -4,6 +4,7 @@ project:
   render:
     - README.md
     - docs/index.qmd
+    - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
 
 website:
@@ -14,6 +15,8 @@ website:
         href: README.md
       - text: "Review Map"
         href: docs/index.qmd
+      - text: "Component Authoring"
+        href: docs/component-authoring.qmd
       - text: "V1 Runtime Contract"
         href: docs/v1-runtime-contract.qmd
 

@@ -11,9 +11,9 @@ superconducting-circuit networks, compiling auditable physical operators,
 applying explicit reduction pipelines, and solving the selected model with
 Direct or harmonic-balance backends.
 
-> **Lifecycle status:** `CONVERGING`. The V1 product, API, Units, reduction,
-> and failure contracts are being defined with the Human. They are not yet
-> accepted, stabilized, integrated, released, or installable.
+> **Lifecycle status:** `CONVERGING`. The V1 product, component authoring,
+> Runtime, Units, reduction, and failure contracts are being defined with the Human. They are not yet
+> accepted, stabilized, implemented, released, or installable.
 
 SCNSim is the network-simulation counterpart to SCGSim:
 
@@ -24,10 +24,37 @@ SCNSim  : network  -> operator / reduction -> solve -> report
 
 ## Candidate Notebook UX
 
-The proposed UX gives one sealed `CircuitPlan` an immutable graph of lazy
+The proposed UX first builds one named physical Plan from an exact immutable
+Library, then gives that sealed `CircuitPlan` an immutable graph of lazy
 `NetworkViewRef` topology and view reductions. `CircuitRun` is the only
-execution owner. This is a non-executable API sketch; the package does not
+execution owner. These are non-executable API sketches; the package does not
 exist yet:
+
+```python
+from scnsim import CircuitPlan, library as sc, units as u
+
+plan = CircuitPlan(id="example")
+input_cap = plan.add(
+    sc.capacitor(id="input_cap", capacitance=6.0 * u.fF)
+)
+resonator = plan.add(
+    sc.grounded_parallel_linear_lc_resonator(
+        id="readout",
+        subsystem_capacitance=110.0 * u.fF,
+        inductance=5.8 * u.nH,
+    )
+)
+
+plan.reference("ground")
+plan.net("input", input_cap.pin("a"))
+plan.net("readout_node", input_cap.pin("b"), resonator.pin("signal"))
+plan.add_port(
+    id="signal_in",
+    at="input",
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
 
 ```python
 from scnsim import (
@@ -119,14 +146,21 @@ returning typed Quantity results for Python use.
 
 ## Current contract
 
-Review the proposed behavior and unresolved decisions in the
-[SCNSim V1 Runtime Contract](docs/v1-runtime-contract.qmd), the single current
-semantic authority for this `CONVERGING` candidate.
+Review component creation, explicit finite-loop SQUIDs, resonator factories,
+nets, ports, and mutual coupling in
+[SCNSim V1 Component Authoring](docs/component-authoring.qmd). Then review the
+Run/Ref/Result behavior and unresolved decisions in the
+[SCNSim V1 Runtime Contract](docs/v1-runtime-contract.qmd). Together they are
+the current product authorities for this `CONVERGING` candidate without
+duplicating the reusable physics owned by SCQ_Design.
 
 Reusable scientific meaning remains canonical in SCQ_Design: the
 [floating-pair coordinate transform](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting),
 [zero-current Schur boundary](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices),
-and [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+[matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves),
+[Josephson element models](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#josephson-model-contracts),
+[finite-loop SQUIDs](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid),
+and [signed inductive coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
 
 ## Provenance and boundaries
 

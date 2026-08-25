@@ -10,26 +10,34 @@ optimization, and reporting.
 ::: {.callout-warning}
 ## Candidate semantics
 
-The product, API, Units, reduction, and failure semantics are `CONVERGING`.
-They are not yet accepted, stabilized, integrated, released, or installable.
+The product, component-authoring, Runtime, Units, reduction, and failure semantics are `CONVERGING`.
+They are not yet accepted, stabilized, implemented, released, or installable.
 :::
 
 ## Review map
 
-The [SCNSim V1 Runtime Contract](v1-runtime-contract.qmd) is the single current
-semantic authority. For Human review:
+The [SCNSim V1 Component Authoring](component-authoring.qmd) and
+[V1 Runtime Contract](v1-runtime-contract.qmd) pages divide the current product
+authority without duplicating reusable physics. For Human review:
 
-1. start with its [review map](v1-runtime-contract.qmd#review-map);
-2. read the [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
+1. start with [one Library model](component-authoring.qmd#one-library-model)
+   and [named electrical topology](component-authoring.qmd#named-electrical-topology);
+2. review the [built-in leaves](component-authoring.qmd#built-in-leaves),
+   [general composites](component-authoring.qmd#general-composites), and
+   [six resonator factories](component-authoring.qmd#six-resonator-factories);
+3. inspect the [finite-loop SQUID flux-pump example](component-authoring.qmd#finite-loop-squid-flux-pump-example)
+   and its [Direct/HB realization](component-authoring.qmd#direct-and-hb-realization);
+4. continue with the Runtime [review map](v1-runtime-contract.qmd#review-map)
+   and [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
    for the lazy `NetworkViewRef` graph;
-3. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
+5. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
    for selective Port-Termination Compensation (PTC), automatic floating-pair
    coordinates, arbitrary N-port retention, Direct/HB realization, and Pump-on
    authorization;
-4. review [HB cases, traces, and display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
+6. review [HB cases, traces, and display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
    for multiple Pump-on conditions, exact case lookup, and matrix presentation;
    and
-5. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
+7. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
    before implementation freezes their behavior.
 
 The current [floating-qubit Ref-graph example](v1-runtime-contract.qmd#floating-qubit-ref-graph)
@@ -43,3 +51,8 @@ The shortest reusable physics path is
 [floating-pair coordinates](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting)
 → [zero-current Schur reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices)
 → [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+
+For component physics, use
+[Josephson element models](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#josephson-model-contracts)
+→ [finite-loop SQUIDs](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid)
+→ [signed inductive coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
