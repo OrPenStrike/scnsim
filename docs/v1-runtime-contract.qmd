@@ -831,7 +831,9 @@ The Plan/compile evidence records every exact Library and component-schema
 identity, component hierarchy and public schema, pin-to-net/reference/port
 mapping, source units and canonical SI values, public ParameterRefs, expanded
 primitive/backend rows, and Direct/HB realization. Composite evidence includes
-the transmission-line pi-ladder convention, section count, and bound section length, all three IDC
+the scalar RLGC source classification, parsed canonical values, extraction
+frequency, content-derived provenance, transmission-line pi-ladder convention,
+section count, and bound section length; all three IDC
 capacitance branches, each JJ and optional parallel `Cj`, the two shared-parameter
 SQUID junctions and finite loop, and every coupled branch orientation with
 bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
@@ -1337,7 +1339,8 @@ SCNSim fails closed for:
   instance; a pin assigned to different nets; other than one Plan reference;
   or a port bound to a reference/unknown net or directly to a pin;
 - a non-positive R/L/C/`L_J0`, negative `Cj`, invalid scalar RLGC declaration,
-  or non-positive/non-integer section count;
+  invalid or non-scalar AEDT Q2D RLGC import, or non-positive/non-integer
+  section count;
 - a SQUID without shared junction parameters or a valid finite loop;
 - mutual coupling across Plans, across non-inductive or unoriented branches,
   or with non-finite/dimensionful `k`, `abs(k) >= 1`, or a complete bound
@@ -1411,6 +1414,9 @@ or overwrite unrelated success receipts.
   Library contract in [V1 Component Authoring](component-authoring.qmd); there
   is no string discovery, mutable global registry, generic resonator topology
   enum, or arbitrary composite-child injection.
+- Q2D ingestion is limited to one solver-native scalar `1 x 1` combined
+  `CG, RL` CSV. Its coefficients remain fixed across the circuit solve grid;
+  multiconductor and frequency-dependent line models are not included.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its

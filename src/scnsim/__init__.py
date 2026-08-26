@@ -21,8 +21,10 @@ from .authoring import (
     ParameterSet,
     ParameterSpec,
     PinRef,
+    ScalarRLGC,
     library,
 )
+from .io import load_q2d_scalar_rlgc
 from .results import (
     BiasState,
     CircuitDiagramResult,
@@ -122,10 +124,12 @@ __all__ = [
     "ResponseElementSpec",
     "Result",
     "SParameterTrace",
+    "ScalarRLGC",
     "ScatteringMatrixResult",
     "ScaffoldUnavailableError",
     "TransferZeroSpec",
     "TraceResult",
     "library",
+    "load_q2d_scalar_rlgc",
     "units",
 ]

@@ -34,12 +34,21 @@ python -m pip install -e .
 ```
 
 ```python
-from scnsim import CircuitPlan, DirectSolveSpec, OperatorSpec, ReportSpec
+from scnsim import (
+    CircuitPlan,
+    DirectSolveSpec,
+    OperatorSpec,
+    ReportSpec,
+    ScalarRLGC,
+    load_q2d_scalar_rlgc,
+)
 
 help(CircuitPlan)
 help(DirectSolveSpec)
 help(OperatorSpec)
 help(ReportSpec)
+help(ScalarRLGC)
+help(load_q2d_scalar_rlgc)
 ```
 
 Every construction or operation raises `ScaffoldUnavailableError`. This is

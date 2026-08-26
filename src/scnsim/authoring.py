@@ -73,6 +73,26 @@ class ParameterSet:
         unavailable("ParameterSet construction")
 
 
+class ScalarRLGC:
+    """Immutable per-length data for one uniform scalar transmission-line mode.
+
+    Construct this value directly from four SCNSim-registry Quantities, or use
+    :func:`scnsim.load_q2d_scalar_rlgc` to read a compatible solver-native
+    AEDT Q2D matrix export.  Line length and pi-section count belong to the
+    component factory, not to this material/cross-section result.
+    """
+
+    def __init__(
+        self,
+        *,
+        resistance_per_length: object,
+        inductance_per_length: object,
+        conductance_per_length: object,
+        capacitance_per_length: object,
+    ) -> None:
+        unavailable("ScalarRLGC construction")
+
+
 class ComponentInstance:
     """One immutable component created by an exact ``Library`` factory.
 
@@ -147,13 +167,10 @@ class Library:
         *,
         id: str,
         length: object,
-        resistance_per_length: object,
-        inductance_per_length: object,
-        conductance_per_length: object,
-        capacitance_per_length: object,
+        rlgc: ScalarRLGC,
         n_sections: int,
     ) -> ComponentInstance:
-        """Declare a scalar RLGC pi ladder with fixed positive section count."""
+        """Declare a uniform scalar RLGC pi ladder from one typed input."""
 
         unavailable("Library.transmission_line")
 

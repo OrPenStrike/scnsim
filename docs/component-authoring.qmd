@@ -198,21 +198,82 @@ is documented in
 
 ### Scalar RLGC transmission line
 
-`transmission_line` expands a uniform scalar RLGC line into a fixed ladder:
+`transmission_line` accepts one immutable `ScalarRLGC` value and expands a
+uniform scalar line into a fixed ladder. Model authors can declare that value
+directly:
 
 ```python
+from scnsim import ScalarRLGC
+
+rlgc = ScalarRLGC(
+    resistance_per_length=0.2 * u.ohm / u.m,
+    inductance_per_length=410.0 * u.nH / u.m,
+    conductance_per_length=0.0 * u.S / u.m,
+    capacitance_per_length=165.0 * u.pF / u.m,
+)
+
 line = plan.add(
     sc.transmission_line(
         id="feedline",
         length=4.0 * u.mm,
-        resistance_per_length=0.2 * u.ohm / u.m,
-        inductance_per_length=410.0 * u.nH / u.m,
-        conductance_per_length=0.0 * u.S / u.m,
-        capacitance_per_length=165.0 * u.pF / u.m,
+        rlgc=rlgc,
         n_sections=40,
     )
 )
 ```
+
+Or they can load the same typed value from one solver-native AEDT Q2D combined
+`CG, RL` matrix CSV:
+
+```python
+from scnsim import load_q2d_scalar_rlgc
+
+rlgc = load_q2d_scalar_rlgc(
+    "results/q2d/rlgc_matrix.csv"
+)
+
+line = plan.add(
+    sc.transmission_line(
+        id="feedline",
+        length=4.0 * u.mm,
+        rlgc=rlgc,
+        n_sections=40,
+    )
+)
+```
+
+These are two creation routes for the same `ScalarRLGC` contract, not two
+transmission-line factories or two compiler paths. `transmission_line` does not
+also accept the four per-length values as parallel keyword arguments. When a
+compatible SCGSim Q2D Result exposes the native export as `primary_csv`, that
+`Path` may be passed directly to `load_q2d_scalar_rlgc`; SCNSim neither runs
+AEDT nor imports PyAEDT.
+
+The V1 loader accepts only one scalar signal mode: each primary Capacitance,
+Conductance, Inductance, and Resistance matrix must occur exactly once, have
+the same single conductor label, and be `1 x 1`. The native header must identify
+the combined `CG, RL` problem, per-length units, and a finite extraction
+frequency. Values must be finite, with positive `L'` and `C'` and nonnegative
+`R'` and `G'`. Optional native coupling or Spice-output blocks do not replace
+the four primary matrices.
+
+A multiconductor export fails closed. Selecting one diagonal entry would
+silently discard mutual terms and would not produce the declared scalar mode.
+The Q2D reference-conductor name is not inferred from the primary matrix label;
+the imported scalar shunts bind to the `CircuitPlan`'s one declared reference.
+
+The loader normalizes values through `scnsim.units` and preserves the source
+format, file-content SHA-256, extraction frequency, conductor order, original
+units, and parsed canonical values as provenance. A machine-local path is only
+an authoring input and is not the computational identity. Loading a raw CSV
+does not claim that a SCGSim receipt, AEDT version, adaptive convergence, or
+reference identity was verified.
+
+The imported values are frozen scalar coefficients at their recorded
+extraction frequency. SCNSim applies them across the requested circuit solve
+grid without interpolation or a broadband-material claim. A future
+frequency-dependent or multiconductor line requires a separate accepted model;
+it must not change `ScalarRLGC` by inference.
 
 Its pins are `"head"` and `"tail"`. `n_sections` is a fixed positive Python
 integer, not a physical Quantity or optimization variable. The bound length is
@@ -229,6 +290,9 @@ endpoints are contracted so the section remains a pure series-L branch; exact
 zero G omits the shunt-conductance branch. Both cases preserve the declared
 section-boundary grid and `n_sections`, but receipts still record the actual
 primitive rows and internal-node realization.
+
+The continuum-to-ladder physics and refinement obligation remain canonical in
+[Telegrapher Model: From RLGC Continuum to a Finite LC Ladder](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/transmission-lines/telegrapher-rlgc-distributed-line.qmd#finite-symmetric-pi-section).
 
 ### Interdigitated capacitor
 
@@ -562,7 +626,9 @@ writing the workspace. For component authoring it shows:
 - component-pin to net/reference/port mapping;
 - source units, canonical SI values, and public `ParameterRef` identities;
 - Direct and HB realization of each expanded row;
-- TL section count and bound section length;
+- scalar RLGC source classification, canonical values, extraction frequency,
+  and content-derived provenance, plus TL section count and bound section
+  length;
 - all three IDC capacitance branches;
 - JJ and optional parallel `Cj` rows;
 - both SQUID junction rows, their shared parameter refs, loop orientation, and
@@ -588,6 +654,10 @@ Plan seal or deterministic preflight fails before backend execution for:
   dimensional mismatch;
 - non-positive R, L, C, or `L_J0`; negative `Cj`; invalid scalar RLGC values;
   or a non-positive/non-integer `n_sections`;
+- a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
+  primary C/G/L/R matrix blocks; invalid per-length units or extraction
+  frequency; inconsistent conductor labels/order; a matrix other than `1 x 1`;
+  or non-finite/invalid parsed scalar values;
 - a SQUID whose junction parameters are not shared or whose finite loop
   inductance is missing, non-finite, or non-positive;
 - mutual coupling between branches from different Plans, a non-inductive or
@@ -605,6 +675,9 @@ declared branch permits it; negative or non-finite values are not.
 - Component factories and sketches on this page are contracts, not an
   installable implementation.
 - The transmission line is a scalar, uniform, fixed-section RLGC ladder.
+- AEDT Q2D import accepts only one native scalar `1 x 1` combined `CG, RL`
+  export and freezes its values at the recorded extraction frequency; it does
+  not verify a solver receipt or create a frequency-dependent line.
 - Symmetric SQUID factories do not expose junction asymmetry or arbitrary
   per-arm parameter injection.
 - Direct JJ/SQUID analysis is limited to the declared zero-phase, zero-bias
