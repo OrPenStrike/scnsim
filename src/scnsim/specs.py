@@ -15,7 +15,7 @@ from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from ._scaffold import unavailable
-from .authoring import ParameterRef, PortRef
+from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
 
 
 class DirectSolveSpec:
@@ -53,7 +53,12 @@ class DiagonalRootSpec:
     solver.
     """
 
-    def __init__(self, *, coordinate: str, root_hint: object) -> None:
+    def __init__(
+        self,
+        *,
+        coordinate: str | ElectricNodeRef | CoordinateRef,
+        root_hint: object,
+    ) -> None:
         unavailable("DiagonalRootSpec construction")
 
     @property
@@ -78,7 +83,12 @@ class HybridizedPoleSpec:
     diagonal root as a hybridized pole.
     """
 
-    def __init__(self, *, coordinates: Sequence[str], anchor: object) -> None:
+    def __init__(
+        self,
+        *,
+        coordinates: Sequence[str | ElectricNodeRef | CoordinateRef],
+        anchor: object,
+    ) -> None:
         unavailable("HybridizedPoleSpec construction")
 
     @property
@@ -97,24 +107,20 @@ class HybridizedPoleSpec:
 class TransferZeroSpec:
     """Select an anchored exact zero of one declared transfer function.
 
-    The transfer may be identified by a cofactor or by one ordered S/Y/Z
-    projection.  Exactly one selection form must eventually validate.  This is
-    an analytic numerator zero with a finite denominator, never the minimum of
-    a sampled sweep and never an unresolved pole-zero cancellation.
-
-    The optional arguments expose an unresolved UX edge deliberately: Human
-    review still needs to decide whether cofactor selection deserves its own
-    typed public object before implementation.
+    V1 identifies the transfer by one ordered S/Y/Z input/output projection on
+    the selected Direct operator.  This is an analytic zero with a finite
+    denominator, never the minimum of a sampled sweep and never an unresolved
+    pole-zero cancellation.  A generic cofactor/minor selector is deliberately
+    not exposed without a typed, reviewable public representation.
     """
 
     def __init__(
         self,
         *,
         anchor: object,
-        cofactor: object | None = None,
-        family: Literal["S", "Y", "Z"] | None = None,
-        input_coordinate: str | None = None,
-        output_coordinate: str | None = None,
+        family: Literal["S", "Y", "Z"],
+        input_coordinate: str | ElectricNodeRef | CoordinateRef,
+        output_coordinate: str | ElectricNodeRef | CoordinateRef,
     ) -> None:
         unavailable("TransferZeroSpec construction")
 
@@ -161,8 +167,8 @@ class ResponseElementSpec:
         self,
         *,
         family: Literal["S", "Y", "Z"],
-        input_coordinate: str,
-        output_coordinate: str,
+        input_coordinate: str | ElectricNodeRef | CoordinateRef,
+        output_coordinate: str | ElectricNodeRef | CoordinateRef,
         frequency: object,
     ) -> None:
         unavailable("ResponseElementSpec construction")
@@ -215,6 +221,24 @@ class OptimizationVariable:
         transform: Literal["linear", "log"] = "linear",
     ) -> None:
         unavailable("OptimizationVariable construction")
+
+    @property
+    def parameter(self) -> ParameterRef:
+        """Exact public parameter activated by this search variable."""
+
+        unavailable("OptimizationVariable.parameter")
+
+    @property
+    def bounds(self) -> tuple[object, object]:
+        """Finite physical lower/upper bounds after any immutable override."""
+
+        unavailable("OptimizationVariable.bounds")
+
+    @property
+    def transform(self) -> Literal["linear", "log"]:
+        """Explicit mapping used before unit-interval optimizer coordinates."""
+
+        unavailable("OptimizationVariable.transform")
 
 
 class QuantitySum:
@@ -286,6 +310,26 @@ class OptimizationSpec:
         optimizer: CMAESSpec,
     ) -> None:
         unavailable("OptimizationSpec construction")
+
+    def show(self) -> object:
+        """Inspect variables, bounds, objectives, normalization, and optimizer."""
+
+        unavailable("OptimizationSpec.show")
+
+    def variable(self, parameter: ParameterRef) -> OptimizationVariable:
+        """Inspect one active variable by exact public parameter identity."""
+
+        unavailable("OptimizationSpec.variable")
+
+    def with_variable_overrides(
+        self,
+        *,
+        bounds: Mapping[ParameterRef, tuple[object, object]],
+        allow_extrapolation: Sequence[ParameterRef] = (),
+    ) -> OptimizationSpec:
+        """Return an immutable consumer-customized copy of this model default."""
+
+        unavailable("OptimizationSpec.with_variable_overrides")
 
 
 class PumpAxis:

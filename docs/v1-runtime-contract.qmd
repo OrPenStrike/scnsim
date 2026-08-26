@@ -121,6 +121,14 @@ The persistent simple-resonator examples show both layers:
 - [model consumer](../examples/simple_resonator/02_model_user.ipynb); and
 - [team-owned façade](../examples/simple_resonator/circuit_model.py).
 
+The complete public synthetic IPF example applies the same boundary to a
+general N-trace RLGC Composite and multi-objective optimization:
+
+- [model author](../examples/ipf_optimization/01_model_author.ipynb);
+- [model consumer](../examples/ipf_optimization/02_model_user.ipynb);
+- [custom Library](../examples/ipf_optimization/circuit_library.py); and
+- [team-owned façade](../examples/ipf_optimization/circuit_model.py).
+
 This separation is a UX boundary, not a second Runtime. Both users ultimately
 receive the same typed SCNSim Results and exact receipt identities.
 
@@ -517,8 +525,11 @@ A lineage may contain PTC at most once. It must precede `transform_pair()` and
 `retain()` is the terminal basis selection for that lineage. Unknown, repeated,
 terminated, foreign, or unevidenced targets fail before execution.
 
-For Direct analysis, SCNSim removes each evidenced probe conductance stamp from
-the compiled operator before later view reductions. SCNSim owns:
+For Direct analysis, the source-loaded operator first supports the raw solve;
+the selected-network adapter then de-embeds all source resistors and re-adds
+only the omitted, non-PTC matched loads according to the common load mask.
+This is algebraically the explicit removal of each selected probe stamp, but it
+does not confuse a selected source resistor with DUT admittance. SCNSim owns:
 
 ```text
 C: capacitance
@@ -534,7 +545,8 @@ contains the artificial loss channel.
 ### Automatic paired-node coordinates are a shared view step
 
 `transform_pair()` declares one ordered pair of distinct Public node
-coordinates and one output namespace:
+coordinates and one output namespace. Inputs may be Plan `ElectricNodeRef`
+handles, composite `CoordinateRef` handles, or declared coordinate-ID strings:
 
 ```python
 qubit_modes = compensated.reduce(
@@ -590,13 +602,23 @@ backend-native HB convention differs.
 ### Retain an arbitrary node-coordinate view
 
 `retain()` accepts any ordered, non-empty set of unique Public or generated
-coordinates from the current basis:
+coordinates from the current basis. A selector is a Plan `ElectricNodeRef`, a
+composite-exposed `CoordinateRef`, or a declared coordinate-ID string. Handles
+are preferred while authoring one live Plan. Strings are required for
+transform-generated coordinates and remain valid for named or Port-promoted
+Public coordinates at serialized/team-facade boundaries:
 
 ```python
 feedline = compensated.reduce(
     ReductionPipeline().retain(
-        "feedline_in",
-        "feedline_out",
+        feedline_in_node,
+        feedline_out_node,
+    )
+)
+
+filter_quantities = compensated.reduce(
+    ReductionPipeline().retain(
+        ipf.coordinate("filter_open_tail"),
     )
 )
 ```
@@ -612,8 +634,11 @@ The selected-view wave-channel ID is exactly its final retained coordinate ID.
 For an original node this is its Public node ID; for an automatic transform it
 is the generated ID such as `qubit.differential`. A logical Port ID is not a
 channel alias. Only anonymous-node promotion deliberately makes a node ID equal
-to its Port ID. Unknown coordinate IDs, generated-output collisions, and
-duplicate retained IDs fail before any trace is bound.
+to its Port ID. Unknown or foreign handles/IDs, generated-output collisions,
+and duplicate retained identities fail before any trace is bound. A
+`CoordinateRef` can be observed but cannot be passed to `CircuitPlan.net()` or
+`add_port()`; the composite must expose a separate `PinRef` for external
+wiring.
 
 A probe-free feedline S21 therefore requires both operations:
 
@@ -668,9 +693,9 @@ and not a JosephsonCircuits row exposed as the product API:
 | Node attachment | incidence/selector column `B` | resolved node of `P_i` and `R_port_i` |
 | Reference impedance | `Y0 = 1 / R0` and power-wave conversion | explicit `R_port_i` and solver port impedance |
 | Port marker | no `P` row | exact `P_i` row |
-| Load contribution | `G_port = B Y0 B^T` | explicit resistor stamp |
+| Source/load boundary | `G_port = B Y0 B^T` during raw solve | explicit source resistor stamp |
 | Drive | external current injection through `B` | mode-indexed current on `P_i` |
-| PTC | remove the proved `B_i Y0_i B_i^T` stamp | remove the proved `1 / R_i` stamp from derived raw Y |
+| PTC | clear proved probe entry in the post-de-embedding load mask | clear the same proved probe entry in every sideband load mask |
 
 The load and wave reference are separately auditable. PTC removes only the
 load stamp; it preserves the logical Port identity, node coordinate, and
@@ -685,102 +710,131 @@ Plan reference and positive Port current enters the Plan at that node. The
 canonical node attachment therefore owns direction; there is no backend- or
 request-specific orientation override.
 
-The selected SCNSim matrix families use one explicit loaded-network contract.
+The logical Port resistance is a wave/source boundary, not a DUT shunt in the
+public network. It participates in the raw solve and therefore supplies the
+external damping of the solved problem, but SCNSim de-embeds the selected
+source boundary before publishing `.y.view`, `.z.view`, and `.s.view`.
+
 Let `B_p` inject the ordered original logical-Port currents into the full node
-basis, and let
+basis and let
 
 $$
 R_p=\operatorname{diag}(R_1,\ldots,R_P),
-\qquad
-G_{\mathrm{port}}=B_pR_p^{-1}B_p^T.
+\qquad D_p=R_p^{1/2}.
 $$
 
-The compiled raw operator contains every logical-Port load. PTC subtracts only
-the selected proved load stamps. After all declared transforms and
-zero-external-current elimination, the resulting selected admittance is
-$Y_k^{\mathrm{view}}$; it still contains every non-compensated Port load.
-SCNSim publishes
+After backend normalization, SCNSim first removes *all* backend `P + R` source
+resistors to recover the intrinsic linearized circuit operator. PTC then
+defines a diagonal original-Port load mask `M`: `M[i,i] = 0` only for an
+explicitly selected `nonloading_probe`; every other logical Port load remains
+active. This mask is independent of whether a Port is retained or omitted.
 
-$$
-Y^{\mathrm{view}}=Y_k^{\mathrm{view}},
-\qquad
-Z^{\mathrm{view}}=(Y_k^{\mathrm{view}})^{-1},
-$$
-
-using a factorization/linear solve rather than an explicit inverse. If an
-uncompensated `nonloading_probe` stamp remains, Y/Z presentation and artifacts
-are explicitly labeled `raw`; after the declared PTC they are labeled
-`compensated`. The typed matrix view carries this probe-load state, so
-`.y.view.probe_loads` and `.z.view.probe_loads` map every relevant logical
-probe-Port ID to `"raw"` or `"compensated"`. An empty mapping means no
-nonloading-probe load participates in that selected operator. Presentation and
-artifact labels use `Y_raw`/`Z_raw` whenever any entry remains `"raw"`, so the
-ordinary `.y.view` or `.z.view` access path never turns a probe-loaded quantity
-into an unqualified design-facing claim.
-
-For a Port-realizable selected view, let $A_k$ be the full-row-rank map from
-the ordered original physical Port voltages to the final retained coordinates.
-The induced current-injection and reference matrices are
+For a Port-realizable selected view, let $A_k$ map ordered original-Port
+voltages to the final retained voltages. Power-conjugate injection and the
+matrix reference are
 
 $$
 B_k=B_pA_k^T,
-\qquad
-R_k=A_kR_pA_k^T,
-\qquad
-D_k=R_k^{1/2}.
+\qquad R_k=A_kR_pA_k^T,
+\qquad D_k=R_k^{1/2}.
 $$
 
-Here $D_k$ is the principal real-SPD square root. These equations also cover a
-proper subset of generated coordinates: setting the complementary transformed
-currents to zero gives the original-Port injection $A_k^TI_k$, while the
-retained wave reference is the corresponding principal block induced by the
-same rows of the full transform. A rank-deficient $A_k$ or non-SPD $R_k$ fails
-preflight.
-
-Finally, selected-view S is formed from the same loaded-or-compensated
-$Y_k^{\mathrm{view}}$, not by silently de-embedding every Port load:
+`D_k` is the principal real-SPD square root. Define the power-wave row map and
+its selected/omitted projectors in original Port space:
 
 $$
-\widetilde Y_k=D_kY_k^{\mathrm{view}}D_k,
+Q_k=D_k^{-1}A_kD_p,
+\qquad P_k=Q_k^TQ_k,
+\qquad P_o=I-P_k.
+$$
+
+V1 requires a transformed pair to have one common load state: both original
+Port loads are selected by PTC or neither is. That restriction makes the
+retained and load partitions separable. A mixed-state pair fails preflight
+rather than silently assigning a fractional load to the generated channels.
+The omitted matched-load conductance in original Port coordinates is
+
+$$
+G_{o,p}=D_p^{-1}P_oMP_oD_p^{-1}.
+$$
+
+Let $Y_{\mathrm{circ,node}}$ be the intrinsic, source-resistor-de-embedded
+Direct or normalized HB linearized node admittance. SCNSim applies this exact
+selected-network order:
+
+1. add omitted matched loads,
+   $H=Y_{\mathrm{circ,node}}+B_pG_{o,p}B_p^T$;
+2. add only the selected source boundary and solve
+   $$
+   Z_{\mathrm{src},k}
+   =B_k^T(H+B_kR_k^{-1}B_k^T)^{-1}B_k;
+   $$
+3. obtain $Y_{\mathrm{src},k}$ by a matrix solve and de-embed the selected
+   source boundary,
+   $$Y_{\mathrm{net},k}=Y_{\mathrm{src},k}-R_k^{-1};$$
+4. form public $Z_{\mathrm{net},k}$ from that same network Y; and
+5. form the matrix-reference power-wave response
+
+$$
+\widetilde Y_k=D_kY_{\mathrm{net},k}D_k,
 \qquad
 S^{\mathrm{view}}=(I+\widetilde Y_k)^{-1}(I-\widetilde Y_k).
 $$
 
-Thus an otherwise open one-port node with an uncompensated shunt
-$Y_k^{\mathrm{view}}=1/R_k$ has $S^{\mathrm{view}}=0$; compensating that proved
-shunt gives the open result $S^{\mathrm{view}}=+1$. JosephsonCircuits native
-`returnS` uses its own `P + R` source-boundary construction and may instead
-report the latter. It is reconciliation evidence, not the authority for this
-selected SCNSim load state. Direct and HB both reconstruct the equations above
-from their normalized selected Y operator.
+Every inverse symbol above defines an equation, not an implementation method;
+factorizations and linear solves are required. A rank-deficient $A_k$,
+non-SPD $R_k$, singular selected solve, or incompatible load partition fails
+closed.
+
+The three public families now describe one de-embedded network:
+
+$$
+Y^{\mathrm{view}}=Y_{\mathrm{net},k},\qquad
+Z^{\mathrm{view}}=Z_{\mathrm{net},k},\qquad
+S^{\mathrm{view}}=S(Y_{\mathrm{net},k},R_k).
+$$
+
+An open one-port therefore has `Y_net = 0` and `S11 = +1`; a DUT whose
+intrinsic input admittance is `1 / R0` has `S11 = 0`. Omitted terminated Ports
+remain matched environmental loads. PTC changes only the explicitly selected
+probe entries of `M`; it never de-embeds an unrelated physical/environmental
+load. The typed matrix view continues to record each relevant probe as `raw`
+or `compensated`, but the selected source boundary is never mislabeled as DUT.
 
 ### HB PTC operator realization
 
 JosephsonCircuits first solves each case on the original compiled Plan. SCNSim
-requests the complete solver-native `mode × port` `returnZ` operator. Returned
-Z uses both the solver's `exp(+i * omega * t)` convention and its
-`1 / sqrt(abs(omega))` input/output scaling, so SCNSim first remaps the exact
-solver mode indices to its signed mode order and forms
+requests the complete solver-native `mode × port` `returnZ` operator. Let
+`Pi_in` and `Pi_out` reorder solver modes to the SCNSim ordering by the *same
+signed physical frequency*. Returned Z uses both the solver's
+`exp(+i * omega * t)` convention and its `1 / sqrt(abs(omega))` input/output
+scaling, so SCNSim forms exactly
 
 $$
-Z_{\mathrm{raw}}^{(-)} =
-W_{\mathrm{out}}[Z_{\mathrm{JC}}^{(+)}]^*
+Z_{\mathrm{phys}}^{(-)} =
+W_{\mathrm{out}}
+\left[
+\Pi_{\mathrm{out}}Z_{\mathrm{JC}}^{(+)}\Pi_{\mathrm{in}}^T
+\right]^*
 W_{\mathrm{in}}^{-1}.
 $$
 
-Only this convention-normalized physical Z may be used to obtain `Y_raw` by a
-matrix solve. SCNSim then:
+SCNSim conjugates once and does not also reverse Fourier tuples. Only this
+convention- and frequency-normalized physical Z may be used to recover the raw
+source-loaded admittance by a matrix solve. The adapter then follows one
+ordered path:
 
-1. derives physical `Y_raw` from the normalized complete Z without an explicit
-   inverse;
-2. subtracts each selected `1 / R` stamp from every retained sideband replica
-   of that physical probe;
-3. repeats each resolved paired-node transform within every retained sideband
-   mode;
-4. applies zero-current retained-view elimination to the full mode-port
-   operator; and
-5. derives the requested S, Y, Z, or named observable in the retained channel
-   order.
+1. normalize complete HB `returnZ` as above;
+2. de-embed all backend `P + R` source resistors, recovering the intrinsic
+   linearized circuit operator;
+3. resolve the original-Port PTC mask `M` and apply the same mask to every
+   retained sideband replica;
+4. repeat the full-external-cut transform in every retained sideband mode;
+5. build `A_k`, `B_k`, `R_k`, `D_k`, `Q_k`, and the selected/omitted projectors;
+6. add omitted matched loads;
+7. add the selected source boundary and solve the source-loaded response;
+8. subtract `R_k^-1` from the selected source admittance; and
+9. form public Y, Z, and S from that one de-embedded selected network.
 
 The solver's mode tuples, signed physical frequencies, frequency
 normalization, port order, and version are part of this operator identity.
@@ -793,7 +847,10 @@ forms
 
 $$
 S_{\mathrm{native,pw}}^{(-)} =
-W_{\mathrm{out}} [S_{\mathrm{JC}}^{(+)}]^*
+W_{\mathrm{out}}
+\left[
+\Pi_{\mathrm{out}}S_{\mathrm{JC}}^{(+)}\Pi_{\mathrm{in}}^T
+\right]^*
 W_{\mathrm{in}}^{-1}.
 $$
 
@@ -911,22 +968,27 @@ coefficient is self-conjugate and must be real. The sealed schema records this
 coefficient convention, source phase/calibration provenance, and every
 oriented injection map `B_l`.
 
-Backend lowering translates the convention before solving. If SCNSim tuple
-`m` is mapped to JosephsonCircuits tuple `-m`, then
+Backend lowering translates the convention before solving. The coefficient
+identity is
 
 $$
-I_{\mathrm{JC},-\mathbf m}^{(+)}
-=I_{\mathrm{SCN},\mathbf m}^{(-)}.
+I_{\mathbf n}^{(+)}=I_{-\mathbf n}^{(-)}.
 $$
 
-Equivalently, before that index reversal, coefficients at the same numeric
-tuple obey
-$I_{\mathrm{JC},\mathbf m}^{(+)}=I_{\mathrm{SCN},-\mathbf m}^{(-)}
-= [I_{\mathrm{SCN},\mathbf m}^{(-)}]^*$ for a real source. The adapter
-materializes the generated conjugate pair, remaps the exact solver mode indices
-and signed frequencies, and only then builds the JosephsonCircuits source
-vector. This is part of request/receipt identity; a complex pump phase cannot
-pass through unchanged by accident.
+If JosephsonCircuits retains representative tuple `r`, SCNSim therefore writes
+
+$$
+I_{\mathrm{JC}}^{(+)}[r]=I_{\mathrm{SCN}}^{(-)}[-r].
+$$
+
+For a user-declared coefficient `c` at tuple `m`, the same numeric tuple
+receives `conj(c)`; the opposite tuple receives `c`. The exact-zero DC
+coefficient is real and unchanged. Port-orientation sign is applied separately
+from this phasor/mode conversion. The adapter materializes the generated
+conjugate pair and then performs one index lookup; it must not both reverse a
+tuple and conjugate the same coefficient a second time. This map is part of
+request/receipt identity, so a complex pump phase cannot pass through by
+accident.
 
 Sources superpose in the compiled source vector,
 
@@ -1006,10 +1068,14 @@ identity, component hierarchy and public schema, pin-to-electric-node/reference
 mapping, Public/Internal/Port-promoted node identities, logical Port mapping,
 source units and canonical SI values, public ParameterRefs, expanded
 primitive/backend rows, and Direct/HB realization. Composite evidence includes
-the scalar RLGC source classification, parsed canonical values, extraction
-frequency, content-derived provenance, transmission-line pi-ladder convention,
-section count, and bound section length; all three IDC
-capacitance branches, each JJ and optional parallel `Cj`, the two shared-parameter
+public parameters/baselines, identity fan-out, AffineMap equations/support,
+public pins/coordinates, and hidden-child expansion. RLGC evidence includes
+conductor/reference identity, complete matrix order and health, positive
+head-to-tail series-current/extractor `+z` orientation, manual/Q2D source
+classification, parsed canonical values, extraction frequency, content-derived
+provenance, transmission-line pi-ladder convention, section count, and bound
+section length; all three IDC capacitance branches, each JJ
+and optional parallel `Cj`, the two shared-parameter
 SQUID junctions and finite loop, and every coupled branch orientation with
 bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
 surface and its fail-closed rules are defined in
@@ -1022,9 +1088,9 @@ applicable`; HB records exact `P_i`/`R_port_i` rows, solver indices, mode order,
 and raw-Z lineage.
 
 A PTC lineage additionally records selected `PortRef` identities, proved load
-stamps, load state before/after compensation, resolved resistances, removal
-intent, raw-Z/derived-Y identities, per-probe `raw`/`compensated` labels, and
-reconstruction or residual evidence.
+stamps, original-Port load mask, load state before/after compensation, resolved
+resistances, removal intent, raw-Z/derived-intrinsic-operator identities,
+per-probe `raw`/`compensated` labels, and reconstruction or residual evidence.
 
 Every `transform_pair()` lineage additionally records its exact ordered Public
 node inputs, Port-realizability mapping and current directions, all included
@@ -1035,16 +1101,19 @@ evidence, and generated coordinate order. These obligations apply whether or
 not the lineage contains PTC.
 
 Every `retain()` lineage records the ordered retained coordinates, complete
-eliminated complement, zero-external-current boundary, Schur evidence, final
-selected-view channel order, and the exact full-row-rank `A_k`, original-Port
-injection `B_k`, induced reference `R_k`, and principal root `D_k`.
+eliminated complement, final selected-view channel order, and exact
+full-row-rank `A_k`, injection `B_k`, induced reference `R_k`, principal root
+`D_k`, wave map `Q_k`, selected/omitted projectors, omitted matched loads,
+selected source boundary, and public-network de-embedding evidence.
 
 Every HB Result additionally records the request-global pump-axis and drive
 schemas; operating-point and modulation limits; optional intermodulation crop;
 three-/four-wave-mixing selections; retained mode tuples, signed frequencies,
 and mode-port order; solver normalization and version; input/output `W`
 matrices; solver-to-SCNSim phasor, mode-index, and `returnZ`/`returnS`
-conversion; and the raw-native, selected-view, and reconciliation identities.
+conversion, same-signed-frequency permutation, and single-conjugation proof;
+and the source-loaded, intrinsic, selected-network, and reconciliation
+identities.
 Each case records its declared current contributions, generated conjugates,
 SCNSim-to-solver coefficient/index map, oriented injection maps, effective
 mode-indexed source vectors, derived Bias/Pump states, and exact case identity.
@@ -1056,12 +1125,17 @@ identity, selector and dimensionality, root/pole/zero branch and its declared
 locator, the `DiagonalRootSpec.root_hint`, baseline selection, continuation and
 simple-root/slope evidence where applicable, shared dependency nodes, expanded
 residual scale and source, objective weight, candidate failure ledger, and the
-one Julia-process execution identity.
+one Julia-process execution identity. Optimization receipts additionally keep
+model-default bounds, any immutable consumer overrides, resolved bounds,
+AffineMap support/extrapolation state and authorization provenance, physical
+candidate values, and dimensionless optimizer coordinates.
 
 ### Direct and HB component realization
 
-Both backends consume the same expanded Plan. R, L, C, and scalar RLGC ladder
-rows stay linear. Direct realizes each JJ with its declared zero-phase,
+Both backends consume the same expanded Plan. R, L, and C rows stay linear.
+Direct lowers complete validated RLGC matrices; HB lowers complete C/G and L
+but requires diagonal R. A nonzero off-diagonal R fails HB preflight without
+altering the Direct-capable Plan. Direct realizes each JJ with its declared zero-phase,
 zero-bias `L_J0` and retains any explicit parallel `Cj`; it does not accept an
 arbitrary bias phase in V1. HB retains the nonlinear Josephson rows. A symmetric
 SQUID remains a two-junction finite-loop topology in both paths: Direct uses two
@@ -1157,7 +1231,7 @@ The V1 catalog is intentionally small:
 |---|---|---|
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of one ordered retained block | pole/root bundle with branch evidence |
-| `TransferZeroSpec` | Complex zero of one explicit cofactor or S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
+| `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
 | `ResidueNormalizedCouplingSpec` | Coupling from two selected simple-root branches and one declared evaluation point | complex coupling and magnitude |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
 | `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
@@ -1168,6 +1242,13 @@ transmission = ResponseElementSpec(
     input_coordinate="feedline_in",
     output_coordinate="feedline_out",
     frequency=6.2 * u.GHz,
+)
+
+transfer_zero = TransferZeroSpec(
+    anchor=6.5 * u.GHz,
+    family="Y",
+    input_coordinate=feedline_out_node,
+    output_coordinate=filter_open_tail,
 )
 
 operator = run.evaluate(
@@ -1182,7 +1263,9 @@ branch locator (including `DiagonalRootSpec.root_hint`), continuation,
 simple-root/slope evidence, units, ParameterSet, selected Ref boundary, and
 operator identity remain attached. An ambiguous, repeated, or non-simple branch
 fails when the requested spec requires a unique simple root.
-`TransferZeroSpec` additionally requires its selected transfer denominator to
+`TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
+generic cofactor/minor object is not part of the V1 scaffold. The Spec also
+requires its selected transfer denominator to
 remain finite and nonsingular at the zero. A coincident numerator zero and pole
 is rejected as an unresolved cancellation rather than published as a transfer
 zero.
@@ -1212,6 +1295,56 @@ evidenced.
 V1 optimization evaluates Direct objectives only. It accepts one selected
 `NetworkViewRef`, any number of optimization variables, and any number of
 scalar quantity objectives:
+
+```text
+Component Library author
+  ParameterSpec + baseline + fan-out/AffineMap calibration support
+
+Circuit-model author
+  reusable default OptimizationSpec + variables/bounds/objectives/optimizer
+
+Notebook consumer
+  inspect the default + provide a Design Target + optional immutable override
+```
+
+`ParameterSpec` never owns optimization bounds. A circuit-model façade instead
+exposes one clearly named model default:
+
+```python
+def build_default_optimization_spec(target) -> OptimizationSpec:
+    return OptimizationSpec(
+        variables=(
+            OptimizationVariable(
+                parameter=model.shared_short_length,
+                bounds=(0.6 * u.mm, 1.2 * u.mm),
+            ),
+            OptimizationVariable(
+                parameter=model.idc_finger_length,
+                bounds=(40.0 * u.um, 68.0 * u.um),
+            ),
+        ),
+        objectives=build_objectives(target),
+        optimizer=CMAESSpec(seed=17, max_evaluations=400),
+    )
+```
+
+The consumer discovers the recipe without reading its source:
+
+```python
+default_spec = model.build_default_optimization_spec(target)
+
+model.idc_finger_length.show()
+default_spec.show()
+default_spec.variable(model.idc_finger_length).bounds
+run.explain(model.optimization_view, default_spec).show()
+```
+
+These surfaces answer different questions. `parameter.show()` reports the
+sealed baseline, unit, fan-out, maps, and calibration support;
+`default_spec.show()` reports active variables, default bounds, quantity
+objectives, weights, expanded normalization, and optimizer;
+`run.explain()` reports the fully bound request that would execute. None starts
+a solver or writes the workspace.
 
 ```python
 qubit_root = DiagonalRootSpec(
@@ -1256,6 +1389,46 @@ optimization_spec = OptimizationSpec(
 optimization = run.optimize(quantity_view, optimization_spec)
 ```
 
+The model default is immutable. A consumer creates a `custom_spec` only when a
+notebook must depart from it:
+
+```python
+custom_spec = default_spec.with_variable_overrides(
+    bounds={
+        model.idc_finger_length: (
+            38.0 * u.um,
+            76.0 * u.um,
+        ),
+    },
+    allow_extrapolation=(model.idc_finger_length,),
+)
+```
+
+Overrides use exact `ParameterRef` keys. `show()` distinguishes
+`model_default`, `consumer_override`, and resolved bounds; receipts retain all
+three. There is no global extrapolation switch or second hidden bound source.
+
+Each `AffineMap.support` is a calibration-evidence interval. Values inside it
+need no authorization. An out-of-support value fails by default; a request may
+approve extrapolation only for named `ParameterRef` objects. An unapproved
+optimization candidate becomes a typed failure with `Inf` cost. An approved
+candidate records distance beyond support and authorization provenance without
+claiming that Q2D or another calibration validated the extrapolated region.
+Authorization is request-local: passing an extrapolated winner to a later
+solve/evaluate request requires a new explicit ParameterSet approval:
+
+```python
+approved_winner = ParameterSet(
+    optimization.best.parameters.values,
+    allow_extrapolation=(model.idc_finger_length,),
+)
+
+direct = run.solve(response_view, direct_spec, parameters=approved_winner)
+```
+
+The original winner values remain immutable; the new request records its own
+authorization instead of inheriting the optimizer's approval.
+
 The public `run.evaluate()` contract does not force candidate work back through
 Python. One optimization request launches one Julia process. Parameter binding,
 candidate compilation, Ref-lineage replay, quantity evaluation, shared
@@ -1286,6 +1459,52 @@ Optimization resume requires identical Plan, Ref, variables, quantity specs,
 objectives, expanded normalization, algorithm, controls, seed, runtime, and
 completed-generation ledger. An interrupted generation is discarded and
 replayed deterministically rather than published as complete evidence.
+
+### Complete synthetic IPF journey {#ipf-optimization-example}
+
+The tracked [IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
+keeps one complete request available for continued UX review. Its custom
+Library builds four one-trace sections and one two-trace coupled section through
+the general `RLGC` carrier. The two-trace R matrix is diagonal so the same
+winner supports Direct and pump-off HB; the Notebook also shows how
+`load_q2d_rlgc()` may replace a manual carrier and states that an imported
+off-diagonal R remains Direct-only in V1.
+
+The Composite exposes five parameters as active variables:
+
+1. readout open length;
+2. shared short length, fanned out to two child sections;
+3. coupled length;
+4. filter open length; and
+5. IDC finger length, mapped independently to C1G, C2G, and C12.
+
+Its model-owned default evaluates five Direct objective quantities in one
+Julia process: readout diagonal root, filter diagonal root, exact transfer
+zero, residue-normalized coupling magnitude, and the sum of both linewidths.
+The request remains one multi-variable, multi-objective analysis, not five
+Python callbacks or five optimizer processes.
+
+The Notebook records the full user-visible order:
+
+```text
+CircuitPlan + Composite
+-> CircuitRun
+-> PTC + typed response/quantity views
+-> build_default_optimization_spec(target)
+-> default_spec.show() + optional immutable custom_spec
+-> run.explain()
+-> run.optimize()
+-> optimization.best.parameters
+-> winner Direct S/Y/Z
+-> winner pump-off HB S/Y/Z
+-> report
+-> exact resolve after restart
+```
+
+The companion [model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb)
+supplies only a public synthetic target and workspace to the same façade. It
+does not restate RLGC matrices, component topology, views, selectors, bounds,
+weights, or optimizer controls.
 
 ### Relative objective normalization
 
@@ -1455,13 +1674,31 @@ and normalization. `case.s.reconciliation` records the exact conversion and
 residual evidence when topology, load, boundary, reference plane, reference
 matrix, frequency, and normalization are comparable.
 
-After `.retain()` imposes a zero-current boundary, SCNSim does not assume that
-a same-name native S submatrix is comparable. Comparability is true only when
-evidence proves equal selected load state, reference matrix, and boundary; for
-example, a plain original-Port subset may qualify when every omitted Port
-retains exactly the native matched reference load. Otherwise the reconciliation
-surface reports `comparable=False`, its exact reason, and evidence from the
-last comparable ancestor; it is neither `None` nor a fabricated residual.
+Canonical HB matrix storage is port-major and mode-minor. For `M_in` ordered
+input modes and `M_out` ordered output modes, lift the Port-space map rather
+than applying it directly to the mode-by-Port matrix:
+
+$$
+\mathcal Q_{k,\mathrm{in}}=Q_k\otimes I_{M_{\mathrm{in}}},
+\qquad
+\mathcal Q_{k,\mathrm{out}}=Q_k\otimes I_{M_{\mathrm{out}}}.
+$$
+
+For equal topology, reference plane, signed-frequency order, normalization,
+and load mask, the comparable evidence is
+
+$$
+S_k=\mathcal Q_{k,\mathrm{out}}
+S_{\mathrm{native,pw}}
+\mathcal Q_{k,\mathrm{in}}^T.
+$$
+
+A plain subset of original Ports is therefore comparable by its principal
+submatrix when every omitted Port retains its native matched load. A PTC or
+other unequal boundary is not comparable merely because channel names match.
+In that case the reconciliation surface reports `comparable=False`, its exact
+reason, and the last comparable ancestor; it is neither `None` nor a fabricated
+residual.
 
 Batch display supports both declared traces and complete-matrix inspection:
 
@@ -1543,9 +1780,14 @@ SCNSim fails closed for:
   anonymous unported node with fewer than two distinct pins; a second Port on
   one node; a Port bound to the reference or directly to a pin; or a Port that
   changes its promoted node identity after seal;
-- a non-positive R/L/C/`L_J0`, negative `Cj`, invalid scalar RLGC declaration,
-  invalid or non-scalar AEDT Q2D RLGC import, or non-positive/non-integer
-  section count;
+- a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
+  conductor/reference identity, matrix shape/order/units/reciprocity/passivity,
+  missing or inconsistent head-to-tail/extractor `+z` direction, invalid AEDT
+  Q2D primary blocks or conductor map, or non-positive/non-integer section
+  count;
+- a Direct/HB general-line mismatch, including nonzero off-diagonal R in HB;
+- an invalid Composite public/hidden identity, wired `CoordinateRef`, invalid
+  `AffineMap` units/support/baseline, or mapped nonphysical child value;
 - a SQUID without shared junction parameters or a valid finite loop;
 - mutual coupling across Plans, across non-inductive or unoriented branches,
   or with non-finite/dimensionful `k`, `abs(k) >= 1`, or a complete bound
@@ -1568,7 +1810,9 @@ SCNSim fails closed for:
   physical or transformed reference matrix, or failed principal-root
   reconstruction;
 - a generated-coordinate collision, rank-deficient retained Port map, or
-  inconsistent derived `A_k`, `B_k`, `R_k`, or principal `D_k` evidence;
+  inconsistent derived `A_k`, `B_k`, `R_k`, principal `D_k`, `Q_k`, or
+  selected/omitted projector evidence;
+- a `transform_pair()` across Port-bound nodes with different PTC/load states;
 - an unknown or duplicate pump axis, drive, case, or trace identity; a drive
   bound outside the request; a non-positive/non-finite axis frequency; or an
   incomplete request-global drive materialization;
@@ -1589,8 +1833,12 @@ SCNSim fails closed for:
 - a non-full-rank transform or singular/non-finite Schur partition;
 - disagreement between Direct and HB Port node, reference impedance, load, or
   selected-channel mappings;
-- a duplicate optimization variable/objective ID, non-variable ParameterRef,
-  invalid physical bounds/coordinate transform, or foreign quantity selector;
+- a duplicate optimization variable/objective ID, foreign or hidden
+  `ParameterRef`, invalid physical bounds/coordinate transform, or foreign
+  quantity selector;
+- conflicting model-default/consumer-override bounds, an unknown override key,
+  an out-of-support bound/candidate without per-ParameterRef extrapolation
+  authorization, or extrapolation authorization inherited by another request;
 - a bundle, full matrix/operator, or dimensionally invalid composition used as
   one scalar objective;
 - a target/selector dimensionality mismatch, non-positive/non-finite weight or
@@ -1605,6 +1853,9 @@ SCNSim fails closed for:
 - an HB backend result that cannot bind complete mode-port Z, signed
   frequencies, input/output `W` normalization, phasor/mode-index conversion,
   or the required lifted operator identity;
+- an HB adapter that reverses tuples and conjugates twice, cannot prove its
+  same-signed-frequency permutation, or cannot de-embed every backend source
+  resistor before selected-network construction;
 - a missing or inconsistent per-case SCNSim-to-JosephsonCircuits source
   coefficient/conjugate-mode map;
 - a selected matrix whose per-probe raw/compensated load-state labels do not
@@ -1631,9 +1882,13 @@ or overwrite unrelated success receipts.
   Library contract in [V1 Component Authoring](component-authoring.qmd); there
   is no string discovery, mutable global registry, generic resonator topology
   enum, or arbitrary composite-child injection.
-- Q2D ingestion is limited to one solver-native scalar `1 x 1` combined
-  `CG, RL` CSV. Its coefficients remain fixed across the circuit solve grid;
-  multiconductor and frequency-dependent line models are not included.
+- Q2D ingestion accepts one primary general N-conductor R/L/G/C extraction and
+  freezes its coefficients across the circuit solve grid. Frequency-dependent
+  interpolation/extrapolation is not included, and HB rejects nonzero
+  off-diagonal series R.
+- Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
+  callbacks, expression ASTs, and calibration-table interpolation are not
+  included.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its

@@ -13,8 +13,11 @@ consume an existing model.
 from . import units
 from ._scaffold import ScaffoldUnavailableError
 from .authoring import (
+    AffineMap,
     CircuitPlan,
+    CompositePlan,
     ComponentInstance,
+    CoordinateRef,
     ElectricNodeRef,
     InductiveBranchRef,
     Library,
@@ -23,10 +26,10 @@ from .authoring import (
     ParameterSpec,
     PinRef,
     PortRef,
-    ScalarRLGC,
+    RLGC,
     library,
 )
-from .io import load_q2d_scalar_rlgc
+from .io import load_q2d_rlgc
 from .results import (
     BiasState,
     CircuitDiagramResult,
@@ -77,13 +80,16 @@ from .specs import (
 __version__ = "1.0.0.dev1"
 
 __all__ = [
+    "AffineMap",
     "BiasState",
     "CMAESSpec",
     "CircuitDiagramResult",
     "CircuitDiagramSpec",
     "CircuitPlan",
     "CircuitRun",
+    "CompositePlan",
     "ComponentInstance",
+    "CoordinateRef",
     "CostObjective",
     "CurrentDrive",
     "DiagonalRootSpec",
@@ -120,6 +126,7 @@ __all__ = [
     "PumpAxis",
     "PumpState",
     "QuantitySum",
+    "RLGC",
     "ReconciliationEvidence",
     "ReductionPipeline",
     "ReportResult",
@@ -128,12 +135,11 @@ __all__ = [
     "ResponseElementSpec",
     "Result",
     "SParameterTrace",
-    "ScalarRLGC",
     "ScatteringMatrixResult",
     "ScaffoldUnavailableError",
     "TransferZeroSpec",
     "TraceResult",
     "library",
-    "load_q2d_scalar_rlgc",
+    "load_q2d_rlgc",
     "units",
 ]

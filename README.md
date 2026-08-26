@@ -35,15 +35,18 @@ python -m pip install -e .
 
 ```python
 from scnsim import (
+    AffineMap,
     CircuitPlan,
+    CompositePlan,
+    CoordinateRef,
     DirectSolveSpec,
     ElectricNodeRef,
     OperatorSpec,
     PortRef,
     ReductionPipeline,
     ReportSpec,
-    ScalarRLGC,
-    load_q2d_scalar_rlgc,
+    RLGC,
+    load_q2d_rlgc,
 )
 
 help(CircuitPlan)
@@ -53,8 +56,11 @@ help(ReductionPipeline)
 help(DirectSolveSpec)
 help(OperatorSpec)
 help(ReportSpec)
-help(ScalarRLGC)
-help(load_q2d_scalar_rlgc)
+help(RLGC)
+help(CompositePlan)
+help(CoordinateRef)
+help(AffineMap)
+help(load_q2d_rlgc)
 ```
 
 Every construction or operation raises `ScaffoldUnavailableError`. This is
@@ -82,7 +88,14 @@ The persistent examples show both views of the same model:
 - [model-user Notebook](examples/simple_resonator/02_model_user.ipynb) imports
   the finished [team model façade](examples/simple_resonator/circuit_model.py),
   provides a target, then calls optimization/report functions without
-  restating topology.
+  restating topology;
+- [IPF model-author Notebook](examples/ipf_optimization/01_model_author.ipynb)
+  shows general N-trace RLGC, a declarative Composite, typed internal
+  coordinates, five-variable optimization, winner Direct response, and
+  pump-off HB; and
+- [IPF model-user Notebook](examples/ipf_optimization/02_model_user.ipynb)
+  supplies only a synthetic public target and workspace to the reusable
+  [IPF façade](examples/ipf_optimization/circuit_model.py).
 
 The tracked `.ipynb` files are the one Notebook source: open them locally in
 VS Code to execute cell by cell, read the same files directly on GitHub, or
@@ -286,9 +299,10 @@ elements when no traces were named. It never guesses S21, mixes incomparable
 mode-frequency identities, or silently interpolates.
 
 Direct and HB expose parallel selected-view S/Y/Z matrix families; this common
-API does not imply transpose symmetry or reciprocity. The selected matrices
-retain every non-compensated logical-Port load and use the induced retained
-reference matrix; JosephsonCircuits native S remains reconciliation evidence.
+API does not imply transpose symmetry or reciprocity. The public families all
+describe one de-embedded selected network: selected source resistors are
+removed, omitted terminated Ports remain matched, PTC removes only selected
+probe loads, and JosephsonCircuits native S remains reconciliation evidence.
 Direct
 physical quantities use `run.evaluate()`, and the same typed selectors feed
 Direct optimization without per-candidate Python callbacks. A nonzero target
@@ -298,6 +312,15 @@ weight is applied.
 All public physical values use the single `scnsim.units` Pint registry. SCNSim
 normalizes them to canonical SI for compilation and evidence identity while
 returning typed Quantity results for Python use.
+
+The general `RLGC` carrier accepts Quantity-valued N-by-N R/L/G/C matrices in
+one explicit head-to-tail/extractor-`+z` orientation; N=1 uses the same path.
+`load_q2d_rlgc()` reads one frozen AEDT Q2D primary matrix extraction without
+interpolation. `CompositePlan` lets a Library author
+expose only supported pins, `CoordinateRef` handles, parameters, fan-out, and
+`AffineMap` calibration support. Optimization bounds remain in the model's
+`build_default_optimization_spec(target)`, where a consumer can inspect and
+immutably override them without changing component schema.
 
 ## Current contract
 

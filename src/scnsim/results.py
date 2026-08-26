@@ -47,11 +47,12 @@ class Result:
 
 
 class MatrixView:
-    """Labeled matrix data in the selected SCNSim coordinate/boundary view.
+    """Labeled data for one de-embedded selected SCNSim network.
 
     ``matrix`` is the complex array (Quantity-valued for dimensionful
     families); ``frequencies`` and ``coordinates`` keep its axes explicit.
-    This data object never performs a solve or interpolation.
+    Source-loaded/raw operators remain diagnostics rather than this public
+    S/Y/Z surface.  This data object never performs a solve or interpolation.
     """
 
     def __init__(self) -> None:

@@ -15,6 +15,18 @@ The model façade owns the required `DiagonalRootSpec.root_hint` once. The
 consumer's requested target remains a separate input and is never reused as a
 root locator.
 
+`ipf_optimization/` adds a larger but still public synthetic journey:
+
+- `circuit_library.py` declares one five-section Composite using general
+  one- and two-trace `RLGC`, shared parameter fan-out, three `AffineMap`
+  capacitance calibrations, public pins, and a `CoordinateRef`;
+- `circuit_model.py` owns the Plan, PTC/views, five Direct quantities, the
+  five-variable `build_default_optimization_spec()` recipe, winner Direct and
+  pump-off HB requests, reporting, and exact resolve;
+- `01_model_author.ipynb` makes those responsibilities and an optional
+  immutable extrapolation override visible; and
+- `02_model_user.ipynb` supplies only a synthetic target and workspace.
+
 The notebooks have no outputs and are intentionally non-executable at this
 `CONVERGING` scaffold checkpoint.  The `scnsim` package imports for API and
 docstring review, but every construction or operation fails explicitly until

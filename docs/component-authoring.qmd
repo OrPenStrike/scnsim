@@ -1,6 +1,6 @@
 ---
 title: "SCNSim V1 Component Authoring"
-subtitle: "Candidate Library, component, electric-node, logical-Port, and coupling contract"
+subtitle: "Candidate Library, RLGC, Composite, electric-node, logical-Port, and coupling contract"
 toc-depth: 3
 ---
 
@@ -20,6 +20,7 @@ Use one route from reusable component definitions to a sealed physical Plan:
 ```text
 immutable Library
 -> component instances with exact source identity
+-> declarative Composite parameters, mappings, pins, and coordinates
 -> Public or Internal electric nodes and one node-flux reference
 -> logical Port components on selected nodes
 -> CircuitPlan
@@ -121,8 +122,8 @@ reduction lineages may select. Omitting it creates an anonymous Internal node:
 
 ```python
 plan.net(
-    section_1.pin("tail"),
-    section_2.pin("head"),
+    section_1.pin("tail", conductor="signal"),
+    section_2.pin("head", conductor="signal"),
 )
 ```
 
@@ -262,103 +263,223 @@ is documented in
 
 ## General composites
 
-### Scalar RLGC transmission line
+### General N-conductor RLGC transmission line {#general-rlgc}
 
-`transmission_line` accepts one immutable `ScalarRLGC` value and expands a
-uniform scalar line into a fixed ladder. Model authors can declare that value
-directly:
+`transmission_line` accepts one immutable `RLGC` value. Its four per-length
+matrices share one ordered conductor basis; `N=1` is simply the `1 x 1` case:
 
 ```python
-from scnsim import ScalarRLGC
+from scnsim import RLGC
 
-rlgc = ScalarRLGC(
-    resistance_per_length=0.2 * u.ohm / u.m,
-    inductance_per_length=410.0 * u.nH / u.m,
-    conductance_per_length=0.0 * u.S / u.m,
-    capacitance_per_length=165.0 * u.pF / u.m,
+readout_rlgc = RLGC(
+    conductors=("readout",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.2]] * u.ohm / u.m,
+    inductance_per_length=[[410.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[165.0]] * u.pF / u.m,
 )
 
-line = plan.add(
+readout_line = plan.add(
     sc.transmission_line(
-        id="feedline",
+        id="readout_line",
         length=4.0 * u.mm,
-        rlgc=rlgc,
+        rlgc=readout_rlgc,
         n_sections=40,
     )
 )
+
+readout_line.pin("head", conductor="readout")
+readout_line.pin("tail", conductor="readout")
 ```
 
-Or they can load the same typed value from one solver-native AEDT Q2D combined
-`CG, RL` matrix CSV:
+An N-trace line exposes exactly `2N` pins through the same qualified access;
+even `N=1` requires `conductor=`. The reference conductor is not a matrix row,
+column, or pin. This makes conductor order and the shunt reference explicit
+instead of recovering either from component names.
+
+The matrix basis also fixes orientation. For every declared conductor `i`,
+
+$$
+V_i=V(\text{conductor }i)-V(\text{reference conductor}),
+\qquad I_i>0\text{ from head to tail}.
+$$
+
+Head-to-tail is the extractor's recorded `+z` direction. Consequently the
+signs of off-diagonal L/R entries and every derived HB mutual-inductor row are
+meaningful only in that ordered, oriented basis; SCNSim never guesses or
+silently flips an unknown source direction.
+
+Manual declarations may omit `extraction_frequency`. Their receipt says
+`manual / source frequency unspecified / frozen coefficients`; it does not
+claim broadband validity. A solver-native AEDT Q2D raw CSV produces the same
+typed carrier:
 
 ```python
-from scnsim import load_q2d_scalar_rlgc
+from scnsim import load_q2d_rlgc
 
-rlgc = load_q2d_scalar_rlgc(
-    "results/q2d/rlgc_matrix.csv"
-)
-
-line = plan.add(
-    sc.transmission_line(
-        id="feedline",
-        length=4.0 * u.mm,
-        rlgc=rlgc,
-        n_sections=40,
-    )
+coupled_rlgc = load_q2d_rlgc(
+    q2d_result.primary_csv,
+    reference_conductor="ground",
+    conductor_map={
+        "T1": "readout",
+        "T2": "filter",
+    },
 )
 ```
 
-These are two creation routes for the same `ScalarRLGC` contract, not two
-transmission-line factories or two compiler paths. `transmission_line` does not
-also accept the four per-length values as parallel keyword arguments. When a
-compatible SCGSim Q2D Result exposes the native export as `primary_csv`, that
-`Path` may be passed directly to `load_q2d_scalar_rlgc`; SCNSim neither runs
-AEDT nor imports PyAEDT.
+`conductor_map` must name every extracted signal conductor exactly once and be
+bijective. It changes public labels only: it cannot reorder rows, discard a
+conductor, select a diagonal, or remove mutual terms. SCNSim parses exactly one
+primary C, G, L, and R block with identical source order; optional Spice or
+coupling-output blocks never replace those matrices. It preserves native
+labels/order, units, extraction frequency, extractor `+z` direction,
+file-content SHA-256, and canonical values. The loader verifies that one
+consistent source direction is present and maps it to head-to-tail; missing or
+inconsistent direction evidence fails closed. It does not run AEDT, import
+PyAEDT, or infer that an SCGSim/AEDT run converged from the CSV alone.
 
-The V1 loader accepts only one scalar signal mode: each primary Capacitance,
-Conductance, Inductance, and Resistance matrix must occur exactly once, have
-the same single conductor label, and be `1 x 1`. The native header must identify
-the combined `CG, RL` problem, per-length units, and a finite extraction
-frequency. Values must be finite, with positive `L'` and `C'` and nonnegative
-`R'` and `G'`. Optional native coupling or Spice-output blocks do not replace
-the four primary matrices.
+For `N = len(conductors) >= 1`, every matrix is a finite SCNSim-registry
+Quantity-valued `N x N` array. C and G are reciprocal Maxwell shunt matrices:
+C is positive definite, G positive semidefinite, off-diagonal entries are
+nonpositive, and row sums are nonnegative. L is symmetric positive definite;
+R is symmetric positive semidefinite. The V1 carrier is frozen at its recorded
+extraction frequency. SCNSim does not interpolate or extrapolate RLGC over
+frequency and does not call one extraction broadband.
 
-A multiconductor export fails closed. Selecting one diagonal entry would
-silently discard mutual terms and would not produce the declared scalar mode.
-The Q2D reference-conductor name is not inferred from the primary matrix label;
-the imported scalar shunts bind to the `CircuitPlan`'s one declared reference.
+`n_sections` is a fixed positive Python integer, not a physical Quantity or
+optimization variable. With `dx = length / n_sections`, each pi section uses
+the complete series matrices `R * dx` and `L * dx`, plus `C * dx / 2` and
+`G * dx / 2` shunts at both ends. Adjacent sections accumulate their half
+shunts at one physical node. Length optimization changes `dx`, never section
+count, topology, conductor order, or matrix rank.
 
-The loader normalizes values through `scnsim.units` and preserves the source
-format, file-content SHA-256, extraction frequency, conductor order, original
-units, and parsed canonical values as provenance. A machine-local path is only
-an authoring input and is not the computational identity. Loading a raw CSV
-does not claim that a SCGSim receipt, AEDT version, adaptive convergence, or
-reference identity was verified.
-
-The imported values are frozen scalar coefficients at their recorded
-extraction frequency. SCNSim applies them across the requested circuit solve
-grid without interpolation or a broadband-material claim. A future
-frequency-dependent or multiconductor line requires a separate accepted model;
-it must not change `ScalarRLGC` by inference.
-
-Its pins are `"head"` and `"tail"`. `n_sections` is a fixed positive Python
-integer, not a physical Quantity or optimization variable. The bound length is
-divided by that fixed count for each ParameterSet; optimizing length changes
-the section length but never changes the discrete topology or matrix rank.
-V1 does not imply multiconductor or frequency-dependent RLGC behavior.
-
-The lowering is one canonical pi ladder. For
-`dx = length / n_sections`, each section has series `R' * dx` followed by
-series `L' * dx`; `C' * dx / 2` and `G' * dx / 2` are shunted to the Plan
-reference at each section boundary. Adjacent sections therefore accumulate
-their two half shunts at an internal node. For exact zero R, the resistor
-endpoints are contracted so the section remains a pure series-L branch; exact
-zero G omits the shunt-conductance branch. Both cases preserve the declared
-section-boundary grid and `n_sections`, but receipts still record the actual
-primitive rows and internal-node realization.
+Direct supports the complete validated R/L/G/C matrices. HB supports complete
+C/G, complete L, and diagonal R. Any nonzero off-diagonal R in an HB request
+fails preflight; SCNSim does not silently drop, diagonalize, or approximate it.
+Exact zero branches may be omitted in lowering while their declared matrix and
+section-boundary provenance remain in the receipt.
 
 The continuum-to-ladder physics and refinement obligation remain canonical in
 [Telegrapher Model: From RLGC Continuum to a Finite LC Ladder](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/transmission-lines/telegrapher-rlgc-distributed-line.qmd#finite-symmetric-pi-section).
+
+### Declarative custom composites {#declarative-composites}
+
+A custom Library factory uses `CompositePlan` to make its optimization and
+consumer boundary explicit before exposing one `ComponentInstance`:
+
+```python
+from scnsim import AffineMap, CompositePlan, ParameterSpec
+
+def intrinsic_purcell_filter(self, *, id, rlgc):
+    component = CompositePlan(id=id, library=self)
+
+    shared_length = component.parameter(
+        id="shared_short_length",
+        baseline=0.9 * u.mm,
+        spec=ParameterSpec(unit=u.mm),
+    )
+    finger_length = component.parameter(
+        id="idc_finger_length",
+        baseline=52.0 * u.um,
+        spec=ParameterSpec(unit=u.um),
+    )
+
+    readout_short = component.add(
+        sc.transmission_line(
+            id="readout_short",
+            length=shared_length,
+            rlgc=rlgc,
+            n_sections=12,
+        )
+    )
+    filter_short = component.add(
+        sc.transmission_line(
+            id="filter_short",
+            length=shared_length,
+            rlgc=rlgc,
+            n_sections=12,
+        )
+    )
+
+    mutual_capacitance = AffineMap(
+        input=finger_length,
+        slope=0.12 * u.fF / u.um,
+        intercept=0.8 * u.fF,
+        support=(35.0 * u.um, 70.0 * u.um),
+    )
+    # The same input may feed separate calibrated maps for C1G and C2G.
+    idc = component.add(
+        sc.interdigitated_capacitor(
+            id="idc",
+            terminal_1_to_reference_capacitance=AffineMap(
+                input=finger_length,
+                slope=0.08 * u.fF / u.um,
+                intercept=1.2 * u.fF,
+                support=(35.0 * u.um, 70.0 * u.um),
+            ),
+            terminal_2_to_reference_capacitance=AffineMap(
+                input=finger_length,
+                slope=0.09 * u.fF / u.um,
+                intercept=1.0 * u.fF,
+                support=(35.0 * u.um, 70.0 * u.um),
+            ),
+            terminal_mutual_capacitance=mutual_capacitance,
+        )
+    )
+
+    feedline_node = component.net(
+        readout_short.pin("head", conductor="readout"),
+        id="feedline_node",
+    )
+    filter_tail_node = component.net(
+        filter_short.pin("tail", conductor="readout"),
+        id="filter_tail_node",
+    )
+    component.expose_pin(id="feedline_attachment", at=feedline_node)
+    component.expose_coordinate(
+        id="filter_open_tail",
+        at=filter_tail_node,
+    )
+    return component.build()
+```
+
+`ParameterSpec` owns only parameter schema identity, authoring/display unit,
+dimensionality, and ParameterSet binding. It does not contain an optimizer,
+search bounds, or a separate mutability flag. Every deliberately exposed
+physical `ParameterRef` may be rebound; an `OptimizationSpec` separately
+chooses which refs are active and supplies finite request-specific bounds.
+
+Passing one public `ParameterRef` directly to several child slots is exact
+identity fan-out: binding `shared_length` changes both children together. It
+does not create two coincidentally equal child parameters. `parameter.show()`
+performs no execution and displays its sealed baseline, unit, child fan-out,
+maps, calibration support, and canonical identity.
+
+`AffineMap(input=x, slope=a, intercept=b, support=(lo, hi))` means exactly
+`y = a*x + b`. SCNSim validates the units of input, slope, intercept, output,
+and finite ordered support; the baseline must lie inside support. Mapping is
+resolved after each ParameterSet binding inside the same future Julia
+candidate process. It is not an arbitrary Python callback, expression AST,
+or interpolation table. A mapped nonphysical child value makes that candidate
+a typed failure rather than falling back to a baseline.
+
+`expose_pin()` and `expose_coordinate()` are deliberately different. A public
+pin participates in a parent `CircuitPlan.net()` connection. A
+`CoordinateRef` is an observation/analysis handle for `retain()`, Direct
+quantity selection, evaluation, and optimization; it cannot be wired or carry
+a logical Port. A composite author may expose the same internal electric node
+once through each surface, but hidden children, parameters, and nodes never
+become consumer API by inference:
+
+```python
+ipf.pin("feedline_attachment")
+ipf.coordinate("filter_open_tail")
+```
+
+An otherwise one-pin internal node is valid only when the Composite explicitly
+exposes it as an external pin or analysis coordinate; an unexposed one-pin
+child endpoint fails seal as accidental open topology.
 
 ### Interdigitated capacitor
 
@@ -637,18 +758,20 @@ The same Plan and component identities feed both backends:
 
 | Component content | Direct | HB |
 |---|---|---|
-| R, L, C, scalar RLGC ladder | Linear physical rows | Corresponding linear rows |
+| R, L, C | Linear physical rows | Corresponding linear rows |
+| General RLGC ladder | Complete R/L/G/C matrices | Complete C/G and L; R must be diagonal |
 | JJ | Explicit `L_J0` small-signal branch plus declared parallel `Cj` | Nonlinear Josephson row plus declared parallel `Cj` |
 | Finite-loop SQUID | Both junctions linearized at their zero-phase, zero-bias `L_J0`, with loop and mutual coupling retained | Both nonlinear junctions, finite loop, and mutual pump coupling retained |
-| Logical Port | Node selector/incidence column `B`, `Y0 = 1 / R0`, load stamp `B Y0 B^T`, and power-wave relation; no fake `P` row | Exact JosephsonCircuits `P_i` marker plus colocated `R_port_i` load |
+| Logical Port | Node selector/incidence column `B`, raw source stamp `B Y0 B^T`, and power-wave relation; no fake `P` row | Exact JosephsonCircuits `P_i` marker plus colocated `R_port_i` source resistor |
 
-The Port load and wave reference are separately auditable. PTC removes the
-proved load stamp while preserving the Port identity, node coordinate, and
-reference impedance used for S conversion. A Direct receipt therefore records
+The Port source/load boundary and wave reference are separately auditable. The
+selected source resistor participates in raw damping but is de-embedded from
+public network Y/Z/S; PTC removes only a proved probe-load stamp while
+preserving Port identity, node coordinate, and reference impedance. A Direct receipt therefore records
 `P row = not applicable` plus the actual `B`, `Y0`, and load mapping; an HB
 receipt records the exact `P_i` and `R_port_i` rows and solver indices.
 The Runtime's
-[loaded selected-view equations](v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
+[selected-network equations](v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
 define how that load state, retained injection map, and reference matrix produce
 the public S/Y/Z families; backend-native S is only reconciliation evidence.
 
@@ -664,6 +787,18 @@ relatively untested. SCNSim preserves that limitation rather than expanding
 the backend's guarantee.
 
 ## Parameter variants and derived mutual inductance
+
+Public parameters have three separate owners:
+
+| Owner | Declares |
+|---|---|
+| Component Library author | `ParameterSpec`, baseline, child fan-out, `AffineMap`, calibration support |
+| Circuit-model author | Default `OptimizationSpec`, active variables, finite bounds, objectives, weights, optimizer |
+| Notebook consumer | Design Target and an optional immutable override of the model default |
+
+This separation prevents a reusable composite from creating a hidden search
+envelope. Different circuit models may optimize the same parameter over
+different ranges without duplicating its unit, baseline, or calibration map.
 
 Every public factory parameter becomes a stable `ParameterRef` only when the
 factory exposes it:
@@ -710,9 +845,13 @@ writing the workspace. For component authoring it shows:
   one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
 - Direct and HB realization of each expanded row;
-- scalar RLGC source classification, canonical values, extraction frequency,
-  and content-derived provenance, plus TL section count and bound section
-  length;
+- RLGC conductor/reference identities, matrix order and health evidence,
+  head-to-tail current/extractor `+z` orientation, manual/Q2D source
+  classification, canonical matrices, extraction frequency, and
+  content-derived provenance, plus TL section count and bound section length;
+- Composite public schema, hidden-child expansion, public parameter baselines,
+  identity fan-out, `AffineMap` equations/support, and separately exposed pins
+  and coordinates;
 - all three IDC capacitance branches;
 - JJ and optional parallel `Cj` rows;
 - both SQUID junction rows, their shared parameter refs, loop orientation, and
@@ -742,12 +881,23 @@ Plan seal or deterministic preflight fails before backend execution for:
   it before seal;
 - a bare physical number, foreign Pint registry, non-finite Quantity, or
   dimensional mismatch;
-- non-positive R, L, C, or `L_J0`; negative `Cj`; invalid scalar RLGC values;
-  or a non-positive/non-integer `n_sections`;
+- non-positive R, L, C, or `L_J0`; negative `Cj`; or a non-positive/non-integer
+  `n_sections`;
 - a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
   primary C/G/L/R matrix blocks; invalid per-length units or extraction
-  frequency; inconsistent conductor labels/order; a matrix other than `1 x 1`;
-  or non-finite/invalid parsed scalar values;
+  frequency; inconsistent conductor labels/order or dimensions; an incomplete
+  or non-bijective conductor map; missing/inconsistent extractor `+z`
+  direction; or non-finite parsed values;
+- `N < 1`; duplicate/unknown conductor or reference labels; a reference included
+  in matrix rows; non-square or shape-inconsistent R/L/G/C; nonreciprocal
+  matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;
+  G/R not positive semidefinite; or an HB request with nonzero off-diagonal R;
+- a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
+  node; wiring a `CoordinateRef`; exposing a foreign node; or hidden state
+  referenced as consumer API; or an unexposed one-pin child endpoint;
+- an `AffineMap` with incompatible units, non-finite coefficients, unordered or
+  dimensionally invalid support, a baseline outside support, or a mapped
+  nonphysical child value;
 - a SQUID whose junction parameters are not shared or whose finite loop
   inductance is missing, non-finite, or non-positive;
 - mutual coupling between branches from different Plans, a non-inductive or
@@ -764,10 +914,16 @@ declared branch permits it; negative or non-finite values are not.
 
 - Component factories and sketches on this page are contracts, not an
   installable implementation.
-- The transmission line is a scalar, uniform, fixed-section RLGC ladder.
-- AEDT Q2D import accepts only one native scalar `1 x 1` combined `CG, RL`
-  export and freezes its values at the recorded extraction frequency; it does
-  not verify a solver receipt or create a frequency-dependent line.
+- The transmission line is a uniform, fixed-section general N-conductor RLGC
+  ladder; N=1 uses the same matrix path.
+- AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
+  frequency. It does not verify a solver receipt, interpolate/extrapolate in
+  frequency, or create a broadband line.
+- HB does not accept nonzero off-diagonal series R in this V1 candidate;
+  Direct does.
+- Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
+  has no arbitrary callback, expression tree, or calibration-table
+  interpolation.
 - Symmetric SQUID factories do not expose junction asymmetry or arbitrary
   per-arm parameter injection.
 - Direct JJ/SQUID analysis is limited to the declared zero-phase, zero-bias

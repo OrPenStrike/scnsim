@@ -11,7 +11,7 @@ reviewable V1 UX scaffold, not a permissive partial circuit compiler.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from ._scaffold import unavailable
@@ -35,12 +35,27 @@ class ElectricNodeRef:
     ``CircuitPlan.net()`` returns this authoring handle for both named Public
     nodes and anonymous Internal nodes.  A logical Port may attach only through
     this handle; it cannot create or infer a connection from a component pin.
-    Runtime coordinate selectors use the node's resolved Public identity, not
-    this authoring handle.
+    After Plan seal, the same handle is the preferred Runtime selector for a
+    Public node.  Declared string IDs remain useful at serialization and team
+    facade boundaries; anonymous Internal nodes are not selectable.
     """
 
     def __init__(self) -> None:
         unavailable("ElectricNodeRef construction")
+
+
+class CoordinateRef:
+    """Public handle to one observable coordinate inside a composite.
+
+    A ``CoordinateRef`` may be retained or used by Direct quantity selectors,
+    evaluation, and optimization.  It is not an electrical terminal and cannot
+    be passed to ``CircuitPlan.net()`` or ``CircuitPlan.add_port()``.  A
+    composite author exposes a separate ``PinRef`` when the same internal node
+    must also be externally connected.
+    """
+
+    def __init__(self) -> None:
+        unavailable("CoordinateRef construction")
 
 
 class PortRef:
@@ -70,6 +85,11 @@ class ParameterRef:
     def __init__(self) -> None:
         unavailable("ParameterRef construction")
 
+    def show(self) -> object:
+        """Inspect baseline, unit, mappings, support, fan-out, and identity."""
+
+        unavailable("ParameterRef.show")
+
 
 class InductiveBranchRef:
     """Stable oriented handle to an inductive branch used for mutual coupling."""
@@ -79,14 +99,17 @@ class InductiveBranchRef:
 
 
 class ParameterSpec:
-    """Library declaration of a physical parameter's unit and mutability.
+    """Library declaration of one public physical parameter schema.
 
     ``unit`` is the preferred authoring/display unit from ``scnsim.units``.
     Runtime dimensionality validation will remain authoritative; this class
-    does not introduce a second dimensional type system.
+    does not introduce a second dimensional type system or own optimization
+    bounds.  Every exposed physical ``ParameterRef`` may be rebound through a
+    ``ParameterSet``; an ``OptimizationSpec`` separately chooses active search
+    variables and finite bounds.
     """
 
-    def __init__(self, *, unit: object, variable_capable: bool = False) -> None:
+    def __init__(self, *, unit: object) -> None:
         unavailable("ParameterSpec construction")
 
 
@@ -98,43 +121,123 @@ class ParameterSet:
     Plan or inheriting a reduction lineage from an optimization result.
     """
 
-    def __init__(self, values: Mapping[ParameterRef, object]) -> None:
+    def __init__(
+        self,
+        values: Mapping[ParameterRef, object],
+        *,
+        allow_extrapolation: Sequence[ParameterRef] = (),
+    ) -> None:
         unavailable("ParameterSet construction")
 
+    @property
+    def values(self) -> Mapping[ParameterRef, object]:
+        """Ordered read-only mapping used to create an explicitly new request."""
 
-class ScalarRLGC:
-    """Immutable per-length data for one uniform scalar transmission-line mode.
+        unavailable("ParameterSet.values")
 
-    Construct this value directly from four SCNSim-registry Quantities, or use
-    :func:`scnsim.load_q2d_scalar_rlgc` to read a compatible solver-native
-    AEDT Q2D matrix export.  Line length and pi-section count belong to the
-    component factory, not to this material/cross-section result.
+
+class RLGC:
+    """Immutable per-length matrices for one uniform N-conductor line.
+
+    ``conductors`` fixes the public row/column order and excludes the declared
+    reference conductor.  R/L/G/C are SCNSim-registry Quantity-valued ``N x N``
+    matrices; ``N=1`` is the ordinary one-by-one case.  Each conductor voltage
+    is relative to ``reference_conductor`` and positive series current flows
+    from the line's ``head`` pin to its ``tail`` pin, matching extractor +z.
+    Construct this value directly or use :func:`scnsim.load_q2d_rlgc` for a
+    compatible AEDT Q2D raw CSV.  Line length and pi-section count belong to
+    the component factory.
     """
 
     def __init__(
         self,
         *,
+        conductors: Sequence[str],
+        reference_conductor: str,
         resistance_per_length: object,
         inductance_per_length: object,
         conductance_per_length: object,
         capacitance_per_length: object,
+        extraction_frequency: object | None = None,
     ) -> None:
-        unavailable("ScalarRLGC construction")
+        unavailable("RLGC construction")
+
+    @property
+    def conductors(self) -> tuple[str, ...]:
+        """Ordered non-reference conductor labels shared by every matrix."""
+
+        unavailable("RLGC.conductors")
+
+    @property
+    def reference_conductor(self) -> str:
+        """Declared shunt-reference label excluded from matrix rows/columns."""
+
+        unavailable("RLGC.reference_conductor")
+
+    @property
+    def resistance_per_length(self) -> object:
+        """Quantity-valued symmetric positive-semidefinite series matrix."""
+
+        unavailable("RLGC.resistance_per_length")
+
+    @property
+    def inductance_per_length(self) -> object:
+        """Quantity-valued symmetric positive-definite series matrix."""
+
+        unavailable("RLGC.inductance_per_length")
+
+    @property
+    def conductance_per_length(self) -> object:
+        """Quantity-valued reciprocal Maxwell shunt matrix."""
+
+        unavailable("RLGC.conductance_per_length")
+
+    @property
+    def capacitance_per_length(self) -> object:
+        """Quantity-valued reciprocal Maxwell shunt matrix."""
+
+        unavailable("RLGC.capacitance_per_length")
+
+    @property
+    def extraction_frequency(self) -> object | None:
+        """Frozen source extraction frequency, or ``None`` for manual data."""
+
+        unavailable("RLGC.extraction_frequency")
+
+
+class AffineMap:
+    """Declarative calibrated mapping ``output = slope * input + intercept``.
+
+    ``support`` is the closed evidence range of the input ``ParameterRef``.
+    Mapping evaluation belongs to ParameterSet binding inside the future Julia
+    candidate process; this object is not a Python callback or expression AST.
+    """
+
+    def __init__(
+        self,
+        *,
+        input: ParameterRef,
+        slope: object,
+        intercept: object,
+        support: tuple[object, object],
+    ) -> None:
+        unavailable("AffineMap construction")
 
 
 class ComponentInstance:
     """One immutable component created by an exact ``Library`` factory.
 
     The instance carries its Library/version/schema identity.  Consumers use
-    only ``pin()``, ``parameter()``, and declared inductive branch handles;
-    composite children remain inspection evidence.
+    only deliberately exposed ``pin()``, ``coordinate()``, ``parameter()``,
+    and inductive-branch handles; composite children remain inspection
+    evidence.
     """
 
     def __init__(self) -> None:
         unavailable("ComponentInstance construction")
 
-    def pin(self, name: str) -> PinRef:
-        """Return a declared electrical pin by its public name."""
+    def pin(self, name: str, *, conductor: str | None = None) -> PinRef:
+        """Return one pin; N-trace line pins also require ``conductor``."""
 
         unavailable("ComponentInstance.pin")
 
@@ -147,6 +250,66 @@ class ComponentInstance:
         """Return a declared oriented inductive branch for mutual coupling."""
 
         unavailable("ComponentInstance.inductive_branch")
+
+    def coordinate(self, name: str) -> CoordinateRef:
+        """Return a deliberately exposed internal analysis coordinate."""
+
+        unavailable("ComponentInstance.coordinate")
+
+
+class CompositePlan:
+    """Declarative private construction graph for one reusable composite.
+
+    A custom Library factory declares public parameters with baselines, adds
+    children, composes their pins into internal electric nodes, and explicitly
+    exposes only supported pins and coordinates before ``build()``.  Hidden
+    children, nodes, and parameters remain implementation evidence.  This
+    scaffold declares that authoring boundary but implements none of it.
+    """
+
+    def __init__(self, *, id: str, library: Library) -> None:
+        unavailable("CompositePlan construction")
+
+    def parameter(
+        self,
+        *,
+        id: str,
+        baseline: object,
+        spec: ParameterSpec,
+    ) -> ParameterRef:
+        """Declare one public parameter and its sealed physical baseline."""
+
+        unavailable("CompositePlan.parameter")
+
+    def add(self, component: ComponentInstance) -> ComponentInstance:
+        """Add one child component to this composite construction graph."""
+
+        unavailable("CompositePlan.add")
+
+    def net(self, *pins: PinRef, id: str | None = None) -> ElectricNodeRef:
+        """Create one complete internal equipotential electric node."""
+
+        unavailable("CompositePlan.net")
+
+    def expose_pin(self, *, id: str, at: ElectricNodeRef) -> PinRef:
+        """Expose an internal node as one public external wiring terminal."""
+
+        unavailable("CompositePlan.expose_pin")
+
+    def expose_coordinate(
+        self,
+        *,
+        id: str,
+        at: ElectricNodeRef,
+    ) -> CoordinateRef:
+        """Expose an internal node for retain/evaluate/optimize, not wiring."""
+
+        unavailable("CompositePlan.expose_coordinate")
+
+    def build(self) -> ComponentInstance:
+        """Seal the declaration as one exact-identity composite instance."""
+
+        unavailable("CompositePlan.build")
 
 
 class Library:
@@ -196,10 +359,10 @@ class Library:
         *,
         id: str,
         length: object,
-        rlgc: ScalarRLGC,
+        rlgc: RLGC,
         n_sections: int,
     ) -> ComponentInstance:
-        """Declare a uniform scalar RLGC pi ladder from one typed input."""
+        """Declare a uniform N-conductor RLGC pi ladder from one typed input."""
 
         unavailable("Library.transmission_line")
 

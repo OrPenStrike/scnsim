@@ -20,7 +20,13 @@ from __future__ import annotations
 from os import PathLike
 
 from ._scaffold import unavailable
-from .authoring import CircuitPlan, ParameterSet, PortRef
+from .authoring import (
+    CircuitPlan,
+    CoordinateRef,
+    ElectricNodeRef,
+    ParameterSet,
+    PortRef,
+)
 from .results import (
     CircuitDiagramResult,
     DirectQuantityResult,
@@ -70,8 +76,8 @@ class ReductionPipeline:
 
     def transform_pair(
         self,
-        node_a: str,
-        node_b: str,
+        node_a: str | ElectricNodeRef | CoordinateRef,
+        node_b: str | ElectricNodeRef | CoordinateRef,
         *,
         id: str,
     ) -> ReductionPipeline:
@@ -79,7 +85,10 @@ class ReductionPipeline:
 
         unavailable("ReductionPipeline.transform_pair")
 
-    def retain(self, *coordinates: str) -> ReductionPipeline:
+    def retain(
+        self,
+        *coordinates: str | ElectricNodeRef | CoordinateRef,
+    ) -> ReductionPipeline:
         """Retain ordered node coordinates; eliminate the complement at I=0."""
 
         unavailable("ReductionPipeline.retain")

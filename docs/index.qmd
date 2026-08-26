@@ -30,6 +30,13 @@ conversation sketch:
    repeating components, electric nodes, reference, logical Ports, objective
    wiring, or optimizer controls.
 
+For the complete optimization-oriented path, continue with the public
+[IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
+and [IPF model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb).
+They connect general N-trace RLGC, a declarative Composite, typed internal
+coordinates, a model-owned five-variable default recipe, immutable consumer
+override, winner Direct response, pump-off HB, reporting, and exact resolve.
+
 Use `help(CircuitPlan)`, `help(CircuitRun)`, or `help(DirectSolveSpec)` to inspect
 the same candidate vocabulary from Python. Every executable surface fails
 explicitly while the package remains a scaffold.
@@ -43,7 +50,8 @@ authority without duplicating reusable physics. For Human review:
 1. start with [one Library model](component-authoring.qmd#one-library-model)
    and [electrical topology and logical Ports](component-authoring.qmd#electrical-topology-and-logical-ports);
 2. review the [built-in leaves](component-authoring.qmd#built-in-leaves),
-   [general composites](component-authoring.qmd#general-composites), and
+   [general N-conductor RLGC](component-authoring.qmd#general-rlgc),
+   [declarative composites](component-authoring.qmd#declarative-composites), and
    [six resonator factories](component-authoring.qmd#six-resonator-factories);
 3. inspect the [finite-loop SQUID flux-pump example](component-authoring.qmd#finite-loop-squid-flux-pump-example)
    and its [Direct/HB realization](component-authoring.qmd#direct-and-hb-realization);
