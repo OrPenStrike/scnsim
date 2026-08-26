@@ -174,7 +174,7 @@ direct = run.solve(feedline, direct_spec)
 
 readout_root = DiagonalRootSpec(
     coordinate="readout",
-    anchor=6.2 * u.GHz,
+    root_hint=6.0 * u.GHz,
 )
 readout = run.evaluate(feedline, readout_root)
 
@@ -245,6 +245,11 @@ hb = run.solve(
 hb.show(magnitude="linear")
 hb.cases["dc_pump"].s.show(magnitude="db")
 ```
+
+`root_hint` is a required model-author input that identifies the baseline
+simple-root branch. It is not the returned frequency or the optimization
+target; a reusable team model declares it once so downstream consumers do not
+repeat it.
 
 Port-Termination Compensation (PTC) is one explicit shared topology step.
 `transform_ports()` is an independent shared view step that resolves automatic

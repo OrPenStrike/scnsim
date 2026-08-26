@@ -11,6 +11,10 @@ grounded readout-resonator model:
   model façade, supplying only a Design Target and workspace, then viewing the
   optimization and report.
 
+The model façade owns the required `DiagonalRootSpec.root_hint` once. The
+consumer's requested target remains a separate input and is never reused as a
+root locator.
+
 The notebooks have no outputs and are intentionally non-executable at this
 `CONVERGING` scaffold checkpoint.  The `scnsim` package imports for API and
 docstring review, but every construction or operation fails explicitly until

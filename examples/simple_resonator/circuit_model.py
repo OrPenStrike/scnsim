@@ -83,13 +83,13 @@ def _optimization_request(
     target: ReadoutTarget,
     workspace: str | PathLike[str],
 ) -> tuple[CircuitRun, NetworkViewRef, OptimizationSpec]:
-    """Reconstruct one exact team-owned Ref and optimization request."""
+    """Reconstruct the exact Ref, model-owned root hint, and optimization."""
 
     plan, capacitance = _build_model()
     run = CircuitRun(plan=plan, workspace=workspace)
     readout_root = DiagonalRootSpec(
         coordinate="readout_node",
-        anchor=target.frequency,
+        root_hint=6.0 * u.GHz,
     )
     spec = OptimizationSpec(
         variables=(

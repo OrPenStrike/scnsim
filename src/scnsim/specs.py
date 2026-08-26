@@ -37,16 +37,22 @@ class DirectSolveSpec:
 
 
 class DiagonalRootSpec:
-    """Select one anchored root of a named Direct-operator diagonal.
+    """Select one simple root of a named Direct-operator diagonal.
 
     This is the local or "bare-coordinate" resonance associated with one
     selected-view coordinate, not necessarily a hybridized pole of the full
-    coupled network.  ``anchor`` selects the intended branch.  The Spec exposes
-    quantity selectors such as ``frequency`` and ``linewidth`` for reuse in an
-    ``OptimizationSpec``; accessing a selector does not run a solver.
+    coupled network.  Required ``root_hint`` locates the intended simple root
+    at the sealed baseline ParameterSet; it is not the returned root, an
+    optimization target, a constraint, or a search window.  Non-baseline
+    evaluations preserve that baseline branch by deterministic continuation
+    rather than selecting the root nearest the hint again.
+
+    The Spec exposes quantity selectors such as ``frequency`` and ``linewidth``
+    for reuse in an ``OptimizationSpec``; accessing a selector does not run a
+    solver.
     """
 
-    def __init__(self, *, coordinate: str, anchor: object) -> None:
+    def __init__(self, *, coordinate: str, root_hint: object) -> None:
         unavailable("DiagonalRootSpec construction")
 
     @property
