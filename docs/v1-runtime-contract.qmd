@@ -236,9 +236,45 @@ Pipeline step labels are evidence labels, not a second API such as
 
 ## Run operations and durable results
 
-### One execution owner
+### One execution owner {#solve-versus-evaluate}
 
-The Run performs every operation:
+The Run performs every terminal operation, but `solve()` and `evaluate()` have
+different user-visible jobs:
+
+| Question | Call | Compatible Spec family | Result |
+|---|---|---|---|
+| What is the selected-view S/Y/Z response over a grid? | `run.solve(ref, spec)` | `DirectSolveSpec` | Direct response matrices and named traces |
+| What are the named HB case responses? | `run.solve(ref, spec)` | `HBSolveSpec` | `HBBatchResult` with S/Y/Z per case |
+| What is one Direct root, pole, zero, coupling, or response scalar? | `run.evaluate(ref, spec)` | Typed Direct quantity Spec | Typed quantity Result |
+| What is the complete Direct dynamic operator? | `run.evaluate(ref, spec)` | `OperatorSpec` | `OperatorResult` |
+| Which parameters minimize declared typed quantity objectives? | `run.optimize(ref, spec)` | `OptimizationSpec` | `OptimizationResult` |
+
+The `SolveSpec` suffix means “produce a response surface.” A
+`DirectSolveSpec` solves the complete selected-view N-port response over its
+declared grid. It does not guess S21: a one-port view yields S11, a two-port
+view yields the complete 2-by-2 response, and an N-port view yields the
+complete N-by-N response. Named `SParameterTrace` objects are typed projections
+of that same result and never launch another solve.
+`SolveSpec` is only the category name used by this contract; V1 does not add an
+abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
+`HBSolveSpec` directly.
+
+A Direct quantity Spec instead asks `evaluate()` for one defined physical
+quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
+example, finds an anchored root of one named operator diagonal and returns its
+root, frequency, linewidth, and slope evidence. `ResponseElementSpec` may
+evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
+does not imply a frequency-grid response. `OperatorSpec` is the deliberate
+exception that materializes the complete labeled Direct operator.
+
+These combinations fail closed before execution:
+
+```python
+run.solve(feedline, DiagonalRootSpec(...))
+run.evaluate(feedline, DirectSolveSpec(...))
+```
+
+The valid operations remain independent exact requests:
 
 ```python
 direct = run.solve(feedline, DirectSolveSpec(...))
@@ -252,6 +288,53 @@ exact request identity, materialize missing dependencies in order, write
 sealed request/receipt/artifact evidence, and return the corresponding typed
 Result. They do not mutate the Plan or Ref and do not save a result as mutable
 state on the Run.
+
+Presentation is never another action:
+
+```python
+direct.s.show(magnitude="db")
+direct.traces["transmission"].show(magnitude="db")
+readout.show()
+```
+
+These calls read the typed Results already returned above. They do not solve,
+recompute, interpolate, or select a latest request.
+
+### Use response and quantity Results together
+
+One Notebook may legitimately need both the response surface and a physical
+quantity. It declares two Specs and executes two explicit requests against the
+same sealed Run and Ref:
+
+```python
+reflection_trace = SParameterTrace(
+    id="reflection",
+    input_port="signal_in",
+    input_mode=(),
+    output_port="signal_in",
+    output_mode=(),
+)
+direct_spec = DirectSolveSpec(
+    frequencies=frequency_grid,
+    traces=(reflection_trace,),
+)
+root_spec = DiagonalRootSpec(
+    coordinate="readout_node",
+    anchor=6.2 * u.GHz,
+)
+
+direct = run.solve(view, direct_spec)
+root = run.evaluate(view, root_spec)
+
+report = run.build_report(
+    ReportSpec(inputs=(direct, root))
+)
+```
+
+The two requests may reuse exact sealed compile/dependency evidence, but there
+is no hidden current Result and neither request changes the meaning of the
+other. The Report records both exact input identities rather than deriving the
+root from a plotted S minimum or pretending the diagonal root is S21.
 
 If the same exact request already has a complete verified success receipt, the
 operation reuses it without recomputing or overwriting it. A genuinely new

@@ -69,6 +69,30 @@ The persistent examples show both views of the same model:
   provides a target, then calls optimization/report functions without
   restating topology.
 
+The tracked `.ipynb` files are the one Notebook source: open them locally in
+VS Code to execute cell by cell, read the same files directly on GitHub, or
+render them as site pages with Quarto. SCNSim does not maintain a second copied
+Notebook authority.
+
+## Choose the operation before the Spec
+
+The method name states the kind of work; the Spec makes that request exact:
+
+| Goal | Terminal call | Spec family | Returned surface |
+|---|---|---|---|
+| Inspect S/Y/Z over a frequency grid | `run.solve(view, spec)` | `DirectSolveSpec` | Complete selected-view matrices and named traces |
+| Inspect HB S/Y/Z for named operating cases | `run.solve(view, spec)` | `HBSolveSpec` | One `HBBatchResult` indexed by case ID |
+| Obtain one Direct physical quantity | `run.evaluate(view, spec)` | `DiagonalRootSpec`, `HybridizedPoleSpec`, `TransferZeroSpec`, `ResidueNormalizedCouplingSpec`, or `ResponseElementSpec` | One typed quantity Result without an unrelated response sweep |
+| Materialize the Direct operator | `run.evaluate(view, spec)` | `OperatorSpec` | Labeled operator Result |
+| Search over typed quantities | `run.optimize(view, spec)` | `OptimizationSpec` | Optimization Result and reusable best `ParameterSet` |
+
+`SolveSpec` therefore means “produce a response surface.” Other evaluation
+Specs select a physical quantity or operator. `result.show()` only presents an
+existing Result; it never solves again. Passing an evaluation Spec to
+`solve()`, or a SolveSpec to `evaluate()`, fails closed.
+`SolveSpec` is a prose category, not another public class to construct; the V1
+classes in that category are `DirectSolveSpec` and `HBSolveSpec`.
+
 ## Candidate Notebook UX
 
 The proposed UX first builds one named physical Plan from an exact immutable

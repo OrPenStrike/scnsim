@@ -55,7 +55,8 @@ authority without duplicating reusable physics. For Human review:
    nonzero-drive PTC authorization;
 6. review [Direct matrices and physical quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities)
    and [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling)
-   for parallel S/Y/Z API surfaces, typed quantity selectors, automatic relative
+   for the explicit [`solve()` versus `evaluate()` boundary](v1-runtime-contract.qmd#solve-versus-evaluate),
+   parallel S/Y/Z API surfaces, typed quantity selectors, automatic relative
    residuals, and one-process Julia candidate evaluation;
 7. review [HB drives, cases, and mixing](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
    and [HB display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
