@@ -1,0 +1,143 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-docs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+        with:
+          version: "1.9.38"
+
+      - name: Sync the locked project
+        run: |
+          uv lock --check
+          uv sync --locked
+
+      - name: Verify package version contract
+        env:
+          TARGET_LINE: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          case "$TARGET_LINE" in
+            develop|main) line="$TARGET_LINE" ;;
+            *) line=any ;;
+          esac
+          uv run --locked python scripts/check_version.py --line "$line"
+
+      - name: Verify the fail-fast scaffold
+        run: |
+          uv run --locked python - <<'PY'
+          import inspect
+          from importlib.metadata import version
+
+          import scnsim
+          from scnsim import CircuitPlan, ScaffoldUnavailableError
+
+          assert scnsim.__version__ == version("scnsim")
+          assert inspect.signature(CircuitPlan).parameters["id"].kind.name == "KEYWORD_ONLY"
+          assert inspect.getdoc(CircuitPlan)
+          try:
+              CircuitPlan(id="ci-probe")
+          except ScaffoldUnavailableError:
+              pass
+          else:
+              raise SystemExit("CircuitPlan must remain fail-fast in the scaffold")
+          print(scnsim.__version__)
+          PY
+
+      - name: Build and inspect the wheel
+        run: |
+          uv build --no-sources
+          uv run --locked python - <<'PY'
+          import glob
+          import zipfile
+
+          wheels = glob.glob("dist/*.whl")
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              names = wheel.namelist()
+          assert "scnsim/py.typed" in names
+          assert any(name.endswith("/licenses/LICENSE") for name in names)
+          assert any(name.endswith("/licenses/NOTICE") for name in names)
+          PY
+          uv venv --clear --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          .venv-wheel/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          import scnsim
+
+          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev2"
+          print(scnsim.__version__)
+          PY
+
+      - name: Verify Notebook hygiene
+        run: |
+          uv run --locked python - <<'PY'
+          import json
+          from pathlib import Path
+
+          notebooks = sorted(Path("examples").rglob("*.ipynb"))
+          assert len(notebooks) == 4, notebooks
+          for path in notebooks:
+              notebook = json.loads(path.read_text(encoding="utf-8"))
+              ids = [cell.get("id") for cell in notebook["cells"]]
+              assert all(ids), f"missing cell id: {path}"
+              assert len(ids) == len(set(ids)), f"duplicate cell id: {path}"
+              for cell in notebook["cells"]:
+                  assert not cell.get("attachments"), f"attachment: {path}"
+                  if cell["cell_type"] == "code":
+                      assert cell.get("execution_count") is None, f"executed cell: {path}"
+                      assert cell.get("outputs") == [], f"output cell: {path}"
+                      compile("".join(cell["source"]), str(path), "exec")
+          print("verified", len(notebooks), "notebooks")
+          PY
+
+      - name: Render and inspect documentation
+        run: |
+          quarto render
+          uv run --locked python - <<'PY'
+          import re
+          from pathlib import Path
+
+          for source in (Path("README.md"), Path("docs/index.qmd")):
+              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", source.read_text()):
+                  if "://" in target or target.startswith(("#", "mailto:")):
+                      continue
+                  path = (source.parent / target.split("#", 1)[0]).resolve()
+                  assert path.exists(), f"broken local link in {source}: {target}"
+          PY
+          if git ls-files | grep -Eq '(^|/)(_site|\.quarto|\.venv[^/]*|build|dist)(/|$)|\.quarto_ipynb$'; then
+            echo "generated output is tracked"
+            exit 1
+          fi
+          git diff --check

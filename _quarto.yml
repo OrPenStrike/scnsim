@@ -13,28 +13,70 @@ project:
 
 website:
   title: "SCNSim"
+  description: "Superconducting Circuit Network Simulation"
+  page-navigation: true
+  reader-mode: true
+  search: true
+  repo-url: "https://github.com/OrPenStrike/scnsim"
+  repo-actions: [source, issue]
   navbar:
     left:
       - text: "Overview"
         href: README.md
-      - text: "Review Map"
-        href: docs/index.qmd
-      - text: "Component Authoring"
+      - text: "Concepts"
         href: docs/component-authoring.qmd
-      - text: "V1 Runtime Contract"
-        href: docs/v1-runtime-contract.qmd
       - text: "Examples"
-        menu:
-          - text: "Model author"
-            href: examples/simple_resonator/01_model_author.ipynb
-          - text: "Model user"
-            href: examples/simple_resonator/02_model_user.ipynb
-          - text: "IPF model author"
-            href: examples/ipf_optimization/01_model_author.ipynb
-          - text: "IPF model user"
-            href: examples/ipf_optimization/02_model_user.ipynb
+        href: examples/simple_resonator/01_model_author.ipynb
+  sidebar:
+    - id: overview
+      title: "Overview"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Repository overview"
+          href: README.md
+        - text: "Documentation map"
+          href: docs/index.qmd
+    - id: concepts
+      title: "Concepts"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Component Authoring"
+          href: docs/component-authoring.qmd
+        - text: "V1 Runtime Contract"
+          href: docs/v1-runtime-contract.qmd
+    - id: examples
+      title: "Examples"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - section: "Simple resonator"
+          contents:
+            - text: "Model author"
+              href: examples/simple_resonator/01_model_author.ipynb
+            - text: "Model user"
+              href: examples/simple_resonator/02_model_user.ipynb
+        - section: "IPF optimization"
+          contents:
+            - text: "Model author"
+              href: examples/ipf_optimization/01_model_author.ipynb
+            - text: "Model user"
+              href: examples/ipf_optimization/02_model_user.ipynb
 
 format:
   html:
-    theme: cosmo
+    theme:
+      light: [cosmo, docs/theme-light.scss]
+      dark: [cosmo, docs/theme-dark.scss]
+    css: docs/styles.css
+    html-math-method: mathjax
+    respect-user-color-scheme: true
     toc: true
+    page-layout: article
+    grid:
+      sidebar-width: 260px
+      body-width: 960px
+      margin-width: 240px
+      gutter-width: 2.5rem
+    code-copy: true

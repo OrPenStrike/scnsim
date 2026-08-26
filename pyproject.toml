@@ -1,3 +1,28 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "scnsim"
+version = "1.0.0.dev2"
+description = "Superconducting Circuit Network Simulation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/OrPenStrike/scnsim"
+Documentation = "https://github.com/OrPenStrike/scnsim/blob/develop/docs/index.qmd"
+Issues = "https://github.com/OrPenStrike/scnsim/issues"
+Repository = "https://github.com/OrPenStrike/scnsim"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scnsim = ["py.typed"]

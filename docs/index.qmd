@@ -1,97 +1,90 @@
 ---
-title: "SCNSim"
-subtitle: "Superconducting Circuit Network Simulation"
+title: "SCNSim Documentation"
+description: "Notebook-first documentation for superconducting circuit network simulation."
 ---
 
-SCNSim is being designed as a public Python package for auditable
-superconducting-circuit network compilation, reduction, Direct/HB simulation,
-optimization, and reporting.
+SCNSim documents one public product boundary: a reusable Python package for
+circuit-network authoring, compilation, reduction, Direct/HB analysis,
+optimization, typed results, and receipt-backed reporting.
 
 ::: {.callout-warning}
 ## Candidate semantics
 
-The product, component-authoring, Runtime, Units, reduction, and failure semantics are `CONVERGING`.
-The Python package is an installable fail-fast API/docstring scaffold. No
-compiler, solver, unit registry, workspace, or report behavior is yet accepted,
-stabilized, implemented, or released.
+The product and Runtime contracts remain `CONVERGING`. The installable package
+is a fail-fast API/docstring scaffold; compiler, solver, unit-registry,
+workspace, and report behavior are not yet implemented, accepted, stabilized,
+or released.
 :::
 
-## Begin with the two user journeys
+## Choose your path
 
-The same simple resonator is preserved as two notebooks rather than only as a
-conversation sketch:
+::: {.grid}
+::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
+### Use an existing circuit model
 
-1. the [model-author Notebook](../examples/simple_resonator/01_model_author.ipynb)
-   starts at `CircuitPlan` and makes components, topology, Run, Specs, and
-   exact report inputs visible;
-2. the [model-user Notebook](../examples/simple_resonator/02_model_user.ipynb)
-   supplies a Design Target to a thin team-owned
-   [model façade](../examples/simple_resonator/circuit_model.py), without
-   repeating components, electric nodes, reference, logical Ports, objective
-   wiring, or optimizer controls.
+Start with the [simple model-user Notebook](../examples/simple_resonator/02_model_user.ipynb).
+It shows how a notebook consumer supplies a target and workspace without
+repeating topology, Ports, objectives, or optimizer controls.
+:::
 
-For the complete optimization-oriented path, continue with the public
-[IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
-and [IPF model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb).
-They connect general N-trace RLGC, a declarative Composite, typed internal
-coordinates, a model-owned five-variable default recipe, immutable consumer
-override, winner Direct response, pump-off HB, reporting, and exact resolve.
+::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
+### Develop a reusable model
 
-Use `help(CircuitPlan)`, `help(CircuitRun)`, or `help(DirectSolveSpec)` to inspect
-the same candidate vocabulary from Python. Every executable surface fails
-explicitly while the package remains a scaffold.
+Start with the [simple model-author Notebook](../examples/simple_resonator/01_model_author.ipynb),
+then read [Component Authoring](component-authoring.qmd). This path owns the
+Plan, components, electric nodes, logical Ports, reusable Specs, and team façade.
+:::
 
-## Review map
+::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
+### Review Runtime behavior
 
-The [SCNSim V1 Component Authoring](component-authoring.qmd) and
-[V1 Runtime Contract](v1-runtime-contract.qmd) pages divide the current product
-authority without duplicating reusable physics. For Human review:
+Read the [V1 Runtime Contract](v1-runtime-contract.qmd) for the exact
+Plan/Ref/Run/Spec/Result boundary, Direct and HB response surfaces, physical
+quantity evaluation, optimization, resolution, receipts, and failures.
+:::
 
-1. start with [one Library model](component-authoring.qmd#one-library-model)
-   and [electrical topology and logical Ports](component-authoring.qmd#electrical-topology-and-logical-ports);
-2. review the [built-in leaves](component-authoring.qmd#built-in-leaves),
-   [general N-conductor RLGC](component-authoring.qmd#general-rlgc),
-   [declarative composites](component-authoring.qmd#declarative-composites), and
-   [six resonator factories](component-authoring.qmd#six-resonator-factories);
-3. inspect the [finite-loop SQUID flux-pump example](component-authoring.qmd#finite-loop-squid-flux-pump-example)
-   and its [Direct/HB realization](component-authoring.qmd#direct-and-hb-realization);
-4. continue with the Runtime [review map](v1-runtime-contract.qmd#review-map)
-   and [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
-   for the lazy `NetworkViewRef` graph;
-5. review [shared topology and unified node views](v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
-   for selective Port-Termination Compensation (PTC), automatic paired-node
-   coordinates, retained node views, Port-realizability, Direct/HB lowering, and
-   nonzero-drive PTC authorization;
-6. review [Direct matrices and physical quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities)
-   and [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling)
-   for the explicit [`solve()` versus `evaluate()` boundary](v1-runtime-contract.qmd#solve-versus-evaluate),
-   parallel S/Y/Z API surfaces, typed quantity selectors, automatic relative
-   residuals, and one-process Julia candidate evaluation;
-7. review [HB drives, cases, and mixing](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
-   and [HB display](v1-runtime-contract.qmd#hb-cases-traces-and-display)
-   for DC/AC superposition, multiple named conditions, 3WM/4WM selection,
-   exact case lookup, and matrix presentation; and
-8. decide the two [open Human decisions](v1-runtime-contract.qmd#open-human-decisions)
-   before implementation freezes their behavior.
+::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
+### Review a complete optimization workflow
 
-The current [floating-qubit Ref-graph example](v1-runtime-contract.qmd#floating-qubit-ref-graph)
-shows two-probe PTC, automatic common/differential coordinates, and a
-probe-free feedline view without treating any of those operations as a second
-circuit authority.
+Use the [IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
+and [model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb) to
+trace general N-trace RLGC through a reusable Composite, five-variable Direct
+optimization, winner reuse, pump-off HB, reporting, and exact resolution.
+:::
+:::
 
-SCNSim keeps product/runtime behavior here and links outward for authoritative
-circuit physics, consumer Design Targets, and private application evidence.
-The shortest reusable physics path is
-[floating-pair coordinates](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting)
-→ [zero-current Schur reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices)
-→ [matrix-reference power waves](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+## How the documentation is divided
 
-For evaluation and search semantics, continue with the canonical
-[normalized weighted objective](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/auditable-scientific-optimization.qmd#normalized-weighted-objective)
-and
-[HB source superposition and generated mixing](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#source-superposition-and-generated-mixing).
+| Surface | Owns |
+| --- | --- |
+| [Component Authoring](component-authoring.qmd) | Library identity, component catalog, pins, electric nodes, logical Ports, parameters, RLGC, composites, and backend realization |
+| [V1 Runtime Contract](v1-runtime-contract.qmd) | Execution, views, Specs, Direct/HB, evaluation, optimization, typed Results, receipts, and failure behavior |
+| Model-author Notebooks | Complete reusable-model construction and packaging narratives |
+| Model-user Notebooks | Short consumer workflows over a team-owned façade |
+| [SCQ Design Kit Knowledge](https://github.com/arfiligol/SCQ_Design/tree/main/docs/knowledge) | Canonical reusable physics, mathematics, engineering meaning, and numerical-method derivations |
 
-For component physics, use
-[Josephson element models](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#josephson-model-contracts)
-→ [finite-loop SQUIDs](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid)
-→ [signed inductive coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
+The product pages link to Knowledge rather than copying its formulas. The
+Notebooks call the proposed public API rather than creating a second Runtime
+contract.
+
+## Suggested review order
+
+1. Review the [component model](component-authoring.qmd#one-library-model),
+   [electrical topology](component-authoring.qmd#electrical-topology-and-logical-ports),
+   [general RLGC](component-authoring.qmd#general-rlgc), and
+   [declarative composites](component-authoring.qmd#declarative-composites).
+2. Continue with the Runtime [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
+   and [`solve()` versus `evaluate()`](v1-runtime-contract.qmd#solve-versus-evaluate).
+3. Review [unified node views](v1-runtime-contract.qmd#shared-topology-and-unified-node-views),
+   [Direct quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities),
+   [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling),
+   and [HB drives/cases/mixing](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing).
+4. Finish with the Runtime's [open Human decisions](v1-runtime-contract.qmd#open-human-decisions).
+
+::: {.callout-important}
+## Human acceptance remains explicit
+
+Package import, CI, Quarto rendering, and review can reject malformed candidate
+bytes. They cannot accept SCNSim semantics or promote this development package
+to a stable product line.
+:::

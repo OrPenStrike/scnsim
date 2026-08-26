@@ -1,0 +1,14 @@
+SCNSim
+Copyright 2026 OrPenStrike and contributors.
+
+This project is licensed under the Apache License, Version 2.0. A copy of the
+license is included in the LICENSE file in this repository.
+
+SCNSim is designed to interoperate with JosephsonCircuits.jl as an independent
+backend. JosephsonCircuits.jl is Copyright (c) 2022 Kevin O'Brien and is
+licensed separately under the MIT License:
+https://github.com/kpobrien/JosephsonCircuits.jl/blob/master/LICENSE.md
+
+SCNSim does not currently bundle or relicense JosephsonCircuits.jl source. Any
+future distribution that vendors or adapts upstream source must preserve and
+ship the applicable upstream license and attribution notices.

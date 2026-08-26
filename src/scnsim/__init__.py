@@ -10,6 +10,8 @@ with :class:`CircuitRun` plus a model package supplied by your team if you only
 consume an existing model.
 """
 
+from importlib.metadata import version as metadata_version
+
 from . import units
 from ._scaffold import ScaffoldUnavailableError
 from .authoring import (
@@ -77,7 +79,7 @@ from .specs import (
     TransferZeroSpec,
 )
 
-__version__ = "1.0.0.dev1"
+__version__ = metadata_version("scnsim")
 
 __all__ = [
     "AffineMap",
