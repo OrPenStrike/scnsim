@@ -1,9 +1,9 @@
 """Public circuit-model authoring declarations.
 
 This module is for the person who owns a reusable circuit model.  It declares
-components, named electrical topology, ports, parameters, and inductive
-couplings in one :class:`CircuitPlan`.  Solver requests and results belong to
-``scnsim.runtime`` instead.
+components, public or internal electrical nodes, logical Port components,
+parameters, and inductive couplings in one :class:`CircuitPlan`.  Solver
+requests and results belong to ``scnsim.runtime`` instead.
 
 All call bodies fail intentionally.  The classes and signatures are the
 reviewable V1 UX scaffold, not a permissive partial circuit compiler.
@@ -20,13 +20,42 @@ from ._scaffold import unavailable
 class PinRef:
     """Stable reference to one named electrical terminal of a component.
 
-    A ``PinRef`` is used only while assigning component terminals to a named
-    Plan net or to the Plan's single node-flux reference.  It is not a port,
-    node voltage, or solver result.
+    A ``PinRef`` is used only while assigning component terminals to one Plan
+    electric node or to the Plan's single node-flux reference.  It is not a
+    port, node voltage, or solver result.
     """
 
     def __init__(self) -> None:
         unavailable("PinRef construction")
+
+
+class ElectricNodeRef:
+    """Plan-bound handle to one declared equipotential electric node.
+
+    ``CircuitPlan.net()`` returns this authoring handle for both named Public
+    nodes and anonymous Internal nodes.  A logical Port may attach only through
+    this handle; it cannot create or infer a connection from a component pin.
+    Runtime coordinate selectors use the node's resolved Public identity, not
+    this authoring handle.
+    """
+
+    def __init__(self) -> None:
+        unavailable("ElectricNodeRef construction")
+
+
+class PortRef:
+    """Plan-bound handle to one logical Port component.
+
+    A Port owns its electric-node attachment, canonical node-to-reference
+    voltage/current direction, role, reference impedance, load, and
+    backend-lowering identity.  Direct lowers the Port through a node selector
+    and reference admittance; HB lowers the same Port to the exact
+    JosephsonCircuits ``P`` and ``R_port`` rows.  Case-specific drive current is
+    not stored here.
+    """
+
+    def __init__(self) -> None:
+        unavailable("PortRef construction")
 
 
 class ParameterRef:
@@ -281,10 +310,11 @@ class CircuitPlan:
     """The single physical authority for one reusable circuit model.
 
     A model developer adds exact Library components, assigns every electrical
-    pin to a named net or the one reference, declares external ports, and
-    records mutual couplings here.  ``CircuitPlan`` owns no solver, reduction,
-    optimization, workspace, or result state.  A :class:`CircuitRun` later
-    seals the completed Plan for execution.
+    pin to one Public or Internal electric node or the one reference, declares
+    logical Port components on those nodes, and records mutual couplings here.
+    ``CircuitPlan`` owns no solver, reduction, optimization, workspace, or
+    result state.  A :class:`CircuitRun` later seals the completed Plan for
+    execution.
     """
 
     def __init__(self, *, id: str) -> None:
@@ -295,8 +325,14 @@ class CircuitPlan:
 
         unavailable("CircuitPlan.add")
 
-    def net(self, id: str, *pins: PinRef) -> None:
-        """Create one named electrical node and assign all supplied pins once."""
+    def net(self, *pins: PinRef, id: str | None = None) -> ElectricNodeRef:
+        """Create one complete electric node and return its Plan-bound handle.
+
+        ``id`` creates a Public node coordinate.  Omitting it creates an
+        anonymous Internal node with deterministic endpoint-derived identity;
+        attaching a Port may later promote that node under the Port ID.  This
+        call never incrementally merges a previously declared node.
+        """
 
         unavailable("CircuitPlan.net")
 
@@ -309,11 +345,17 @@ class CircuitPlan:
         self,
         *,
         id: str,
-        at: str,
+        at: ElectricNodeRef,
         role: Literal["terminated", "nonloading_probe"],
         reference_impedance: object,
-    ) -> None:
-        """Attach an explicit external boundary to an existing named net."""
+    ) -> PortRef:
+        """Add one logical Port component to an existing electric node.
+
+        The Port owns the external boundary and load identity.  It does not
+        create topology or store a request-specific DC/AC drive.  An anonymous
+        node is promoted to a Public coordinate using this Port ID; a named
+        node keeps its existing coordinate identity.
+        """
 
         unavailable("CircuitPlan.add_port")
 

@@ -20,7 +20,7 @@ from __future__ import annotations
 from os import PathLike
 
 from ._scaffold import unavailable
-from .authoring import CircuitPlan, ParameterSet
+from .authoring import CircuitPlan, ParameterSet, PortRef
 from .results import (
     CircuitDiagramResult,
     DirectQuantityResult,
@@ -52,34 +52,37 @@ class ReductionPipeline:
     """Declarative ordered steps used to derive a lazy ``NetworkViewRef``.
 
     ``ptc()`` changes effective analysis topology by compensating evidenced
-    nonloading-probe shunts.  ``transform_ports()`` changes power-conjugate
-    coordinates.  ``ports()`` retains an ordered N-port zero-current boundary.
-    Declaring steps never compiles, solves, or writes a receipt.
+    nonloading-probe Port loads.  ``transform_pair()`` changes one ordered pair
+    of power-conjugate node coordinates.  ``retain()`` selects an ordered node
+    view and eliminates its complement at zero external injection.  The same
+    lineage is backend-neutral; a terminal operation checks whether its
+    selected coordinates are realizable by Direct or HB.  Declaring steps
+    never compiles, solves, or writes a receipt.
     """
 
     def __init__(self) -> None:
         unavailable("ReductionPipeline construction")
 
-    def ptc(self, *ports: str) -> ReductionPipeline:
+    def ptc(self, *ports: PortRef) -> ReductionPipeline:
         """Compensate one or more evidenced ``nonloading_probe`` port shunts."""
 
         unavailable("ReductionPipeline.ptc")
 
-    def transform_ports(
+    def transform_pair(
         self,
-        port_a: str,
-        port_b: str,
+        node_a: str,
+        node_b: str,
         *,
         id: str,
     ) -> ReductionPipeline:
-        """Create automatic common/differential coordinates for a floating pair."""
+        """Create automatic common/differential coordinates for one node pair."""
 
-        unavailable("ReductionPipeline.transform_ports")
+        unavailable("ReductionPipeline.transform_pair")
 
-    def ports(self, *coordinates: str) -> ReductionPipeline:
-        """Retain an ordered non-empty N-port view; eliminate others at I=0."""
+    def retain(self, *coordinates: str) -> ReductionPipeline:
+        """Retain ordered node coordinates; eliminate the complement at I=0."""
 
-        unavailable("ReductionPipeline.ports")
+        unavailable("ReductionPipeline.retain")
 
 
 class NetworkViewRef:
@@ -130,7 +133,7 @@ class CircuitRun:
         *,
         parameters: ParameterSet | None = None,
     ) -> DirectSolveResult | HBBatchResult:
-        """Execute or exactly reuse one sealed Direct or HB solve request."""
+        """Execute or reuse one sealed solve on a Port-realizable selected view."""
 
         unavailable("CircuitRun.solve")
 

@@ -14,4 +14,6 @@ from ._scaffold import unavailable
 def __getattr__(name: str) -> object:
     """Reject unit access until the shared Pint registry is implemented."""
 
+    if name.startswith("__"):
+        raise AttributeError(name)
     unavailable(f"scnsim.units.{name}")

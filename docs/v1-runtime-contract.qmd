@@ -42,11 +42,11 @@ accepted yet:
 
 | Review question | Detailed section |
 |---|---|
-| How are Libraries, components, nets, references, ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
+| How are Libraries, components, electric nodes, references, logical Ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
-| Which reductions change effective topology, and which only select a mathematical view? | [Shared topology and solver-specific views](#shared-topology-and-solver-specific-views) |
+| How do PTC, paired-node transforms, and retained node views stay common to Direct and HB? | [Shared topology and unified node views](#shared-topology-and-unified-node-views) |
 | How are Direct matrices and typed physical quantities exposed? | [Direct matrices and physical quantities](#direct-matrices-and-physical-quantities) |
 | How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
 | How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
@@ -94,7 +94,7 @@ exact public handoff with its Git provenance.
 
 | Object | Owns | Does not own |
 |---|---|---|
-| `CircuitPlan` | Components, parameters, connections, ports, and library identities | Execution state or results |
+| `CircuitPlan` | Components, parameters, electric nodes, logical Ports, reference, and library identities | Execution state or results |
 | `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
 | typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
@@ -106,7 +106,7 @@ The public SCNSim vocabulary serves two different layers:
 | Layer | Primary objects | Repeated work it should avoid |
 |---|---|---|
 | Circuit-model development | `Library`, `CircuitPlan`, `NetworkViewRef`, quantity and solve Specs | Re-deriving physical topology or analysis semantics in every Notebook |
-| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, nets, reference, ports, objective selectors, weights, and optimizer controls |
+| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, electric nodes, reference, logical Ports, objective selectors, weights, and optimizer controls |
 
 The façade is ordinary consumer-package code, not a second SCNSim registry or
 physical authority. It reconstructs the exact Plan/Ref/Spec request, so a
@@ -132,7 +132,8 @@ from the Plan, not a second circuit.
 
 The [V1 Component Authoring contract](component-authoring.qmd) is the single
 product authority for immutable built-in/custom Libraries, component factories,
-pins, public parameters, named nets, the one node-flux reference, ports, and
+pins, public/anonymous electric nodes, the one node-flux reference, logical
+Ports, and
 inductive coupling. The shortest authoring route is:
 
 ```python
@@ -185,34 +186,34 @@ receipt:
 ```python
 compensated = original.reduce(
     ReductionPipeline().ptc(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
+        probe_plus,
+        probe_minus,
     )
 )
 
 qubit_modes = compensated.reduce(
-    ReductionPipeline().transform_ports(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
+    ReductionPipeline().transform_pair(
+        "qubit_plus",
+        "qubit_minus",
         id="qubit",
     )
 )
 
 qubit_differential = qubit_modes.reduce(
-    ReductionPipeline().ports(
+    ReductionPipeline().retain(
         "qubit.differential",
     )
 )
 
 feedline = qubit_modes.reduce(
-    ReductionPipeline().ports(
+    ReductionPipeline().retain(
         "feedline_in",
         "feedline_out",
     )
 )
 
 monitoring = qubit_modes.reduce(
-    ReductionPipeline().ports(
+    ReductionPipeline().retain(
         "feedline_in",
         "feedline_out",
         "monitor",
@@ -220,12 +221,14 @@ monitoring = qubit_modes.reduce(
 )
 ```
 
-`ptc()` removes the selected, evidenced probe shunts from the effective
-analysis topology. `transform_ports()` replaces the ordered probe pair with
-the generated `qubit.common` and `qubit.differential` coordinates.
-`ports()` retains an ordered, non-empty set of any N current port coordinates
-and Schur-eliminates every other port coordinate under `I_external = 0`. None
-of these declarations executes work.
+Here `probe_plus` and `probe_minus` are the `PortRef` handles returned when the
+Plan added the two logical probe Ports. `ptc()` removes their selected,
+evidenced load stamps from the effective analysis topology.
+`transform_pair()` replaces the ordered Public node pair with the generated
+`qubit.common` and `qubit.differential` coordinates. `retain()` selects an
+ordered, non-empty set of Public or generated node coordinates and
+Schur-eliminates the complete complement under `I_external = 0`. None of these
+declarations executes work.
 
 The reusable point is the Ref itself:
 `original -> compensated -> qubit_modes -> feedline`. A Ref may produce any
@@ -358,12 +361,21 @@ launch a solver, create a request directory, or write the workspace. The
 explanation identifies the sealed Plan, selected Ref, effective parameters,
 operation/backend, grids, reduction lineage, runtime, and exact dependency
 graph. It expands every component to its backend rows, shows Library/schema
-identity, component-pin to net/reference/port mapping, Direct/HB realization,
+identity, component-pin to electric-node/reference mapping, Public/Internal/
+Port-promoted node identities, logical Port attachments and namespace mapping,
+Direct `B`/`Y0`/load/wave lowering, HB `P`/`R_port` lowering,
 SQUID loop orientation, and every bound inductive-coupling `L1`, `L2`, signed
-`k`, derived `M`, and backend map. For an automatic port transform it also shows every included
+`k`, derived `M`, and backend map. For an automatic paired-node transform it
+also shows every included
 external-cut capacitance branch, every excluded direct-mutual branch, the
 resolved weights and transform, the transformed reference matrix and principal
-root, and the ordered mode-port realization. Optimization explanations show
+root, Port-realizability, and the ordered mode-port realization. It also lists
+the retained/eliminated coordinates, final selected-view channel order,
+induced `A_k`/`B_k`/`R_k`/`D_k`, and per-probe raw/compensated load state. HB
+explanations additionally show the exact source-coefficient index/conjugation
+map, signed nonzero response frequencies, and input/output `W` conversion for
+solver-native Z and S.
+Optimization explanations show
 each required root hint and baseline branch selection, the expanded relative or
 explicit residual scales, quantity dependency graph, shared
 compile/factorization/root work, Julia execution boundary, and baseline
@@ -472,36 +484,38 @@ The new HB request uses the explicitly selected `feedline` lineage plus the
 winner ParameterSet. A ParameterSet never carries or changes a Ref lineage;
 the optimization source remains parameter provenance.
 
-## Shared topology and solver-specific views
+## Shared topology and unified node views {#shared-topology-and-unified-node-views}
 
-`ReductionPipeline` is an ordered, typed lineage. A topology step changes the
-effective circuit analyzed by its descendants; a view step changes the
-coordinates or boundary used to inspect that circuit. SCNSim does not present
-both as interchangeable matrix shortcuts.
+`ReductionPipeline` is one ordered, backend-neutral node-coordinate lineage.
+It never chooses Direct or HB. A topology step changes the effective circuit
+analyzed by descendants; a view step changes the coordinates or boundary used
+to inspect that circuit. Both backends consume the same Ref and either realize
+it faithfully or fail before solver execution.
 
 ### Selective Port-Termination Compensation (PTC) is a shared topology step
 
-The `ptc()` step explicitly names one or more `nonloading_probe` ports:
+The `ptc()` step explicitly receives one or more `nonloading_probe` `PortRef`
+handles from the same Plan:
 
 ```python
 compensated = run.original.reduce(
     ReductionPipeline().ptc(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
+        probe_plus,
+        probe_minus,
     )
 )
 ```
 
-For every selected port, the sealed compiled artifact must prove one exact
-port row, one colocated resistor shunt, its finite positive resistance, and
-the logical port mapping. The explicit `ptc()` call supplies removal intent;
-the port role or a caller-provided resistance alone does not. Physical and
+For every selected Port, the sealed compiled artifact must prove one exact
+node attachment, finite positive reference impedance, load stamp, and
+backend-lowering identity. The explicit `ptc()` call supplies removal intent;
+the Port role or a caller-provided resistance alone does not. Physical and
 environmental loads that are not selected remain in the effective circuit.
 
-A lineage may contain PTC at most once. It must precede coordinate transforms,
-port selection, and Schur complements, and every descendant Ref inherits the
-same compensation set. Unknown, repeated, terminated, or unevidenced targets
-fail before execution.
+A lineage may contain PTC at most once. It must precede `transform_pair()` and
+`retain()`, and every descendant Ref inherits the same compensation set.
+`retain()` is the terminal basis selection for that lineage. Unknown, repeated,
+terminated, foreign, or unevidenced targets fail before execution.
 
 For Direct analysis, SCNSim removes each evidenced probe conductance stamp from
 the compiled operator before later view reductions. SCNSim owns:
@@ -517,16 +531,16 @@ Direct optimization recompiles every candidate ParameterSet and replays the
 complete PTC and view lineage. It never optimizes a nominal matrix that still
 contains the artificial loss channel.
 
-### Automatic floating-pair coordinates are a shared view step
+### Automatic paired-node coordinates are a shared view step
 
-`transform_ports()` declares one ordered pair of directly node-bound port
+`transform_pair()` declares one ordered pair of distinct Public node
 coordinates and one output namespace:
 
 ```python
 qubit_modes = compensated.reduce(
-    ReductionPipeline().transform_ports(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
+    ReductionPipeline().transform_pair(
+        "qubit_plus",
+        "qubit_minus",
         id="qubit",
     )
 )
@@ -552,11 +566,11 @@ Schur-reduced environment, a distributed model, or an operating-point
 linearization. External coordinates may remain coupled to both generated
 coordinates.
 
-PTC and `transform_ports()` are independent declarations. A transform neither
-requires nor inserts PTC and is valid for physical ports without a removable
-probe shunt. If a lineage contains both, the explicit PTC step comes first so
-the topology change remains visible; PTC changes the evidenced conductance
-stamps and does not change capacitance-derived weights.
+PTC and `transform_pair()` are independent declarations. A transform neither
+requires nor inserts PTC and may act on ordinary Public nodes or nodes with
+logical Port attachments. If a lineage contains both, the explicit PTC step
+comes first so the topology change remains visible; PTC changes evidenced
+conductance stamps and does not change capacitance-derived weights.
 
 Direct operations apply the resolved power-conjugate transform to the selected
 operator. HB repeats that same real transform independently inside every
@@ -573,65 +587,199 @@ replace a non-diagonal transformed reference with diagonal entries. Direct and
 HB therefore expose the same selected-view wave convention even when the
 backend-native HB convention differs.
 
-### Retain an arbitrary N-port view
+### Retain an arbitrary node-coordinate view
 
-`ports()` accepts any ordered, non-empty set of unique coordinates from the
-current port basis:
+`retain()` accepts any ordered, non-empty set of unique Public or generated
+coordinates from the current basis:
 
 ```python
 feedline = compensated.reduce(
-    ReductionPipeline().ports(
+    ReductionPipeline().retain(
         "feedline_in",
         "feedline_out",
     )
 )
 ```
 
-The listed coordinates become the result's external port order. Every other
-port coordinate is Schur-eliminated with zero external current while loads
-already present in the effective operator remain. `N=1` and `N=2` are ordinary
-one- and two-port cases, not separate APIs.
+The listed coordinates become the selected-view order. Every coordinate in the
+complete complement is dynamically Schur-eliminated with zero external current
+while loads already present in the effective operator remain. Anonymous
+Internal nodes are never directly selectable and therefore remain in that
+complement. `N=1` and `N=2` are ordinary one- and two-coordinate cases, not
+separate APIs.
+
+The selected-view wave-channel ID is exactly its final retained coordinate ID.
+For an original node this is its Public node ID; for an automatic transform it
+is the generated ID such as `qubit.differential`. A logical Port ID is not a
+channel alias. Only anonymous-node promotion deliberately makes a node ID equal
+to its Port ID. Unknown coordinate IDs, generated-output collisions, and
+duplicate retained IDs fail before any trace is bound.
 
 A probe-free feedline S21 therefore requires both operations:
 
 1. `ptc()` removes the artificial probe shunt; and
-2. `ports()` excludes that probe from the retained external port set.
+2. `retain()` excludes that probe coordinate from the selected external set.
 
 If a compensated probe remains in the retained set, a requested S matrix still
 applies its declared matched-wave boundary. Energy coupled into that retained
 external port is correct N-port scattering behavior, not a failed PTC.
 
-Zero-current port elimination is the boundary operation described by
+Zero-current coordinate elimination is the boundary operation described by
 [Schur Complement and Kron Reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices).
 It is not equivalent to selecting the same rows and columns from a native S
 matrix, because omitted native incident waves leave those ports terminated in
 their wave references.
 
-### Direct internal-node views
+### Terminal-operation capability
 
-Direct may additionally transform or Schur-eliminate internal node-flux
-coordinates. Those steps act on `D(omega)` at the requested Quantity-valued
-sampling points and may be used by `solve()`, `evaluate()`, or Direct
-`optimize()`.
+The pipeline vocabulary stays common while terminal operations enforce what
+they can physically publish:
 
-HB V1 does not expose internal node-coordinate elimination. If an HB request
-receives a Ref containing an internal-node transform or Schur step,
-`run.explain()` and `run.solve()` both fail before backend execution. Port
-transforms are distinct shared port-view operations and remain supported by
-both Direct and HB.
+| Selected coordinate | Direct `evaluate()` / `optimize()` | Direct `solve()` | HB `solve()` |
+|---|---:|---:|---:|
+| Public node without a logical Port | Yes | No | No |
+| Public node with one logical Port | Yes | Yes | Yes |
+| Generated coordinate from an invertible transform of a complete Port-bound node subspace | Yes | Yes | Yes |
+| Generated coordinate involving a non-Port-bound node | Yes | No | No |
+| Anonymous Internal node | Not directly selectable | Not directly selectable | Not directly selectable |
+
+`solve()` always promises a complete selected-view S/Y/Z surface, so every
+final coordinate must be port-realizable: either one original node with a
+unique logical Port, or a generated coordinate from an invertible transform of
+a complete Port-bound node subspace. Direct does not return a special
+matrix-only solve result when this is false; it fails closed. Direct
+`evaluate()` and `optimize()` may still inspect a named unported Public node in
+the complete node operator because they do not promise a wave-port response.
+
+When no explicit `retain()` exists, `solve()` uses all logical Ports in Plan
+declaration order. `evaluate()` and Direct `optimize()` may instead work from
+the full node operator and their named quantity selectors. HB may omit some
+Port-bound nodes from the selected view: its full nonlinear/static balance
+still includes every logical Port and load, then the linearized raw Z/Y
+operator eliminates omitted channels with `I_external = 0`.
+
+### One logical Port, two backend lowerings
+
+A logical Port is a specialized `CircuitPlan` component, not a Library factory
+and not a JosephsonCircuits row exposed as the product API:
+
+| Port content | Direct | HB / JosephsonCircuits |
+|---|---|---|
+| Node attachment | incidence/selector column `B` | resolved node of `P_i` and `R_port_i` |
+| Reference impedance | `Y0 = 1 / R0` and power-wave conversion | explicit `R_port_i` and solver port impedance |
+| Port marker | no `P` row | exact `P_i` row |
+| Load contribution | `G_port = B Y0 B^T` | explicit resistor stamp |
+| Drive | external current injection through `B` | mode-indexed current on `P_i` |
+| PTC | remove the proved `B_i Y0_i B_i^T` stamp | remove the proved `1 / R_i` stamp from derived raw Y |
+
+The load and wave reference are separately auditable. PTC removes only the
+load stamp; it preserves the logical Port identity, node coordinate, and
+reference impedance required to define the selected S surface. Direct never
+creates a fake `P` element merely to resemble the HB backend. Its receipt says
+`P row = not applicable` and records the actual selector, reference-admittance,
+voltage/current, load, and wave-conversion mapping. HB records the exact `P_i`
+and `R_port_i` rows, solver indices, modes, and port order.
+
+For both lowerings, Port voltage is the attached-node voltage relative to the
+Plan reference and positive Port current enters the Plan at that node. The
+canonical node attachment therefore owns direction; there is no backend- or
+request-specific orientation override.
+
+The selected SCNSim matrix families use one explicit loaded-network contract.
+Let `B_p` inject the ordered original logical-Port currents into the full node
+basis, and let
+
+$$
+R_p=\operatorname{diag}(R_1,\ldots,R_P),
+\qquad
+G_{\mathrm{port}}=B_pR_p^{-1}B_p^T.
+$$
+
+The compiled raw operator contains every logical-Port load. PTC subtracts only
+the selected proved load stamps. After all declared transforms and
+zero-external-current elimination, the resulting selected admittance is
+$Y_k^{\mathrm{view}}$; it still contains every non-compensated Port load.
+SCNSim publishes
+
+$$
+Y^{\mathrm{view}}=Y_k^{\mathrm{view}},
+\qquad
+Z^{\mathrm{view}}=(Y_k^{\mathrm{view}})^{-1},
+$$
+
+using a factorization/linear solve rather than an explicit inverse. If an
+uncompensated `nonloading_probe` stamp remains, Y/Z presentation and artifacts
+are explicitly labeled `raw`; after the declared PTC they are labeled
+`compensated`. The typed matrix view carries this probe-load state, so
+`.y.view.probe_loads` and `.z.view.probe_loads` map every relevant logical
+probe-Port ID to `"raw"` or `"compensated"`. An empty mapping means no
+nonloading-probe load participates in that selected operator. Presentation and
+artifact labels use `Y_raw`/`Z_raw` whenever any entry remains `"raw"`, so the
+ordinary `.y.view` or `.z.view` access path never turns a probe-loaded quantity
+into an unqualified design-facing claim.
+
+For a Port-realizable selected view, let $A_k$ be the full-row-rank map from
+the ordered original physical Port voltages to the final retained coordinates.
+The induced current-injection and reference matrices are
+
+$$
+B_k=B_pA_k^T,
+\qquad
+R_k=A_kR_pA_k^T,
+\qquad
+D_k=R_k^{1/2}.
+$$
+
+Here $D_k$ is the principal real-SPD square root. These equations also cover a
+proper subset of generated coordinates: setting the complementary transformed
+currents to zero gives the original-Port injection $A_k^TI_k$, while the
+retained wave reference is the corresponding principal block induced by the
+same rows of the full transform. A rank-deficient $A_k$ or non-SPD $R_k$ fails
+preflight.
+
+Finally, selected-view S is formed from the same loaded-or-compensated
+$Y_k^{\mathrm{view}}$, not by silently de-embedding every Port load:
+
+$$
+\widetilde Y_k=D_kY_k^{\mathrm{view}}D_k,
+\qquad
+S^{\mathrm{view}}=(I+\widetilde Y_k)^{-1}(I-\widetilde Y_k).
+$$
+
+Thus an otherwise open one-port node with an uncompensated shunt
+$Y_k^{\mathrm{view}}=1/R_k$ has $S^{\mathrm{view}}=0$; compensating that proved
+shunt gives the open result $S^{\mathrm{view}}=+1$. JosephsonCircuits native
+`returnS` uses its own `P + R` source-boundary construction and may instead
+report the latter. It is reconciliation evidence, not the authority for this
+selected SCNSim load state. Direct and HB both reconstruct the equations above
+from their normalized selected Y operator.
 
 ### HB PTC operator realization
 
-JosephsonCircuits first solves each case on the original compiled Plan. For PTC
-analysis, SCNSim requests the complete solver-normalized `mode × port`
-`returnZ` operator and obtains `Y_raw` by solving the corresponding matrix
-system rather than using an explicit inverse. It then:
+JosephsonCircuits first solves each case on the original compiled Plan. SCNSim
+requests the complete solver-native `mode × port` `returnZ` operator. Returned
+Z uses both the solver's `exp(+i * omega * t)` convention and its
+`1 / sqrt(abs(omega))` input/output scaling, so SCNSim first remaps the exact
+solver mode indices to its signed mode order and forms
 
-1. subtracts each selected `1 / R` stamp from every retained sideband replica
+$$
+Z_{\mathrm{raw}}^{(-)} =
+W_{\mathrm{out}}[Z_{\mathrm{JC}}^{(+)}]^*
+W_{\mathrm{in}}^{-1}.
+$$
+
+Only this convention-normalized physical Z may be used to obtain `Y_raw` by a
+matrix solve. SCNSim then:
+
+1. derives physical `Y_raw` from the normalized complete Z without an explicit
+   inverse;
+2. subtracts each selected `1 / R` stamp from every retained sideband replica
    of that physical probe;
-2. repeats each resolved port transform within every retained sideband mode;
-3. applies zero-current port retention to the full mode-port operator; and
-4. derives the requested S, Y, Z, or named observable in the retained port
+3. repeats each resolved paired-node transform within every retained sideband
+   mode;
+4. applies zero-current retained-view elimination to the full mode-port
+   operator; and
+5. derives the requested S, Y, Z, or named observable in the retained channel
    order.
 
 The solver's mode tuples, signed physical frequencies, frequency
@@ -639,26 +787,28 @@ normalization, port order, and version are part of this operator identity.
 Native `returnS` is requested only when the observable or reconciliation
 evidence needs it; it is not a second topology authority.
 
-JosephsonCircuits stores solver-native scattering amplitudes with a
-`1 / sqrt(abs(omega))` frequency scaling; those bytes are not themselves a
-physical photon-flux amplitude. After remapping the solver's input and output
-indices to the selected signed-mode order, SCNSim performs the one-time
-JosephsonCircuits `exp(+i * omega * t)` to SCNSim
-`exp(-i * omega * t)` phasor conversion and then forms
+Native `returnS` uses the same solver convention and byte scaling. When it is
+requested for observable or reconciliation evidence, SCNSim independently
+forms
 
 $$
-S_{\mathrm{pw}}^{(-)} =
+S_{\mathrm{native,pw}}^{(-)} =
 W_{\mathrm{out}} [S_{\mathrm{JC}}^{(+)}]^*
 W_{\mathrm{in}}^{-1}.
 $$
 
 Here each diagonal `W` entry is `sqrt(abs(omega))` for the corresponding
-ordered input or output mode. This is the generalized power-wave surface
+ordered input or output mode. This is the normalized backend-native evidence
 documented under
 [JosephsonCircuits photon-flux-to-power normalization](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#josephsoncircuits-photon-flux-to-power-normalization).
 Signed frequencies, the solver-to-SCNSim mode map, phasor convention, and mode
 order remain evidence; only each `W` factor uses absolute frequency magnitude.
-A zero-frequency mode cannot be published through this S conversion.
+Because JosephsonCircuits `returnZ` itself divides the response and source
+coordinates by `sqrt(abs(omega))`, every input and output mode of the requested
+linear-response operator must have nonzero signed physical frequency. A DC
+component may remain in the nonlinear/static balance, but a zero-frequency
+linear-response mode makes the complete HBSolveSpec fail preflight; SCNSim does
+not publish only Y/Z or silently drop that mode.
 
 ### Named HB drives, cases, mixing, and driven PTC {#named-hb-drives-cases-and-mixing}
 
@@ -670,12 +820,12 @@ each case supplies that drive's current:
 pump_a = PumpAxis(id="pump_a", frequency=7.0 * u.GHz)
 pump_b = PumpAxis(id="pump_b", frequency=7.3 * u.GHz)
 
-dc_bias = CurrentDrive(id="dc_bias", at="flux_port", mode=(0, 0))
+dc_bias = CurrentDrive(id="dc_bias", at=flux_port, mode=(0, 0))
 pump_a_drive = CurrentDrive(
-    id="pump_a_drive", at="flux_port", mode=(1, 0)
+    id="pump_a_drive", at=flux_port, mode=(1, 0)
 )
 pump_b_drive = CurrentDrive(
-    id="pump_b_drive", at="flux_port", mode=(0, 1)
+    id="pump_b_drive", at=flux_port, mode=(0, 1)
 )
 
 hb = run.solve(
@@ -734,6 +884,12 @@ hb = run.solve(
 )
 ```
 
+Here `flux_port` is the `PortRef` returned by `plan.add_port()`. A
+`CurrentDrive` cannot target a node ID or selected-view channel string.
+Conversely, each `SParameterTrace.input_port` and `output_port` names a
+selected-view wave channel; after `transform_pair()` that channel need not map
+to one original `PortRef`.
+
 `PumpAxis` declares one independent strong-tone fundamental. A commensurate
 higher tone is a higher integer mode on the same fundamental, not another
 axis. `CurrentDrive` owns only its ID, physical location, oriented injection
@@ -754,6 +910,23 @@ rejects an independently declared conjugate partner. The all-zero DC
 coefficient is self-conjugate and must be real. The sealed schema records this
 coefficient convention, source phase/calibration provenance, and every
 oriented injection map `B_l`.
+
+Backend lowering translates the convention before solving. If SCNSim tuple
+`m` is mapped to JosephsonCircuits tuple `-m`, then
+
+$$
+I_{\mathrm{JC},-\mathbf m}^{(+)}
+=I_{\mathrm{SCN},\mathbf m}^{(-)}.
+$$
+
+Equivalently, before that index reversal, coefficients at the same numeric
+tuple obey
+$I_{\mathrm{JC},\mathbf m}^{(+)}=I_{\mathrm{SCN},-\mathbf m}^{(-)}
+= [I_{\mathrm{SCN},\mathbf m}^{(-)}]^*$ for a real source. The adapter
+materializes the generated conjugate pair, remaps the exact solver mode indices
+and signed frequencies, and only then builds the JosephsonCircuits source
+vector. This is part of request/receipt identity; a complex pump phase cannot
+pass through unchanged by accident.
 
 Sources superpose in the compiled source vector,
 
@@ -825,11 +998,13 @@ topology`; they cannot claim an unloaded operating point.
 ### Required lineage and receipt evidence
 
 Every terminal Result records the sealed Plan, compiled operator, ParameterSet,
-ordered Ref lineage, retained loads and coordinates, and exact runtime identity.
+ordered Ref lineage, retained/eliminated coordinates, selected channel order,
+and exact runtime identity.
 
 The Plan/compile evidence records every exact Library and component-schema
-identity, component hierarchy and public schema, pin-to-net/reference/port
-mapping, source units and canonical SI values, public ParameterRefs, expanded
+identity, component hierarchy and public schema, pin-to-electric-node/reference
+mapping, Public/Internal/Port-promoted node identities, logical Port mapping,
+source units and canonical SI values, public ParameterRefs, expanded
 primitive/backend rows, and Direct/HB realization. Composite evidence includes
 the scalar RLGC source classification, parsed canonical values, extraction
 frequency, content-derived provenance, transmission-line pi-ladder convention,
@@ -840,25 +1015,40 @@ bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
 surface and its fail-closed rules are defined in
 [V1 Component Authoring](component-authoring.qmd).
 
-A PTC lineage additionally records selected logical ports, compiled
-port/resistor rows, resolved resistances, removal intent, raw-Z/derived-Y
-identities, and reconstruction or residual evidence.
+A logical Port record includes its identity, role, reference impedance,
+node/coordinate attachment, and one-Port-per-node evidence. Direct records
+`B`, `Y0`, `G_port`, voltage/current and wave conversion, plus `P row = not
+applicable`; HB records exact `P_i`/`R_port_i` rows, solver indices, mode order,
+and raw-Z lineage.
 
-Every `transform_ports()` lineage additionally records its exact node/port
-bindings and current directions, all included external-cut branches, all
+A PTC lineage additionally records selected `PortRef` identities, proved load
+stamps, load state before/after compensation, resolved resistances, removal
+intent, raw-Z/derived-Y identities, per-probe `raw`/`compensated` labels, and
+reconstruction or residual evidence.
+
+Every `transform_pair()` lineage additionally records its exact ordered Public
+node inputs, Port-realizability mapping and current directions, all included
+external-cut branches, all
 excluded direct-mutual branches, resolved weights, power-conjugate maps,
 transformed real-SPD reference matrix, principal root and reconstruction
 evidence, and generated coordinate order. These obligations apply whether or
 not the lineage contains PTC.
 
+Every `retain()` lineage records the ordered retained coordinates, complete
+eliminated complement, zero-external-current boundary, Schur evidence, final
+selected-view channel order, and the exact full-row-rank `A_k`, original-Port
+injection `B_k`, induced reference `R_k`, and principal root `D_k`.
+
 Every HB Result additionally records the request-global pump-axis and drive
 schemas; operating-point and modulation limits; optional intermodulation crop;
 three-/four-wave-mixing selections; retained mode tuples, signed frequencies,
-and mode-port order; solver normalization and version; and the raw-native,
-selected-view, and reconciliation identities. Each case records its declared
-current contributions, generated conjugates, oriented injection maps,
-effective mode-indexed source vectors, derived Bias/Pump states, and exact case
-identity. A driven PTC Result also records
+and mode-port order; solver normalization and version; input/output `W`
+matrices; solver-to-SCNSim phasor, mode-index, and `returnZ`/`returnS`
+conversion; and the raw-native, selected-view, and reconciliation identities.
+Each case records its declared current contributions, generated conjugates,
+SCNSim-to-solver coefficient/index map, oriented injection maps, effective
+mode-indexed source vectors, derived Bias/Pump states, and exact case identity.
+A driven PTC Result also records
 `allow_driven_ptc`, loaded balance topology, and compensated analysis topology.
 
 Direct quantity and optimization receipts additionally record quantity-spec
@@ -885,11 +1075,13 @@ SCNSim records that backend limitation instead of enlarging its guarantee.
 
 ### Operation support
 
-| Selected Ref lineage | Direct solve/evaluate | Direct optimize | HB solve |
+| Selected Ref lineage | Direct evaluate/optimize | Direct solve | HB solve |
 |---|---:|---:|---:|
-| Original | Yes | Yes | Yes |
-| PTC, automatic port transforms, and retained-port views | Yes | Yes | Yes; driven PTC requires authorization |
-| Internal-node transform or Schur | Yes | Yes | No |
+| Original | Yes | all logical Ports | all logical Ports |
+| PTC | Yes | Yes | Yes; driven PTC requires authorization |
+| `transform_pair()` over a complete Port-bound node pair | Yes | Yes | Yes |
+| `retain()` of only Port-realizable coordinates | Yes | Yes | Yes |
+| Named unported Public node or transform involving one | Yes | No | No |
 
 Physical compilation belongs to the original Plan and is not presented as a
 separate reduced compile action. Terminal operations materialize or exactly
@@ -926,11 +1118,11 @@ sweep:
 
 ```python
 readout_root = DiagonalRootSpec(
-    coordinate="readout",
+    coordinate="readout_node",
     root_hint=6.0 * u.GHz,
 )
 
-evaluated = run.evaluate(feedline, readout_root)
+evaluated = run.evaluate(quantity_view, readout_root)
 
 evaluated.root
 evaluated.frequency
@@ -979,7 +1171,7 @@ transmission = ResponseElementSpec(
 )
 
 operator = run.evaluate(
-    feedline,
+    quantity_view,
     OperatorSpec(frequencies=frequency_grid),
 )
 ```
@@ -1061,7 +1253,7 @@ optimization_spec = OptimizationSpec(
     optimizer=CMAESSpec(seed=17, max_evaluations=200),
 )
 
-optimization = run.optimize(feedline, optimization_spec)
+optimization = run.optimize(quantity_view, optimization_spec)
 ```
 
 The public `run.evaluate()` contract does not force candidate work back through
@@ -1186,9 +1378,12 @@ frequencies = direct.frequencies.to(u.GHz)
 matrix_si = operator.at(6.2 * u.GHz).matrix.to_base_units()
 matrix_values = matrix_si.magnitude
 root_frequency = evaluated.frequency.to(u.GHz)
+probe_loads = direct.y.view.probe_loads
 ```
 
 Each Result carries its exact result/ref identity for serialization and audit.
+Every matrix view also carries the ordered coordinate IDs and its per-probe
+`raw`/`compensated` load-state mapping.
 Passing typed Results is the normal downstream UX; raw receipt paths remain an
 audit surface.
 
@@ -1231,10 +1426,12 @@ drives sum to zero remains addressable by its declared ID while reporting the
 corresponding Off states.
 
 An `SParameterTrace` names one complex matrix projection across the request's
-frequency grid. Its input/output ports refer to selected-view coordinates and
-its mode tuples must match the number and ordering of the HB pump axes. Trace
-IDs are unique within the spec. A Direct spec may use the same trace type with
-empty mode tuples.
+frequency grid. Its `input_port` and `output_port` fields are selected-view wave
+channel IDs, not necessarily original logical Port IDs. A channel generated by
+`transform_pair()` is valid when the terminal view is Port-realizable. Mode
+tuples must match the number and ordering of the HB pump axes. Trace IDs are
+unique within the spec. A Direct spec may use the same trace type with empty
+mode tuples.
 
 Named traces are typed projections of the complete selected-view matrix. They
 do not launch separate solves, hide the full matrix, or become another
@@ -1258,10 +1455,13 @@ and normalization. `case.s.reconciliation` records the exact conversion and
 residual evidence when topology, load, boundary, reference plane, reference
 matrix, frequency, and normalization are comparable.
 
-After `.ports()` imposes a zero-current boundary, a same-name native S
-submatrix is not comparable. The reconciliation surface remains typed and
-reports `comparable=False`, its exact reason, and evidence from the last
-comparable ancestor; it is neither `None` nor a fabricated residual.
+After `.retain()` imposes a zero-current boundary, SCNSim does not assume that
+a same-name native S submatrix is comparable. Comparability is true only when
+evidence proves equal selected load state, reference matrix, and boundary; for
+example, a plain original-Port subset may qualify when every omitted Port
+retains exactly the native matched reference load. Otherwise the reconciliation
+surface reports `comparable=False`, its exact reason, and evidence from the
+last comparable ancestor; it is neither `None` nor a fabricated residual.
 
 Batch display supports both declared traces and complete-matrix inspection:
 
@@ -1333,11 +1533,16 @@ equivalent-circuit schematic.
 SCNSim fails closed for:
 
 - a workspace bound to another Plan or runtime identity;
-- a duplicate component, net, reference, port, or coupling identity, or
+- a duplicate component, Public node, reference, logical Port, or coupling identity, or
   duplicate pin/public-parameter names inside one component schema;
-- an unknown pin, parameter, inductive branch, net, or unbound/foreign Library
-  instance; a pin assigned to different nets; other than one Plan reference;
-  or a port bound to a reference/unknown net or directly to a pin;
+- an unknown pin, parameter, inductive branch, node, or unbound/foreign Library
+  instance; a pin assigned to different nodes; other than one Plan reference;
+  or an invalid/foreign/duplicate `ElectricNodeRef` or `PortRef`;
+- an empty electric-node declaration or the same pin repeated within one node;
+- an anonymous node promotion that collides with another Public identity; an
+  anonymous unported node with fewer than two distinct pins; a second Port on
+  one node; a Port bound to the reference or directly to a pin; or a Port that
+  changes its promoted node identity after seal;
 - a non-positive R/L/C/`L_J0`, negative `Cj`, invalid scalar RLGC declaration,
   invalid or non-scalar AEDT Q2D RLGC import, or non-positive/non-integer
   section count;
@@ -1350,17 +1555,20 @@ SCNSim fails closed for:
   mismatch;
 - a ParameterSet containing unknown refs, non-finite values, or another Plan
   family;
-- invalid port roles or ambiguous physical coordinates;
-- an unknown, duplicate, terminated, or unevidenced PTC target;
-- repeated PTC or PTC ordered after a transform, port selection, or Schur step;
-- an automatic pair transform with unknown, duplicate, ambiguously node-bound,
-  differently referenced, or inconsistently oriented input ports;
+- invalid Port roles, reference impedance, load mapping, or ambiguous physical
+  coordinates;
+- an unknown, duplicate, terminated, foreign, or unevidenced PTC `PortRef`;
+- repeated PTC or PTC ordered after `transform_pair()` or `retain()`;
+- an automatic pair transform with unknown, duplicate, Internal, identically
+  selected, differently referenced, or inconsistently oriented Public nodes;
 - incomplete or ambiguous capacitor-branch provenance, a non-finite or
   negative physical branch capacitance, a non-positive external-cut sum, or a
   nonreciprocal compiled capacitance operator outside the declared scope;
-- a non-finite or singular port transform, a non-real/non-symmetric/non-SPD
+- a non-finite or singular pair transform, a non-real/non-symmetric/non-SPD
   physical or transformed reference matrix, or failed principal-root
   reconstruction;
+- a generated-coordinate collision, rank-deficient retained Port map, or
+  inconsistent derived `A_k`, `B_k`, `R_k`, or principal `D_k` evidence;
 - an unknown or duplicate pump axis, drive, case, or trace identity; a drive
   bound outside the request; a non-positive/non-finite axis frequency; or an
   incomplete request-global drive materialization;
@@ -1372,11 +1580,15 @@ SCNSim fails closed for:
 - an invalid per-axis harmonic declaration, negative/non-integer
   `max_intermodulation_order`, retained-lattice exclusion of a declared
   drive/requested trace mode, or exact tuple-frequency collision;
-- an empty, duplicate, or unknown retained-port coordinate list;
+- any zero-frequency HB linear-response input or output mode;
+- an empty, duplicate, unknown, or Internal retained-coordinate selector;
+- a Direct or HB `solve()` view with a non-Port-realizable final coordinate;
+- an HB pair transform involving any non-Port-bound input node;
 - a PTC Ref paired with any nonzero effective DC or AC drive without explicit
   `allow_driven_ptc=True`;
-- an HB request whose Ref contains an internal-node transform or Schur step;
 - a non-full-rank transform or singular/non-finite Schur partition;
+- disagreement between Direct and HB Port node, reference impedance, load, or
+  selected-channel mappings;
 - a duplicate optimization variable/objective ID, non-variable ParameterRef,
   invalid physical bounds/coordinate transform, or foreign quantity selector;
 - a bundle, full matrix/operator, or dimensionally invalid composition used as
@@ -1391,7 +1603,12 @@ SCNSim fails closed for:
   unresolved pole-zero cancellation;
 - a missing or mismatched exact receipt during resolve;
 - an HB backend result that cannot bind complete mode-port Z, signed
-  frequencies, normalization, or the required lifted operator identity;
+  frequencies, input/output `W` normalization, phasor/mode-index conversion,
+  or the required lifted operator identity;
+- a missing or inconsistent per-case SCNSim-to-JosephsonCircuits source
+  coefficient/conjugate-mode map;
+- a selected matrix whose per-probe raw/compensated load-state labels do not
+  match its lineage and stamps;
 - an attempted reconciliation across unequal topology, PTC/load state,
   boundary, reference plane, reference matrix, frequency, or wave
   normalization;
@@ -1426,7 +1643,7 @@ or overwrite unrelated success receipts.
 - Driven PTC is a compensated small-signal view around a static/nonlinear
   balance that still contains the selected shunts; it is not an unloaded
   operating-point solution.
-- Automatic `transform_ports` is limited to the declared reciprocal lumped
+- Automatic `transform_pair()` is limited to the declared reciprocal lumped
   two-node capacitance scope. It is not universal modal diagonalization and
   V1 provides no manual-weight override through this API.
 - HB optimization objectives are not included; optimization is Direct-only.
@@ -1444,8 +1661,8 @@ or overwrite unrelated success receipts.
 
 ## Open Human decisions
 
-These semantics remain `CONVERGING`. PTC, automatic floating-pair coordinates,
-port elimination, HB case lookup, and display are no longer open in this
+These semantics remain `CONVERGING`. PTC, automatic paired-node coordinates,
+retained-view elimination, HB case lookup, and display are no longer open in this
 candidate.
 
 1. If one case in a valid multi-case HB batch fails numerically, should

@@ -37,13 +37,19 @@ python -m pip install -e .
 from scnsim import (
     CircuitPlan,
     DirectSolveSpec,
+    ElectricNodeRef,
     OperatorSpec,
+    PortRef,
+    ReductionPipeline,
     ReportSpec,
     ScalarRLGC,
     load_q2d_scalar_rlgc,
 )
 
 help(CircuitPlan)
+help(ElectricNodeRef)
+help(PortRef)
+help(ReductionPipeline)
 help(DirectSolveSpec)
 help(OperatorSpec)
 help(ReportSpec)
@@ -61,7 +67,7 @@ SCNSim supports two different users without creating two physical authorities:
 
 | User | Writes once | Reuses later |
 |---|---|---|
-| Circuit-model developer | Library components, nets, reference, ports, Ref graph, Specs, and project-owned objectives | The exact same model façade and evidence identity |
+| Circuit-model developer | Library components, electric nodes, reference, logical Ports, Ref graph, Specs, and project-owned objectives | The exact same model façade and evidence identity |
 | Model consumer | Project Design Target and workspace | A few team-owned functions returning typed SCNSim Results |
 
 The package owns the general Plan/Ref/Run/Spec/Result vocabulary. A design team
@@ -104,11 +110,12 @@ classes in that category are `DirectSolveSpec` and `HBSolveSpec`.
 
 ## Candidate Notebook UX
 
-The proposed UX first builds one named physical Plan from an exact immutable
-Library, then gives that sealed `CircuitPlan` an immutable graph of lazy
-`NetworkViewRef` topology and view reductions. `CircuitRun` is the only
-execution owner. These are non-executable API sketches; the package does not
-yet implement them:
+The proposed UX first composes component pins into Public or Internal electric
+nodes, then places logical Port components on selected nodes. The sealed
+`CircuitPlan` receives one backend-neutral graph of lazy `NetworkViewRef`
+reductions expressed in node coordinates. `CircuitRun` is the only execution
+owner. These are non-executable API sketches; the package does not yet
+implement them:
 
 ```python
 from scnsim import CircuitPlan, library as sc, units as u
@@ -126,11 +133,15 @@ resonator = plan.add(
 )
 
 plan.reference("ground")
-plan.net("input", input_cap.pin("a"))
-plan.net("readout_node", input_cap.pin("b"), resonator.pin("signal"))
-plan.add_port(
+input_node = plan.net(input_cap.pin("a"))
+plan.net(
+    input_cap.pin("b"),
+    resonator.pin("signal"),
+    id="readout_node",
+)
+signal_port = plan.add_port(
     id="signal_in",
-    at="input",
+    at=input_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
@@ -156,39 +167,25 @@ from scnsim import (
 
 run = CircuitRun(plan=plan, workspace="results/example")
 
-compensated = run.original.reduce(
-    ReductionPipeline().ptc(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
-    )
+response_view = run.original.reduce(
+    ReductionPipeline().retain("signal_in")
 )
 
-qubit_modes = compensated.reduce(
-    ReductionPipeline().transform_ports(
-        "qubit_probe_plus",
-        "qubit_probe_minus",
-        id="qubit",
-    )
-)
-
-feedline = qubit_modes.reduce(
-    ReductionPipeline().ports(
-        "feedline_in",
-        "feedline_out",
-    )
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain("readout_node")
 )
 
 direct_spec = DirectSolveSpec(...)
-direct = run.solve(feedline, direct_spec)
+direct = run.solve(response_view, direct_spec)
 
 readout_root = DiagonalRootSpec(
-    coordinate="readout",
+    coordinate="readout_node",
     root_hint=6.0 * u.GHz,
 )
-readout = run.evaluate(feedline, readout_root)
+readout = run.evaluate(quantity_view, readout_root)
 
 optimization = run.optimize(
-    feedline,
+    quantity_view,
     OptimizationSpec(
         variables=(
             OptimizationVariable(
@@ -209,21 +206,21 @@ optimization = run.optimize(
 )
 
 pump_axis = PumpAxis(id="pump", frequency=7.0 * u.GHz)
-dc_bias = CurrentDrive(id="dc_bias", at="flux_port", mode=(0,))
-pump_drive = CurrentDrive(id="pump_drive", at="flux_port", mode=(1,))
+dc_bias = CurrentDrive(id="dc_bias", at=signal_port, mode=(0,))
+pump_drive = CurrentDrive(id="pump_drive", at=signal_port, mode=(1,))
 
 hb = run.solve(
-    feedline,
+    response_view,
     HBSolveSpec(
         pump_axes=(pump_axis,),
         drives=(dc_bias, pump_drive),
         frequencies=signal_grid,
         traces=(
             SParameterTrace(
-                id="signal_gain",
-                input_port="feedline_in",
+                id="reflection",
+                input_port="signal_in",
                 input_mode=(0,),
-                output_port="feedline_out",
+                output_port="signal_in",
                 output_mode=(0,),
             ),
         ),
@@ -260,18 +257,24 @@ simple-root branch. It is not the returned frequency or the optimization
 target; a reusable team model declares it once so downstream consumers do not
 repeat it.
 
-Port-Termination Compensation (PTC) is one explicit shared topology step.
-`transform_ports()` is an independent shared view step that resolves automatic
-floating-pair common/differential weights from the bound Plan's complete
-external capacitance cut. It neither requires nor inserts PTC. When both steps
-are declared, PTC comes first and the same resolved coordinate transform is
-used by Direct and every retained HB sideband.
+Port-Termination Compensation (PTC) is one explicit shared topology step that
+targets logical `PortRef` objects. Every other reduction verb uses node
+coordinates. `transform_pair()` resolves automatic floating-pair
+common/differential weights from the bound Plan's complete external
+capacitance cut, and `retain()` selects the ordered node-coordinate view while
+Schur-eliminating its complement at zero external current.
 
-`ports()` retains any ordered N-port view and Schur-eliminates every other port
-with zero external current. The same Ref therefore drives Direct and HB
-without leaving artificial probe loss in a feedline response. PTC combined
-with any nonzero DC or AC operating-point drive is fail-closed unless the HB
-request explicitly authorizes the documented loaded-balance interpretation.
+The final coordinate IDs are also the selected-view wave-channel IDs used by
+`SParameterTrace`; Port IDs remain separate except when anonymous-node
+promotion deliberately gives both the same string. `CurrentDrive.at` always
+uses the returned `PortRef`, never a channel string.
+
+The pipeline never selects a backend. Direct and HB use the same Ref whenever
+its final coordinates are realizable through logical Ports. HB performs any
+omitted-port elimination on the linearized full mode-port response after the
+complete nonlinear balance. PTC combined with any nonzero DC or AC
+operating-point drive remains fail-closed unless the HB request explicitly
+authorizes the documented loaded-balance interpretation.
 
 An HB solve returns an ordered collection of user-named cases. Case IDs name
 the experimental condition; Bias and Pump states are independently derived
@@ -283,7 +286,10 @@ elements when no traces were named. It never guesses S21, mixes incomparable
 mode-frequency identities, or silently interpolates.
 
 Direct and HB expose parallel selected-view S/Y/Z matrix families; this common
-API does not imply transpose symmetry or reciprocity. Direct
+API does not imply transpose symmetry or reciprocity. The selected matrices
+retain every non-compensated logical-Port load and use the induced retained
+reference matrix; JosephsonCircuits native S remains reconciliation evidence.
+Direct
 physical quantities use `run.evaluate()`, and the same typed selectors feed
 Direct optimization without per-candidate Python callbacks. A nonzero target
 automatically normalizes its residual by `abs(target)` before the declared
@@ -296,7 +302,7 @@ returning typed Quantity results for Python use.
 ## Current contract
 
 Review component creation, explicit finite-loop SQUIDs, resonator factories,
-nets, ports, and mutual coupling in
+Public/Internal electric nodes, logical Ports, and mutual coupling in
 [SCNSim V1 Component Authoring](docs/component-authoring.qmd). Then review the
 Run/Ref/Result behavior and unresolved decisions in the
 [SCNSim V1 Runtime Contract](docs/v1-runtime-contract.qmd). Together they are

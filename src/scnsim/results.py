@@ -75,6 +75,12 @@ class MatrixView:
 
         unavailable("MatrixView.coordinates")
 
+    @property
+    def probe_loads(self) -> Mapping[str, Literal["raw", "compensated"]]:
+        """Read-only logical-Port IDs and each probe load's exact view state."""
+
+        unavailable("MatrixView.probe_loads")
+
 
 class MatrixFamilyResult(Result):
     """One selected-view matrix family, such as Y or Z, over a solved grid."""

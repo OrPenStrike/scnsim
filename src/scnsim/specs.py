@@ -15,16 +15,17 @@ from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from ._scaffold import unavailable
-from .authoring import ParameterRef
+from .authoring import ParameterRef, PortRef
 
 
 class DirectSolveSpec:
     """Request a linear frequency-domain response on one selected view.
 
     Use this when the desired output is the Direct S/Y/Z matrix over a
-    frequency grid, optionally with named scalar traces.  It is a *solve*
-    request, not a root finder and not the full dynamic operator.  For those
-    tasks use ``DiagonalRootSpec``/``HybridizedPoleSpec`` or ``OperatorSpec``.
+    frequency grid for a Port-realizable selected view, optionally with named
+    scalar traces.  It is a *solve* request, not a root finder and not the full
+    dynamic operator.  For those tasks use
+    ``DiagonalRootSpec``/``HybridizedPoleSpec`` or ``OperatorSpec``.
     """
 
     def __init__(
@@ -300,14 +301,14 @@ class PumpAxis:
 
 
 class CurrentDrive:
-    """Name one current injection location and Fourier-lattice mode.
+    """Name one current injection on a logical Port and Fourier-lattice mode.
 
     The drive declares *where and at which mode* current can be applied.  Each
     case supplies its own complex Fourier coefficient.  ``mode=()`` is pure DC;
     otherwise tuple rank and ordering follow ``HBSolveSpec.pump_axes``.
     """
 
-    def __init__(self, *, id: str, at: str, mode: tuple[int, ...]) -> None:
+    def __init__(self, *, id: str, at: PortRef, mode: tuple[int, ...]) -> None:
         unavailable("CurrentDrive construction")
 
 
@@ -348,9 +349,13 @@ class HBTruncation:
 class SParameterTrace:
     """Name one ordered S-matrix projection across a solve frequency grid.
 
-    A trace is a view of the complete matrix result, not another solve.  Direct
-    traces use empty mode tuples; HB tuples follow the declared pump-axis
-    ordering.
+    ``input_port`` and ``output_port`` retain their conventional names but hold
+    exact final selected node-coordinate IDs.  A logical Port ID is not an
+    alias unless anonymous-node promotion deliberately gave both the same
+    string; a generated transformed channel need not be one original
+    ``PortRef``.  A trace is a view of the complete matrix result, not another
+    solve.  Direct traces use empty mode tuples; HB tuples follow the declared
+    pump-axis ordering.
     """
 
     def __init__(
@@ -369,10 +374,12 @@ class HBSolveSpec:
     """Request a shared-basis batch of nonlinear HB operating conditions.
 
     Axes, drive schema, signal grid, traces, mixing selection, and truncation
-    are request-global so every named case is comparable.  ``allow_driven_ptc``
-    must be explicit when a PTC view has nonzero DC or AC drive; authorization
-    preserves the loaded operating point and compensates only its linearized
-    response.
+    are request-global so every named case is comparable.  The selected view
+    must be Port-realizable, and every resulting linear-response mode must have
+    nonzero signed frequency because the backend return-Z normalization is
+    singular at zero.  ``allow_driven_ptc`` must be explicit when a PTC view has
+    nonzero DC or AC drive; authorization preserves the loaded operating point
+    and compensates only its linearized response.
     """
 
     def __init__(

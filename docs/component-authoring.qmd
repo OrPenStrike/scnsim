@@ -1,6 +1,6 @@
 ---
 title: "SCNSim V1 Component Authoring"
-subtitle: "Candidate Library, component, net, port, and coupling contract"
+subtitle: "Candidate Library, component, electric-node, logical-Port, and coupling contract"
 toc-depth: 3
 ---
 
@@ -20,8 +20,8 @@ Use one route from reusable component definitions to a sealed physical Plan:
 ```text
 immutable Library
 -> component instances with exact source identity
--> named nets and one node-flux reference
--> ports on named nets
+-> Public or Internal electric nodes and one node-flux reference
+-> logical Port components on selected nodes
 -> CircuitPlan
 ```
 
@@ -67,9 +67,11 @@ fixture = plan.add(
 )
 ```
 
-`plan.add(library.component(...))` is the only component-creation route.
-There are no convenience methods such as `plan.capacitor(...)` that could
-become a second catalog or parameter authority.
+`plan.add(library.component(...))` is the only route for Library-created
+physical components. There are no convenience methods such as
+`plan.capacitor(...)` that could become a second catalog or parameter
+authority. Logical Ports are specialized Plan components with their own
+`plan.add_port(...)` boundary because they are not Library primitives.
 
 ### Pins and public parameters
 
@@ -98,23 +100,44 @@ evidence. V1 does not add a second unit registry or a global plugin mechanism.
 The Python mechanism used to implement a custom factory is package work that
 follows this outward contract; it is not a second Notebook UX.
 
-## Named electrical topology
+## Electrical topology and logical Ports
 
-### Create a net once
+### Compose one electric node per call
 
-One call creates one named node and assigns all of its pins:
+Component pins are terminals. One `plan.net()` call declares the complete
+equipotential electric node that connects those terminals and returns an
+`ElectricNodeRef`:
 
 ```python
-plan.net(
-    "signal_node",
+readout_node = plan.net(
     coupling_cap.pin("b"),
     resonator.pin("signal"),
+    id="readout_node",
 )
 ```
 
-The node ID is unique within the Plan. All pins belonging to that node are
-supplied together; repeated pairwise `connect()` calls are not the primary
-authoring model and cannot incrementally redefine a sealed net.
+Supplying `id=` creates a Public node coordinate that Runtime Specs and
+reduction lineages may select. Omitting it creates an anonymous Internal node:
+
+```python
+plan.net(
+    section_1.pin("tail"),
+    section_2.pin("head"),
+)
+```
+
+An Internal node remains part of the original compiled physical operator even
+though a user cannot address its opaque evidence identity as a Runtime
+coordinate. Its identity is derived deterministically from the canonical set
+of exact component/pin endpoints, not from randomness or call order.
+
+Every pin belongs to exactly one electric node or the one Plan reference. All
+pins for a node are supplied together; a second call cannot incrementally
+merge or redefine it. SCNSim exposes no parallel `connect()` API.
+
+At Plan seal, compilation assigns one node-flux coordinate to every
+non-reference electric node. Adding a logical Port attaches a boundary to that
+coordinate; it never creates a second electrical degree of freedom.
 
 ### Declare one node-flux reference
 
@@ -138,23 +161,66 @@ This zero-pin form still gives grounded composites the unique node-flux
 reference they require. It does not create an implicit second ground inside
 each component.
 
-### Bind ports to nets
+### Add one logical Port component to a node
 
-Ports refer only to existing named nets:
+A Port is a specialized Plan component. It owns one external wave/load
+boundary, its role, reference impedance, node attachment, and backend-lowering
+identity. It is not a Library-created `ComponentInstance`, and it never creates
+or infers an electric connection.
+
+Its voltage direction is the attached node relative to the Plan reference;
+positive Port current enters the Plan at that node. This canonical orientation
+is derived from the attachment, so `add_port()` does not expose a second manual
+direction argument.
+
+`plan.add_port()` therefore accepts only an `ElectricNodeRef` returned by the
+same Plan:
 
 ```python
-plan.add_port(
+signal_port = plan.add_port(
     id="signal_in",
-    at="signal_node",
+    at=readout_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
 ```
 
-A port is not a Library component and cannot bind an arbitrary component pin.
-It adds an external excitation/observation boundary to a named circuit node.
-The port role and reference impedance remain explicit, Quantity-checked Plan
-data.
+The returned `PortRef` is the physical-port handle used by PTC and HB drive
+declarations. One electric node may own at most one logical Port. Multiple DC
+or AC contributions use multiple `CurrentDrive` objects on that Port rather
+than duplicating Port components.
+
+An anonymous node may also receive a Port:
+
+```python
+input_boundary = plan.net(input_cap.pin("a"))
+
+signal_port = plan.add_port(
+    id="signal_in",
+    at=input_boundary,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The Port ID promotes that anonymous node to Public coordinate `"signal_in"`
+before Plan seal. A node that already has an explicit Public ID keeps that
+identity even when its Port ID differs. Node IDs, Port IDs, and later
+selected-view channel IDs are separate namespaces. A selected-view channel ID
+is always the exact final node-coordinate ID: an original Public node ID or a
+generated transform ID such as `qubit.differential`. It is never inferred from
+the attached Port ID. Anonymous Port promotion is the one deliberate case in
+which the new Public node coordinate adopts the Port ID, so the two strings
+coincide by construction.
+
+For example, a named node `"pump_drive"` may carry Port ID `"pump"`; retaining
+that node and naming an `SParameterTrace` channel both use `"pump_drive"`, while
+`CurrentDrive.at` uses the returned `pump_port` `PortRef`. `run.explain()` and
+receipts show this deterministic mapping before execution.
+
+At seal, an anonymous node without a Port must join at least two different
+pins. A one-pin anonymous node is valid only when a Port promotes it. A Port
+cannot attach to a pin, reference, foreign node, or already-port-bound node.
 
 ## Built-in leaves
 
@@ -402,11 +468,15 @@ resonator = plan.add(
 )
 
 plan.reference("ground")
-plan.net("input", input_cap.pin("a"))
-plan.net("readout_node", input_cap.pin("b"), resonator.pin("signal"))
-plan.add_port(
+input_node = plan.net(input_cap.pin("a"))
+readout_node = plan.net(
+    input_cap.pin("b"),
+    resonator.pin("signal"),
+    id="readout_node",
+)
+signal_port = plan.add_port(
     id="signal_in",
-    at="input",
+    at=input_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
@@ -425,8 +495,8 @@ floating = plan.add(
     )
 )
 
-plan.net("island_a", floating.pin("terminal_a"))
-plan.net("island_b", floating.pin("terminal_b"))
+island_a = plan.net(floating.pin("terminal_a"), id="island_a")
+island_b = plan.net(floating.pin("terminal_b"), id="island_b")
 ```
 
 The two terminal-to-reference capacitances are real branches even though the
@@ -493,17 +563,17 @@ pump_inductor = plan.add(
 )
 
 plan.reference("ground", pump_inductor.pin("b"))
-plan.net("signal", jpa.pin("signal"))
-plan.net("pump_drive", pump_inductor.pin("a"))
-plan.add_port(
+signal_node = plan.net(jpa.pin("signal"), id="signal")
+pump_node = plan.net(pump_inductor.pin("a"), id="pump_drive")
+signal_port = plan.add_port(
     id="signal",
-    at="signal",
+    at=signal_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
-plan.add_port(
+pump_port = plan.add_port(
     id="pump",
-    at="pump_drive",
+    at=pump_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
@@ -517,8 +587,8 @@ plan.couple_inductive(
 
 run = CircuitRun(plan=plan, workspace="results/flux_pumped_resonator")
 pump_axis = PumpAxis(id="pump", frequency=7.0 * u.GHz)
-dc_bias = CurrentDrive(id="dc_bias", at="pump", mode=(0,))
-pump_drive = CurrentDrive(id="pump_drive", at="pump", mode=(1,))
+dc_bias = CurrentDrive(id="dc_bias", at=pump_port, mode=(0,))
+pump_drive = CurrentDrive(id="pump_drive", at=pump_port, mode=(1,))
 
 hb = run.solve(
     run.original,
@@ -570,6 +640,17 @@ The same Plan and component identities feed both backends:
 | R, L, C, scalar RLGC ladder | Linear physical rows | Corresponding linear rows |
 | JJ | Explicit `L_J0` small-signal branch plus declared parallel `Cj` | Nonlinear Josephson row plus declared parallel `Cj` |
 | Finite-loop SQUID | Both junctions linearized at their zero-phase, zero-bias `L_J0`, with loop and mutual coupling retained | Both nonlinear junctions, finite loop, and mutual pump coupling retained |
+| Logical Port | Node selector/incidence column `B`, `Y0 = 1 / R0`, load stamp `B Y0 B^T`, and power-wave relation; no fake `P` row | Exact JosephsonCircuits `P_i` marker plus colocated `R_port_i` load |
+
+The Port load and wave reference are separately auditable. PTC removes the
+proved load stamp while preserving the Port identity, node coordinate, and
+reference impedance used for S conversion. A Direct receipt therefore records
+`P row = not applicable` plus the actual `B`, `Y0`, and load mapping; an HB
+receipt records the exact `P_i` and `R_port_i` rows and solver indices.
+The Runtime's
+[loaded selected-view equations](v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
+define how that load state, retained injection map, and reference matrix produce
+the public S/Y/Z families; backend-native S is only reconciliation evidence.
 
 V1 Direct analysis does not accept an arbitrary supplied bias phase or claim a
 finite-bias JJ/SQUID linearization. A future operating-point linearization must
@@ -623,7 +704,10 @@ writing the workspace. For component authoring it shows:
 
 - every Library exact identity and public component schema;
 - composite hierarchy and primitive/backend expansion;
-- component-pin to net/reference/port mapping;
+- component-pin to electric-node/reference mapping, including Public,
+  anonymous Internal, and Port-promoted node identities;
+- every logical Port's node attachment, role, reference impedance,
+  one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
 - Direct and HB realization of each expanded row;
 - scalar RLGC source classification, canonical values, extraction frequency,
@@ -643,13 +727,19 @@ second schema or a substitute for the machine-readable evidence.
 
 Plan seal or deterministic preflight fails before backend execution for:
 
-- duplicate component, net, reference, or port IDs, or duplicate pin/public-
+- duplicate component, node, reference, or Port IDs, or duplicate pin/public-
   parameter names inside one component schema;
-- an unknown pin, parameter, inductive branch, net, or unbound/foreign Library
+- an unknown pin, parameter, inductive branch, node, or unbound/foreign Library
   instance;
-- assigning one pin to different nets, incrementally redefining a net, or
+- assigning one pin to different nodes, incrementally redefining a node, or
   declaring other than one Plan reference;
-- a port bound to the reference or an unknown net, or directly to a pin;
+- an empty electric-node declaration or the same pin repeated within one node;
+- an invalid, foreign, or duplicate `ElectricNodeRef` or `PortRef`; an
+  anonymous-node promotion colliding with an existing Public ID; a second Port
+  on one node; a Port bound to the reference or directly to a pin; or changing
+  a promoted node identity after seal;
+- an anonymous node with fewer than two distinct pins unless one Port promotes
+  it before seal;
 - a bare physical number, foreign Pint registry, non-finite Quantity, or
   dimensional mismatch;
 - non-positive R, L, C, or `L_J0`; negative `Cj`; invalid scalar RLGC values;

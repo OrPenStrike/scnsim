@@ -3,8 +3,8 @@
 This module illustrates the boundary SCNSim is intended to support.  The
 circuit-model developer owns all topology and analysis choices below.  A model
 user imports only ``ReadoutTarget``, ``optimize_readout()``, and
-``resolve_readout()``; they do not repeat components, nets, references, ports,
-or objective wiring in every Notebook.
+``resolve_readout()``; they do not repeat components, electric nodes,
+references, logical Ports, or objective wiring in every Notebook.
 
 The functions are complete UX examples but cannot execute while ``scnsim`` is
 an API-only scaffold.
@@ -26,6 +26,7 @@ from scnsim import (
     OptimizationSpec,
     OptimizationVariable,
     ParameterRef,
+    ReductionPipeline,
     ReportResult,
     ReportSpec,
     library as sc,
@@ -45,8 +46,11 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     """Build the team-owned Plan and return its private optimization handle."""
 
     plan = CircuitPlan(id="simple_readout")
+    input_cap = plan.add(
+        sc.capacitor(id="input_cap", capacitance=12.0 * u.fF)
+    )
     coupling_cap = plan.add(
-        sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+        sc.capacitor(id="coupling_cap", capacitance=12.0 * u.fF)
     )
     resonator = plan.add(
         sc.grounded_parallel_linear_lc_resonator(
@@ -57,15 +61,16 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     )
 
     plan.reference("ground")
-    plan.net("signal_in", coupling_cap.pin("a"))
+    signal_boundary = plan.net(input_cap.pin("a"))
+    plan.net(input_cap.pin("b"), coupling_cap.pin("a"))
     plan.net(
-        "readout_node",
         coupling_cap.pin("b"),
         resonator.pin("signal"),
+        id="readout_node",
     )
     plan.add_port(
         id="signal_in",
-        at="signal_in",
+        at=signal_boundary,
         role="terminated",
         reference_impedance=50.0 * u.ohm,
     )
@@ -114,7 +119,10 @@ def _optimization_request(
         ),
         optimizer=CMAESSpec(seed=17, max_evaluations=200),
     )
-    return run, run.original, spec
+    quantity_view = run.original.reduce(
+        ReductionPipeline().retain("readout_node")
+    )
+    return run, quantity_view, spec
 
 
 def optimize_readout(

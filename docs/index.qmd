@@ -27,7 +27,8 @@ conversation sketch:
 2. the [model-user Notebook](../examples/simple_resonator/02_model_user.ipynb)
    supplies a Design Target to a thin team-owned
    [model façade](../examples/simple_resonator/circuit_model.py), without
-   repeating nets, reference, ports, objective wiring, or optimizer controls.
+   repeating components, electric nodes, reference, logical Ports, objective
+   wiring, or optimizer controls.
 
 Use `help(CircuitPlan)`, `help(CircuitRun)`, or `help(DirectSolveSpec)` to inspect
 the same candidate vocabulary from Python. Every executable surface fails
@@ -40,7 +41,7 @@ The [SCNSim V1 Component Authoring](component-authoring.qmd) and
 authority without duplicating reusable physics. For Human review:
 
 1. start with [one Library model](component-authoring.qmd#one-library-model)
-   and [named electrical topology](component-authoring.qmd#named-electrical-topology);
+   and [electrical topology and logical Ports](component-authoring.qmd#electrical-topology-and-logical-ports);
 2. review the [built-in leaves](component-authoring.qmd#built-in-leaves),
    [general composites](component-authoring.qmd#general-composites), and
    [six resonator factories](component-authoring.qmd#six-resonator-factories);
@@ -49,9 +50,9 @@ authority without duplicating reusable physics. For Human review:
 4. continue with the Runtime [review map](v1-runtime-contract.qmd#review-map)
    and [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
    for the lazy `NetworkViewRef` graph;
-5. review [shared topology and solver-specific views](v1-runtime-contract.qmd#shared-topology-and-solver-specific-views)
-   for selective Port-Termination Compensation (PTC), automatic floating-pair
-   coordinates, arbitrary N-port retention, Direct/HB realization, and
+5. review [shared topology and unified node views](v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
+   for selective Port-Termination Compensation (PTC), automatic paired-node
+   coordinates, retained node views, Port-realizability, Direct/HB lowering, and
    nonzero-drive PTC authorization;
 6. review [Direct matrices and physical quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities)
    and [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling)
