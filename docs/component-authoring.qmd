@@ -8,8 +8,9 @@ toc-depth: 3
 ## CONVERGING contract
 
 This page is the single current candidate authority for SCNSim V1 component
-authoring. The API sketches are reviewable product contracts; the package is
-not yet implemented, accepted, stabilized, or released.
+authoring. Its classes, signatures, and docstrings are now importable as a
+fail-fast scaffold; physical validation, compilation, and execution are not
+yet implemented, accepted, stabilized, or released.
 :::
 
 ## Reading goal

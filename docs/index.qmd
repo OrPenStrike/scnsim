@@ -11,8 +11,27 @@ optimization, and reporting.
 ## Candidate semantics
 
 The product, component-authoring, Runtime, Units, reduction, and failure semantics are `CONVERGING`.
-They are not yet accepted, stabilized, implemented, released, or installable.
+The Python package is an installable fail-fast API/docstring scaffold. No
+compiler, solver, unit registry, workspace, or report behavior is yet accepted,
+stabilized, implemented, or released.
 :::
+
+## Begin with the two user journeys
+
+The same simple resonator is preserved as two notebooks rather than only as a
+conversation sketch:
+
+1. the [model-author Notebook](../examples/simple_resonator/01_model_author.ipynb)
+   starts at `CircuitPlan` and makes components, topology, Run, Specs, and
+   exact report inputs visible;
+2. the [model-user Notebook](../examples/simple_resonator/02_model_user.ipynb)
+   supplies a Design Target to a thin team-owned
+   [model façade](../examples/simple_resonator/circuit_model.py), without
+   repeating nets, reference, ports, objective wiring, or optimizer controls.
+
+Use `help(CircuitPlan)`, `help(CircuitRun)`, or `help(DirectSolveSpec)` to inspect
+the same candidate vocabulary from Python. Every executable surface fails
+explicitly while the package remains a scaffold.
 
 ## Review map
 

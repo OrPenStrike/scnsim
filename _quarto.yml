@@ -6,6 +6,8 @@ project:
     - docs/index.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
+    - examples/simple_resonator/01_model_author.ipynb
+    - examples/simple_resonator/02_model_user.ipynb
 
 website:
   title: "SCNSim"
@@ -19,6 +21,12 @@ website:
         href: docs/component-authoring.qmd
       - text: "V1 Runtime Contract"
         href: docs/v1-runtime-contract.qmd
+      - text: "Examples"
+        menu:
+          - text: "Model author"
+            href: examples/simple_resonator/01_model_author.ipynb
+          - text: "Model user"
+            href: examples/simple_resonator/02_model_user.ipynb
 
 format:
   html:

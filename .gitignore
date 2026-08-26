@@ -1,5 +1,11 @@
 /.quarto/
 /_site/
+/.venv/
+/build/
+/dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
 
 
 **/*.quarto_ipynb

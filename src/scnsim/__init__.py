@@ -1,0 +1,131 @@
+"""SCNSim — Superconducting Circuit Network Simulation.
+
+This package is currently an importable ``CONVERGING`` API scaffold.  Its
+classes, signatures, and docstrings make the proposed V1 mental model
+inspectable with ``help()`` and IDE completion.  Solver/compiler behavior is
+intentionally absent and every executable surface fails explicitly.
+
+Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
+with :class:`CircuitRun` plus a model package supplied by your team if you only
+consume an existing model.
+"""
+
+from . import units
+from ._scaffold import ScaffoldUnavailableError
+from .authoring import (
+    CircuitPlan,
+    ComponentInstance,
+    InductiveBranchRef,
+    Library,
+    ParameterRef,
+    ParameterSet,
+    ParameterSpec,
+    PinRef,
+    library,
+)
+from .results import (
+    BiasState,
+    CircuitDiagramResult,
+    DirectQuantityResult,
+    DirectSolveResult,
+    ExplanationResult,
+    HBCaseResult,
+    HBBatchResult,
+    HBScatteringMatrixResult,
+    InventoryResult,
+    MatrixFamilyResult,
+    MatrixView,
+    OperatorPointResult,
+    OperatorResult,
+    OptimizationBest,
+    OptimizationResult,
+    PumpState,
+    ReconciliationEvidence,
+    ReportResult,
+    Result,
+    ScatteringMatrixResult,
+    TraceResult,
+)
+from .runtime import CircuitRun, NetworkViewRef, ReductionPipeline
+from .specs import (
+    CMAESSpec,
+    CircuitDiagramSpec,
+    CostObjective,
+    CurrentDrive,
+    DiagonalRootSpec,
+    DirectSolveSpec,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    HybridizedPoleSpec,
+    OperatorSpec,
+    OptimizationSpec,
+    OptimizationVariable,
+    PumpAxis,
+    QuantitySum,
+    ReportSpec,
+    ResidueNormalizedCouplingSpec,
+    ResponseElementSpec,
+    SParameterTrace,
+    TransferZeroSpec,
+)
+
+__version__ = "1.0.0.dev1"
+
+__all__ = [
+    "BiasState",
+    "CMAESSpec",
+    "CircuitDiagramResult",
+    "CircuitDiagramSpec",
+    "CircuitPlan",
+    "CircuitRun",
+    "ComponentInstance",
+    "CostObjective",
+    "CurrentDrive",
+    "DiagonalRootSpec",
+    "DirectQuantityResult",
+    "DirectSolveResult",
+    "DirectSolveSpec",
+    "ExplanationResult",
+    "HBCaseResult",
+    "HBCaseSpec",
+    "HBBatchResult",
+    "HBScatteringMatrixResult",
+    "HBSolveSpec",
+    "HBTruncation",
+    "HybridizedPoleSpec",
+    "InductiveBranchRef",
+    "InventoryResult",
+    "Library",
+    "MatrixFamilyResult",
+    "MatrixView",
+    "NetworkViewRef",
+    "OperatorPointResult",
+    "OperatorResult",
+    "OperatorSpec",
+    "OptimizationBest",
+    "OptimizationResult",
+    "OptimizationSpec",
+    "OptimizationVariable",
+    "ParameterRef",
+    "ParameterSet",
+    "ParameterSpec",
+    "PinRef",
+    "PumpAxis",
+    "PumpState",
+    "QuantitySum",
+    "ReconciliationEvidence",
+    "ReductionPipeline",
+    "ReportResult",
+    "ReportSpec",
+    "ResidueNormalizedCouplingSpec",
+    "ResponseElementSpec",
+    "Result",
+    "SParameterTrace",
+    "ScatteringMatrixResult",
+    "ScaffoldUnavailableError",
+    "TransferZeroSpec",
+    "TraceResult",
+    "library",
+    "units",
+]

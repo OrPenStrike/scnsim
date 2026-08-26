@@ -9,7 +9,9 @@ toc-depth: 3
 
 This document is the single current candidate authority for the SCNSim V1
 runtime semantics. It is written for Human review and does not claim
-`ACCEPTED`, `STABILIZED`, integration, release, or installability.
+`ACCEPTED`, `STABILIZED`, executable simulation behavior, or release. The
+Python package is installable only as a fail-fast class/signature/docstring
+scaffold for UX review.
 :::
 
 ## Reading goal
@@ -96,6 +98,31 @@ exact public handoff with its Git provenance.
 | `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
 | typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
+
+### Two users, one reusable model
+
+The public SCNSim vocabulary serves two different layers:
+
+| Layer | Primary objects | Repeated work it should avoid |
+|---|---|---|
+| Circuit-model development | `Library`, `CircuitPlan`, `NetworkViewRef`, quantity and solve Specs | Re-deriving physical topology or analysis semantics in every Notebook |
+| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, nets, reference, ports, objective selectors, weights, and optimizer controls |
+
+The façade is ordinary consumer-package code, not a second SCNSim registry or
+physical authority. It reconstructs the exact Plan/Ref/Spec request, so a
+kernel-restarted consumer can call the same façade to `resolve()` exact durable
+evidence. The model developer may expose `optimize_readout(target, workspace)`
+or another domain-named function; SCNSim does not prescribe those project
+names and does not own their Design Target.
+
+The persistent simple-resonator examples show both layers:
+
+- [model author](../examples/simple_resonator/01_model_author.ipynb);
+- [model consumer](../examples/simple_resonator/02_model_user.ipynb); and
+- [team-owned façade](../examples/simple_resonator/circuit_model.py).
+
+This separation is a UX boundary, not a second Runtime. Both users ultimately
+receive the same typed SCNSim Results and exact receipt identities.
 
 `CircuitPlan` is the only physical circuit authority. There is no
 `ReducedCircuitPlan`; a Schur-complement model is an analysis reference derived
@@ -924,7 +951,7 @@ optimization_spec = OptimizationSpec(
             weight=10.0 * u.dimensionless,
         ),
     ),
-    optimizer=CMAESSpec(...),
+    optimizer=CMAESSpec(seed=17, max_evaluations=200),
 )
 
 optimization = run.optimize(feedline, optimization_spec)
@@ -937,6 +964,12 @@ factorization/root work, objective aggregation, and CMA-ES remain inside that
 process. Python submits the sealed request and receives process-local progress
 and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
 daemon. Repeated quantity identities share dependency nodes within a candidate.
+
+`CMAESSpec` requires a deterministic `seed` and finite `max_evaluations` work
+budget; optional `population_size` is an algorithm control. These values bound
+execution and reproducibility but do not decide whether the resulting circuit
+meets a Design Target.
+
 Julia package precompilation may reduce load and first-execution latency but
 does not promise every specialization is already compiled. SCNSim adds no
 special precompile workload until representative measurement shows startup is
@@ -1164,7 +1197,9 @@ report = run.build_report(
 ```
 
 Report assembly records the exact chosen inputs and may be Direct-only, contain
-one HB case, or contain several operating cases.
+one HB case, contain several operating cases, or present one exact optimization
+result and its candidate/failure evidence. Report assembly never changes which
+candidate is best or turns a Design Target into a pass/fail Gate.
 
 The Direct/HB comparison operation is intentionally not named yet. Its public
 shape depends on the unresolved comparison-grid decision and must not imply an

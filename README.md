@@ -12,8 +12,10 @@ applying explicit reduction pipelines, and solving the selected model with
 Direct or harmonic-balance backends.
 
 > **Lifecycle status:** `CONVERGING`. The V1 product, component authoring,
-> Runtime, Units, reduction, and failure contracts are being defined with the Human. They are not yet
-> accepted, stabilized, implemented, released, or installable.
+> Runtime, Units, reduction, and failure contracts are being defined with the
+> Human. The Python package is now an installable API/docstring scaffold, but
+> no compiler, solver, workspace, report, or unit-registry behavior is
+> implemented, accepted, stabilized, or released.
 
 SCNSim is the network-simulation counterpart to SCGSim:
 
@@ -22,13 +24,58 @@ SCGSim  : geometry -> mesh / EM -> report
 SCNSim  : network  -> operator / reduction -> solve -> report
 ```
 
+## Inspect the API scaffold
+
+The scaffold exists so a model author can use IDE completion or Python's own
+help before implementation freezes the UX:
+
+```bash
+python -m pip install -e .
+```
+
+```python
+from scnsim import CircuitPlan, DirectSolveSpec, OperatorSpec, ReportSpec
+
+help(CircuitPlan)
+help(DirectSolveSpec)
+help(OperatorSpec)
+help(ReportSpec)
+```
+
+Every construction or operation raises `ScaffoldUnavailableError`. This is
+intentional: the current package is safe for interface review but cannot
+produce a fake successful simulation.
+
+## Two Notebook UX layers
+
+SCNSim supports two different users without creating two physical authorities:
+
+| User | Writes once | Reuses later |
+|---|---|---|
+| Circuit-model developer | Library components, nets, reference, ports, Ref graph, Specs, and project-owned objectives | The exact same model façade and evidence identity |
+| Model consumer | Project Design Target and workspace | A few team-owned functions returning typed SCNSim Results |
+
+The package owns the general Plan/Ref/Run/Spec/Result vocabulary. A design team
+owns a thin ordinary Python module that hides its repeated topology and
+analysis choices. SCNSim does not absorb that team's Design Target or provide a
+global model registry.
+
+The persistent examples show both views of the same model:
+
+- [model-author Notebook](examples/simple_resonator/01_model_author.ipynb)
+  starts at `CircuitPlan` and explains each Spec in context;
+- [model-user Notebook](examples/simple_resonator/02_model_user.ipynb) imports
+  the finished [team model façade](examples/simple_resonator/circuit_model.py),
+  provides a target, then calls optimization/report functions without
+  restating topology.
+
 ## Candidate Notebook UX
 
 The proposed UX first builds one named physical Plan from an exact immutable
 Library, then gives that sealed `CircuitPlan` an immutable graph of lazy
 `NetworkViewRef` topology and view reductions. `CircuitRun` is the only
 execution owner. These are non-executable API sketches; the package does not
-exist yet:
+yet implement them:
 
 ```python
 from scnsim import CircuitPlan, library as sc, units as u
@@ -124,7 +171,7 @@ optimization = run.optimize(
                 weight=1.0 * u.dimensionless,
             ),
         ),
-        optimizer=CMAESSpec(...),
+        optimizer=CMAESSpec(seed=17, max_evaluations=200),
     ),
 )
 
