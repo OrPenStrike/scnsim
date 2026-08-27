@@ -47,7 +47,7 @@ Executable authoring and runtime calls deliberately raise
 ## Read the documentation
 
 - [Overview](README.md) — product boundary, status, and installation.
-- [Tutorial](docs/index.qmd) — thirteen 3–5 minute native-API lessons from
+- [Tutorial](docs/index.qmd) — thirteen focused native-API lessons from
   primitive authoring through optimization, reuse, and pump-off HB.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim uses Plans, views, typed requests, and explicit ownership.

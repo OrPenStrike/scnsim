@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** carry ordered N×N RLGC data into a deterministic π ladder.
 **Run:** author one two-trace line.
 **Inspect:** every compiled section without scalarizing mutual terms.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Bind matrices to conductor order

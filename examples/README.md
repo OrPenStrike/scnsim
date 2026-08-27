@@ -1,9 +1,9 @@
 # SCNSim micro-course sources
 
 `tutorials/01_*.qmd` through `tutorials/13_*.qmd` form one linear native-API
-course. Each page answers one user need in 3–5 minutes, including reading and
-submitting code; compute wait is excluded. A page never uses a public SCNSim
-object before the course introduces it.
+course. Each page answers one focused user need with one operation and
+inspection. A page never uses a public SCNSim object before the course
+introduces it.
 
 The modules under `tutorials/fixtures/` only reconstruct Plans and Plan-bound
 handles needed by adjacent lessons. They do not wrap `CircuitRun`, choose

@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** remove evidenced probe loads without deleting Port identity.
 **Run:** derive one PTC network view.
 **Inspect:** selected load-state and topology evidence.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Compensate only declared probes

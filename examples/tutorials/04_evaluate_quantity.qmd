@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** request a named physical quantity without an unrelated S/Y/Z sweep.
 **Run:** evaluate one diagonal-root branch.
 **Inspect:** root frequency, linewidth, and slope evidence.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Identify the intended root branch

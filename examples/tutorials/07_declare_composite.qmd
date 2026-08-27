@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** package repeated private topology behind public parameters and pins.
 **Run:** create one component from a custom catalog.
 **Inspect:** its public parameter and terminal surface.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Put repeated topology behind one boundary

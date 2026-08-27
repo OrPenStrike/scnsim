@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** separate HB axes, possible drives, named cases, and finite truncation.
 **Run:** prepare one exact pump-off case.
 **Inspect:** retained modes, signed frequencies, and derived Pump state.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Declare the experiment without driving it

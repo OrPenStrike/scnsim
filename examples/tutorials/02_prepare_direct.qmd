@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** separate a sealed Run, lazy network view, and response request.
 **Run:** build one `DirectSolveSpec` without solving it.
 **Inspect:** deterministic preflight evidence.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Choose the analysis view and request

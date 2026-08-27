@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** distinguish a component parameter from an active search variable.
 **Run:** optimize the primitive resonator capacitor.
 **Inspect:** variables, bounds, normalization, and the best ParameterSet.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Declare the search, not a new circuit

@@ -13,6 +13,73 @@ main.content {
   background-color: var(--scq-surface);
 }
 
+.course-card {
+  position: relative;
+  margin-bottom: 1rem;
+  background-color: var(--scq-surface);
+  border-color: var(--scq-line-subtle);
+  border-radius: 0.75rem;
+  box-shadow: var(--scq-card-shadow);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.course-card:hover,
+.course-card:focus-within {
+  border-color: var(--scq-accent);
+  box-shadow: var(--scq-card-shadow-hover);
+}
+
+.course-card:focus-within {
+  outline: 0.2rem solid var(--scq-focus-ring);
+  outline-offset: 0.1rem;
+}
+
+.course-card .card-body {
+  padding: 1.25rem 1.5rem;
+}
+
+.course-card-eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--scq-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.course-card section.course-card-title {
+  margin: 0;
+  font-size: inherit;
+}
+
+.course-card h3.course-card-title {
+  margin: 0 0 0.55rem;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.course-card h3.course-card-title a {
+  color: var(--bs-body-color);
+  text-decoration: none;
+}
+
+.course-card:hover h3.course-card-title a,
+.course-card:focus-within h3.course-card-title a {
+  color: var(--scq-accent);
+}
+
+.course-card section.course-card-title > p:not([class]) {
+  margin-bottom: 0.8rem;
+}
+
+.course-card-outcome {
+  margin: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--scq-line-subtle);
+  color: var(--scq-text-secondary);
+  font-size: 0.925rem;
+}
+
 main.content table {
   display: block;
   width: max-content;
@@ -62,5 +129,13 @@ main.content .math.display {
   main.content table th:first-child,
   main.content table td:first-child {
     min-width: 8rem;
+  }
+
+  .course-card .card-body {
+    padding: 1rem;
+  }
+
+  .course-card h3.course-card-title {
+    font-size: 1.1rem;
   }
 }

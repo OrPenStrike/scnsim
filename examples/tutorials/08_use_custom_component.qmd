@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** treat custom and built-in factories as equal component producers.
 **Run:** wire the reusable LC into an outer `CircuitPlan`.
 **Inspect:** the authoring-level component boundary.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Compose the reusable subsystem

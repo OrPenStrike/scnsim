@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** use `solve()` only when you need S/Y/Z over a frequency grid.
 **Run:** execute one prepared Direct response.
 **Inspect:** the named reflection trace and matrix surfaces.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Materialize the selected response

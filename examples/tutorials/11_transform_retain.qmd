@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** derive common/differential coordinates before selecting a final view.
 **Run:** replay PTC, automatic pair transform, and retain in one lineage.
 **Inspect:** weights, basis, eliminated complement, and channel order.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Derive one backend-neutral view

@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** aggregate explicit Results and reload an exact request after restart.
 **Run:** build a report, then resolve the same quantity request.
 **Inspect:** durable request/Result identity rather than “latest.”
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Report only Results you already hold

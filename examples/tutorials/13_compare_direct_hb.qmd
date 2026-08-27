@@ -5,11 +5,11 @@ execute:
   enabled: false
 ---
 
-::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** solve the same selected network with Direct and pump-off HB.
 **Run:** materialize both response Results.
 **Inspect:** symmetric S/Y/Z surfaces and named-case lookup.
-**Status:** `CONVERGING` scaffold; compute wait excluded.
+**Status:** `CONVERGING` scaffold.
 :::
 
 ## Solve the same view twice
