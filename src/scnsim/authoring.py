@@ -398,7 +398,7 @@ class Library:
         self,
         *,
         id: str,
-        subsystem_capacitance: object,
+        capacitance: object,
         inductance: object,
     ) -> ComponentInstance:
         """Declare a grounded parallel-C/linear-L resonator with pin ``signal``."""
@@ -422,11 +422,11 @@ class Library:
         self,
         *,
         id: str,
-        subsystem_capacitance: object,
+        capacitance: object,
         josephson_inductance: object,
         junction_capacitance: object,
     ) -> ComponentInstance:
-        """Declare a grounded resonator with one nonlinear Josephson branch."""
+        """Declare a grounded C resonator with one Josephson branch and Cj."""
 
         unavailable("Library.grounded_parallel_single_junction_resonator")
 
@@ -448,12 +448,12 @@ class Library:
         self,
         *,
         id: str,
-        subsystem_capacitance: object,
+        capacitance: object,
         josephson_inductance: object,
         junction_capacitance: object,
         loop_inductance: object,
     ) -> ComponentInstance:
-        """Declare a grounded resonator with an explicit finite-loop SQUID."""
+        """Declare a grounded C resonator with an explicit finite-loop SQUID."""
 
         unavailable("Library.grounded_parallel_symmetric_squid_resonator")
 

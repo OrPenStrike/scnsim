@@ -52,7 +52,7 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     resonator = plan.add(
         sc.grounded_parallel_linear_lc_resonator(
             id="resonator",
-            subsystem_capacitance=110.0 * u.fF,
+            capacitance=110.0 * u.fF,
             inductance=5.8 * u.nH,
         )
     )
@@ -70,7 +70,7 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
         role="terminated",
         reference_impedance=50.0 * u.ohm,
     )
-    return plan, resonator.parameter("subsystem_capacitance")
+    return plan, resonator.parameter("capacitance")
 
 
 def build_plan() -> CircuitPlan:

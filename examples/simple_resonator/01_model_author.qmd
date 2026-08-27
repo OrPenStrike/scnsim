@@ -41,7 +41,7 @@ coupling_cap = plan.add(
 resonator = plan.add(
     sc.grounded_parallel_linear_lc_resonator(
         id="resonator",
-        subsystem_capacitance=110.0 * u.fF,
+        capacitance=110.0 * u.fF,
         inductance=5.8 * u.nH,
     )
 )

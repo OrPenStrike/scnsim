@@ -558,16 +558,23 @@ factory exposes `inductance`; a single-junction factory exposes
 `josephson_inductance`, `junction_capacitance`, `loop_inductance`, and
 `inductive_branch("loop")`.
 
-Grounded factories use one `subsystem_capacitance` from `signal` to reference.
-Floating factories instead require all three subsystem branches:
+Grounded factories use one ordinary `capacitance` branch from `signal` to
+reference. Floating factories instead require all three branch-specific
+capacitances:
+
+```python
+resonator.parameter("capacitance")
+```
 
 - `terminal_a_to_reference_capacitance`;
 - `terminal_b_to_reference_capacitance`; and
 - `terminal_mutual_capacitance`.
 
-For a nonlinear resonator these subsystem capacitances remain separate from
-the junction's own parallel `junction_capacitance`. Composite expansions do
-not publish `branch1`, `branch2`, arbitrary child injection, or a generic
+For a nonlinear resonator the ordinary `capacitance` branch remains separate
+from every junction's own parallel `junction_capacitance`. The standard names
+`josephson_inductance` and `junction_capacitance` distinguish the Josephson
+constitutive parameter from the independent junction Cj. Composite expansions
+do not publish `branch1`, `branch2`, arbitrary child injection, or a generic
 topology selector.
 
 ### Grounded linear example
@@ -583,7 +590,7 @@ coupling_cap = plan.add(
 resonator = plan.add(
     sc.grounded_parallel_linear_lc_resonator(
         id="resonator",
-        subsystem_capacitance=110.0 * u.fF,
+        capacitance=110.0 * u.fF,
         inductance=5.8 * u.nH,
     )
 )
@@ -629,7 +636,7 @@ component has no ground pin. They bind the Plan's one declared reference.
 grounded_jj = plan.add(
     sc.grounded_parallel_single_junction_resonator(
         id="grounded_jj",
-        subsystem_capacitance=85.0 * u.fF,
+        capacitance=85.0 * u.fF,
         josephson_inductance=420.0 * u.pH,
         junction_capacitance=2.5 * u.fF,
     )
@@ -673,7 +680,7 @@ plan = CircuitPlan(id="flux_pumped_resonator")
 jpa = plan.add(
     sc.grounded_parallel_symmetric_squid_resonator(
         id="jpa",
-        subsystem_capacitance=95.0 * u.fF,
+        capacitance=95.0 * u.fF,
         josephson_inductance=300.0 * u.pH,
         junction_capacitance=2.0 * u.fF,
         loop_inductance=40.0 * u.pH,
@@ -855,6 +862,13 @@ wiring, and anonymous Internal junctions. A grounded linear resonator is drawn
 as parallel L and C branches to the Plan reference. CPW, MTL, IDC, and other
 composites remain recognizable authoring objects rather than opaque backend
 rows.
+
+For grounded nonlinear resonators, both representations keep the ordinary
+`capacitance` branch and every junction `junction_capacitance` branch visibly
+distinct. With `show_parameter_values=True`, each branch is labeled with its
+owning ParameterRef identity and value; the two symmetric-SQUID Cj branches
+show their shared `junction_capacitance` identity. No branch is folded into a
+total C.
 
 Use the compiled representation to audit the complete baseline primitive
 expansion:
