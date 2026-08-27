@@ -19,7 +19,7 @@ from circuit_model import (
     IPFTarget, build_model, build_response_specs, build_session,
     resolve_ipf_optimization,
 )
-from scnsim import ReportSpec, load_q2d_rlgc, units as u
+from scnsim import CircuitDiagramSpec, ReportSpec, load_q2d_rlgc, units as u
 ```
 
 ## Build the reusable model
@@ -35,6 +35,23 @@ diagonal R and fails closed otherwise.
 model = build_model()
 model.shared_short_length.show()
 model.idc_finger_length.show()
+```
+
+## Audit the complete compiled pi ladders
+
+The compiled diagram expands all five lines into their complete pi ladders,
+preserves the N-trace matrix order, and shows the IDC attachment. It is a
+baseline structural audit, not a Direct/HB solve or consumer evidence.
+
+```{python}
+#| id: ipf-compiled-schematic
+expanded = model.plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="compiled",
+        show_parameter_values=True,
+    )
+)
+expanded.show()
 ```
 
 ## Bind one Run and two typed views

@@ -406,4 +406,14 @@ class ReportResult(Result):
 
 
 class CircuitDiagramResult(Result):
-    """Schematic projection of the original Plan, not topology authority."""
+    """Materialized authoring or compiler-expanded Plan diagram.
+
+    A compiled result records Plan, compiler, and expanded-graph identities.
+    Neither representation contains a reduced equivalent or backend row and
+    neither becomes topology or numerical-result authority.
+    """
+
+    def show(self) -> object:
+        """Present this materialized diagram without compiling or analyzing."""
+
+        unavailable("CircuitDiagramResult.show")

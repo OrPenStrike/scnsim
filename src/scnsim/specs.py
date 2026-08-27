@@ -453,16 +453,23 @@ class ReportSpec:
 
 
 class CircuitDiagramSpec:
-    """Describe presentation of the original Plan's schematic projection.
+    """Choose one read-only schematic representation of a complete Plan.
 
-    The rendered diagram is inspection evidence only.  It cannot redefine
-    topology, display a fabricated reduced equivalent circuit, or invalidate
-    numerical receipts when its theme or layout changes.
+    ``authoring`` preserves semantic components and declared connections for
+    human inspection.  ``compiled`` exposes the complete deterministic
+    baseline physical expansion, including every transmission-line pi section,
+    without showing backend rows or reduction results.  Parameter values, when
+    requested, are always the Plan baseline.
 
-    Concrete layout/theme controls remain intentionally undecided in this
-    scaffold; the empty constructor exposes that open UX without inventing a
-    configuration surface.
+    Theme and value presentation affect only the diagram identity.  They never
+    alter Plan or numerical receipt identity.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        representation: Literal["authoring", "compiled"] = "authoring",
+        theme: Literal["auto", "light", "dark"] = "auto",
+        show_parameter_values: bool = False,
+    ) -> None:
         unavailable("CircuitDiagramSpec construction")

@@ -1,13 +1,15 @@
 ---
-title: "Build and inspect one simple resonator"
+title: "Build and inspect one reflective LC resonator"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-This model-author workflow builds one reusable circuit, solves its selected
-response, evaluates one physical quantity, and presents both exact Results.
-The current `CONVERGING` scaffold intentionally fails on construction.
+This model-author workflow builds the familiar one-port reflection topology:
+one 50-ohm boundary, one 6 fF coupling capacitor, and one grounded parallel LC.
+It then solves the selected response, evaluates one physical quantity, and
+presents both exact Results. The current `CONVERGING` scaffold intentionally
+fails on construction.
 
 ## Set up the model workspace
 
@@ -16,27 +18,25 @@ Import only the public objects used by this model and its analysis requests.
 ```{python}
 #| id: author-imports
 from scnsim import (
-    CircuitPlan, CircuitRun, DiagonalRootSpec, DirectSolveSpec,
-    ReductionPipeline, ReportSpec, SParameterTrace,
+    CircuitDiagramSpec, CircuitPlan, CircuitRun, DiagonalRootSpec,
+    DirectSolveSpec, ReductionPipeline, ReportSpec, SParameterTrace,
     library as sc, units as u,
 )
 ```
 
 ## Compose the physical Plan
 
-Components are assembled into Public or anonymous Internal electric nodes, and
-the logical Port attaches to the returned node handle. See
+The coupling capacitor joins the measurement boundary to the grounded LC
+signal node. The logical Port attaches to the returned boundary-node handle.
+See
 [Component Authoring](../../docs/component-authoring.qmd) for the full contract.
 
 ```{python}
 #| id: author-plan
 plan = CircuitPlan(id="simple_readout")
 
-input_cap = plan.add(
-    sc.capacitor(id="input_cap", capacitance=12.0 * u.fF)
-)
 coupling_cap = plan.add(
-    sc.capacitor(id="coupling_cap", capacitance=12.0 * u.fF)
+    sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
 )
 readout = plan.add(
     sc.grounded_parallel_linear_lc_resonator(
@@ -47,9 +47,8 @@ readout = plan.add(
 )
 
 plan.reference("ground")
-signal_boundary = plan.net(input_cap.pin("a"))
-plan.net(input_cap.pin("b"), coupling_cap.pin("a"))
-plan.net(
+signal_boundary = plan.net(coupling_cap.pin("a"))
+readout_node = plan.net(
     coupling_cap.pin("b"),
     readout.pin("signal"),
     id="readout_node",
@@ -60,6 +59,20 @@ signal_port = plan.add_port(
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
+```
+
+## Inspect the reflection topology
+
+The authoring diagram makes the measurement path explicit before any analysis:
+Port, coupling capacitor, readout node, and the parallel L/C branches to the
+Plan reference. `show()` only presents the materialized diagram.
+
+```{python}
+#| id: author-schematic
+diagram = plan.render_schematic(
+    CircuitDiagramSpec(show_parameter_values=True)
+)
+diagram.show()
 ```
 
 ## Solve the selected response

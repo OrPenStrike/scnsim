@@ -28,7 +28,6 @@ from .authoring import (
     PortRef,
 )
 from .results import (
-    CircuitDiagramResult,
     DirectQuantityResult,
     DirectSolveResult,
     ExplanationResult,
@@ -40,7 +39,6 @@ from .results import (
     Result,
 )
 from .specs import (
-    CircuitDiagramSpec,
     DiagonalRootSpec,
     DirectSolveSpec,
     HBSolveSpec,
@@ -109,12 +107,6 @@ class NetworkViewRef:
         """Return a child Ref without executing or mutating this lineage."""
 
         unavailable("NetworkViewRef.reduce")
-
-    def render_schematic(self, spec: CircuitDiagramSpec) -> CircuitDiagramResult:
-        """Render the original Plan projection; reduced equivalents are not drawn."""
-
-        unavailable("NetworkViewRef.render_schematic")
-
 
 class CircuitRun:
     """Execution namespace for one sealed Plan and one evidence workspace.

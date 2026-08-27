@@ -67,7 +67,8 @@ SCNSim owns:
 - coordinate transforms and Schur-complement reduction;
 - Direct and harmonic-balance analysis;
 - Direct optimization, immutable receipts, results, and reports; and
-- a schematic projection of the original circuit plan.
+- authoring and compiler-expanded schematic projections of the original
+  circuit plan.
 
 SCNSim does not own:
 
@@ -1749,21 +1750,58 @@ The Direct/HB comparison operation is intentionally not named yet. Its public
 shape depends on the unresolved comparison-grid decision and must not imply an
 interpolation policy before Human review.
 
-## Schematic projection
+## Authoring and compiled schematics
 
-`original.render_schematic(CircuitDiagramSpec(...))` renders the original Plan
-only. The diagram is inspection/evidence, not a second topology authority.
+Schematics belong to the physical authority, so both representations start at
+the Plan rather than a reduced Ref:
 
-The candidate composer uses deterministic Grid + Attach placement, reusable
-component anchors/public terminals, explicit junctions, and orthogonal routes.
-Every visible component, terminal, connection, and port must trace to the
-sealed Plan.
+```python
+diagram = plan.render_schematic()
+diagram.show()
+```
 
-Diagram identity is separate from Plan identity. Changing layout or theme does
-not invalidate numerical receipts, and diagram failure does not block
-numerical stages. Reduced Refs are inspected through their coordinates,
-operators, transforms, eliminations, and observables rather than a fabricated
-equivalent-circuit schematic.
+Omitting the Spec selects the human-readable `authoring` representation,
+automatic light/dark theme selection, and IDs without parameter values. The
+explicit surface is:
+
+```python
+diagram = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",  # or "compiled"
+        theme="auto",                # or "light" / "dark"
+        show_parameter_values=True,
+    )
+)
+diagram.show()
+```
+
+The `authoring` representation draws the semantic components, Public nodes,
+logical Ports, reference, anonymous junctions, and declared connections.
+Grounded LC components expand visually into their parallel L/C branches and
+reference rather than an opaque box; larger composites retain recognizable
+authoring symbols instead of compiler ladders. Every visible object traces to
+the Plan.
+
+The `compiled` representation runs only the deterministic structural compile
+preflight needed to materialize the complete baseline physical graph. It is
+the audit view for primitive expansions, including every transmission-line pi
+section. It is not a Direct or HB lowering and contains no backend rows, PTC,
+coordinate transform, Schur reduction, or selected-view equivalent. Those
+facts remain available through `run.explain(ref, spec).show()`.
+
+`render_schematic()` requires a structurally complete valid Plan but does not
+seal or mutate it, solve an analysis, or write a workspace. A compiled diagram
+records the Plan, compiler, and expanded-graph identities. Values, when
+requested, are baseline values: scalars appear near components, while complete
+matrix or multi-field values appear in an ID-keyed legend or table without
+truncation or unreadable layout compression.
+
+`CircuitDiagramResult.show()` only presents the materialized diagram. It never
+recompiles or executes. Diagram identity is separate from Plan and numerical
+receipt identity; a theme/layout change or rendering failure cannot change or
+block numerical analysis. SCNSim exposes neither `plan.show()` nor schematic
+`.plot()`, and reduced Refs are inspected as operations and evidence rather
+than fabricated equivalent circuits.
 
 ## Failure and evidence contract
 
@@ -1793,6 +1831,8 @@ SCNSim fails closed for:
   or with non-finite/dimensionful `k`, `abs(k) >= 1`, or a complete bound
   inductance matrix that is not reciprocal positive definite;
 - an unsupported component expansion or missing Direct/HB realization;
+- an incomplete/invalid Plan requested for schematic rendering, an invalid
+  diagram representation/theme, or an unauditable compiled expansion;
 - a bare physical number, unknown unit, foreign registry, or dimensionality
   mismatch;
 - a ParameterSet containing unknown refs, non-finite values, or another Plan

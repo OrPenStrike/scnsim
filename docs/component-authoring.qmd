@@ -833,6 +833,67 @@ incompatible collection of individually plausible pairwise coefficients.
 
 ## Inspection and evidence
 
+### Inspect the authoring circuit or complete compiled graph
+
+The Plan owns both schematic projections. The default is a human-readable
+authoring diagram:
+
+```python
+from scnsim import CircuitDiagramSpec
+
+diagram = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        show_parameter_values=True,
+    )
+)
+diagram.show()
+```
+
+It shows semantic components, Public nodes, logical Ports, reference, actual
+wiring, and anonymous Internal junctions. A grounded linear resonator is drawn
+as parallel L and C branches to the Plan reference. CPW, MTL, IDC, and other
+composites remain recognizable authoring objects rather than opaque backend
+rows.
+
+Use the compiled representation to audit the complete baseline primitive
+expansion:
+
+```python
+expanded = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="compiled",
+        show_parameter_values=True,
+    )
+)
+expanded.show()
+```
+
+For every transmission line it shows all `n_sections`, every section index,
+and all `n_sections + 1` physical nodes per conductor. It records `dx`, the
+head/tail and outer Plan attachments, declared conductor order, reference
+conductor, and head-to-tail `+z` current direction. Each section shows the full
+`R * dx` and `L * dx` series contribution plus `G * dx / 2` and `C * dx / 2`
+at both ends. Each interior node identifies the two adjacent half-shunt
+contributions and their compiled total.
+
+For `N=1`, the renderer uses ordinary R/L series and G/C shunt symbols. For
+`N>1`, it preserves ordered conductor lanes and represents the series and
+shunt matrices as matrix-valued blocks with complete C/G Maxwell and L/R
+tables; it never invents a scalar equivalent. Exact-zero branches may be
+omitted from the drawing only when the complete value table marks them
+`omitted-as-zero`. Large ladders use deterministic multi-panel or paged vector
+layout whose boundaries retain continuous section and node IDs. Sections,
+mutual terms, and conductor order are never collapsed, truncated, or
+reordered.
+
+This compiled schematic is still Plan-derived inspection evidence. It does not
+show Direct/HB rows, an HB off-diagonal-R capability claim, PTC, transforms,
+Schur elimination, or numerical results. `run.explain(ref, spec).show()` owns
+those backend- and request-specific facts. The V1 surface deliberately has no
+focus, section-range, partial-ladder, `plan.show()`, or schematic `.plot()`
+alternative.
+
 `run.explain(ref, spec).show()` performs the same deterministic component and
 ParameterSet preflight used by execution, without launching a solver or
 writing the workspace. For component authoring it shows:
@@ -895,6 +956,9 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
   node; wiring a `CoordinateRef`; exposing a foreign node; or hidden state
   referenced as consumer API; or an unexposed one-pin child endpoint;
+- an incomplete or invalid Plan passed to `render_schematic()`; an unknown
+  representation/theme; or a compiled expansion that cannot preserve exact
+  section, node, conductor, matrix, zero-term, or outer-attachment evidence;
 - an `AffineMap` with incompatible units, non-finite coefficients, unordered or
   dimensionally invalid support, a baseline outside support, or a mapped
   nonphysical child value;
@@ -932,5 +996,5 @@ declared branch permits it; negative or non-finite values are not.
   upstream validation limitation described above.
 - `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
   build those circuits from the declared generic components.
-- Component schematic rendering remains a projection of the original Plan,
-  never topology authority.
+- Authoring and compiled schematic rendering remain projections of the
+  original Plan, never topology or backend authority.

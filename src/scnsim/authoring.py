@@ -12,9 +12,13 @@ reviewable V1 UX scaffold, not a permissive partial circuit compiler.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from ._scaffold import unavailable
+
+if TYPE_CHECKING:
+    from .results import CircuitDiagramResult
+    from .specs import CircuitDiagramSpec
 
 
 class PinRef:
@@ -521,6 +525,19 @@ class CircuitPlan:
         """
 
         unavailable("CircuitPlan.add_port")
+
+    def render_schematic(
+        self,
+        spec: CircuitDiagramSpec | None = None,
+    ) -> CircuitDiagramResult:
+        """Materialize an authoring or compiler-expanded schematic.
+
+        Rendering validates a complete Plan but never seals or mutates it,
+        solves an analysis, or writes a workspace.  The returned diagram is
+        derived inspection evidence; it cannot become topology authority.
+        """
+
+        unavailable("CircuitPlan.render_schematic")
 
     def couple_inductive(
         self,

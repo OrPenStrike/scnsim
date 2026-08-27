@@ -7,8 +7,10 @@ These examples preserve two distinct user journeys:
 - `02_model_user.qmd` shows a teammate supplying only the inputs owned by the
   consuming project and calling its reusable façade.
 
-The simple-resonator author builds a small Plan directly in the workflow. The
-synthetic IPF author instead inspects a mature Composite, model-owned default
+The simple-resonator author builds a one-port reflection Plan from one 6 fF
+coupling capacitor and one grounded parallel LC, then inspects its authoring
+schematic. The synthetic IPF author instead inspects a mature Composite and its
+complete compiler-expanded pi ladders before the model-owned default
 optimization, optional immutable override, winner Direct/HB responses, report,
 and exact resolve. Reusable model logic remains in the adjacent Python modules.
 

@@ -46,11 +46,8 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     """Build the team-owned Plan and return its private optimization handle."""
 
     plan = CircuitPlan(id="simple_readout")
-    input_cap = plan.add(
-        sc.capacitor(id="input_cap", capacitance=12.0 * u.fF)
-    )
     coupling_cap = plan.add(
-        sc.capacitor(id="coupling_cap", capacitance=12.0 * u.fF)
+        sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
     )
     resonator = plan.add(
         sc.grounded_parallel_linear_lc_resonator(
@@ -61,8 +58,7 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     )
 
     plan.reference("ground")
-    signal_boundary = plan.net(input_cap.pin("a"))
-    plan.net(input_cap.pin("b"), coupling_cap.pin("a"))
+    signal_boundary = plan.net(coupling_cap.pin("a"))
     plan.net(
         coupling_cap.pin("b"),
         resonator.pin("signal"),
