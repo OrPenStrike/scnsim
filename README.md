@@ -21,20 +21,22 @@ interfaces.
 
 ## Installation
 
-Pin an exact reviewed development revision from another uv project:
-
-```bash
-SCNSIM_REVISION=replace-with-reviewed-commit-sha
-uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@${SCNSIM_REVISION}"
-```
-
-For local documentation and scaffold development:
+To develop or inspect SCNSim locally:
 
 ```bash
 git clone https://github.com/OrPenStrike/scnsim.git
 cd scnsim
 uv sync --locked
 ```
+
+`uv sync --locked` installs the checked-out SCNSim project and the exact
+development environment recorded in `uv.lock`; SCNSim does not list itself as
+one of its own dependencies.
+
+When another repository uses SCNSim, that consuming repository owns the exact
+SCNSim commit in its own `pyproject.toml` and `uv.lock`. Its team members then
+clone that repository and run `uv sync --locked`; they do not each run
+`uv add` manually.
 
 ## Usage
 
