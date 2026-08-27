@@ -22,7 +22,7 @@ or released.
 ::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
 ### Use an existing circuit model
 
-Start with the [simple model-user Notebook](../examples/simple_resonator/02_model_user.ipynb).
+Start with the [simple model-user workflow](../examples/simple_resonator/02_model_user.qmd).
 It shows how a notebook consumer supplies a target and workspace without
 repeating topology, Ports, objectives, or optimizer controls.
 :::
@@ -30,7 +30,7 @@ repeating topology, Ports, objectives, or optimizer controls.
 ::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
 ### Develop a reusable model
 
-Start with the [simple model-author Notebook](../examples/simple_resonator/01_model_author.ipynb),
+Start with the [simple model-author workflow](../examples/simple_resonator/01_model_author.qmd),
 then read [Component Authoring](component-authoring.qmd). This path owns the
 Plan, components, electric nodes, logical Ports, reusable Specs, and team façade.
 :::
@@ -46,8 +46,8 @@ quantity evaluation, optimization, resolution, receipts, and failures.
 ::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
 ### Review a complete optimization workflow
 
-Use the [IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
-and [model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb) to
+Use the [IPF model-author workflow](../examples/ipf_optimization/01_model_author.qmd)
+and [model-user workflow](../examples/ipf_optimization/02_model_user.qmd) to
 trace general N-trace RLGC through a reusable Composite, five-variable Direct
 optimization, winner reuse, pump-off HB, reporting, and exact resolution.
 :::
@@ -59,13 +59,13 @@ optimization, winner reuse, pump-off HB, reporting, and exact resolution.
 | --- | --- |
 | [Component Authoring](component-authoring.qmd) | Library identity, component catalog, pins, electric nodes, logical Ports, parameters, RLGC, composites, and backend realization |
 | [V1 Runtime Contract](v1-runtime-contract.qmd) | Execution, views, Specs, Direct/HB, evaluation, optimization, typed Results, receipts, and failure behavior |
-| Model-author Notebooks | Complete reusable-model construction and packaging narratives |
-| Model-user Notebooks | Short consumer workflows over a team-owned façade |
+| Model-author QMD workflows | Complete reusable-model construction and packaging narratives; paired IPYNBs are generated transport artifacts |
+| Model-user QMD workflows | Short consumer workflows over a team-owned façade; paired IPYNBs are generated transport artifacts |
 | [SCQ Design Kit Knowledge](https://github.com/arfiligol/SCQ_Design/tree/main/docs/knowledge) | Canonical reusable physics, mathematics, engineering meaning, and numerical-method derivations |
 
-The product pages link to Knowledge rather than copying its formulas. The
-Notebooks call the proposed public API rather than creating a second Runtime
-contract.
+The product pages link to Knowledge rather than copying its formulas. The QMD
+workflows call the proposed public API rather than creating a second Runtime
+contract; generated Notebooks provide GitHub and Jupyter transport only.
 
 ## Suggested review order
 

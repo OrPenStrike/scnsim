@@ -6,10 +6,10 @@ project:
     - docs/index.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
-    - examples/simple_resonator/01_model_author.ipynb
-    - examples/simple_resonator/02_model_user.ipynb
-    - examples/ipf_optimization/01_model_author.ipynb
-    - examples/ipf_optimization/02_model_user.ipynb
+    - examples/simple_resonator/01_model_author.qmd
+    - examples/simple_resonator/02_model_user.qmd
+    - examples/ipf_optimization/01_model_author.qmd
+    - examples/ipf_optimization/02_model_user.qmd
 
 website:
   title: "SCNSim"
@@ -26,7 +26,7 @@ website:
       - text: "Concepts"
         href: docs/component-authoring.qmd
       - text: "Examples"
-        href: examples/simple_resonator/01_model_author.ipynb
+        href: examples/simple_resonator/01_model_author.qmd
   sidebar:
     - id: overview
       title: "Overview"
@@ -54,15 +54,15 @@ website:
         - section: "Simple resonator"
           contents:
             - text: "Model author"
-              href: examples/simple_resonator/01_model_author.ipynb
+              href: examples/simple_resonator/01_model_author.qmd
             - text: "Model user"
-              href: examples/simple_resonator/02_model_user.ipynb
+              href: examples/simple_resonator/02_model_user.qmd
         - section: "IPF optimization"
           contents:
             - text: "Model author"
-              href: examples/ipf_optimization/01_model_author.ipynb
+              href: examples/ipf_optimization/01_model_author.qmd
             - text: "Model user"
-              href: examples/ipf_optimization/02_model_user.ipynb
+              href: examples/ipf_optimization/02_model_user.qmd
 
 format:
   html:

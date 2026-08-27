@@ -117,15 +117,15 @@ names and does not own their Design Target.
 
 The persistent simple-resonator examples show both layers:
 
-- [model author](../examples/simple_resonator/01_model_author.ipynb);
-- [model consumer](../examples/simple_resonator/02_model_user.ipynb); and
+- [model author](../examples/simple_resonator/01_model_author.qmd);
+- [model consumer](../examples/simple_resonator/02_model_user.qmd); and
 - [team-owned façade](../examples/simple_resonator/circuit_model.py).
 
 The complete public synthetic IPF example applies the same boundary to a
 general N-trace RLGC Composite and multi-objective optimization:
 
-- [model author](../examples/ipf_optimization/01_model_author.ipynb);
-- [model consumer](../examples/ipf_optimization/02_model_user.ipynb);
+- [model author](../examples/ipf_optimization/01_model_author.qmd);
+- [model consumer](../examples/ipf_optimization/02_model_user.qmd);
 - [custom Library](../examples/ipf_optimization/circuit_library.py); and
 - [team-owned façade](../examples/ipf_optimization/circuit_model.py).
 
@@ -1462,7 +1462,7 @@ replayed deterministically rather than published as complete evidence.
 
 ### Complete synthetic IPF journey {#ipf-optimization-example}
 
-The tracked [IPF model-author Notebook](../examples/ipf_optimization/01_model_author.ipynb)
+The tracked [IPF model-author workflow](../examples/ipf_optimization/01_model_author.qmd)
 keeps one complete request available for continued UX review. Its custom
 Library builds four one-trace sections and one two-trace coupled section through
 the general `RLGC` carrier. The two-trace R matrix is diagonal so the same
@@ -1501,7 +1501,7 @@ CircuitPlan + Composite
 -> exact resolve after restart
 ```
 
-The companion [model-user Notebook](../examples/ipf_optimization/02_model_user.ipynb)
+The companion [model-user workflow](../examples/ipf_optimization/02_model_user.qmd)
 supplies only a public synthetic target and workspace to the same façade. It
 does not restate RLGC matrices, component topology, views, selectors, bounds,
 weights, or optimizer controls.

@@ -1,0 +1,124 @@
+---
+title: "Inspect and run the synthetic IPF model"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+This model-author workflow inspects a reusable Composite and its default search,
+then reuses one winner for Direct, pump-off HB, and reporting. The current
+`CONVERGING` scaffold cannot produce simulation evidence.
+
+## Set up the model workspace
+
+Import the reusable model façade and the public objects used for inspection.
+
+```{python}
+#| id: ipf-imports
+from circuit_model import (
+    IPFTarget, build_model, build_response_specs, build_session,
+    resolve_ipf_optimization,
+)
+from scnsim import ReportSpec, load_q2d_rlgc, units as u
+```
+
+## Build the reusable model
+
+The same general `RLGC` carrier represents its one- and two-trace regions.
+Manual matrices may be replaced with `load_q2d_rlgc()` under the
+[Component Authoring contract](../../docs/component-authoring.qmd#general-rlgc).
+Imported nonzero off-diagonal R is Direct-only; the later HB request requires
+diagonal R and fails closed otherwise.
+
+```{python}
+#| id: ipf-model
+model = build_model()
+model.shared_short_length.show()
+model.idc_finger_length.show()
+```
+
+## Bind one Run and two typed views
+
+The response view is port-realizable for Direct/HB S/Y/Z; the optimization view
+retains the Direct coordinates needed by the model-owned quantities. Composite
+pins are wiring endpoints; exposed `CoordinateRef` handles are analysis-only
+selectors and cannot be wired into the outer Plan.
+
+```{python}
+#| id: ipf-session
+session = build_session(model, workspace="workspace/synthetic_ipf")
+session.response_view
+session.optimization_view
+```
+
+## Inspect the model-owned default
+
+The model default exposes its variables, bounds, quantity objectives, weights,
+normalization, and optimizer before execution.
+
+```{python}
+#| id: ipf-target
+target = IPFTarget(
+    readout_frequency=6.2 * u.GHz,
+    filter_frequency=7.1 * u.GHz,
+    transfer_zero_frequency=6.6 * u.GHz,
+    coupling=45.0 * u.MHz,
+    combined_linewidth=2.0 * u.MHz,
+    response_frequencies=tuple((5.0 + 0.02 * i) * u.GHz for i in range(151)),
+)
+default_spec = model.build_default_optimization_spec(target)
+default_spec.show()
+default_spec.variable(model.idc_finger_length).bounds
+session.run.explain(session.optimization_view, default_spec).show()
+```
+
+## Inspect an optional immutable override
+
+This request-local override extends only the IDC finger-length search and leaves
+the model default unchanged. The executable path below continues with the
+default so its exact restart resolution remains visible.
+
+```{python}
+#| id: ipf-custom
+custom_spec = default_spec.with_variable_overrides(
+    bounds={
+        model.idc_finger_length: (38.0 * u.um, 76.0 * u.um),
+    },
+    allow_extrapolation=(model.idc_finger_length,),
+)
+custom_spec.show()
+```
+
+## Optimize once and reuse the winner
+
+The winner `ParameterSet` is passed explicitly to independent Direct and
+pump-off HB response requests; presentation does not execute again.
+
+```{python}
+#| id: ipf-results
+optimization = session.run.optimize(session.optimization_view, default_spec)
+winner = optimization.best.parameters
+direct_spec, hb_spec = build_response_specs(target)
+direct = session.run.solve(session.response_view, direct_spec, parameters=winner)
+hb = session.run.solve(session.response_view, hb_spec, parameters=winner)
+report = session.run.build_report(
+    ReportSpec(inputs=(optimization, direct, hb.cases["pump_off"]))
+)
+direct.s.show(magnitude="db")
+hb.cases["pump_off"].s.show(magnitude="db")
+report.show()
+```
+
+## Resolve the default request after restart
+
+The team façade rebuilds the same model-owned default and resolves its exact
+receipt without rerunning optimization or selecting a latest request.
+
+```{python}
+#| id: ipf-resolve
+resolved = resolve_ipf_optimization(
+    target=target,
+    workspace="workspace/synthetic_ipf",
+)
+resolved.show()
+```

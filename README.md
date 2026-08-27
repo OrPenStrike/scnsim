@@ -63,14 +63,14 @@ Executable authoring and runtime calls deliberately raise
 | [Documentation overview](docs/index.qmd) | Reader paths, lifecycle status, and the current review map |
 | [Component Authoring](docs/component-authoring.qmd) | Libraries, components, electric nodes, logical Ports, RLGC, and composites |
 | [V1 Runtime Contract](docs/v1-runtime-contract.qmd) | Plan/Ref/Run/Spec/Result, reduction, Direct/HB, optimization, and receipts |
-| [Simple model author](examples/simple_resonator/01_model_author.ipynb) | Building and packaging one reusable circuit model |
-| [Simple model user](examples/simple_resonator/02_model_user.ipynb) | Consuming a team-owned model façade |
-| [IPF model author](examples/ipf_optimization/01_model_author.ipynb) | N-trace RLGC, composite authoring, optimization, Direct, and pump-off HB |
-| [IPF model user](examples/ipf_optimization/02_model_user.ipynb) | Target-driven reuse without restating circuit topology |
+| [Simple model author](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/01_model_author.ipynb) | Building and packaging one reusable circuit model |
+| [Simple model user](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/02_model_user.ipynb) | Consuming a team-owned model façade |
+| [IPF model author](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/01_model_author.ipynb) | N-trace RLGC, composite authoring, optimization, Direct, and pump-off HB |
+| [IPF model user](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/02_model_user.ipynb) | Target-driven reuse without restating circuit topology |
 
-The tracked Notebooks have no saved outputs or execution counts. GitHub renders
-them directly, VS Code can open them locally, and Quarto uses the same files as
-the documentation source.
+Each Example has one canonical QMD source and one generated, output-free IPYNB
+transport artifact. Quarto renders the QMD for the documentation site; GitHub
+renders the paired IPYNB directly, and VS Code can open either form.
 
 ## Local documentation preview
 

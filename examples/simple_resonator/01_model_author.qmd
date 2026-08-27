@@ -1,0 +1,135 @@
+---
+title: "Build and inspect one simple resonator"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+This model-author workflow builds one reusable circuit, solves its selected
+response, evaluates one physical quantity, and presents both exact Results.
+The current `CONVERGING` scaffold intentionally fails on construction.
+
+## Set up the model workspace
+
+Import only the public objects used by this model and its analysis requests.
+
+```{python}
+#| id: author-imports
+from scnsim import (
+    CircuitPlan, CircuitRun, DiagonalRootSpec, DirectSolveSpec,
+    ReductionPipeline, ReportSpec, SParameterTrace,
+    library as sc, units as u,
+)
+```
+
+## Compose the physical Plan
+
+Components are assembled into Public or anonymous Internal electric nodes, and
+the logical Port attaches to the returned node handle. See
+[Component Authoring](../../docs/component-authoring.qmd) for the full contract.
+
+```{python}
+#| id: author-plan
+plan = CircuitPlan(id="simple_readout")
+
+input_cap = plan.add(
+    sc.capacitor(id="input_cap", capacitance=12.0 * u.fF)
+)
+coupling_cap = plan.add(
+    sc.capacitor(id="coupling_cap", capacitance=12.0 * u.fF)
+)
+readout = plan.add(
+    sc.grounded_parallel_linear_lc_resonator(
+        id="readout",
+        subsystem_capacitance=110.0 * u.fF,
+        inductance=5.8 * u.nH,
+    )
+)
+
+plan.reference("ground")
+signal_boundary = plan.net(input_cap.pin("a"))
+plan.net(input_cap.pin("b"), coupling_cap.pin("a"))
+plan.net(
+    coupling_cap.pin("b"),
+    readout.pin("signal"),
+    id="readout_node",
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_boundary,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+## Solve the selected response
+
+`DirectSolveSpec` asks `solve()` to materialize the selected S/Y/Z response over
+a frequency grid. The named S11 trace is a projection of that one-port result,
+not another solve. Here `"signal_in"` is both the promoted node coordinate and
+the selected wave-channel ID because the logical Port promoted its anonymous
+one-pin node; the Port component and selected channel remain distinct objects.
+
+```{python}
+#| id: author-direct
+run = CircuitRun(plan=plan, workspace="results/simple_readout")
+response_view = run.original.reduce(
+    ReductionPipeline().retain("signal_in")
+)
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain("readout_node")
+)
+frequency_grid = tuple(
+    value * u.GHz
+    for value in (5.5, 5.6, 5.7, 5.8, 5.9, 6.0, 6.1, 6.2, 6.3)
+)
+
+direct_spec = DirectSolveSpec(
+    frequencies=frequency_grid,
+    traces=(
+        SParameterTrace(
+            id="reflection",
+            input_port="signal_in", input_mode=(),
+            output_port="signal_in", output_mode=(),
+        ),
+    ),
+)
+run.explain(response_view, direct_spec).show()
+direct = run.solve(response_view, direct_spec)
+direct.s.show(magnitude="db")
+direct.traces["reflection"].show(magnitude="db")
+```
+
+## Evaluate one physical quantity
+
+`DiagonalRootSpec` asks `evaluate()` for one named Direct quantity without
+repeating the response sweep. Its `root_hint` identifies the baseline branch;
+it is not the returned root or a target.
+
+```{python}
+#| id: author-evaluate
+readout_root = DiagonalRootSpec(
+    coordinate="readout_node",
+    root_hint=6.0 * u.GHz,
+)
+evaluated = run.evaluate(quantity_view, readout_root)
+evaluated.show()
+evaluated.frequency.to(u.GHz)
+```
+
+## Present the exact Results together
+
+Downstream Python and `ReportSpec` can consume both materialized Results.
+`show()` only presents existing data and never executes another request.
+
+```{python}
+#| id: author-report
+response_grid = direct.frequencies.to(u.GHz)
+root_frequency = evaluated.frequency.to(u.GHz)
+response_grid, root_frequency
+
+report = run.build_report(
+    ReportSpec(inputs=(direct, evaluated))
+)
+report.show()
+```

@@ -1,0 +1,76 @@
+---
+title: "Run the team-owned synthetic IPF workflow"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+This model-user workflow supplies a synthetic target and workspace to the
+team-owned IPF façade. Composite topology, views, objectives, bounds, and
+optimizer controls remain reusable model code.
+
+## Set up the consumer workspace
+
+Import only the public target and workflow façade.
+
+```{python}
+#| id: user-imports
+from circuit_model import IPFTarget, optimize_ipf, resolve_ipf_optimization
+from scnsim import units as u
+```
+
+## Supply the Design Target
+
+These quantities are request inputs, not SCNSim defaults or acceptance Gates.
+
+```{python}
+#| id: user-target
+target = IPFTarget(
+    readout_frequency=6.2 * u.GHz,
+    filter_frequency=7.1 * u.GHz,
+    transfer_zero_frequency=6.6 * u.GHz,
+    coupling=45.0 * u.MHz,
+    combined_linewidth=2.0 * u.MHz,
+    response_frequencies=tuple((5.0 + 0.02 * i) * u.GHz for i in range(151)),
+)
+workspace = "workspace/synthetic_ipf"
+```
+
+## Run the team-owned workflow
+
+One façade call performs the model-owned optimization and winner analyses.
+
+```{python}
+#| id: user-run
+workflow = optimize_ipf(
+    target=target,
+    workspace=workspace,
+)
+```
+
+## Inspect the exact typed Results
+
+Direct and pump-off HB expose parallel selected-network S/Y/Z surfaces;
+`show()` only presents the materialized Results.
+
+```{python}
+#| id: user-show
+workflow.optimization.show()
+workflow.direct.s.show(magnitude="db")
+workflow.hb.cases["pump_off"].s.show(magnitude="db")
+workflow.report.show()
+```
+
+## Resolve after restarting the kernel
+
+Exact resolve reconstructs the same sealed request and never reruns optimization
+or selects a latest result.
+
+```{python}
+#| id: user-resolve
+resolved = resolve_ipf_optimization(
+    target=target,
+    workspace=workspace,
+)
+resolved.show()
+```

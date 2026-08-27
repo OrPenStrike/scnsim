@@ -104,22 +104,124 @@ jobs:
         run: |
           uv run --locked python - <<'PY'
           import json
+          import re
+          import subprocess
+          import tempfile
           from pathlib import Path
 
-          notebooks = sorted(Path("examples").rglob("*.ipynb"))
-          assert len(notebooks) == 4, notebooks
-          for path in notebooks:
-              notebook = json.loads(path.read_text(encoding="utf-8"))
-              ids = [cell.get("id") for cell in notebook["cells"]]
-              assert all(ids), f"missing cell id: {path}"
-              assert len(ids) == len(set(ids)), f"duplicate cell id: {path}"
-              for cell in notebook["cells"]:
-                  assert not cell.get("attachments"), f"attachment: {path}"
+          def source_text(value):
+              if isinstance(value, list) and all(isinstance(item, str) for item in value):
+                  return "".join(value).replace("\r\n", "\n")
+              if isinstance(value, str):
+                  return value.replace("\r\n", "\n")
+              raise AssertionError("cell source must be a string or list of strings")
+
+          def normalized(notebook, label):
+              cells = notebook["cells"]
+              assert cells, f"empty notebook: {label}"
+              first = source_text(cells[0].get("source", ""))
+              assert cells[0].get("cell_type") == "markdown", label
+              assert not first.lstrip().startswith("---\n"), f"literal YAML: {label}"
+              first_line = next((line.strip() for line in first.splitlines() if line.strip()), "")
+              assert first_line.startswith("# "), f"missing visible H1: {label}"
+
+              code_ids = []
+              normalized_cells = []
+              for index, cell in enumerate(cells):
+                  assert not cell.get("attachments"), f"attachment: {label}"
+                  metadata = dict(cell.get("metadata", {}))
+                  metadata.pop("id", None)
+                  value = {
+                      "cell_type": cell["cell_type"],
+                      "source": source_text(cell.get("source", "")),
+                      "metadata": metadata,
+                  }
                   if cell["cell_type"] == "code":
-                      assert cell.get("execution_count") is None, f"executed cell: {path}"
-                      assert cell.get("outputs") == [], f"output cell: {path}"
-                      compile("".join(cell["source"]), str(path), "exec")
-          print("verified", len(notebooks), "notebooks")
+                      cell_id = cell.get("id")
+                      assert isinstance(cell_id, str) and cell_id, f"missing code id: {label}:{index}"
+                      assert cell_id not in code_ids, f"duplicate code id: {label}:{cell_id}"
+                      code_ids.append(cell_id)
+                      value["id"] = cell_id
+                      assert cell.get("execution_count") is None, f"executed cell: {label}:{cell_id}"
+                      assert cell.get("outputs") == [], f"output cell: {label}:{cell_id}"
+                      compile(value["source"], label, "exec")
+                  normalized_cells.append(value)
+
+              metadata = notebook.get("metadata", {})
+              relevant_metadata = {
+                  key: metadata[key]
+                  for key in ("kernelspec", "language_info")
+                  if key in metadata
+              }
+              return {
+                  "nbformat": notebook.get("nbformat"),
+                  "nbformat_minor": notebook.get("nbformat_minor"),
+                  "metadata": relevant_metadata,
+                  "cells": normalized_cells,
+              }
+
+          sources = sorted(Path("examples").rglob("*.qmd"))
+          notebooks = sorted(Path("examples").rglob("*.ipynb"))
+          assert len(sources) == len(notebooks) == 4, (sources, notebooks)
+          assert [path.with_suffix(".ipynb") for path in sources] == notebooks
+
+          for source, artifact in zip(sources, notebooks):
+              qmd = source.read_text(encoding="utf-8")
+              frontmatter = qmd.split("---", 2)[1]
+              assert re.search(r"(?m)^jupyter:\s*python3\s*$", frontmatter), source
+              assert re.search(
+                  r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$",
+                  frontmatter,
+              ), source
+              code_chunks = qmd.count("```{python}")
+              declared_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", qmd)
+              assert len(declared_ids) == code_chunks, f"missing QMD code id: {source}"
+              assert len(declared_ids) == len(set(declared_ids)), f"duplicate QMD code id: {source}"
+
+              distributed_bytes = artifact.read_bytes()
+              artifact_stat = artifact.stat()
+              artifact_identity = (
+                  artifact_stat.st_dev,
+                  artifact_stat.st_ino,
+                  artifact_stat.st_size,
+                  artifact_stat.st_mtime_ns,
+              )
+              with tempfile.NamedTemporaryFile(
+                  dir=source.parent,
+                  prefix=f"{source.stem}.reader-ipynb-",
+                  suffix=".qmd",
+                  delete=False,
+              ) as temporary_source:
+                  temporary_source.write(source.read_bytes())
+                  temporary_path = Path(temporary_source.name)
+              try:
+                  rendered = subprocess.run(
+                      [
+                          "quarto", "render", str(temporary_path), "--to", "ipynb",
+                          "--no-execute", "--no-clean", "--output", "-",
+                      ],
+                      check=True,
+                      capture_output=True,
+                  )
+              finally:
+                  temporary_path.unlink()
+
+              current_stat = artifact.stat()
+              current_identity = (
+                  current_stat.st_dev,
+                  current_stat.st_ino,
+                  current_stat.st_size,
+                  current_stat.st_mtime_ns,
+              )
+              assert current_identity == artifact_identity, f"notebook identity changed: {artifact}"
+              assert artifact.read_bytes() == distributed_bytes, f"notebook bytes changed: {artifact}"
+              fresh = json.loads(rendered.stdout)
+              distributed = json.loads(distributed_bytes)
+              assert normalized(distributed, str(artifact)) == normalized(
+                  fresh, f"fresh render of {source}"
+              ), f"generated notebook drift: {artifact}"
+
+          print("verified", len(sources), "QMD/IPYNB pairs")
           PY
 
       - name: Render and inspect documentation

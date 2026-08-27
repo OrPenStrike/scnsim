@@ -1,0 +1,66 @@
+---
+title: "Use the team-owned resonator model"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+This model-user workflow supplies only a Design Target and workspace. The
+team-owned façade retains the circuit, view, quantity, objective, and optimizer
+details; the current scaffold intentionally fails when execution begins.
+
+## Set up the consumer workspace
+
+Import the project façade and SCNSim's shared unit registry.
+
+```{python}
+#| id: consumer-imports
+from circuit_model import ReadoutTarget, optimize_readout, resolve_readout
+from scnsim import units as u
+```
+
+## Declare the project-owned target
+
+The target stays outside SCNSim and keeps every physical value unit-aware.
+
+```{python}
+#| id: consumer-target
+target = ReadoutTarget(
+    frequency=6.2 * u.GHz,
+    linewidth=2.0 * u.MHz,
+)
+workspace = "results/team_readout_optimization"
+```
+
+## Run the team-owned workflow
+
+The façade returns exact typed Results without storing a hidden current result.
+
+```{python}
+#| id: consumer-run
+optimization, report = optimize_readout(
+    target=target,
+    workspace=workspace,
+)
+```
+
+## Inspect the returned Results
+
+Presentation is separate from execution and does not recompute either request.
+
+```{python}
+#| id: consumer-results
+optimization.show()
+report.show()
+```
+
+## Resolve the exact request after restart
+
+The façade reconstructs the same sealed request and never searches for a latest
+run or recomputes missing work.
+
+```{python}
+#| id: consumer-resolve
+resolved = resolve_readout(target=target, workspace=workspace)
+resolved.best.parameters
+```
