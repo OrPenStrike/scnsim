@@ -1,0 +1,56 @@
+---
+title: "Requests, Execution, and Result Ownership"
+---
+
+::: {.callout-warning}
+## CONVERGING concept
+
+This page explains the current candidate design. It does not define request
+signatures, receipt contents, workspace validation, or failure behavior; the
+linked Runtime Contract remains the sole authority.
+:::
+
+## Design pressure
+
+Notebook analysis must remain understandable after a kernel restart, when two
+different questions share a model, and when evidence is revisited later.
+Hidden mutable state such as a current view, latest result, or implicit solve
+would make those situations ambiguous.
+
+## Selected abstraction
+
+`CircuitRun` owns the sealed Plan's runtime context, workspace, requests,
+receipts, and terminal execution. A Ref and Spec describe one exact question;
+`solve()`, `evaluate()`, and `optimize()` perform different kinds of real
+work and return typed Results. A Result owns one verified answer and its exact
+evidence identity, while `resolve()` retrieves that answer without making a
+new computation.
+
+`explain()` occupies the useful middle ground: it returns a typed
+`ExplanationResult` that makes the bound request reviewable without starting
+an execution job, numerical analysis, or workspace write.
+
+## Problem solved
+
+The model can support a response surface, a physical quantity, and an
+optimization independently without one request changing the meaning of
+another. Exact receipt-backed identity also lets a team façade reproduce an
+answer across processes instead of depending on in-memory caches or a
+Notebook's execution order.
+
+## Intentionally not owned
+
+This concept does not let a Run mutate circuit physics, make a result the
+Run's current state, or select a latest request implicitly. It does not make
+presentation an execution action, and it does not turn a receipt into a new
+physical or product authority.
+
+## Contract sections
+
+- [Four responsibilities](../v1-runtime-contract.qmd#four-responsibilities)
+- [Seal one Plan into one Run](../v1-runtime-contract.qmd#seal-one-plan-into-one-run)
+- [One execution owner](../v1-runtime-contract.qmd#solve-versus-evaluate)
+- [Explain before execution](../v1-runtime-contract.qmd#explain-before-execution)
+- [Resolve without execution](../v1-runtime-contract.qmd#resolve-without-execution)
+- [Typed Quantity results](../v1-runtime-contract.qmd#typed-quantity-results)
+- [Failure and evidence contract](../v1-runtime-contract.qmd#failure-and-evidence-contract)

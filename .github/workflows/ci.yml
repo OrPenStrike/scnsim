@@ -162,7 +162,7 @@ jobs:
 
           sources = sorted(Path("examples").rglob("*.qmd"))
           notebooks = sorted(Path("examples").rglob("*.ipynb"))
-          assert len(sources) == len(notebooks) == 4, (sources, notebooks)
+          assert len(sources) == len(notebooks) == 5, (sources, notebooks)
           assert [path.with_suffix(".ipynb") for path in sources] == notebooks
 
           for source, artifact in zip(sources, notebooks):
@@ -231,12 +231,26 @@ jobs:
           import re
           from pathlib import Path
 
-          for source in (Path("README.md"), Path("docs/index.qmd")):
+          import subprocess
+
+          tracked = subprocess.check_output(
+              ["git", "ls-files", "*.md", "*.qmd"],
+              text=True,
+          ).splitlines()
+          for source in map(Path, tracked):
               for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", source.read_text()):
                   if "://" in target or target.startswith(("#", "mailto:")):
                       continue
-                  path = (source.parent / target.split("#", 1)[0]).resolve()
+                  relative = target.split("#", 1)[0].strip("<>")
+                  if not relative:
+                      continue
+                  path = (
+                      Path(relative.removeprefix("/"))
+                      if relative.startswith("/")
+                      else source.parent / relative
+                  ).resolve()
                   assert path.exists(), f"broken local link in {source}: {target}"
+          print("verified local links in", len(tracked), "tracked Markdown/QMD files")
           PY
           if git ls-files | grep -Eq '(^|/)(_site|\.quarto|\.venv[^/]*|build|dist)(/|$)|\.quarto_ipynb$'; then
             echo "generated output is tracked"

@@ -18,16 +18,9 @@ from scnsim import (
     CircuitRun,
     CostObjective,
     DiagonalRootSpec,
-    DirectSolveResult,
-    DirectSolveSpec,
     CoordinateRef,
     ElectricNodeRef,
-    HBCaseSpec,
-    HBBatchResult,
-    HBSolveSpec,
-    HBTruncation,
     NetworkViewRef,
-    OptimizationResult,
     OptimizationSpec,
     OptimizationVariable,
     ParameterRef,
@@ -35,10 +28,7 @@ from scnsim import (
     QuantitySum,
     RLGC,
     ReductionPipeline,
-    ReportResult,
-    ReportSpec,
     ResidueNormalizedCouplingSpec,
-    SParameterTrace,
     TransferZeroSpec,
     library as sc,
     units as u,
@@ -69,6 +59,7 @@ class IPFModel:
     qubit_plus: ElectricNodeRef
     qubit_minus: ElectricNodeRef
     filter_open_tail: CoordinateRef
+    feedline_in_port: PortRef
     probe_plus: PortRef
     probe_minus: PortRef
     readout_open_length: ParameterRef
@@ -183,18 +174,8 @@ class IPFSession:
     optimization_view: NetworkViewRef
 
 
-@dataclass(frozen=True)
-class IPFWorkflowResult:
-    """Exact Results returned by the consumer-level façade."""
-
-    optimization: OptimizationResult
-    direct: DirectSolveResult
-    hb: HBBatchResult
-    report: ReportResult
-
-
 def _manual_rlgc() -> tuple[RLGC, RLGC, RLGC]:
-    """Declare public synthetic HB-compatible one- and two-trace matrices."""
+    """Declare public synthetic one- and two-trace matrices."""
 
     readout = RLGC(
         conductors=("readout",),
@@ -272,7 +253,7 @@ def build_model() -> IPFModel:
     )
     qubit_minus = plan.net(qubit.pin("terminal_2"), id="qubit_minus")
 
-    plan.add_port(
+    feedline_in_port = plan.add_port(
         id="feedline_in",
         at=input_boundary,
         role="terminated",
@@ -306,6 +287,7 @@ def build_model() -> IPFModel:
         qubit_plus=qubit_plus,
         qubit_minus=qubit_minus,
         filter_open_tail=ipf.coordinate("filter_open_tail"),
+        feedline_in_port=feedline_in_port,
         probe_plus=probe_plus,
         probe_minus=probe_minus,
         readout_open_length=ipf.parameter("readout_open_length"),
@@ -343,84 +325,3 @@ def build_session(
         response_view=response_view,
         optimization_view=optimization_view,
     )
-
-
-def build_response_specs(target: IPFTarget) -> tuple[DirectSolveSpec, HBSolveSpec]:
-    """Build winner-only Direct and pump-off HB response requests."""
-
-    trace = SParameterTrace(
-        id="transmission",
-        input_port="feedline_in",
-        input_mode=(),
-        output_port="feedline_out",
-        output_mode=(),
-    )
-    direct = DirectSolveSpec(
-        frequencies=target.response_frequencies,
-        traces=(trace,),
-    )
-    hb = HBSolveSpec(
-        pump_axes=(),
-        drives=(),
-        frequencies=target.response_frequencies,
-        cases=(HBCaseSpec(id="pump_off", currents={}),),
-        truncation=HBTruncation(
-            pump_harmonics=(),
-            modulation_harmonics=(),
-            three_wave_mixing=False,
-            four_wave_mixing=False,
-        ),
-        traces=(trace,),
-    )
-    return direct, hb
-
-
-def optimize_ipf(
-    *,
-    target: IPFTarget,
-    workspace: str | PathLike[str],
-) -> IPFWorkflowResult:
-    """Run the model default, then reuse its winner for Direct/HB/reporting."""
-
-    model = build_model()
-    session = build_session(model, workspace=workspace)
-    spec = model.build_default_optimization_spec(target)
-    optimization = session.run.optimize(session.optimization_view, spec)
-    direct_spec, hb_spec = build_response_specs(target)
-    direct = session.run.solve(
-        session.response_view,
-        direct_spec,
-        parameters=optimization.best.parameters,
-    )
-    hb = session.run.solve(
-        session.response_view,
-        hb_spec,
-        parameters=optimization.best.parameters,
-    )
-    report = session.run.build_report(
-        ReportSpec(inputs=(optimization, direct, hb.cases["pump_off"]))
-    )
-    return IPFWorkflowResult(
-        optimization=optimization,
-        direct=direct,
-        hb=hb,
-        report=report,
-    )
-
-
-def resolve_ipf_optimization(
-    *,
-    target: IPFTarget,
-    workspace: str | PathLike[str],
-) -> OptimizationResult:
-    """Reconstruct and resolve the exact model-default search after restart."""
-
-    model = build_model()
-    session = build_session(model, workspace=workspace)
-    resolved = session.run.resolve(
-        session.optimization_view,
-        model.build_default_optimization_spec(target),
-    )
-    if not isinstance(resolved, OptimizationResult):
-        raise TypeError("exact request did not resolve to OptimizationResult")
-    return resolved

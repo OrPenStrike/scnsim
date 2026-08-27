@@ -1,30 +1,43 @@
 ---
-title: "Use the team-owned resonator model"
+title: "Tutorial 3 — Publish and use a team-owned resonator model"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-This model-user workflow supplies only a Design Target and workspace. The
-team-owned façade retains the circuit, view, quantity, objective, and optimizer
-details; the current scaffold intentionally fails when execution begins.
+## Prerequisites
 
-## Set up the consumer workspace
+Complete [the primitive resonator](01_model_author.qmd) and [the reusable
+composite](../reusable_composite/01_composite_plan.qmd). This page is for a
+consumer of a team-owned model, not its circuit author.
 
-Import the project façade and SCNSim's shared unit registry.
+## Objects introduced here
+
+`ResonatorTarget`, `OptimizationVariable`, `CostObjective`, `CMAESSpec`,
+the model-owned default `OptimizationSpec`, the team façade,
+`OptimizationResult`, and exact `resolve()`.
+
+## What the reader will build
+
+A consumer-owned target and workspace, then one call to the reusable resonator
+optimization façade.
+
+## What inspection or Result is produced
+
+An exact optimization Result and Report Result, followed by exact resolution
+of that same request after a kernel restart. The current V1 scaffold stops
+before execution can produce numerical evidence.
+
+## Supply only the consumer-owned target
+
+The consumer owns desired physical values and an evidence workspace. It does
+not reconstruct topology, ports, views, root hints, or solver settings.
 
 ```{python}
 #| id: consumer-imports
-from circuit_model import ResonatorTarget, optimize_resonator, resolve_resonator
+from circuit_model import ResonatorTarget
 from scnsim import units as u
-```
 
-## Declare the project-owned target
-
-The target stays outside SCNSim and keeps every physical value unit-aware.
-
-```{python}
-#| id: consumer-target
 target = ResonatorTarget(
     frequency=6.2 * u.GHz,
     linewidth=2.0 * u.MHz,
@@ -32,21 +45,51 @@ target = ResonatorTarget(
 workspace = "results/team_resonator_optimization"
 ```
 
-## Run the team-owned workflow
+## Understand the model-owned default before using it
 
-The façade returns exact typed Results without storing a hidden current result.
+The adjacent façade owns the built-in grounded-LC composite introduced in
+tutorial 2, the retained coordinate, and the two physical questions. Its
+`OptimizationVariable` gives the public capacitance finite physical bounds.
+Each `CostObjective` compares a quantity to this target. Because the targets
+are nonzero and the façade omits `scale`, each residual is normalized by its
+target magnitude; the dimensionless weights say relative importance, not
+whether the Design Target has passed. `CMAESSpec` supplies deterministic search
+controls, and together these declarations form the model-owned default
+`OptimizationSpec`.
+
+The façade exposes that default as an inspection surface; consumers do not
+need to read its source to discover the active variable, bounds, objectives,
+normalization, or optimizer controls.
 
 ```{python}
-#| id: consumer-run
+#| id: consumer-default-spec
+from circuit_model import build_default_optimization_spec
+
+default_spec = build_default_optimization_spec(target)
+default_spec.show()
+```
+
+## Run the team-owned workflow
+
+The façade reconstructs the exact Plan, view, and default specification, runs
+the optimization, and returns typed Results rather than storing a hidden
+"current" result. Importing it here keeps terminal execution out of the earlier
+inspection step.
+
+```{python}
+#| id: consumer-optimize
+from circuit_model import optimize_resonator
+
 optimization, report = optimize_resonator(
     target=target,
     workspace=workspace,
 )
 ```
 
-## Inspect the returned Results
+## Inspect returned Results
 
-Presentation is separate from execution and does not recompute either request.
+Presentation is separate from execution. These calls read the exact Results
+returned above and do not recompute the optimization or report.
 
 ```{python}
 #| id: consumer-results
@@ -54,13 +97,39 @@ optimization.show()
 report.show()
 ```
 
-## Resolve the exact request after restart
+## Resolve the same sealed request after restart
 
-The façade reconstructs the same sealed request and never searches for a latest
-run or recomputes missing work.
+The façade rebuilds the same model-owned request from this target and
+workspace. `resolve()` verifies and loads that exact evidence; it never chooses
+a latest run or recomputes missing work.
 
 ```{python}
 #| id: consumer-resolve
+from circuit_model import resolve_resonator
+
 resolved = resolve_resonator(target=target, workspace=workspace)
 resolved.best.parameters
 ```
+
+## Inspect the reusable façade source
+
+All of its public responsibilities have now been introduced: target, default
+recipe, optimization, report, workspace, and exact resolve. The source is
+included from the same module imported above rather than copied into the page.
+
+<details>
+<summary>Show the team façade source</summary>
+
+```{.python}
+{{< include circuit_model.py >}}
+```
+
+</details>
+
+## Learned objects
+
+You supplied a consumer target and workspace while the team model kept its
+topology, analysis, default optimization specification, and optimization
+controls private.
+
+Next: [author an optimization-ready IPF Composite](../ipf_optimization/01_model_author.qmd).

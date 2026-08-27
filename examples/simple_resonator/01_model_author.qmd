@@ -1,58 +1,99 @@
 ---
-title: "Build and inspect one reflective LC resonator"
+title: "Tutorial 1 — Build one LC resonator from primitives"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-This model-author workflow builds the familiar one-port reflection topology:
-one 50-ohm boundary, one 6 fF coupling capacitor, and one grounded parallel LC.
-It then solves the selected response, evaluates one physical quantity, and
-presents both exact Results. The current `CONVERGING` scaffold intentionally
-fails on construction.
+## Prerequisites
 
-## Set up the model workspace
+Python and the idea that a capacitor and inductor connected in parallel form an
+LC resonator. No SCNSim composite, optimizer, harmonic-balance, or team façade
+knowledge is assumed.
 
-Import only the public objects used by this model and its analysis requests.
+## Objects introduced here
+
+`units`, `CircuitPlan`, primitive capacitor and inductor components,
+`ElectricNodeRef`, the canonical ground, a logical Port,
+`CircuitDiagramSpec`, `CircuitRun`, `NetworkViewRef`, `ReductionPipeline`,
+`DirectSolveSpec`, `SParameterTrace`, `DiagonalRootSpec`, typed Results, and
+`ReportSpec`.
+
+## What the reader will build
+
+A one-port reflective resonator: a 50-ohm measurement boundary connects
+through a coupling capacitor to a parallel capacitor/inductor whose returns
+share the Plan ground.
+
+## What inspection or Result is produced
+
+An authoring diagram, a Direct S11 response Result, one diagonal-root Result,
+and a Report that names both exact inputs. The current V1 scaffold deliberately
+stops at construction, before it can produce numerical evidence.
+
+## Start with units
+
+Physical inputs carry units. `u` is the one SCNSim unit registry, so `6.0 *
+u.fF` is a capacitance rather than an unqualified number.
 
 ```{python}
-#| id: author-imports
-from scnsim import (
-    CircuitDiagramSpec, CircuitPlan, CircuitRun, DiagonalRootSpec,
-    DirectSolveSpec, ReductionPipeline, ReportSpec, SParameterTrace,
-    library as sc, units as u,
-)
+#| id: primitive-units
+from scnsim import units as u
 ```
 
-## Compose the physical Plan
+## Add only primitive parts
 
-The coupling capacitor joins the measurement boundary to the grounded LC
-terminal. Every Plan already owns the canonical ground used by the resonator's
-internal L/C return. The logical Port attaches to the returned boundary-node
-handle. See
-[Component Authoring](../../docs/component-authoring.qmd) for the full contract.
+We need one coupling capacitor and the two branches of the resonator. A
+`CircuitPlan` owns their topology; the built-in Library only creates immutable
+parts for that Plan. `plan.add()` registers each created part with the one Plan
+that will own its pins and parameter identity.
 
 ```{python}
-#| id: author-plan
-plan = CircuitPlan(id="simple_resonator")
+#| id: primitive-parts
+from scnsim import CircuitPlan, library as sc
 
+plan = CircuitPlan(id="simple_resonator")
 coupling_cap = plan.add(
     sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
 )
-resonator = plan.add(
-    sc.grounded_parallel_linear_lc_resonator(
-        id="resonator",
-        capacitance=110.0 * u.fF,
-        inductance=5.8 * u.nH,
-    )
+resonator_cap = plan.add(
+    sc.capacitor(id="resonator_cap", capacitance=110.0 * u.fF)
 )
+resonator_inductor = plan.add(
+    sc.inductor(id="resonator_inductor", inductance=5.8 * u.nH)
+)
+```
 
+## State every electrical connection
+
+Parts alone do not say which terminals are equipotential. `net()` receives a
+complete group of pins and returns the node handle. The Plan already owns its
+one canonical ground, so ordinary primitive returns attach with `ground()`;
+we never declare another ground component or a node called `"ground"`.
+
+```{python}
+#| id: primitive-topology
 signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
 resonator_node = plan.net(
     coupling_cap.pin("terminal_2"),
-    resonator.pin("terminal"),
+    resonator_cap.pin("terminal_1"),
+    resonator_inductor.pin("terminal_1"),
     id="resonator_node",
 )
+plan.ground(
+    resonator_cap.pin("terminal_2"),
+    resonator_inductor.pin("terminal_2"),
+)
+```
+
+## Attach the measurement boundary as a logical Port
+
+The electrical node is already complete. A logical Port adds the external
+50-ohm wave/load boundary to that node; it does not make another wire or
+another physical degree of freedom.
+
+```{python}
+#| id: primitive-port
 signal_port = plan.add_port(
     id="signal_in",
     at=signal_boundary,
@@ -61,88 +102,110 @@ signal_port = plan.add_port(
 )
 ```
 
-## Inspect the reflection topology
+## Inspect the authored circuit before asking a physics question
 
-The authoring diagram makes the measurement path explicit before any analysis:
-Port, coupling capacitor, resonator node, and the parallel L/C branches sharing
-one local bus and ground glyph. `show()` only presents the materialized diagram.
+`CircuitDiagramSpec` chooses the authoring view. Rendering validates and
+materializes the diagram; `show()` only presents that materialized inspection.
 
 ```{python}
-#| id: author-schematic
+#| id: primitive-diagram
+from scnsim import CircuitDiagramSpec
+
 diagram = plan.render_schematic(
     CircuitDiagramSpec(show_parameter_values=True)
 )
 diagram.show()
 ```
 
-## Solve the selected response
+## Choose views from one sealed Run
 
-`DirectSolveSpec` asks `solve()` to materialize the selected S/Y/Z response over
-a frequency grid. The named S11 trace is a projection of that one-port result,
-not another solve. Here `"signal_in"` is both the promoted node coordinate and
-the selected wave-channel ID because the logical Port promoted its anonymous
-one-pin node; the Port component and selected channel remain distinct objects.
+A `CircuitRun` seals this one Plan to an evidence workspace. Its `original`
+property is the unreduced `NetworkViewRef`; `retain()` derives immutable views
+without solving. The response view retains the port-promoted `signal_in`
+coordinate, while the quantity view retains the named resonator coordinate.
 
 ```{python}
-#| id: author-direct
+#| id: primitive-views
+from scnsim import CircuitRun, ReductionPipeline
+
 run = CircuitRun(plan=plan, workspace="results/simple_resonator")
-response_view = run.original.reduce(
+original = run.original
+response_view = original.reduce(
     ReductionPipeline().retain("signal_in")
 )
-quantity_view = run.original.reduce(
+quantity_view = original.reduce(
     ReductionPipeline().retain("resonator_node")
 )
-frequency_grid = tuple(
-    value * u.GHz
-    for value in (5.5, 5.6, 5.7, 5.8, 5.9, 6.0, 6.1, 6.2, 6.3)
-)
+```
 
+## Solve the reflection response
+
+`DirectSolveSpec` requests the complete selected-view response over an exact
+frequency grid. The named S11 trace is a projection of that one solve, not a
+second analysis. `solve()` returns a typed Direct Result.
+
+```{python}
+#| id: primitive-direct-solve
+from scnsim import DirectSolveSpec, SParameterTrace
+
+frequency_grid = tuple(
+    frequency * u.GHz
+    for frequency in (5.5, 5.6, 5.7, 5.8, 5.9, 6.0, 6.1, 6.2, 6.3)
+)
 direct_spec = DirectSolveSpec(
     frequencies=frequency_grid,
     traces=(
         SParameterTrace(
             id="reflection",
-            input_port="signal_in", input_mode=(),
-            output_port="signal_in", output_mode=(),
+            input_port="signal_in",
+            input_mode=(),
+            output_port="signal_in",
+            output_mode=(),
         ),
     ),
 )
-run.explain(response_view, direct_spec).show()
 direct = run.solve(response_view, direct_spec)
 direct.s.show(magnitude="db")
 direct.traces["reflection"].show(magnitude="db")
 ```
 
-## Evaluate one physical quantity
+## Evaluate the resonator quantity directly
 
-`DiagonalRootSpec` asks `evaluate()` for one named Direct quantity without
-repeating the response sweep. Its `root_hint` identifies the baseline branch;
-it is not the returned root or a target.
+A plotted reflection minimum is not the same thing as a physical root.
+`DiagonalRootSpec` identifies the resonance of the selected coordinate;
+`root_hint` chooses the baseline branch rather than supplying a target.
+`evaluate()` returns its own typed quantity Result.
 
 ```{python}
-#| id: author-evaluate
-resonator_root = DiagonalRootSpec(
+#| id: primitive-root
+from scnsim import DiagonalRootSpec
+
+root_spec = DiagonalRootSpec(
     coordinate="resonator_node",
     root_hint=6.0 * u.GHz,
 )
-evaluated = run.evaluate(quantity_view, resonator_root)
-evaluated.show()
-evaluated.frequency.to(u.GHz)
+root = run.evaluate(quantity_view, root_spec)
+root.show()
+root.frequency.to(u.GHz)
 ```
 
-## Present the exact Results together
+## Report the exact Results already produced
 
-Downstream Python and `ReportSpec` can consume both materialized Results.
-`show()` only presents existing data and never executes another request.
+`ReportSpec` accepts explicit typed Results. `build_report()` assembles them;
+it does not rerun the sweep or the root evaluation.
 
 ```{python}
-#| id: author-report
-response_grid = direct.frequencies.to(u.GHz)
-root_frequency = evaluated.frequency.to(u.GHz)
-response_grid, root_frequency
+#| id: primitive-report
+from scnsim import ReportSpec
 
-report = run.build_report(
-    ReportSpec(inputs=(direct, evaluated))
-)
+report = run.build_report(ReportSpec(inputs=(direct, root)))
 report.show()
 ```
+
+## Learned objects
+
+You built a complete primitive `CircuitPlan`, grounded it explicitly, attached
+a logical Port, derived `NetworkViewRef` values from one `CircuitRun`, and
+requested typed Direct and quantity Results.
+
+Next: [package the parallel L/C as one reusable composite](../reusable_composite/01_composite_plan.qmd).

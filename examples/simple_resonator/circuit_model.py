@@ -1,13 +1,15 @@
-"""Team-owned façade for the simple resonator example.
+"""Team-owned façade for the simple resonator built-in-composite example.
 
 This module illustrates the boundary SCNSim is intended to support.  The
 circuit-model developer owns all topology and analysis choices below.  A model
-user imports only ``ResonatorTarget``, ``optimize_resonator()``, and
-``resolve_resonator()``; they do not repeat components, electric nodes,
-ground attachments, logical Ports, or objective wiring in every Notebook.
+user imports ``ResonatorTarget``, the default-spec inspection helper,
+``optimize_resonator()``, and ``resolve_resonator()``; they do not repeat
+components, electric nodes, ground attachments, logical Ports, or objective
+wiring in every Notebook.
 
-The functions are complete UX examples but cannot execute while ``scnsim`` is
-an API-only scaffold.
+The functions use SCNSim's built-in grounded-LC composite, introduced after
+the primitive and custom-composite tutorials. They cannot execute while
+``scnsim`` is an API-only scaffold.
 """
 
 from __future__ import annotations
@@ -79,19 +81,17 @@ def build_plan() -> CircuitPlan:
     return plan
 
 
-def _optimization_request(
+def _build_default_spec(
+    capacitance: ParameterRef,
     target: ResonatorTarget,
-    workspace: str | PathLike[str],
-) -> tuple[CircuitRun, NetworkViewRef, OptimizationSpec]:
-    """Reconstruct the exact Ref, model-owned root hint, and optimization."""
+) -> OptimizationSpec:
+    """Bind the model-owned default recipe to one exact parameter handle."""
 
-    plan, capacitance = _build_model()
-    run = CircuitRun(plan=plan, workspace=workspace)
     resonator_root = DiagonalRootSpec(
         coordinate="resonator_node",
         root_hint=6.0 * u.GHz,
     )
-    spec = OptimizationSpec(
+    return OptimizationSpec(
         variables=(
             OptimizationVariable(
                 parameter=capacitance,
@@ -114,6 +114,26 @@ def _optimization_request(
         ),
         optimizer=CMAESSpec(seed=17, max_evaluations=200),
     )
+
+
+def build_default_optimization_spec(
+    target: ResonatorTarget,
+) -> OptimizationSpec:
+    """Return the inspectable model-author-owned default optimization recipe."""
+
+    _, capacitance = _build_model()
+    return _build_default_spec(capacitance, target)
+
+
+def _optimization_request(
+    target: ResonatorTarget,
+    workspace: str | PathLike[str],
+) -> tuple[CircuitRun, NetworkViewRef, OptimizationSpec]:
+    """Reconstruct the exact Ref, model-owned root hint, and optimization."""
+
+    plan, capacitance = _build_model()
+    run = CircuitRun(plan=plan, workspace=workspace)
+    spec = _build_default_spec(capacitance, target)
     quantity_view = run.original.reduce(
         ReductionPipeline().retain("resonator_node")
     )

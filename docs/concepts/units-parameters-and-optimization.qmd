@@ -1,0 +1,58 @@
+---
+title: "Units, Parameters, and Optimization"
+---
+
+::: {.callout-warning}
+## CONVERGING concept
+
+This page explains the current candidate design. It does not define units,
+parameter schemas, objective formulas, optimizer controls, or failure
+behavior; the linked contracts remain the sole authority.
+:::
+
+## Design pressure
+
+Reusable physical models need values that retain their declared units and
+calibration meaning, yet equivalent representations must identify the same
+compiled request. Optimization adds another boundary: a component author may
+publish a parameter without silently choosing every model's search envelope or
+every consumer's target.
+
+## Selected abstraction
+
+SCNSim uses one Quantity registry and a canonical SI identity for physical
+values. A sealed Plan supplies baselines; an immutable `ParameterSet` supplies
+an explicit operation variant. A Composite deliberately exposes its supported
+`ParameterRef` objects, including any identity fan-out or calibrated mapping.
+
+Parameter ownership is divided deliberately: the Library author owns schema
+and calibration context, the circuit-model author owns reusable optimization
+recipes, and the Notebook consumer owns a Design Target and any explicit,
+immutable departure from that recipe. Unit conversion, optimizer coordinates,
+objective normalization, and numerical conditioning remain separate concerns.
+
+## Problem solved
+
+This preserves physical identity across display units and keeps a parameter
+variant attached to the request that used it. It also makes optimization
+reusable without hiding targets, bounds, or calibration assumptions inside a
+component, and prevents a numerical representation choice from being mistaken
+for a physical model change or an acceptance rule.
+
+## Intentionally not owned
+
+This concept does not create a second unit type system, accept bare physical
+numbers, or let a `ParameterSet` change a Ref lineage. It does not assign a
+Design Target, optimization Gate, universal bounds, or automatic public
+linear-algebra scaling configuration.
+
+## Contract sections
+
+- [Pins and public parameters](../component-authoring.qmd#pins-and-public-parameters)
+- [Declarative custom composites](../component-authoring.qmd#declarative-composites)
+- [Parameter variants and derived mutual inductance](../component-authoring.qmd#parameter-variants-and-derived-mutual-inductance)
+- [Units, identity, and parameter variants](../v1-runtime-contract.qmd#units-identity-and-parameter-variants)
+- [Canonical SI identity](../v1-runtime-contract.qmd#canonical-si-identity)
+- [Explicit ParameterSet variants](../v1-runtime-contract.qmd#explicit-parameterset-variants)
+- [Optimization and numerical scaling](../v1-runtime-contract.qmd#optimization-and-numerical-scaling)
+- [Four distinct scaling contracts](../v1-runtime-contract.qmd#four-distinct-scaling-contracts)

@@ -1,0 +1,56 @@
+---
+title: "Compilation, Coordinates, and Network Views"
+---
+
+::: {.callout-warning}
+## CONVERGING concept
+
+This page explains the current candidate design. It does not define topology,
+coordinate mathematics, execution, or failure behavior; the linked Runtime
+Contract remains the sole authority.
+:::
+
+## Design pressure
+
+One declared circuit often supports several analysis questions: an untouched
+network response, a probe-compensated view, a paired-node representation, or a
+smaller retained boundary. Copying or mutating the circuit for each question
+would make it unclear which circuit produced an answer and would invite Direct
+and HB to diverge.
+
+## Selected abstraction
+
+SCNSim keeps physical compilation with the original sealed Plan. A
+`NetworkViewRef` is instead an immutable, ordered lineage from that Plan. Its
+pipeline separates a change to the effective topology from a change to the
+coordinates or boundary used to inspect it. Direct and HB consume the same
+lineage, then either realize it faithfully or do not run it.
+
+The final view names selected node coordinates, not a new circuit or a
+backend-specific port list.
+
+## Problem solved
+
+This allows one model to support several honest views while retaining the
+ancestry needed to explain each. It prevents a compensated probe from being
+mistaken for a physical change, preserves coordinate identity through a
+transform, and makes an omitted node a deliberate boundary choice rather than
+a matrix slice with unstated assumptions.
+
+## Intentionally not owned
+
+This concept does not introduce a reduced `CircuitPlan`, manual transform
+weights, a backend-specific reduction language, or public access to anonymous
+internal coordinates. It also does not state the transform or elimination
+mathematics; those normative definitions remain in the Runtime Contract and
+its cited Knowledge pages.
+
+## Contract sections
+
+- [Seal one Plan into one Run](../v1-runtime-contract.qmd#seal-one-plan-into-one-run)
+- [Declare the floating-qubit Ref graph without executing](../v1-runtime-contract.qmd#floating-qubit-ref-graph)
+- [Shared topology and unified node views](../v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
+- [Selective Port-Termination Compensation](../v1-runtime-contract.qmd#selective-port-termination-compensation-ptc-is-a-shared-topology-step)
+- [Automatic paired-node coordinates](../v1-runtime-contract.qmd#automatic-paired-node-coordinates-are-a-shared-view-step)
+- [Retain an arbitrary node-coordinate view](../v1-runtime-contract.qmd#retain-an-arbitrary-node-coordinate-view)
+- [Terminal-operation capability](../v1-runtime-contract.qmd#terminal-operation-capability)

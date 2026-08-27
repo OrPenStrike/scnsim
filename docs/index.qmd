@@ -1,85 +1,55 @@
 ---
-title: "SCNSim Documentation"
-description: "Notebook-first documentation for superconducting circuit network simulation."
+title: "Tutorial"
+description: "A linear SCNSim course from primitive circuit authoring to reusable Direct, optimization, and HB workflows."
 ---
 
-SCNSim documents one public product boundary: a reusable Python package for
-circuit-network authoring, compilation, reduction, Direct/HB analysis,
-optimization, typed results, and receipt-backed reporting.
+The SCNSim Tutorial follows one rule: **if an API has not been taught, the
+course does not use it.** Each page starts with a real circuit-modeling need,
+introduces only the objects needed to solve it, and finishes with a complete
+inspectable workflow.
 
 ::: {.callout-warning}
-## Candidate semantics
+## Candidate package
 
-The product and Runtime contracts remain `CONVERGING`. The installable package
-is a fail-fast API/docstring scaffold; compiler, solver, unit-registry,
-workspace, and report behavior are not yet implemented, accepted, stabilized,
-or released.
+SCNSim remains `CONVERGING`. The code in this course expresses the intended V1
+UX, but the current package is a fail-fast scaffold and does not yet simulate a
+circuit.
 :::
 
-## Choose your path
+## Follow the course in order
+
+| Part | Starting need | Prerequisites | Main objects introduced | Produced surface |
+| --- | --- | --- | --- | --- |
+| [1. Build a complete circuit from primitives](../examples/simple_resonator/01_model_author.qmd) | Understand every branch in a one-port reflective resonator | None | units, primitive R/L/C-style components, `CircuitPlan`, nodes, ground, Port, diagram, Run, View, Direct solve/evaluate, Results | authoring diagram, Direct S/Y/Z, root quantity, report |
+| [2. Package the LC as a reusable Composite](../examples/reusable_composite/01_composite_plan.qmd) | Stop rebuilding the same resonator internals | Part 1 | immutable custom `Library`, `CompositePlan`, public parameters, exposed pin, `ComponentInstance` | reusable grounded-resonator component |
+| [3. Publish and use a team-owned model](../examples/simple_resonator/02_model_user.qmd) | Let teammates use an owned model without restating topology or analysis choices | Parts 1–2 | target, optimization variables/objectives, default recipe, team façade, workspace, exact resolve | optimization Result through a reusable model boundary |
+| [4. Author an optimization-ready IPF Composite](../examples/ipf_optimization/01_model_author.qmd) | Assemble coupled transmission-line sections and calibrated lumped mappings once | Parts 1–3 | general RLGC, Q2D input, transmission lines, IDC, fan-out, `AffineMap`, `CoordinateRef`, PTC, quantity selectors, compiled diagram, explain | sealed IPF model and inspectable default request |
+| [5. Optimize once and reuse the winner](../examples/ipf_optimization/02_model_user.qmd) | Reuse one optimized ParameterSet across Direct and pump-off HB analysis | Parts 1–4 | override/extrapolation, best parameters, HB axes/drives/cases/truncation, case Results, display, report, resolve | optimization, winner Direct/HB Results, durable report |
+
+Tutorial pages explain the API needed for their workflow. Deeper design
+reasoning lives under [Concept](concepts/physical-authority-and-reusable-composition.qmd),
+while exact signatures, formulas, invariants, failures, and evidence live under
+[Contract](component-authoring.qmd).
+
+## Choose a different reading layer
 
 ::: {.grid}
 ::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Use an existing circuit model
+### Understand the design
 
-Start with the [simple model-user workflow](../examples/simple_resonator/02_model_user.qmd).
-It shows how a notebook consumer supplies a target and workspace without
-repeating topology, Ports, objectives, or optimizer controls.
+Read [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd),
+then continue through the Concept sidebar. These pages explain the pressures
+behind Plans, immutable views, typed requests, and explicit ownership.
 :::
 
 ::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Develop a reusable model
+### Review exact behavior
 
-Start with the [simple model-author workflow](../examples/simple_resonator/01_model_author.qmd),
-then read [Component Authoring](component-authoring.qmd). This path owns the
-Plan, components, electric nodes, logical Ports, reusable Specs, and team façade.
-:::
-
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Review Runtime behavior
-
-Read the [V1 Runtime Contract](v1-runtime-contract.qmd) for the exact
-Plan/Ref/Run/Spec/Result boundary, Direct and HB response surfaces, physical
-quantity evaluation, optimization, resolution, receipts, and failures.
-:::
-
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Review a complete optimization workflow
-
-Use the [IPF model-author workflow](../examples/ipf_optimization/01_model_author.qmd)
-and [model-user workflow](../examples/ipf_optimization/02_model_user.qmd) to
-trace general N-trace RLGC through a reusable Composite, five-variable Direct
-optimization, winner reuse, pump-off HB, reporting, and exact resolution.
+Use the [Component Authoring Contract](component-authoring.qmd) and
+[V1 Runtime Contract](v1-runtime-contract.qmd) when a signature, physical
+boundary, failure mode, receipt field, or open Human decision must be exact.
 :::
 :::
-
-## How the documentation is divided
-
-| Surface | Owns |
-| --- | --- |
-| [Component Authoring](component-authoring.qmd) | Library identity, component catalog, pins, electric nodes, logical Ports, parameters, RLGC, composites, and backend realization |
-| [V1 Runtime Contract](v1-runtime-contract.qmd) | Execution, views, Specs, Direct/HB, evaluation, optimization, typed Results, receipts, and failure behavior |
-| Model-author QMD workflows | Complete reusable-model construction and packaging narratives; paired IPYNBs are generated transport artifacts |
-| Model-user QMD workflows | Short consumer workflows over a team-owned façade; paired IPYNBs are generated transport artifacts |
-| [SCQ Design Kit Knowledge](https://github.com/arfiligol/SCQ_Design/tree/main/docs/knowledge) | Canonical reusable physics, mathematics, engineering meaning, and numerical-method derivations |
-
-The product pages link to Knowledge rather than copying its formulas. The QMD
-workflows call the proposed public API rather than creating a second Runtime
-contract; generated Notebooks provide GitHub and Jupyter transport only.
-
-## Suggested review order
-
-1. Review the [component model](component-authoring.qmd#one-library-model),
-   [electrical topology](component-authoring.qmd#electrical-topology-and-logical-ports),
-   [general RLGC](component-authoring.qmd#general-rlgc), and
-   [declarative composites](component-authoring.qmd#declarative-composites).
-2. Continue with the Runtime [Notebook mental model](v1-runtime-contract.qmd#notebook-mental-model)
-   and [`solve()` versus `evaluate()`](v1-runtime-contract.qmd#solve-versus-evaluate).
-3. Review [unified node views](v1-runtime-contract.qmd#shared-topology-and-unified-node-views),
-   [Direct quantities](v1-runtime-contract.qmd#direct-matrices-and-physical-quantities),
-   [optimization](v1-runtime-contract.qmd#optimization-and-numerical-scaling),
-   and [HB drives/cases/mixing](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing).
-4. Finish with the Runtime's [open Human decisions](v1-runtime-contract.qmd#open-human-decisions).
 
 ::: {.callout-important}
 ## Human acceptance remains explicit

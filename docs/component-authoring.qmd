@@ -1,6 +1,6 @@
 ---
-title: "SCNSim V1 Component Authoring"
-subtitle: "Candidate Library, RLGC, Composite, electric-node, logical-Port, and coupling contract"
+title: "Component Authoring Contract"
+subtitle: "Candidate Library, RLGC, Composite, electric-node, logical-Port, and coupling semantics"
 toc-depth: 3
 ---
 
@@ -13,7 +13,7 @@ fail-fast scaffold; physical validation, compilation, and execution are not
 yet implemented, accepted, stabilized, or released.
 :::
 
-## Reading goal
+## Contract scope
 
 Use one route from reusable component definitions to a sealed physical Plan:
 
@@ -33,6 +33,14 @@ not another circuit definition.
 This page owns the product-facing Library and component API. The
 [V1 Runtime Contract](v1-runtime-contract.qmd) owns Plan sealing, Ref lineages,
 Direct/HB execution, Results, receipts, and resolution.
+
+For a user-led introduction, begin with
+[building a circuit from primitives](../examples/simple_resonator/01_model_author.qmd)
+and then [packaging a reusable Composite](../examples/reusable_composite/01_composite_plan.qmd).
+For the design reasoning behind the boundary, read
+[Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd).
+This Contract retains exact signatures, invariants, failure behavior, and
+evidence requirements; it is not the linear Tutorial.
 
 ## One Library model
 

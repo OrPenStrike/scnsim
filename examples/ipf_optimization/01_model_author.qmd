@@ -1,82 +1,159 @@
 ---
-title: "Inspect and run the synthetic IPF model"
+title: "Tutorial 4 — Author and inspect an IPF model"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-This model-author workflow inspects a reusable Composite and its default search,
-then reuses one winner for Direct, pump-off HB, and reporting. The current
-`CONVERGING` scaffold cannot produce simulation evidence.
+## Prerequisites
 
-## Set up the model workspace
+Complete Tutorials 1–3. This tutorial assumes you can declare primitive
+components, package a `CompositePlan`, and consume a team-owned model.
 
-Import the reusable model façade and the public objects used for inspection.
+## Objects introduced here
 
-```{python}
-#| id: ipf-imports
-from circuit_model import (
-    IPFTarget, build_model, build_response_specs, build_session,
-    resolve_ipf_optimization,
+General `RLGC`, `load_q2d_rlgc()`, conductor-qualified transmission-line pins,
+`interdigitated_capacitor`, shared-parameter fan-out, `AffineMap`,
+`CoordinateRef`, `ReductionPipeline.ptc()`, Direct quantity selectors,
+compiled schematics, and `run.explain()`.
+
+## What the reader will build
+
+A reusable synthetic intrinsic Purcell-filter model with four one-conductor
+line sections, one two-conductor coupled section, an IDC calibration, public
+pins, five public parameters, and an outer circuit model.
+
+## What inspection or Result is produced
+
+This tutorial only builds and inspects declarations: the model default,
+compiled schematic, and sealed request explanation. It does not optimize,
+solve, select a winner, or request HB.
+
+The repository remains a `CONVERGING` fail-fast scaffold, so the executable
+cells document the candidate API but are deliberately not run while rendering.
+
+## Start with one general line carrier
+
+The pain with separate “single” and “coupled” line APIs is that a composite
+cannot use one wiring rule across its sections. `RLGC` instead has an ordered
+conductor list: the readout and filter sections are `N=1`; the shared coupled
+section is `N=2`. Its transmission-line pins therefore require both the end
+(`head` or `tail`) and the conductor name.
+
+The model uses checked-in synthetic matrices. A frozen Q2D CSV can replace a
+manual carrier without changing the composite topology or conductor order.
+The repository does not invent a sample Q2D format before the parser exists,
+so this is a replacement fragment rather than an executable cell:
+
+```python
+from scnsim import load_q2d_rlgc
+
+coupled_rlgc = load_q2d_rlgc(
+    "artifacts/coupled_q2d.csv",
+    reference_conductor="ground",
+    conductor_map={"Readout": "readout", "Filter": "filter"},
 )
-from scnsim import CircuitDiagramSpec, ReportSpec, load_q2d_rlgc, units as u
 ```
 
-## Build the reusable model
+`load_q2d_rlgc()` is an alternative ingestion path, not an extractor run. The
+source direction, matrix order, and provenance remain attached to the imported
+carrier. An imported non-diagonal resistance matrix is Direct-only; the
+synthetic manual `N=2` resistance matrix is diagonal so Tutorial 5 can also
+request pump-off HB.
 
-The same general `RLGC` carrier represents its one- and two-trace regions.
-Manual matrices may be replaced with `load_q2d_rlgc()` under the
-[Component Authoring contract](../../docs/component-authoring.qmd#general-rlgc).
-Imported nonzero off-diagonal R is Direct-only; the later HB request requires
-diagonal R and fails closed otherwise.
+## Package the five sections once
+
+The component author declares the multi-section `CompositePlan` once. One
+`shared_short_length` `ParameterRef` fans out to both short sections; the IDC
+receives three calibrated `AffineMap` values from one finger-length ref. Each
+map’s `support` is its evidence interval, not a global switch. The Composite
+exposes wiring pins (`feedline_in`, `feedline_out`) separately from its
+analysis-only `CoordinateRef` (`filter_open_tail`).
+
+<details>
+<summary>Show the reusable IPF Composite source</summary>
+
+```{.python filename="circuit_library.py"}
+{{< include circuit_library.py >}}
+```
+
+</details>
+
+That separation solves a common composition mistake: an outer `CircuitPlan`
+can connect public pins, but cannot wire a `CoordinateRef`. The latter exists
+only to retain or select an observable later.
+
+## Add the outer circuit and public Ports
+
+The outer model attaches the IPF to coupling capacitors and the qubit, then
+declares terminated feedline Ports and nonloading qubit-probe Ports. The model
+keeps the resulting node, port, parameter, and coordinate refs as its reusable
+public façade rather than asking each notebook to rediscover IDs.
 
 ```{python}
-#| id: ipf-model
+#| id: t4-build-model
+from circuit_model import build_model
+
 model = build_model()
 model.shared_short_length.show()
 model.idc_finger_length.show()
 ```
 
-## Audit the complete compiled pi ladders
+`parameter.show()` is the useful first inspection: it exposes the sealed
+baseline, identity fan-out, affine calibration, and support without compiling
+or solving.
 
-The compiled diagram expands all five lines into their complete pi ladders,
-preserves the N-trace matrix order, and shows the IDC attachment. It is a
-baseline structural audit, not a Direct/HB solve or consumer evidence.
+## Derive views without changing topology
 
-```{python}
-#| id: ipf-compiled-schematic
-expanded = model.plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="compiled",
-        show_parameter_values=True,
-    )
-)
-expanded.show()
-```
-
-## Bind one Run and two typed views
-
-The response view is port-realizable for Direct/HB S/Y/Z; the optimization view
-retains the Direct coordinates needed by the model-owned quantities. Composite
-pins are wiring endpoints; exposed `CoordinateRef` handles are analysis-only
-selectors and cannot be wired into the outer Plan. Generic two-terminal
-components use `terminal_1`/`terminal_2`; their internal reference branches and
-the transmission-line reference conductors share the Plan's automatic ground.
+The qubit probe Ports are physical Ports but nonloading observations. PTC
+compensates those evidenced probe shunts, then a pair transform creates the
+qubit coordinates. From that same immutable lineage, the model derives a
+terminal response view and a Direct-quantity view. The first is port-realizable;
+the second retains the feedline and exposed filter coordinate needed by roots,
+the transfer zero, residue-normalized coupling, and linewidth selectors.
 
 ```{python}
-#| id: ipf-session
+#| id: t4-build-session
+from circuit_model import build_session
+
 session = build_session(model, workspace="workspace/synthetic_ipf")
 session.response_view
 session.optimization_view
 ```
 
-## Inspect the model-owned default
+## Inspect the compiled physical circuit
 
-The model default exposes its variables, bounds, quantity objectives, weights,
-normalization, and optimizer before execution.
+The authoring schematic would keep the five logical line components. For a
+structural audit, request the compiled representation: it expands every pi
+section while preserving the declared `N=1`/`N=2` conductor ordering and IDC
+attachment. This remains an inspection result, not a numerical response.
 
 ```{python}
-#| id: ipf-target
+#| id: t4-compiled-schematic
+from scnsim import CircuitDiagramSpec
+
+compiled = model.plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="compiled",
+        show_parameter_values=True,
+    )
+)
+compiled.show()
+```
+
+## Inspect the model-owned recipe before any execution
+
+The model, not the notebook consumer, owns the five-variable Direct recipe.
+It combines two diagonal-root frequency selectors, a transfer-zero selector,
+a residue-normalized coupling selector, and a linewidth sum. Inspection gives
+the reader the bound quantities and exact preflight request without invoking an
+optimizer.
+
+```{python}
+#| id: t4-default-inspection
+from circuit_model import IPFTarget
+from scnsim import units as u
+
 target = IPFTarget(
     readout_frequency=6.2 * u.GHz,
     filter_frequency=7.1 * u.GHz,
@@ -91,53 +168,25 @@ default_spec.variable(model.idc_finger_length).bounds
 session.run.explain(session.optimization_view, default_spec).show()
 ```
 
-## Inspect an optional immutable override
+## Reusable model source
 
-This request-local override extends only the IDC finger-length search and leaves
-the model default unchanged. The executable path below continues with the
-default so its exact restart resolution remains visible.
+The model façade is the only reusable source for the manual RLGC matrices,
+outer `CircuitPlan`, PTC lineage, typed views, and default optimization recipe.
+It is included here rather than copied into the tutorial so the rendered lesson
+and importable implementation cannot drift.
 
-```{python}
-#| id: ipf-custom
-custom_spec = default_spec.with_variable_overrides(
-    bounds={
-        model.idc_finger_length: (38.0 * u.um, 76.0 * u.um),
-    },
-    allow_extrapolation=(model.idc_finger_length,),
-)
-custom_spec.show()
+<details>
+<summary>Show the reusable IPF model source</summary>
+
+```{.python filename="circuit_model.py"}
+{{< include circuit_model.py >}}
 ```
 
-## Optimize once and reuse the winner
+</details>
 
-The winner `ParameterSet` is passed explicitly to independent Direct and
-pump-off HB response requests; presentation does not execute again.
+## Learned objects and next
 
-```{python}
-#| id: ipf-results
-optimization = session.run.optimize(session.optimization_view, default_spec)
-winner = optimization.best.parameters
-direct_spec, hb_spec = build_response_specs(target)
-direct = session.run.solve(session.response_view, direct_spec, parameters=winner)
-hb = session.run.solve(session.response_view, hb_spec, parameters=winner)
-report = session.run.build_report(
-    ReportSpec(inputs=(optimization, direct, hb.cases["pump_off"]))
-)
-direct.s.show(magnitude="db")
-hb.cases["pump_off"].s.show(magnitude="db")
-report.show()
-```
-
-## Resolve the default request after restart
-
-The team façade rebuilds the same model-owned default and resolves its exact
-receipt without rerunning optimization or selecting a latest request.
-
-```{python}
-#| id: ipf-resolve
-resolved = resolve_ipf_optimization(
-    target=target,
-    workspace="workspace/synthetic_ipf",
-)
-resolved.show()
-```
+You built and inspected `RLGC`, a multi-section `CompositePlan`, public pins
+and `CoordinateRef`, outer Ports, PTC-derived views, Direct selectors, and the
+model-owned default recipe. Next, Tutorial 5 executes that sealed recipe,
+reuses its exact winner, and resolves the recorded request after restart.

@@ -6,22 +6,17 @@ output-file: index.html
 
 **Superconducting Circuit Network Simulation**
 
-SCNSim is a notebook-first Python package for declaring superconducting-circuit
-networks, compiling auditable physical operators, applying explicit network
-views, and running Direct or harmonic-balance analysis and optimization.
+SCNSim is a notebook-first Python package for declaring reusable
+superconducting-circuit networks, compiling auditable physical operators, and
+running Direct, harmonic-balance, and optimization workflows. It owns the
+circuit-network layer; geometry and electromagnetic simulation remain SCGSim
+responsibilities.
 
-SCNSim complements SCGSim: SCGSim owns geometry-to-EM workflows, while SCNSim
-owns circuit-network compilation, reduction, solve, optimization, and report
-interfaces.
+> **Status:** `CONVERGING`. Version `1.0.0.dev2` is an installable, fail-fast
+> API scaffold for reviewing the V1 design. It does not yet implement the
+> compiler, solvers, unit registry, workspace, or report runtime.
 
-> **Lifecycle status:** `CONVERGING`. Version `1.0.0.dev2` is an installable,
-> fail-fast API and docstring scaffold for Human review. It does not yet
-> implement a compiler, solver, unit registry, workspace, or report runtime,
-> and it cannot produce simulation results.
-
-## Installation
-
-To develop or inspect SCNSim locally:
+## Install for development
 
 ```bash
 git clone https://github.com/OrPenStrike/scnsim.git
@@ -29,24 +24,17 @@ cd scnsim
 uv sync --locked
 ```
 
-`uv sync --locked` installs the checked-out SCNSim project and the exact
-development environment recorded in `uv.lock`; SCNSim does not list itself as
-one of its own dependencies.
-
-When another repository uses SCNSim, that consuming repository owns the exact
-SCNSim commit in its own `pyproject.toml` and `uv.lock`. Its model author pins
-that commit once:
+Another repository should pin one reviewed SCNSim commit in its own
+`pyproject.toml` and `uv.lock`:
 
 ```bash
 uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-sha>"
 ```
 
-After those two files are committed, team members only clone the consuming
-repository and run `uv sync --locked`; they do not each run `uv add`.
+Teammates then clone that consuming repository and run `uv sync --locked`;
+they do not repeat `uv add`.
 
-## Usage
-
-The current honest usage surface is API inspection:
+## Inspect the current package
 
 ```bash
 uv run python -c "import scnsim; print(scnsim.__version__)"
@@ -54,25 +42,26 @@ uv run python -c "from scnsim import CircuitPlan; help(CircuitPlan)"
 ```
 
 Executable authoring and runtime calls deliberately raise
-`ScaffoldUnavailableError` until their candidate implementations exist.
+`ScaffoldUnavailableError` at this checkpoint.
 
-## Documentation
+## Read the documentation
 
-| Start here | What it explains |
-| --- | --- |
-| [Documentation overview](docs/index.qmd) | Reader paths, lifecycle status, and the current review map |
-| [Component Authoring](docs/component-authoring.qmd) | Libraries, components, electric nodes, logical Ports, RLGC, and composites |
-| [V1 Runtime Contract](docs/v1-runtime-contract.qmd) | Plan/Ref/Run/Spec/Result, reduction, Direct/HB, optimization, and receipts |
-| [Simple model author](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/01_model_author.ipynb) | Building and packaging one reusable circuit model |
-| [Simple model user](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/02_model_user.ipynb) | Consuming a team-owned model façade |
-| [IPF model author](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/01_model_author.ipynb) | N-trace RLGC, composite authoring, optimization, Direct, and pump-off HB |
-| [IPF model user](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/02_model_user.ipynb) | Target-driven reuse without restating circuit topology |
+- [Overview](README.md) — product boundary, status, and installation.
+- [Tutorial](docs/index.qmd) — a five-part course from primitive circuit to
+  reusable optimization and HB workflows.
+- [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
+  why SCNSim uses Plans, views, typed requests, and explicit ownership.
+- [Contract](docs/component-authoring.qmd) — exact public signatures,
+  invariants, failure behavior, evidence, and known limits.
 
-Each Example has one canonical QMD source and one generated, output-free IPYNB
-transport artifact. Quarto renders the QMD for the documentation site; GitHub
-renders the paired IPYNB directly, and VS Code can open either form.
+Generated Notebooks are available for
+[Tutorial 1](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/01_model_author.ipynb),
+[Tutorial 2](https://github.com/OrPenStrike/scnsim/blob/develop/examples/reusable_composite/01_composite_plan.ipynb),
+[Tutorial 3](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/02_model_user.ipynb),
+[Tutorial 4](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/01_model_author.ipynb),
+and [Tutorial 5](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/02_model_user.ipynb).
 
-## Local documentation preview
+## Preview locally
 
 After installing [Quarto](https://quarto.org/docs/get-started/):
 
@@ -81,12 +70,9 @@ uv sync --locked
 quarto preview
 ```
 
-Rendered `_site/` output is local and is not committed or deployed. GitHub Pages
-will be considered separately after the relevant V1 semantics are accepted and
-a stable `main` line exists.
+Rendered `_site/` output is local and is not committed or deployed.
 
 ## License
 
 SCNSim is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE)
-for attribution and the separate MIT-licensed JosephsonCircuits.jl backend
-boundary.
+for attribution and the separate JosephsonCircuits.jl backend boundary.

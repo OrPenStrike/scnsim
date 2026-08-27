@@ -4,12 +4,18 @@ project:
   render:
     - README.md
     - docs/index.qmd
-    - docs/component-authoring.qmd
-    - docs/v1-runtime-contract.qmd
     - examples/simple_resonator/01_model_author.qmd
+    - examples/reusable_composite/01_composite_plan.qmd
     - examples/simple_resonator/02_model_user.qmd
     - examples/ipf_optimization/01_model_author.qmd
     - examples/ipf_optimization/02_model_user.qmd
+    - docs/concepts/physical-authority-and-reusable-composition.qmd
+    - docs/concepts/compilation-coordinates-and-network-views.qmd
+    - docs/concepts/requests-execution-and-result-ownership.qmd
+    - docs/concepts/direct-and-hb-realizations.qmd
+    - docs/concepts/units-parameters-and-optimization.qmd
+    - docs/component-authoring.qmd
+    - docs/v1-runtime-contract.qmd
 
 website:
   title: "SCNSim"
@@ -23,10 +29,12 @@ website:
     left:
       - text: "Overview"
         href: README.md
-      - text: "Concepts"
+      - text: "Tutorial"
+        href: docs/index.qmd
+      - text: "Concept"
+        href: docs/concepts/physical-authority-and-reusable-composition.qmd
+      - text: "Contract"
         href: docs/component-authoring.qmd
-      - text: "Examples"
-        href: examples/simple_resonator/01_model_author.qmd
   sidebar:
     - id: overview
       title: "Overview"
@@ -35,34 +43,47 @@ website:
       contents:
         - text: "Repository overview"
           href: README.md
-        - text: "Documentation map"
-          href: docs/index.qmd
-    - id: concepts
-      title: "Concepts"
+    - id: tutorial
+      title: "Tutorial"
       style: "floating"
       collapse-level: 1
       contents:
-        - text: "Component Authoring"
+        - text: "Course map"
+          href: docs/index.qmd
+        - text: "1. Build from primitives"
+          href: examples/simple_resonator/01_model_author.qmd
+        - text: "2. Package a Composite"
+          href: examples/reusable_composite/01_composite_plan.qmd
+        - text: "3. Publish a team model"
+          href: examples/simple_resonator/02_model_user.qmd
+        - text: "4. Author an IPF Composite"
+          href: examples/ipf_optimization/01_model_author.qmd
+        - text: "5. Optimize and reuse"
+          href: examples/ipf_optimization/02_model_user.qmd
+    - id: concept
+      title: "Concept"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Physical authority and composition"
+          href: docs/concepts/physical-authority-and-reusable-composition.qmd
+        - text: "Compilation, coordinates, and views"
+          href: docs/concepts/compilation-coordinates-and-network-views.qmd
+        - text: "Requests, execution, and Results"
+          href: docs/concepts/requests-execution-and-result-ownership.qmd
+        - text: "Direct and HB realizations"
+          href: docs/concepts/direct-and-hb-realizations.qmd
+        - text: "Units, parameters, and optimization"
+          href: docs/concepts/units-parameters-and-optimization.qmd
+    - id: contract
+      title: "Contract"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Component Authoring Contract"
           href: docs/component-authoring.qmd
         - text: "V1 Runtime Contract"
           href: docs/v1-runtime-contract.qmd
-    - id: examples
-      title: "Examples"
-      style: "floating"
-      collapse-level: 1
-      contents:
-        - section: "Simple resonator"
-          contents:
-            - text: "Model author"
-              href: examples/simple_resonator/01_model_author.qmd
-            - text: "Model user"
-              href: examples/simple_resonator/02_model_user.qmd
-        - section: "IPF optimization"
-          contents:
-            - text: "Model author"
-              href: examples/ipf_optimization/01_model_author.qmd
-            - text: "Model user"
-              href: examples/ipf_optimization/02_model_user.qmd
 
 format:
   html:

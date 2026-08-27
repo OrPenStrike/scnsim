@@ -1,0 +1,56 @@
+---
+title: "Direct and HB Realizations"
+---
+
+::: {.callout-warning}
+## CONVERGING concept
+
+This page explains the current candidate design. It does not define backend
+rows, equations, supported inputs, or failure behavior; the linked contracts
+remain the sole authority.
+:::
+
+## Design pressure
+
+Direct analysis and harmonic balance answer related questions with different
+representations and capabilities. Treating either backend as the circuit
+authority would either distort the public circuit model or conceal a real
+capability difference.
+
+## Selected abstraction
+
+Both paths realize the same expanded Plan, component identities, Port
+attachments, and selected view. SCNSim owns the public topology and network
+meaning; Direct and HB are distinct realizations of it. The selected-view
+S/Y/Z families provide a common analysis surface, while each Result keeps its
+own evidence rather than pretending that Direct and HB are interchangeable
+objects.
+
+The same separation applies to Ports: one logical boundary has two auditable
+backend lowerings, not two user-facing Port definitions.
+
+## Problem solved
+
+The model author can ask comparable network questions of one circuit without
+re-authoring it for a solver. Differences that matter remain visible: Direct
+uses the candidate's small-signal treatment for nonlinear elements, HB keeps
+its nonlinear realization, and some physical content has a narrower HB
+capability. This avoids silently weakening a Plan merely to make it portable.
+
+## Intentionally not owned
+
+This concept does not make JosephsonCircuits the topology authority, invent a
+fake Direct backend marker, imply arbitrary bias-point linearization, or claim
+that every Direct-capable Plan is HB-capable. It also does not define a Direct
+and HB comparison policy; that candidate decision remains open in the Runtime
+Contract.
+
+## Contract sections
+
+- [Direct and HB realization](../component-authoring.qmd#direct-and-hb-realization)
+- [One logical Port, two backend lowerings](../v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
+- [Direct and HB component realization](../v1-runtime-contract.qmd#direct-and-hb-component-realization)
+- [Operation support](../v1-runtime-contract.qmd#operation-support)
+- [Common matrix surface](../v1-runtime-contract.qmd#common-matrix-surface)
+- [Named HB drives, cases, mixing, and driven PTC](../v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
+- [Open Human decisions](../v1-runtime-contract.qmd#open-human-decisions)
