@@ -34,9 +34,15 @@ development environment recorded in `uv.lock`; SCNSim does not list itself as
 one of its own dependencies.
 
 When another repository uses SCNSim, that consuming repository owns the exact
-SCNSim commit in its own `pyproject.toml` and `uv.lock`. Its team members then
-clone that repository and run `uv sync --locked`; they do not each run
-`uv add` manually.
+SCNSim commit in its own `pyproject.toml` and `uv.lock`. Its model author pins
+that commit once:
+
+```bash
+uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-sha>"
+```
+
+After those two files are committed, team members only clone the consuming
+repository and run `uv sync --locked`; they do not each run `uv add`.
 
 ## Usage
 
