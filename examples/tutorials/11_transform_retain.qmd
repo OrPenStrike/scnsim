@@ -1,0 +1,49 @@
+---
+title: "11 — Transform and retain paired coordinates"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** derive common/differential coordinates before selecting a final view.
+**Run:** replay PTC, automatic pair transform, and retain in one lineage.
+**Inspect:** weights, basis, eliminated complement, and channel order.
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Derive one backend-neutral view
+
+`transform_pair()` takes an ordered pair of Public node coordinates and derives
+`qubit.common` and `qubit.differential` using the full-external-cut rule. The
+weights are resolved from the bound compiled C matrix, not stored as mutable
+Notebook values. `retain()` then Schur-eliminates the complement at zero
+external current.
+
+```{python}
+#| id: transform-and-retain
+from fixtures.floating_probe import build_floating_probe_circuit
+from scnsim import CircuitRun, DirectSolveSpec, ReductionPipeline, units as u
+
+fixture = build_floating_probe_circuit()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
+analysis_view = run.original.reduce(
+    ReductionPipeline()
+    .ptc(fixture.probe_plus, fixture.probe_minus)
+    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
+    .retain("feedline_in", "feedline_out", "qubit.differential")
+)
+spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+```
+
+## Inspect before choosing Direct or HB
+
+The lineage itself does not select a backend. A terminal operation later checks
+whether the final coordinates are realizable for its Direct or HB request.
+
+```{python}
+#| id: explain-transformed-view
+run.explain(analysis_view, spec).show()
+```
+
+[Previous](10_compensate_probes.qmd) · [Course map](../../docs/index.qmd) · [Next: prepare pump-off HB](12_prepare_hb.qmd) · [Concept: immutable views](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

@@ -1,0 +1,66 @@
+---
+title: "9 — Model an N-trace transmission line"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** carry ordered N×N RLGC data into a deterministic π ladder.
+**Run:** author one two-trace line.
+**Inspect:** every compiled section without scalarizing mutual terms.
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Bind matrices to conductor order
+
+`RLGC` always stores Quantity-valued N×N matrices; N=1 is simply the 1×1
+case. Conductor order excludes the declared reference. Positive series current
+is head-to-tail and matches extractor +z.
+
+```{python}
+#| id: author-n-trace-line
+from scnsim import CircuitDiagramSpec, CircuitPlan, RLGC, components, units as u
+
+coupled_rlgc = RLGC(
+    conductors=("readout", "filter"),
+    reference_conductor="ground",
+    resistance_per_length=[[0.18, 0.0], [0.0, 0.22]] * u.ohm / u.m,
+    inductance_per_length=[[420.0, 75.0], [75.0, 395.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0, 0.0], [0.0, 0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0, -22.0], [-22.0, 168.0]] * u.pF / u.m,
+)
+plan = CircuitPlan(id="coupled_line")
+line = plan.add(
+    components.transmission_line(
+        id="coupled",
+        length=1.6 * u.mm,
+        rlgc=coupled_rlgc,
+        n_sections=8,
+    )
+)
+for conductor in coupled_rlgc.conductors:
+    plan.net(line.pin("head", conductor=conductor), id=f"{conductor}_head")
+    plan.net(line.pin("tail", conductor=conductor), id=f"{conductor}_tail")
+```
+
+An AEDT export is an alternative source for the same carrier:
+`load_q2d_rlgc(path, reference_conductor="ground", conductor_map=...)`.
+The loader preserves full matrices, extraction frequency, labels, +z, and
+content hash; it does not interpolate or run AEDT.
+
+## Audit the expanded π sections
+
+The compiled schematic must show every section, `n_sections + 1` stations per
+conductor, full matrix blocks, endpoint half shunts, interior accumulation, and
+zero-term evidence.
+
+```{python}
+#| id: inspect-n-trace-ladder
+expanded = plan.render_schematic(
+    CircuitDiagramSpec(representation="compiled", show_parameter_values=True)
+)
+expanded.show()
+```
+
+[Previous](08_use_custom_component.qmd) · [Course map](../../docs/index.qmd) · [Next: compensate probes](10_compensate_probes.qmd) · [Concept: compilation](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

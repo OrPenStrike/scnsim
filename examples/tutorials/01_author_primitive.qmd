@@ -1,0 +1,77 @@
+---
+title: "1 — Author one primitive reflective circuit"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** make components, nodes, ground, and one logical Port the physical authority.
+**Run:** author one reflective LC circuit.
+**Inspect:** its authoring schematic.
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Assemble only the branches you mean
+
+A `CircuitPlan` records physical topology; it does not solve it. Built-in
+factories live on the immutable `components` catalog and every physical value
+uses the shared unit registry. This is the smallest concrete example of the
+[Plan as physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority).
+
+```{python}
+#| id: author-primitive-circuit
+from scnsim import CircuitPlan, components, units as u
+
+plan = CircuitPlan(id="primitive_resonator")
+coupling_cap = plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+resonator_cap = plan.add(
+    components.capacitor(id="resonator_cap", capacitance=110.0 * u.fF)
+)
+resonator_ind = plan.add(
+    components.inductor(id="resonator_ind", inductance=5.8 * u.nH)
+)
+
+signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
+plan.net(
+    coupling_cap.pin("terminal_2"),
+    resonator_cap.pin("terminal_1"),
+    resonator_ind.pin("terminal_1"),
+    id="resonator_node",
+)
+plan.ground(
+    resonator_cap.pin("terminal_2"),
+    resonator_ind.pin("terminal_2"),
+)
+plan.add_port(
+    id="signal_in",
+    at=signal_boundary,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+## Inspect before analysis
+
+`render_schematic()` projects the authored circuit; it neither seals nor
+solves the Plan. `CircuitDiagramSpec` selects an authoring or compiled
+representation and presentation details. Here the diagram should show one
+50-ohm boundary, one coupling capacitor, and parallel C/L branches sharing one
+local ground bus.
+
+```{python}
+#| id: show-authoring-schematic
+from scnsim import CircuitDiagramSpec
+
+diagram = plan.render_schematic(
+    CircuitDiagramSpec(show_parameter_values=True)
+)
+diagram.show()
+```
+
+The current scaffold stops explicitly at construction, so this page promises
+no rendered circuit or numerical evidence yet.
+
+[Course map](../../docs/index.qmd) · [Next: prepare a Direct request](02_prepare_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)

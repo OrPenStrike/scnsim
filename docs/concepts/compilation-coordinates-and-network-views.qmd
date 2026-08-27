@@ -18,7 +18,7 @@ smaller retained boundary. Copying or mutating the circuit for each question
 would make it unclear which circuit produced an answer and would invite Direct
 and HB to diverge.
 
-## Selected abstraction
+## Selected abstraction {#network-view-lineage}
 
 SCNSim keeps physical compilation with the original sealed Plan. A
 `NetworkViewRef` is instead an immutable, ordered lineage from that Plan. Its

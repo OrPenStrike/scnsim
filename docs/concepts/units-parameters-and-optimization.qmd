@@ -18,7 +18,7 @@ compiled request. Optimization adds another boundary: a component author may
 publish a parameter without silently choosing every model's search envelope or
 every consumer's target.
 
-## Selected abstraction
+## Selected abstraction {#parameter-vs-optimization-variable}
 
 SCNSim uses one Quantity registry and a canonical SI identity for physical
 values. A sealed Plan supplies baselines; an immutable `ParameterSet` supplies

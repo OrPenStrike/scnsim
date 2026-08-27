@@ -17,7 +17,7 @@ representations and capabilities. Treating either backend as the circuit
 authority would either distort the public circuit model or conceal a real
 capability difference.
 
-## Selected abstraction
+## Selected abstraction {#direct-and-hb-selected-network}
 
 Both paths realize the same expanded Plan, component identities, Port
 attachments, and selected view. SCNSim owns the public topology and network

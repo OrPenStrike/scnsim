@@ -1,38 +1,24 @@
-# SCNSim Tutorial sources
+# SCNSim micro-course sources
 
-The five Tutorials form one linear course. A page may use a public object only
-after that object is introduced on the page or listed in its prerequisites:
+`tutorials/01_*.qmd` through `tutorials/13_*.qmd` form one linear native-API
+course. Each page answers one user need in 3–5 minutes, including reading and
+submitting code; compute wait is excluded. A page never uses a public SCNSim
+object before the course introduces it.
 
-1. `simple_resonator/01_model_author.qmd` — build a reflective resonator from
-   primitive C and L branches, then solve and evaluate it;
-2. `reusable_composite/01_composite_plan.qmd` — package those branches as a
-   reusable Composite;
-3. `simple_resonator/02_model_user.qmd` — publish and consume a team-owned
-   model and its default optimization recipe;
-4. `ipf_optimization/01_model_author.qmd` — author and inspect an
-   optimization-ready N-trace IPF Composite; and
-5. `ipf_optimization/02_model_user.qmd` — optimize once and reuse the winner
-   for Direct and pump-off HB results.
-
-Adjacent Python modules are reusable model or workflow source, not parallel
-Tutorial prose. QMD pages show those files through Quarto native includes and
-import the same source from executable cells.
+The modules under `tutorials/fixtures/` only reconstruct Plans and Plan-bound
+handles needed by adjacent lessons. They do not wrap `CircuitRun`, choose
+targets or model policy, or provide a terminal workflow.
 
 ## QMD and generated Notebook authority
 
-Each `.qmd` is the only editable Tutorial source. Quarto renders it for the
-documentation site and generates the same-named `.ipynb` as a committed,
-read-only transport artifact:
+Each `.qmd` is the only editable lesson source. Quarto renders it for the site
+and generates the same-named `.ipynb` as a committed read-only transport
+artifact. Use QMD for documentation editing, IPYNB for GitHub/Jupyter/VS Code,
+and regenerate only from QMD. Never hand-edit or reverse-sync generated
+Notebooks.
 
-- edit or execute the `.qmd` in VS Code with Quarto;
-- open the `.ipynb` in VS Code/Jupyter for notebook-native execution; and
-- open the `.ipynb` on GitHub for native static rendering.
-
-Never hand-edit or reverse-sync a generated IPYNB. Regeneration is one-way
-from QMD through Quarto's reader-facing IPYNB render. Generated Markdown cell
-IDs are transport noise; validation instead compares ordered semantic cells,
-explicit code-cell IDs, code source, kernel metadata, and the required
-zero-output state.
-
-At this `CONVERGING` checkpoint, manual execution still fails explicitly before
-producing simulation evidence.
+Validation compares ordered semantic cells, explicit code IDs, source, and
+kernel metadata while ignoring generated Markdown cell IDs. Every committed
+Notebook must have zero execution counts, outputs, and attachments. At this
+`CONVERGING` checkpoint, execution still fails explicitly before producing
+simulation evidence.

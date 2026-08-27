@@ -1,0 +1,53 @@
+---
+title: "10 — Compensate nonloading probes"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** remove evidenced probe loads without deleting Port identity.
+**Run:** derive one PTC network view.
+**Inspect:** selected load-state and topology evidence.
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Compensate only declared probes
+
+The [floating-circuit fixture](fixtures/floating_probe.py) reconstructs one
+two-port network and a floating resonator with probes on both terminals. PTC is
+an explicit topology step: it removes only the selected
+`nonloading_probe` shunts and preserves their coordinates and wave references.
+
+```{python}
+#| id: derive-ptc-view
+from fixtures.floating_probe import build_floating_probe_circuit
+from scnsim import (
+    CircuitRun,
+    DirectSolveSpec,
+    ReductionPipeline,
+    units as u,
+)
+
+fixture = build_floating_probe_circuit()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
+ptc_view = run.original.reduce(
+    ReductionPipeline()
+    .ptc(fixture.probe_plus, fixture.probe_minus)
+    .retain("feedline_in", "feedline_out")
+)
+spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+```
+
+## Verify the load evidence
+
+Preflight should name both selected Port loads, their compiled stamps, and the
+compensated view. Unknown, terminated, or unevidenced PTC targets fail closed.
+
+```{python}
+#| id: explain-ptc-view
+explanation = run.explain(ptc_view, spec)
+explanation.show()
+```
+
+[Previous](09_model_n_trace_line.qmd) · [Course map](../../docs/index.qmd) · [Next: transform coordinates](11_transform_retain.qmd) · [Concept: view lineage](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

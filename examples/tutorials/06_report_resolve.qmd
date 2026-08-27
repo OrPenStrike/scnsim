@@ -1,0 +1,67 @@
+---
+title: "6 — Report and resolve exact Results"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** aggregate explicit Results and reload an exact request after restart.
+**Run:** build a report, then resolve the same quantity request.
+**Inspect:** durable request/Result identity rather than “latest.”
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Report only Results you already hold
+
+The report request names exact Result objects. It does not solve, search a
+workspace for “latest,” or invent an acceptance decision.
+
+```{python}
+#| id: build-explicit-report
+from fixtures.primitive_resonator import build_primitive_resonator
+from scnsim import (
+    CircuitRun,
+    DiagonalRootSpec,
+    ReductionPipeline,
+    ReportSpec,
+    units as u,
+)
+
+workspace = "workspaces/primitive-course"
+fixture = build_primitive_resonator()
+run = CircuitRun(plan=fixture.plan, workspace=workspace)
+view = run.original.reduce(ReductionPipeline().retain(fixture.resonator_node))
+spec = DiagonalRootSpec(
+    coordinate=fixture.resonator_node,
+    root_hint=6.0 * u.GHz,
+)
+root = run.evaluate(view, spec)
+report = run.build_report(ReportSpec(inputs=(root,)))
+report.show()
+```
+
+## Reconstruct the exact request after restart
+
+A new Run may resolve the same Plan, Ref, Spec, parameters, and workspace
+identity. `resolve()` never executes and never falls back to another receipt.
+
+```{python}
+#| id: resolve-exact-root
+fixture_after_restart = build_primitive_resonator()
+run_after_restart = CircuitRun(
+    plan=fixture_after_restart.plan,
+    workspace=workspace,
+)
+view_after_restart = run_after_restart.original.reduce(
+    ReductionPipeline().retain(fixture_after_restart.resonator_node)
+)
+spec_after_restart = DiagonalRootSpec(
+    coordinate=fixture_after_restart.resonator_node,
+    root_hint=6.0 * u.GHz,
+)
+resolved = run_after_restart.resolve(view_after_restart, spec_after_restart)
+resolved.show()
+```
+
+[Previous](05_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: declare a Composite](07_declare_composite.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

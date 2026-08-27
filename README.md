@@ -38,7 +38,7 @@ they do not repeat `uv add`.
 
 ```bash
 uv run python -c "import scnsim; print(scnsim.__version__)"
-uv run python -c "from scnsim import CircuitPlan; help(CircuitPlan)"
+uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
 Executable authoring and runtime calls deliberately raise
@@ -47,19 +47,16 @@ Executable authoring and runtime calls deliberately raise
 ## Read the documentation
 
 - [Overview](README.md) — product boundary, status, and installation.
-- [Tutorial](docs/index.qmd) — a five-part course from primitive circuit to
-  reusable optimization and HB workflows.
+- [Tutorial](docs/index.qmd) — thirteen 3–5 minute native-API lessons from
+  primitive authoring through optimization, reuse, and pump-off HB.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim uses Plans, views, typed requests, and explicit ownership.
 - [Contract](docs/component-authoring.qmd) — exact public signatures,
   invariants, failure behavior, evidence, and known limits.
 
-Generated Notebooks are available for
-[Tutorial 1](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/01_model_author.ipynb),
-[Tutorial 2](https://github.com/OrPenStrike/scnsim/blob/develop/examples/reusable_composite/01_composite_plan.ipynb),
-[Tutorial 3](https://github.com/OrPenStrike/scnsim/blob/develop/examples/simple_resonator/02_model_user.ipynb),
-[Tutorial 4](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/01_model_author.ipynb),
-and [Tutorial 5](https://github.com/OrPenStrike/scnsim/blob/develop/examples/ipf_optimization/02_model_user.ipynb).
+Each lesson also has a generated Notebook in
+[`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)
+for GitHub preview or VS Code/Jupyter execution.
 
 ## Preview locally
 

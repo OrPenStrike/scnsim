@@ -29,7 +29,7 @@ from .authoring import (
     PinRef,
     PortRef,
     RLGC,
-    library,
+    components,
 )
 from .io import load_q2d_rlgc
 from .results import (
@@ -91,6 +91,7 @@ __all__ = [
     "CircuitRun",
     "CompositePlan",
     "ComponentInstance",
+    "components",
     "CoordinateRef",
     "CostObjective",
     "CurrentDrive",
@@ -141,7 +142,6 @@ __all__ = [
     "ScaffoldUnavailableError",
     "TransferZeroSpec",
     "TraceResult",
-    "library",
     "load_q2d_rlgc",
     "units",
 ]

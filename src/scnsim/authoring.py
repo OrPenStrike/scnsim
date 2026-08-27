@@ -324,9 +324,11 @@ class CompositePlan:
 class Library:
     """Immutable catalog that creates exact-identity component instances.
 
-    SCNSim exports one built-in object as ``scnsim.library``.  A custom Python
-    package may export another immutable ``Library`` object, but there is no
-    mutable Notebook-global registry or string discovery mechanism.
+    SCNSim exports its built-in singleton as ``scnsim.components``.  Each
+    snake-case factory returns an immutable :class:`ComponentInstance` that
+    retains catalog, source, and factory provenance.  A custom Python package
+    may export another named ``Library`` object, but there is no mutable
+    Notebook-global registry or string discovery mechanism.
     """
 
     def __init__(self) -> None:
@@ -565,5 +567,5 @@ class CircuitPlan:
         unavailable("CircuitPlan.couple_inductive")
 
 
-library = object.__new__(Library)
+components = object.__new__(Library)
 """The immutable built-in SCNSim component catalog."""

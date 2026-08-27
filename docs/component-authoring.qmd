@@ -30,30 +30,30 @@ The `CircuitPlan` remains the only physical authority. A schematic, compiled
 backend row, reduced view, or solver result is evidence derived from that Plan,
 not another circuit definition.
 
-This page owns the product-facing Library and component API. The
+This page owns the product-facing component-catalog API. The
 [V1 Runtime Contract](v1-runtime-contract.qmd) owns Plan sealing, Ref lineages,
 Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
-[building a circuit from primitives](../examples/simple_resonator/01_model_author.qmd)
-and then [packaging a reusable Composite](../examples/reusable_composite/01_composite_plan.qmd).
+[authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
+and then [declaring a reusable Composite](../examples/tutorials/07_declare_composite.qmd).
 For the design reasoning behind the boundary, read
 [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and
 evidence requirements; it is not the linear Tutorial.
 
-## One Library model
+## One component-catalog model {#one-library-model}
 
 Built-in and custom catalogs are immutable `Library` objects imported directly:
 
 ```python
-from scnsim import CircuitPlan, library as sc, units as u
-from my_components import library as custom
+from scnsim import CircuitPlan, components, units as u
+import my_components
 
 plan = CircuitPlan(id="example")
 ```
 
-Every component instance carries the exact library name, version, source, and
+Every component instance carries the exact catalog name, version, source, and
 component-schema identity that created it. SCNSim does not provide string-based
 component discovery, a Notebook-global registry, or a mutable
 `CircuitLibrary.register_component(...)` workflow.
@@ -62,21 +62,21 @@ Built-in and custom components use the same authoring surface:
 
 ```python
 capacitor = plan.add(
-    sc.capacitor(
+    components.capacitor(
         id="capacitor",
         capacitance=92.0 * u.fF,
     )
 )
 
 fixture = plan.add(
-    custom.fixture(
+    my_components.components.fixture(
         id="fixture",
         coupling_capacitance=8.0 * u.fF,
     )
 )
 ```
 
-`plan.add(library.component(...))` is the only route for Library-created
+`plan.add(components.factory(...))` is the only route for catalog-created
 physical components. There are no convenience methods such as
 `plan.capacitor(...)` that could become a second catalog or parameter
 authority. Logical Ports are specialized Plan components with their own
@@ -259,11 +259,11 @@ branch convention defined above.
 | `josephson_junction` | `josephson_inductance`, `junction_capacitance=0 * u.F` | none | nonlinear JJ plus optional parallel C row |
 
 ```python
-r = plan.add(sc.resistor(id="loss", resistance=2.0 * u.kohm))
-c = plan.add(sc.capacitor(id="shunt", capacitance=90.0 * u.fF))
-l = plan.add(sc.inductor(id="coil", inductance=1.2 * u.nH))
+r = plan.add(components.resistor(id="loss", resistance=2.0 * u.kohm))
+c = plan.add(components.capacitor(id="shunt", capacitance=90.0 * u.fF))
+l = plan.add(components.inductor(id="coil", inductance=1.2 * u.nH))
 j = plan.add(
-    sc.josephson_junction(
+    components.josephson_junction(
         id="junction",
         josephson_inductance=320.0 * u.pH,
         junction_capacitance=2.0 * u.fF,
@@ -288,8 +288,8 @@ The primitive form of a grounded parallel LC makes its one non-reference node
 and one local ground group explicit:
 
 ```python
-capacitor = plan.add(sc.capacitor(id="resonator_c", capacitance=110.0 * u.fF))
-inductor = plan.add(sc.inductor(id="resonator_l", inductance=5.8 * u.nH))
+capacitor = plan.add(components.capacitor(id="resonator_c", capacitance=110.0 * u.fF))
+inductor = plan.add(components.inductor(id="resonator_l", inductance=5.8 * u.nH))
 
 resonator_node = plan.net(
     capacitor.pin("terminal_1"),
@@ -326,7 +326,7 @@ readout_rlgc = RLGC(
 )
 
 readout_line = plan.add(
-    sc.transmission_line(
+    components.transmission_line(
         id="readout_line",
         length=4.0 * u.mm,
         rlgc=readout_rlgc,
@@ -431,7 +431,7 @@ def intrinsic_purcell_filter(self, *, id, rlgc):
     )
 
     readout_short = component.add(
-        sc.transmission_line(
+        components.transmission_line(
             id="readout_short",
             length=shared_length,
             rlgc=rlgc,
@@ -439,7 +439,7 @@ def intrinsic_purcell_filter(self, *, id, rlgc):
         )
     )
     filter_short = component.add(
-        sc.transmission_line(
+        components.transmission_line(
             id="filter_short",
             length=shared_length,
             rlgc=rlgc,
@@ -455,7 +455,7 @@ def intrinsic_purcell_filter(self, *, id, rlgc):
     )
     # The same input may feed separate calibrated maps for C1G and C2G.
     idc = component.add(
-        sc.interdigitated_capacitor(
+        components.interdigitated_capacitor(
             id="idc",
             terminal_1_to_reference_capacitance=AffineMap(
                 input=finger_length,
@@ -533,7 +533,7 @@ capacitance model:
 
 ```python
 idc = plan.add(
-    sc.interdigitated_capacitor(
+    components.interdigitated_capacitor(
         id="coupler",
         terminal_1_to_reference_capacitance=18.0 * u.fF,
         terminal_2_to_reference_capacitance=21.0 * u.fF,
@@ -552,7 +552,7 @@ mutual capacitor. Both ground branches bind the Plan's canonical ground.
 
 ```python
 squid = plan.add(
-    sc.symmetric_squid(
+    components.symmetric_squid(
         id="squid",
         josephson_inductance=310.0 * u.pH,
         junction_capacitance=2.0 * u.fF,
@@ -626,15 +626,15 @@ topology selector.
 ### Grounded linear example
 
 ```python
-from scnsim import CircuitPlan, library as sc, units as u
+from scnsim import CircuitPlan, components, units as u
 
 plan = CircuitPlan(id="grounded_linear")
 
 coupling_cap = plan.add(
-    sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
 )
 resonator = plan.add(
-    sc.grounded_parallel_linear_lc_resonator(
+    components.grounded_parallel_linear_lc_resonator(
         id="resonator",
         capacitance=110.0 * u.fF,
         inductance=5.8 * u.nH,
@@ -659,7 +659,7 @@ signal_port = plan.add_port(
 
 ```python
 floating = plan.add(
-    sc.floating_parallel_linear_lc_resonator(
+    components.floating_parallel_linear_lc_resonator(
         id="floating_mode",
         terminal_1_to_reference_capacitance=52.0 * u.fF,
         terminal_2_to_reference_capacitance=47.0 * u.fF,
@@ -679,7 +679,7 @@ component has no ground pin. They bind the automatic Plan ground.
 
 ```python
 grounded_jj = plan.add(
-    sc.grounded_parallel_single_junction_resonator(
+    components.grounded_parallel_single_junction_resonator(
         id="grounded_jj",
         capacitance=85.0 * u.fF,
         josephson_inductance=420.0 * u.pH,
@@ -688,7 +688,7 @@ grounded_jj = plan.add(
 )
 
 floating_jj = plan.add(
-    sc.floating_parallel_single_junction_resonator(
+    components.floating_parallel_single_junction_resonator(
         id="floating_jj",
         terminal_1_to_reference_capacitance=41.0 * u.fF,
         terminal_2_to_reference_capacitance=39.0 * u.fF,
@@ -716,14 +716,14 @@ from scnsim import (
     HBTruncation,
     HBSolveSpec,
     PumpAxis,
-    library as sc,
+    components,
     units as u,
 )
 
 plan = CircuitPlan(id="flux_pumped_resonator")
 
 jpa = plan.add(
-    sc.grounded_parallel_symmetric_squid_resonator(
+    components.grounded_parallel_symmetric_squid_resonator(
         id="jpa",
         capacitance=95.0 * u.fF,
         josephson_inductance=300.0 * u.pH,
@@ -732,7 +732,7 @@ jpa = plan.add(
     )
 )
 pump_inductor = plan.add(
-    sc.inductor(id="pump_coil", inductance=1.0 * u.nH)
+    components.inductor(id="pump_coil", inductance=1.0 * u.nH)
 )
 
 plan.ground(pump_inductor.pin("terminal_2"))

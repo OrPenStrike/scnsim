@@ -1,0 +1,48 @@
+---
+title: "7 — Declare a reusable Composite"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="In 3–5 minutes" appearance="simple"}
+**Learn:** package repeated private topology behind public parameters and pins.
+**Run:** create one component from a custom catalog.
+**Inspect:** its public parameter and terminal surface.
+**Status:** `CONVERGING` scaffold; compute wait excluded.
+:::
+
+## Put repeated topology behind one boundary
+
+Rebuilding the same parallel LC in every Plan is noisy and exposes internals
+that consumers should not wire directly. A `CompositePlan` solves that reuse
+problem: a custom `Library` factory declares child components, public
+`ParameterSpec`s, ground, and exposed pins, then returns one immutable
+`ComponentInstance`. Read the complete adjacent
+[catalog fixture](fixtures/resonator_library.py) alongside the
+[Composite reuse boundary](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary).
+
+The package publishes one clearly named object—`resonator_library.components`—
+instead of asking users to alias several objects named `library`.
+
+## Create and inspect the public component
+
+The factory call below is the whole consumer-facing construction surface.
+Hidden capacitor, inductor, internal node, and ground grouping remain catalog
+implementation evidence.
+
+```{python}
+#| id: create-custom-composite
+from fixtures import resonator_library
+from scnsim import units as u
+
+resonator = resonator_library.components.parallel_linear_lc_resonator(
+    id="resonator",
+    capacitance=110.0 * u.fF,
+    inductance=5.8 * u.nH,
+)
+resonator.parameter("capacitance").show()
+resonator.pin("terminal")
+```
+
+[Previous](06_report_resolve.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](08_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)

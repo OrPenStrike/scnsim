@@ -1,60 +1,129 @@
 ---
 title: "Tutorial"
-description: "A linear SCNSim course from primitive circuit authoring to reusable Direct, optimization, and HB workflows."
+description: "A linear SCNSim micro-course from primitive authoring to Direct, optimization, reusable composition, and pump-off HB."
 ---
 
-The SCNSim Tutorial follows one rule: **if an API has not been taught, the
-course does not use it.** Each page starts with a real circuit-modeling need,
-introduces only the objects needed to solve it, and finishes with a complete
-inspectable workflow.
+Follow the course in order. Each page answers one user question in **3–5
+minutes**, including reading and submitting its code; solver, optimization, and
+HB wait time is excluded. If an API has not been taught, the course does not
+use it.
 
-::: {.callout-warning}
-## Candidate package
-
-SCNSim remains `CONVERGING`. The code in this course expresses the intended V1
-UX, but the current package is a fail-fast scaffold and does not yet simulate a
-circuit.
+::: {.callout-warning title="Candidate package" appearance="simple"}
+SCNSim remains `CONVERGING`. The course expresses the intended native V1 API,
+but the current package is a fail-fast scaffold and produces no simulation
+evidence.
 :::
 
-## Follow the course in order
+## Author and analyze
 
-| Part | Starting need | Prerequisites | Main objects introduced | Produced surface |
-| --- | --- | --- | --- | --- |
-| [1. Build a complete circuit from primitives](../examples/simple_resonator/01_model_author.qmd) | Understand every branch in a one-port reflective resonator | None | units, primitive R/L/C-style components, `CircuitPlan`, nodes, ground, Port, diagram, Run, View, Direct solve/evaluate, Results | authoring diagram, Direct S/Y/Z, root quantity, report |
-| [2. Package the LC as a reusable Composite](../examples/reusable_composite/01_composite_plan.qmd) | Stop rebuilding the same resonator internals | Part 1 | immutable custom `Library`, `CompositePlan`, public parameters, exposed pin, `ComponentInstance` | reusable grounded-resonator component |
-| [3. Publish and use a team-owned model](../examples/simple_resonator/02_model_user.qmd) | Let teammates use an owned model without restating topology or analysis choices | Parts 1–2 | target, optimization variables/objectives, default recipe, team façade, workspace, exact resolve | optimization Result through a reusable model boundary |
-| [4. Author an optimization-ready IPF Composite](../examples/ipf_optimization/01_model_author.qmd) | Assemble coupled transmission-line sections and calibrated lumped mappings once | Parts 1–3 | general RLGC, Q2D input, transmission lines, IDC, fan-out, `AffineMap`, `CoordinateRef`, PTC, quantity selectors, compiled diagram, explain | sealed IPF model and inspectable default request |
-| [5. Optimize once and reuse the winner](../examples/ipf_optimization/02_model_user.qmd) | Reuse one optimized ParameterSet across Direct and pump-off HB analysis | Parts 1–4 | override/extrapolation, best parameters, HB axes/drives/cases/truncation, case Results, display, report, resolve | optimization, winner Direct/HB Results, durable report |
+::: {.card .card-body .mb-3}
+### [1. Author one primitive reflective circuit](../examples/tutorials/01_author_primitive.qmd)
 
-Tutorial pages explain the API needed for their workflow. Deeper design
-reasoning lives under [Concept](concepts/physical-authority-and-reusable-composition.qmd),
-while exact signatures, formulas, invariants, failures, and evidence live under
+**Question:** How do I state every component and electrical connection once?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** an inspectable authoring schematic.
+:::
+
+::: {.card .card-body .mb-3}
+### [2. Prepare a Direct request](../examples/tutorials/02_prepare_direct.qmd)
+
+**Question:** How do I choose a view and response request without solving?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** deterministic preflight evidence.
+:::
+
+::: {.card .card-body .mb-3}
+### [3. Solve a Direct response](../examples/tutorials/03_solve_direct.qmd)
+
+**Question:** How do I obtain S/Y/Z and one named trace?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** a typed `DirectSolveResult`.
+:::
+
+::: {.card .card-body .mb-3}
+### [4. Evaluate one physical quantity](../examples/tutorials/04_evaluate_quantity.qmd)
+
+**Question:** How do I find a resonance without an unrelated response sweep?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** a typed diagonal-root Result.
+:::
+
+::: {.card .card-body .mb-3}
+### [5. Optimize a primitive parameter](../examples/tutorials/05_optimize_primitive.qmd)
+
+**Question:** Can I optimize before packaging a Composite?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** an optimization Result and immutable best `ParameterSet`.
+:::
+
+::: {.card .card-body .mb-3}
+### [6. Report and resolve exact Results](../examples/tutorials/06_report_resolve.qmd)
+
+**Question:** How do I report explicit evidence and reload it after restart?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** a report and exact receipt-backed resolution path.
+:::
+
+## Reusable composition
+
+::: {.card .card-body .mb-3}
+### [7. Declare a reusable Composite](../examples/tutorials/07_declare_composite.qmd)
+
+**Question:** How do I stop rebuilding the same subsystem internals?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** one custom catalog component.
+:::
+
+::: {.card .card-body .mb-3}
+### [8. Use a custom component in another Plan](../examples/tutorials/08_use_custom_component.qmd)
+
+**Question:** How does a reusable subsystem connect to a larger circuit?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** an outer Plan with a custom `ComponentInstance`.
+:::
+
+## Advanced native workflows
+
+::: {.card .card-body .mb-3}
+### [9. Model an N-trace transmission line](../examples/tutorials/09_model_n_trace_line.qmd)
+
+**Question:** How do I preserve full RLGC matrices through π-section lowering?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** a complete compiled ladder diagram.
+:::
+
+::: {.card .card-body .mb-3}
+### [10. Compensate nonloading probes](../examples/tutorials/10_compensate_probes.qmd)
+
+**Question:** How do I remove measurement shunts without deleting Port identity?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** a PTC view and load evidence.
+:::
+
+::: {.card .card-body .mb-3}
+### [11. Transform and retain paired coordinates](../examples/tutorials/11_transform_retain.qmd)
+
+**Question:** How do I inspect one floating pair in automatic common/differential coordinates?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** one backend-neutral transformed view.
+:::
+
+::: {.card .card-body .mb-3}
+### [12. Declare a pump-off HB request](../examples/tutorials/12_prepare_hb.qmd)
+
+**Question:** How do axes, drives, cases, and truncation describe a zero-drive experiment?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** HB preflight and derived pump-off state.
+:::
+
+::: {.card .card-body .mb-3}
+### [13. Solve and compare Direct/HB responses](../examples/tutorials/13_compare_direct_hb.qmd)
+
+**Question:** How do I compare the same selected network across both solvers?
+**Time:** 3–5 minutes · compute wait excluded
+**Produces:** symmetric Direct/HB S/Y/Z surfaces.
+:::
+
+For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd).
+For exact signatures, equations, failures, and evidence, use
 [Contract](component-authoring.qmd).
-
-## Choose a different reading layer
-
-::: {.grid}
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Understand the design
-
-Read [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd),
-then continue through the Concept sidebar. These pages explain the pressures
-behind Plans, immutable views, typed requests, and explicit ownership.
-:::
-
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Review exact behavior
-
-Use the [Component Authoring Contract](component-authoring.qmd) and
-[V1 Runtime Contract](v1-runtime-contract.qmd) when a signature, physical
-boundary, failure mode, receipt field, or open Human decision must be exact.
-:::
-:::
-
-::: {.callout-important}
-## Human acceptance remains explicit
-
-Package import, CI, Quarto rendering, and review can reject malformed candidate
-bytes. They cannot accept SCNSim semantics or promote this development package
-to a stable product line.
-:::
