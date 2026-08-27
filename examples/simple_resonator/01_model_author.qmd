@@ -33,14 +33,14 @@ See
 
 ```{python}
 #| id: author-plan
-plan = CircuitPlan(id="simple_readout")
+plan = CircuitPlan(id="simple_resonator")
 
 coupling_cap = plan.add(
     sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
 )
-readout = plan.add(
+resonator = plan.add(
     sc.grounded_parallel_linear_lc_resonator(
-        id="readout",
+        id="resonator",
         subsystem_capacitance=110.0 * u.fF,
         inductance=5.8 * u.nH,
     )
@@ -48,10 +48,10 @@ readout = plan.add(
 
 plan.reference("ground")
 signal_boundary = plan.net(coupling_cap.pin("a"))
-readout_node = plan.net(
+resonator_node = plan.net(
     coupling_cap.pin("b"),
-    readout.pin("signal"),
-    id="readout_node",
+    resonator.pin("signal"),
+    id="resonator_node",
 )
 signal_port = plan.add_port(
     id="signal_in",
@@ -64,7 +64,7 @@ signal_port = plan.add_port(
 ## Inspect the reflection topology
 
 The authoring diagram makes the measurement path explicit before any analysis:
-Port, coupling capacitor, readout node, and the parallel L/C branches to the
+Port, coupling capacitor, resonator node, and the parallel L/C branches to the
 Plan reference. `show()` only presents the materialized diagram.
 
 ```{python}
@@ -85,12 +85,12 @@ one-pin node; the Port component and selected channel remain distinct objects.
 
 ```{python}
 #| id: author-direct
-run = CircuitRun(plan=plan, workspace="results/simple_readout")
+run = CircuitRun(plan=plan, workspace="results/simple_resonator")
 response_view = run.original.reduce(
     ReductionPipeline().retain("signal_in")
 )
 quantity_view = run.original.reduce(
-    ReductionPipeline().retain("readout_node")
+    ReductionPipeline().retain("resonator_node")
 )
 frequency_grid = tuple(
     value * u.GHz
@@ -121,11 +121,11 @@ it is not the returned root or a target.
 
 ```{python}
 #| id: author-evaluate
-readout_root = DiagonalRootSpec(
-    coordinate="readout_node",
+resonator_root = DiagonalRootSpec(
+    coordinate="resonator_node",
     root_hint=6.0 * u.GHz,
 )
-evaluated = run.evaluate(quantity_view, readout_root)
+evaluated = run.evaluate(quantity_view, resonator_root)
 evaluated.show()
 evaluated.frequency.to(u.GHz)
 ```

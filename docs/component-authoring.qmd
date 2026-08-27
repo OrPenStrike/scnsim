@@ -53,9 +53,9 @@ component discovery, a Notebook-global registry, or a mutable
 Built-in and custom components use the same authoring surface:
 
 ```python
-readout_cap = plan.add(
+capacitor = plan.add(
     sc.capacitor(
-        id="readout_cap",
+        id="capacitor",
         capacitance=92.0 * u.fF,
     )
 )
@@ -79,15 +79,15 @@ authority. Logical Ports are specialized Plan components with their own
 Electrical terminals are addressed only by declared pin names:
 
 ```python
-readout_cap.pin("a")
-readout_cap.pin("b")
+capacitor.pin("a")
+capacitor.pin("b")
 ```
 
 Consumer-visible parameters are addressed only through the component's public
 schema:
 
 ```python
-capacitance = readout_cap.parameter("capacitance")
+capacitance = capacitor.parameter("capacitance")
 ```
 
 A composite may contain primitive children, but child IDs and child parameters
@@ -110,10 +110,10 @@ equipotential electric node that connects those terminals and returns an
 `ElectricNodeRef`:
 
 ```python
-readout_node = plan.net(
+resonator_node = plan.net(
     coupling_cap.pin("b"),
     resonator.pin("signal"),
-    id="readout_node",
+    id="resonator_node",
 )
 ```
 
@@ -180,7 +180,7 @@ same Plan:
 ```python
 signal_port = plan.add_port(
     id="signal_in",
-    at=readout_node,
+    at=resonator_node,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
@@ -577,27 +577,27 @@ from scnsim import CircuitPlan, library as sc, units as u
 
 plan = CircuitPlan(id="grounded_linear")
 
-input_cap = plan.add(
-    sc.capacitor(id="input_cap", capacitance=6.0 * u.fF)
+coupling_cap = plan.add(
+    sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
 )
 resonator = plan.add(
     sc.grounded_parallel_linear_lc_resonator(
-        id="readout",
+        id="resonator",
         subsystem_capacitance=110.0 * u.fF,
         inductance=5.8 * u.nH,
     )
 )
 
 plan.reference("ground")
-input_node = plan.net(input_cap.pin("a"))
-readout_node = plan.net(
-    input_cap.pin("b"),
+signal_boundary = plan.net(coupling_cap.pin("a"))
+resonator_node = plan.net(
+    coupling_cap.pin("b"),
     resonator.pin("signal"),
-    id="readout_node",
+    id="resonator_node",
 )
 signal_port = plan.add_port(
     id="signal_in",
-    at=input_node,
+    at=signal_boundary,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )

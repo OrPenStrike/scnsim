@@ -2,8 +2,8 @@
 
 This module illustrates the boundary SCNSim is intended to support.  The
 circuit-model developer owns all topology and analysis choices below.  A model
-user imports only ``ReadoutTarget``, ``optimize_readout()``, and
-``resolve_readout()``; they do not repeat components, electric nodes,
+user imports only ``ResonatorTarget``, ``optimize_resonator()``, and
+``resolve_resonator()``; they do not repeat components, electric nodes,
 references, logical Ports, or objective wiring in every Notebook.
 
 The functions are complete UX examples but cannot execute while ``scnsim`` is
@@ -35,7 +35,7 @@ from scnsim import (
 
 
 @dataclass(frozen=True)
-class ReadoutTarget:
+class ResonatorTarget:
     """Consumer-owned requirements; these are inputs, not SCNSim defaults."""
 
     frequency: object
@@ -45,13 +45,13 @@ class ReadoutTarget:
 def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     """Build the team-owned Plan and return its private optimization handle."""
 
-    plan = CircuitPlan(id="simple_readout")
+    plan = CircuitPlan(id="simple_resonator")
     coupling_cap = plan.add(
         sc.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
     )
     resonator = plan.add(
         sc.grounded_parallel_linear_lc_resonator(
-            id="readout",
+            id="resonator",
             subsystem_capacitance=110.0 * u.fF,
             inductance=5.8 * u.nH,
         )
@@ -62,7 +62,7 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
     plan.net(
         coupling_cap.pin("b"),
         resonator.pin("signal"),
-        id="readout_node",
+        id="resonator_node",
     )
     plan.add_port(
         id="signal_in",
@@ -81,15 +81,15 @@ def build_plan() -> CircuitPlan:
 
 
 def _optimization_request(
-    target: ReadoutTarget,
+    target: ResonatorTarget,
     workspace: str | PathLike[str],
 ) -> tuple[CircuitRun, NetworkViewRef, OptimizationSpec]:
     """Reconstruct the exact Ref, model-owned root hint, and optimization."""
 
     plan, capacitance = _build_model()
     run = CircuitRun(plan=plan, workspace=workspace)
-    readout_root = DiagonalRootSpec(
-        coordinate="readout_node",
+    resonator_root = DiagonalRootSpec(
+        coordinate="resonator_node",
         root_hint=6.0 * u.GHz,
     )
     spec = OptimizationSpec(
@@ -101,14 +101,14 @@ def _optimization_request(
         ),
         objectives=(
             CostObjective(
-                id="readout_frequency",
-                quantity=readout_root.frequency,
+                id="resonator_frequency",
+                quantity=resonator_root.frequency,
                 target=target.frequency,
                 weight=10.0 * u.dimensionless,
             ),
             CostObjective(
-                id="readout_linewidth",
-                quantity=readout_root.linewidth,
+                id="resonator_linewidth",
+                quantity=resonator_root.linewidth,
                 target=target.linewidth,
                 weight=1.0 * u.dimensionless,
             ),
@@ -116,14 +116,14 @@ def _optimization_request(
         optimizer=CMAESSpec(seed=17, max_evaluations=200),
     )
     quantity_view = run.original.reduce(
-        ReductionPipeline().retain("readout_node")
+        ReductionPipeline().retain("resonator_node")
     )
     return run, quantity_view, spec
 
 
-def optimize_readout(
+def optimize_resonator(
     *,
-    target: ReadoutTarget,
+    target: ResonatorTarget,
     workspace: str | PathLike[str],
 ) -> tuple[OptimizationResult, ReportResult]:
     """Execute the team-owned search and assemble a report from its exact result."""
@@ -134,9 +134,9 @@ def optimize_readout(
     return optimization, report
 
 
-def resolve_readout(
+def resolve_resonator(
     *,
-    target: ReadoutTarget,
+    target: ResonatorTarget,
     workspace: str | PathLike[str],
 ) -> OptimizationResult:
     """Load the exact prior optimization after a kernel restart; never rerun it."""

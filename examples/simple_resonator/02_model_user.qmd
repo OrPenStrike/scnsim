@@ -15,7 +15,7 @@ Import the project façade and SCNSim's shared unit registry.
 
 ```{python}
 #| id: consumer-imports
-from circuit_model import ReadoutTarget, optimize_readout, resolve_readout
+from circuit_model import ResonatorTarget, optimize_resonator, resolve_resonator
 from scnsim import units as u
 ```
 
@@ -25,11 +25,11 @@ The target stays outside SCNSim and keeps every physical value unit-aware.
 
 ```{python}
 #| id: consumer-target
-target = ReadoutTarget(
+target = ResonatorTarget(
     frequency=6.2 * u.GHz,
     linewidth=2.0 * u.MHz,
 )
-workspace = "results/team_readout_optimization"
+workspace = "results/team_resonator_optimization"
 ```
 
 ## Run the team-owned workflow
@@ -38,7 +38,7 @@ The façade returns exact typed Results without storing a hidden current result.
 
 ```{python}
 #| id: consumer-run
-optimization, report = optimize_readout(
+optimization, report = optimize_resonator(
     target=target,
     workspace=workspace,
 )
@@ -61,6 +61,6 @@ run or recomputes missing work.
 
 ```{python}
 #| id: consumer-resolve
-resolved = resolve_readout(target=target, workspace=workspace)
+resolved = resolve_resonator(target=target, workspace=workspace)
 resolved.best.parameters
 ```
