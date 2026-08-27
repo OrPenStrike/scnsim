@@ -4,7 +4,7 @@ This module illustrates the boundary SCNSim is intended to support.  The
 circuit-model developer owns all topology and analysis choices below.  A model
 user imports only ``ResonatorTarget``, ``optimize_resonator()``, and
 ``resolve_resonator()``; they do not repeat components, electric nodes,
-references, logical Ports, or objective wiring in every Notebook.
+ground attachments, logical Ports, or objective wiring in every Notebook.
 
 The functions are complete UX examples but cannot execute while ``scnsim`` is
 an API-only scaffold.
@@ -57,11 +57,10 @@ def _build_model() -> tuple[CircuitPlan, ParameterRef]:
         )
     )
 
-    plan.reference("ground")
-    signal_boundary = plan.net(coupling_cap.pin("a"))
+    signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
     plan.net(
-        coupling_cap.pin("b"),
-        resonator.pin("signal"),
+        coupling_cap.pin("terminal_2"),
+        resonator.pin("terminal"),
         id="resonator_node",
     )
     plan.add_port(

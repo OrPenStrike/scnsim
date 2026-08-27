@@ -42,7 +42,7 @@ accepted yet:
 
 | Review question | Detailed section |
 |---|---|
-| How are Libraries, components, electric nodes, references, logical Ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
+| How are Libraries, terminals, electric nodes, canonical ground, logical Ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
@@ -95,7 +95,7 @@ exact public handoff with its Git provenance.
 
 | Object | Owns | Does not own |
 |---|---|---|
-| `CircuitPlan` | Components, parameters, electric nodes, logical Ports, reference, and library identities | Execution state or results |
+| `CircuitPlan` | Components, parameters, electric nodes, canonical ground, logical Ports, and library identities | Execution state or results |
 | `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
 | typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
@@ -107,7 +107,7 @@ The public SCNSim vocabulary serves two different layers:
 | Layer | Primary objects | Repeated work it should avoid |
 |---|---|---|
 | Circuit-model development | `Library`, `CircuitPlan`, `NetworkViewRef`, quantity and solve Specs | Re-deriving physical topology or analysis semantics in every Notebook |
-| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, electric nodes, reference, logical Ports, objective selectors, weights, and optimizer controls |
+| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, electric nodes, ground attachments, logical Ports, objective selectors, weights, and optimizer controls |
 
 The façade is ordinary consumer-package code, not a second SCNSim registry or
 physical authority. It reconstructs the exact Plan/Ref/Spec request, so a
@@ -141,9 +141,8 @@ from the Plan, not a second circuit.
 
 The [V1 Component Authoring contract](component-authoring.qmd) is the single
 product authority for immutable built-in/custom Libraries, component factories,
-pins, public/anonymous electric nodes, the one node-flux reference, logical
-Ports, and
-inductive coupling. The shortest authoring route is:
+pins, public/anonymous electric nodes, the automatic canonical ground, logical
+Ports, and inductive coupling. The shortest authoring route is:
 
 ```python
 from scnsim import CircuitPlan, library as sc, units as u
@@ -156,6 +155,13 @@ readout_cap = plan.add(
     )
 )
 ```
+
+Every Plan owns the reserved `"ground"` identity from construction. Direct
+uses it as the node-flux reference and HB lowers it to JosephsonCircuits node
+`"0"`; the backend name is not a public coordinate. Generic components expose
+`terminal_1`/`terminal_2`, while grounded resonators expose one non-reference
+`terminal` and bind their internal return to that ground. Model authors use
+repeatable `plan.ground(*pins)` calls only for ordinary pins that must join it.
 
 Every public physical value uses the one `scnsim.units` Pint registry. Public
 physical inputs do not accept bare numbers; a physically meaningful
@@ -370,8 +376,9 @@ launch a solver, create a request directory, or write the workspace. The
 explanation identifies the sealed Plan, selected Ref, effective parameters,
 operation/backend, grids, reduction lineage, runtime, and exact dependency
 graph. It expands every component to its backend rows, shows Library/schema
-identity, component-pin to electric-node/reference mapping, Public/Internal/
-Port-promoted node identities, logical Port attachments and namespace mapping,
+identity, component-pin to electric-node/ground mapping, Public/Internal/
+Port-promoted node identities, explicit local ground groups, logical Port
+attachments and namespace mapping,
 Direct `B`/`Y0`/load/wave lowering, HB `P`/`R_port` lowering,
 SQUID loop orientation, and every bound inductive-coupling `L1`, `L2`, signed
 `k`, derived `M`, and backend map. For an automatic paired-node transform it
@@ -707,7 +714,7 @@ voltage/current, load, and wave-conversion mapping. HB records the exact `P_i`
 and `R_port_i` rows, solver indices, modes, and port order.
 
 For both lowerings, Port voltage is the attached-node voltage relative to the
-Plan reference and positive Port current enters the Plan at that node. The
+Plan ground and positive Port current enters the Plan at that node. The
 canonical node attachment therefore owns direction; there is no backend- or
 request-specific orientation override.
 
@@ -1065,8 +1072,10 @@ ordered Ref lineage, retained/eliminated coordinates, selected channel order,
 and exact runtime identity.
 
 The Plan/compile evidence records every exact Library and component-schema
-identity, component hierarchy and public schema, pin-to-electric-node/reference
-mapping, Public/Internal/Port-promoted node identities, logical Port mapping,
+identity, component hierarchy and public schema, pin-to-electric-node/ground
+mapping, Public/Internal/Port-promoted node identities, canonical ground and
+backend-node-zero mapping, explicit and built-in local ground groups, logical
+Port mapping,
 source units and canonical SI values, public ParameterRefs, expanded
 primitive/backend rows, and Direct/HB realization. Composite evidence includes
 public parameters/baselines, identity fan-out, AffineMap equations/support,
@@ -1776,11 +1785,21 @@ diagram.show()
 ```
 
 The `authoring` representation draws the semantic components, Public nodes,
-logical Ports, reference, anonymous junctions, and declared connections.
-Grounded LC components expand visually into their parallel L/C branches and
-reference rather than an opaque box; larger composites retain recognizable
-authoring symbols instead of compiler ladders. Every visible object traces to
-the Plan.
+logical Ports, canonical ground, anonymous junctions, and declared connections.
+Grounded LC components expand visually into their parallel L/C branches with a
+shared local bottom bus and one ground glyph rather than an opaque box. One
+`ground(*pins)` call defines the same local bus/glyph group for ordinary
+primitives; separate calls draw separate glyphs while remaining one electrical
+ground. The renderer never replaces them with a page-wide ground bus. Larger
+composites retain recognizable authoring symbols instead of compiler ladders.
+Every visible object traces to the Plan.
+
+Generic two-terminal symbols place `terminal_1` left and `terminal_2` right,
+or top and bottom for a downward grounded branch. Rotation moves anchors but
+never renames pins or reverses their physical orientation. A custom N-terminal
+black box without a dedicated symbol places its ordered Library pin schema
+clockwise from the lower-left boundary; this is renderer fallback only, not
+compiler or pin-identity authority.
 
 The `compiled` representation runs only the deterministic structural compile
 preflight needed to materialize the complete baseline physical graph. It is
@@ -1803,20 +1822,27 @@ block numerical analysis. SCNSim exposes neither `plan.show()` nor schematic
 `.plot()`, and reduced Refs are inspected as operations and evidence rather
 than fabricated equivalent circuits.
 
+The compiled view maps every explicit ground group, grounded built-in return,
+and pi-section station-local C/G shunt bus to Plan ground and JosephsonCircuits
+node `"0"`. Simulation identity canonicalizes the union of grounded endpoints;
+diagram identity additionally preserves the endpoint-derived local grouping.
+
 ## Failure and evidence contract
 
 SCNSim fails closed for:
 
 - a workspace bound to another Plan or runtime identity;
-- a duplicate component, Public node, reference, logical Port, or coupling identity, or
-  duplicate pin/public-parameter names inside one component schema;
+- a duplicate component, Public node, logical Port, or coupling identity, a
+  reserved `"ground"` node collision, or duplicate pin/public-parameter names
+  inside one component schema;
 - an unknown pin, parameter, inductive branch, node, or unbound/foreign Library
-  instance; a pin assigned to different nodes; other than one Plan reference;
-  or an invalid/foreign/duplicate `ElectricNodeRef` or `PortRef`;
+  instance; a pin assigned to different nodes or ground groups; an empty
+  `ground()` call; a foreign, duplicate, or already-assigned grounded pin; or
+  an invalid/foreign/duplicate `ElectricNodeRef` or `PortRef`;
 - an empty electric-node declaration or the same pin repeated within one node;
 - an anonymous node promotion that collides with another Public identity; an
   anonymous unported node with fewer than two distinct pins; a second Port on
-  one node; a Port bound to the reference or directly to a pin; or a Port that
+  one node; a Port bound to ground or directly to a pin; or a Port that
   changes its promoted node identity after seal;
 - a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
   conductor/reference identity, matrix shape/order/units/reciprocity/passivity,

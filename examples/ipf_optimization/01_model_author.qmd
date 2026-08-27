@@ -59,7 +59,9 @@ expanded.show()
 The response view is port-realizable for Direct/HB S/Y/Z; the optimization view
 retains the Direct coordinates needed by the model-owned quantities. Composite
 pins are wiring endpoints; exposed `CoordinateRef` handles are analysis-only
-selectors and cannot be wired into the outer Plan.
+selectors and cannot be wired into the outer Plan. Generic two-terminal
+components use `terminal_1`/`terminal_2`; their internal reference branches and
+the transmission-line reference conductors share the Plan's automatic ground.
 
 ```{python}
 #| id: ipf-session

@@ -21,7 +21,7 @@ Use one route from reusable component definitions to a sealed physical Plan:
 immutable Library
 -> component instances with exact source identity
 -> declarative Composite parameters, mappings, pins, and coordinates
--> Public or Internal electric nodes and one node-flux reference
+-> Public or Internal electric nodes and the automatic canonical ground
 -> logical Port components on selected nodes
 -> CircuitPlan
 ```
@@ -79,9 +79,16 @@ authority. Logical Ports are specialized Plan components with their own
 Electrical terminals are addressed only by declared pin names:
 
 ```python
-capacitor.pin("a")
-capacitor.pin("b")
+capacitor.pin("terminal_1")
+capacitor.pin("terminal_2")
 ```
+
+Generic two-terminal components use this ordered pair. Their branch voltage is
+`V(terminal_1) - V(terminal_2)` and positive branch current flows from
+`terminal_1` to `terminal_2`. The same orientation owns JJ phase and
+inductive-branch coupling signs. Directional components keep semantic names
+such as transmission-line `head`/`tail`, and domain-specific composites may
+publish names such as `feedline_in` rather than generic terminal numbers.
 
 Consumer-visible parameters are addressed only through the component's public
 schema:
@@ -111,8 +118,8 @@ equipotential electric node that connects those terminals and returns an
 
 ```python
 resonator_node = plan.net(
-    coupling_cap.pin("b"),
-    resonator.pin("signal"),
+    coupling_cap.pin("terminal_2"),
+    resonator.pin("terminal"),
     id="resonator_node",
 )
 ```
@@ -132,7 +139,7 @@ though a user cannot address its opaque evidence identity as a Runtime
 coordinate. Its identity is derived deterministically from the canonical set
 of exact component/pin endpoints, not from randomness or call order.
 
-Every pin belongs to exactly one electric node or the one Plan reference. All
+Every pin belongs to exactly one electric node or the canonical Plan ground. All
 pins for a node are supplied together; a second call cannot incrementally
 merge or redefine it. SCNSim exposes no parallel `connect()` API.
 
@@ -140,27 +147,34 @@ At Plan seal, compilation assigns one node-flux coordinate to every
 non-reference electric node. Adding a logical Port attaches a boundary to that
 coordinate; it never creates a second electrical degree of freedom.
 
-### Declare one node-flux reference
+### Attach pins to the canonical ground
 
-Each Plan declares exactly one reference node:
+Every Plan owns one canonical ground from construction. Its reserved public
+identity is `"ground"`; Direct uses it as the node-flux reference and HB lowers
+the same node deterministically to JosephsonCircuits node `"0"`. The backend
+name is receipt evidence, not a Notebook node selector.
+
+Ordinary primitive pins attach explicitly:
 
 ```python
-plan.reference(
-    "ground",
-    input_cap.pin("a"),
-    pump_inductor.pin("b"),
+plan.ground(
+    capacitor.pin("terminal_2"),
+    inductor.pin("terminal_2"),
 )
 ```
 
-The call may contain no external pins:
+Calls may repeat near separate authoring blocks. All calls assign pins to the
+same electrical ground; each call additionally preserves one local schematic
+group whose endpoint-derived identity is independent of call order. Grouping
+does not enter the physical compile/hash. It only lets the authoring projection
+draw those endpoints on one local bus with one ground glyph. An empty call is
+invalid.
 
-```python
-plan.reference("ground")
-```
-
-This zero-pin form still gives grounded composites the unique node-flux
-reference they require. It does not create an implicit second ground inside
-each component.
+`CompositePlan.ground(*pins)` gives a custom composite the same authoring
+surface. It binds those child endpoints to the eventual parent Plan ground and
+never creates a composite-local reference. Grounded built-ins declare their
+own internal group, so their author does not repeat a ground call or receive a
+public ground pin.
 
 ### Add one logical Port component to a node
 
@@ -169,7 +183,7 @@ boundary, its role, reference impedance, node attachment, and backend-lowering
 identity. It is not a Library-created `ComponentInstance`, and it never creates
 or infers an electric connection.
 
-Its voltage direction is the attached node relative to the Plan reference;
+Its voltage direction is the attached node relative to the Plan ground;
 positive Port current enters the Plan at that node. This canonical orientation
 is derived from the attachment, so `add_port()` does not expose a second manual
 direction argument.
@@ -194,7 +208,7 @@ than duplicating Port components.
 An anonymous node may also receive a Port:
 
 ```python
-input_boundary = plan.net(input_cap.pin("a"))
+input_boundary = plan.net(input_cap.pin("terminal_1"))
 
 signal_port = plan.add_port(
     id="signal_in",
@@ -221,12 +235,13 @@ receipts show this deterministic mapping before execution.
 
 At seal, an anonymous node without a Port must join at least two different
 pins. A one-pin anonymous node is valid only when a Port promotes it. A Port
-cannot attach to a pin, reference, foreign node, or already-port-bound node.
+cannot attach to a pin, ground, foreign node, or already-port-bound node.
 
 ## Built-in leaves
 
 All public physical parameters are SCNSim-registry Quantities. R/L/C/JJ leaves
-use the fixed pins `"a"` and `"b"`.
+use the fixed pins `"terminal_1"` and `"terminal_2"`, with the common ordered
+branch convention defined above.
 
 | Factory | Public physical parameters | Additional public reference | Realization |
 |---|---|---|---|
@@ -260,6 +275,28 @@ the capacitor. SCNSim never estimates `Cj` from `Lj`, and adding `Cj` does not
 add resistance or turn the component into an RCSJ model. The canonical physics
 is documented in
 [Josephson Current, Phase, Energy, and Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#independent-parallel-junction-capacitance).
+
+The primitive form of a grounded parallel LC makes its one non-reference node
+and one local ground group explicit:
+
+```python
+capacitor = plan.add(sc.capacitor(id="resonator_c", capacitance=110.0 * u.fF))
+inductor = plan.add(sc.inductor(id="resonator_l", inductance=5.8 * u.nH))
+
+resonator_node = plan.net(
+    capacitor.pin("terminal_1"),
+    inductor.pin("terminal_1"),
+    id="resonator_node",
+)
+plan.ground(
+    capacitor.pin("terminal_2"),
+    inductor.pin("terminal_2"),
+)
+```
+
+The two ground endpoints share one local schematic bus and glyph because they
+were declared in the same `ground()` call. Separate calls would draw separate
+local glyphs while remaining the same electrical ground.
 
 ## General composites
 
@@ -499,7 +536,7 @@ idc = plan.add(
 
 Its pins are `"terminal_1"` and `"terminal_2"`. The expansion contains
 `C_1G`, `C_2G`, and `C_12`; it does not collapse all three into one series or
-mutual capacitor. Both ground branches bind the Plan's unique reference.
+mutual capacitor. Both ground branches bind the Plan's canonical ground.
 
 ### Finite-loop symmetric SQUID
 
@@ -516,7 +553,7 @@ squid = plan.add(
 )
 ```
 
-Its pins are `"terminal_a"` and `"terminal_b"`. Both junction rows share the
+Its pins are `"terminal_1"` and `"terminal_2"`. Both junction rows share the
 same public `josephson_inductance` `ParameterRef` and the same public
 `junction_capacitance` `ParameterRef`; V1 does not expose per-arm overrides.
 Both values are per-junction values, so the expansion contains two equal
@@ -524,9 +561,9 @@ Josephson rows and, when nonzero, two equal parallel `Cj` rows.
 The exact oriented expansion is:
 
 ```text
-J1 || Cj1 : terminal_a -> terminal_b
-L_loop    : terminal_a -> loop_node
-J2 || Cj2 : loop_node   -> terminal_b
+J1 || Cj1 : terminal_1 -> terminal_2
+L_loop    : terminal_1 -> loop_node
+J2 || Cj2 : loop_node  -> terminal_2
 ```
 
 `loop_node` is private inspection evidence, not a public pin. `L_loop` is the
@@ -545,29 +582,30 @@ ambiguous `parallel_lc_resonator`:
 
 | Grounding | Branch | Factory | Pins |
 |---|---|---|---|
-| Grounded | linear L | `grounded_parallel_linear_lc_resonator` | `signal` |
-| Floating | linear L | `floating_parallel_linear_lc_resonator` | `terminal_a`, `terminal_b` |
-| Grounded | one nonlinear JJ | `grounded_parallel_single_junction_resonator` | `signal` |
-| Floating | one nonlinear JJ | `floating_parallel_single_junction_resonator` | `terminal_a`, `terminal_b` |
-| Grounded | finite-loop symmetric SQUID | `grounded_parallel_symmetric_squid_resonator` | `signal` |
-| Floating | finite-loop symmetric SQUID | `floating_parallel_symmetric_squid_resonator` | `terminal_a`, `terminal_b` |
+| Grounded | linear L | `grounded_parallel_linear_lc_resonator` | `terminal` |
+| Floating | linear L | `floating_parallel_linear_lc_resonator` | `terminal_1`, `terminal_2` |
+| Grounded | one nonlinear JJ | `grounded_parallel_single_junction_resonator` | `terminal` |
+| Floating | one nonlinear JJ | `floating_parallel_single_junction_resonator` | `terminal_1`, `terminal_2` |
+| Grounded | finite-loop symmetric SQUID | `grounded_parallel_symmetric_squid_resonator` | `terminal` |
+| Floating | finite-loop symmetric SQUID | `floating_parallel_symmetric_squid_resonator` | `terminal_1`, `terminal_2` |
 
-Grounded variants bind their internal return to the Plan reference. A linear
+Grounded variants expose one non-reference `terminal`; their internal return
+group binds to the automatic Plan ground. A linear
 factory exposes `inductance`; a single-junction factory exposes
 `josephson_inductance` and `junction_capacitance`; a SQUID factory exposes
 `josephson_inductance`, `junction_capacitance`, `loop_inductance`, and
 `inductive_branch("loop")`.
 
-Grounded factories use one ordinary `capacitance` branch from `signal` to
-reference. Floating factories instead require all three branch-specific
+Grounded factories use one ordinary `capacitance` branch from `terminal` to
+ground. Floating factories instead require all three branch-specific
 capacitances:
 
 ```python
 resonator.parameter("capacitance")
 ```
 
-- `terminal_a_to_reference_capacitance`;
-- `terminal_b_to_reference_capacitance`; and
+- `terminal_1_to_reference_capacitance`;
+- `terminal_2_to_reference_capacitance`; and
 - `terminal_mutual_capacitance`.
 
 For a nonlinear resonator the ordinary `capacitance` branch remains separate
@@ -595,11 +633,10 @@ resonator = plan.add(
     )
 )
 
-plan.reference("ground")
-signal_boundary = plan.net(coupling_cap.pin("a"))
+signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
 resonator_node = plan.net(
-    coupling_cap.pin("b"),
-    resonator.pin("signal"),
+    coupling_cap.pin("terminal_2"),
+    resonator.pin("terminal"),
     id="resonator_node",
 )
 signal_port = plan.add_port(
@@ -616,19 +653,19 @@ signal_port = plan.add_port(
 floating = plan.add(
     sc.floating_parallel_linear_lc_resonator(
         id="floating_mode",
-        terminal_a_to_reference_capacitance=52.0 * u.fF,
-        terminal_b_to_reference_capacitance=47.0 * u.fF,
+        terminal_1_to_reference_capacitance=52.0 * u.fF,
+        terminal_2_to_reference_capacitance=47.0 * u.fF,
         terminal_mutual_capacitance=16.0 * u.fF,
         inductance=7.0 * u.nH,
     )
 )
 
-island_a = plan.net(floating.pin("terminal_a"), id="island_a")
-island_b = plan.net(floating.pin("terminal_b"), id="island_b")
+island_1 = plan.net(floating.pin("terminal_1"), id="island_1")
+island_2 = plan.net(floating.pin("terminal_2"), id="island_2")
 ```
 
 The two terminal-to-reference capacitances are real branches even though the
-component has no ground pin. They bind the Plan's one declared reference.
+component has no ground pin. They bind the automatic Plan ground.
 
 ### Single-junction examples
 
@@ -645,8 +682,8 @@ grounded_jj = plan.add(
 floating_jj = plan.add(
     sc.floating_parallel_single_junction_resonator(
         id="floating_jj",
-        terminal_a_to_reference_capacitance=41.0 * u.fF,
-        terminal_b_to_reference_capacitance=39.0 * u.fF,
+        terminal_1_to_reference_capacitance=41.0 * u.fF,
+        terminal_2_to_reference_capacitance=39.0 * u.fF,
         terminal_mutual_capacitance=14.0 * u.fF,
         josephson_inductance=420.0 * u.pH,
         junction_capacitance=2.5 * u.fF,
@@ -690,9 +727,9 @@ pump_inductor = plan.add(
     sc.inductor(id="pump_coil", inductance=1.0 * u.nH)
 )
 
-plan.reference("ground", pump_inductor.pin("b"))
-signal_node = plan.net(jpa.pin("signal"), id="signal")
-pump_node = plan.net(pump_inductor.pin("a"), id="pump_drive")
+plan.ground(pump_inductor.pin("terminal_2"))
+signal_node = plan.net(jpa.pin("terminal"), id="signal")
+pump_node = plan.net(pump_inductor.pin("terminal_1"), id="pump_drive")
 signal_port = plan.add_port(
     id="signal",
     at=signal_node,
@@ -857,11 +894,21 @@ diagram = plan.render_schematic(
 diagram.show()
 ```
 
-It shows semantic components, Public nodes, logical Ports, reference, actual
-wiring, and anonymous Internal junctions. A grounded linear resonator is drawn
-as parallel L and C branches to the Plan reference. CPW, MTL, IDC, and other
-composites remain recognizable authoring objects rather than opaque backend
-rows.
+It shows semantic components, Public nodes, logical Ports, canonical ground,
+actual wiring, and anonymous Internal junctions. A grounded linear resonator is
+drawn as parallel L and C branches whose lower endpoints share one block-local
+bus and ground glyph. The primitive example above produces the same structure.
+Separate local ground glyphs still denote the one Plan ground; the renderer
+does not draw a page-wide reference bus. CPW, MTL, IDC, and other composites
+remain recognizable authoring objects rather than opaque backend rows.
+
+Generic two-terminal symbols place `terminal_1` left and `terminal_2` right;
+when drawn as a downward grounded branch they place `terminal_1` above
+`terminal_2`. Rotation moves the anchors without renaming them or changing the
+branch orientation. A custom N-terminal composite without a dedicated symbol
+uses its ordered Library pin schema as a clockwise fallback, beginning at the
+lower-left boundary. Descriptive pin names remain unchanged: visual placement
+never becomes compiler or pin-identity authority.
 
 For grounded nonlinear resonators, both representations keep the ordinary
 `capacitance` branch and every junction `junction_capacitance` branch visibly
@@ -891,6 +938,11 @@ conductor, and head-to-tail `+z` current direction. Each section shows the full
 at both ends. Each interior node identifies the two adjacent half-shunt
 contributions and their compiled total.
 
+At each pi-ladder station, C/G shunts owned by that station share one local
+ground bus and glyph. The complete diagram and its legend map every such glyph,
+every grounded built-in return, and every explicit `ground()` group to Plan
+ground and JosephsonCircuits node `"0"` without creating additional nodes.
+
 For `N=1`, the renderer uses ordinary R/L series and G/C shunt symbols. For
 `N>1`, it preserves ordered conductor lanes and represents the series and
 shunt matrices as matrix-valued blocks with complete C/G Maxwell and L/R
@@ -914,8 +966,9 @@ writing the workspace. For component authoring it shows:
 
 - every Library exact identity and public component schema;
 - composite hierarchy and primitive/backend expansion;
-- component-pin to electric-node/reference mapping, including Public,
-  anonymous Internal, and Port-promoted node identities;
+- component-pin to electric-node/ground mapping, including Public, anonymous
+  Internal, Port-promoted, built-in-grounded, and explicit local-group
+  identities;
 - every logical Port's node attachment, role, reference impedance,
   one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
@@ -941,16 +994,17 @@ second schema or a substitute for the machine-readable evidence.
 
 Plan seal or deterministic preflight fails before backend execution for:
 
-- duplicate component, node, reference, or Port IDs, or duplicate pin/public-
-  parameter names inside one component schema;
+- duplicate component, node, or Port IDs, a reserved `"ground"` collision, or
+  duplicate pin/public-parameter names inside one component schema;
 - an unknown pin, parameter, inductive branch, node, or unbound/foreign Library
   instance;
-- assigning one pin to different nodes, incrementally redefining a node, or
-  declaring other than one Plan reference;
+- assigning one pin to different nodes or ground groups, incrementally
+  redefining a node, an empty `ground()` call, or a foreign/duplicate/already-
+  assigned grounded pin;
 - an empty electric-node declaration or the same pin repeated within one node;
 - an invalid, foreign, or duplicate `ElectricNodeRef` or `PortRef`; an
   anonymous-node promotion colliding with an existing Public ID; a second Port
-  on one node; a Port bound to the reference or directly to a pin; or changing
+  on one node; a Port bound to ground or directly to a pin; or changing
   a promoted node identity after seal;
 - an anonymous node with fewer than two distinct pins unless one Port promotes
   it before seal;

@@ -244,34 +244,33 @@ def build_model() -> IPFModel:
     qubit = plan.add(
         sc.floating_parallel_single_junction_resonator(
             id="qubit",
-            terminal_a_to_reference_capacitance=45.0 * u.fF,
-            terminal_b_to_reference_capacitance=42.0 * u.fF,
+            terminal_1_to_reference_capacitance=45.0 * u.fF,
+            terminal_2_to_reference_capacitance=42.0 * u.fF,
             terminal_mutual_capacitance=16.0 * u.fF,
             josephson_inductance=420.0 * u.pH,
             junction_capacitance=2.0 * u.fF,
         )
     )
 
-    plan.reference("ground")
-    input_boundary = plan.net(input_cap.pin("a"))
+    input_boundary = plan.net(input_cap.pin("terminal_1"))
     feedline_in = plan.net(
-        input_cap.pin("b"),
+        input_cap.pin("terminal_2"),
         ipf.pin("feedline_in"),
         id="feedline_in_node",
     )
     feedline_out = plan.net(
         ipf.pin("feedline_out"),
-        output_cap.pin("a"),
-        qubit_coupler.pin("b"),
+        output_cap.pin("terminal_1"),
+        qubit_coupler.pin("terminal_2"),
         id="feedline_out_node",
     )
-    output_boundary = plan.net(output_cap.pin("b"))
+    output_boundary = plan.net(output_cap.pin("terminal_2"))
     qubit_plus = plan.net(
-        qubit.pin("terminal_a"),
-        qubit_coupler.pin("a"),
+        qubit.pin("terminal_1"),
+        qubit_coupler.pin("terminal_1"),
         id="qubit_plus",
     )
-    qubit_minus = plan.net(qubit.pin("terminal_b"), id="qubit_minus")
+    qubit_minus = plan.net(qubit.pin("terminal_2"), id="qubit_minus")
 
     plan.add_port(
         id="feedline_in",

@@ -25,7 +25,7 @@ class PinRef:
     """Stable reference to one named electrical terminal of a component.
 
     A ``PinRef`` is used only while assigning component terminals to one Plan
-    electric node or to the Plan's single node-flux reference.  It is not a
+    electric node or to the Plan's canonical ground.  It is not a
     port, node voltage, or solver result.
     """
 
@@ -295,6 +295,11 @@ class CompositePlan:
 
         unavailable("CompositePlan.net")
 
+    def ground(self, *pins: PinRef) -> None:
+        """Attach one nonempty local pin group to the parent Plan ground."""
+
+        unavailable("CompositePlan.ground")
+
     def expose_pin(self, *, id: str, at: ElectricNodeRef) -> PinRef:
         """Expose an internal node as one public external wiring terminal."""
 
@@ -328,17 +333,17 @@ class Library:
         unavailable("Library construction")
 
     def resistor(self, *, id: str, resistance: object) -> ComponentInstance:
-        """Declare a two-terminal linear resistor with pins ``a`` and ``b``."""
+        """Declare a resistor oriented from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.resistor")
 
     def capacitor(self, *, id: str, capacitance: object) -> ComponentInstance:
-        """Declare a two-terminal linear capacitor with pins ``a`` and ``b``."""
+        """Declare a capacitor oriented from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.capacitor")
 
     def inductor(self, *, id: str, inductance: object) -> ComponentInstance:
-        """Declare a linear inductor with pins ``a``/``b`` and branch ``self``."""
+        """Declare an inductor from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.inductor")
 
@@ -351,6 +356,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare an ideal Josephson element plus optional parallel ``Cj``.
 
+        Both rows are oriented from ``terminal_1`` to ``terminal_2``.
         The executable API will default ``junction_capacitance`` to exact
         ``0 * u.F``.  The scaffold keeps it explicit because the shared unit
         registry needed to create that physical default does not exist yet.
@@ -390,7 +396,7 @@ class Library:
         junction_capacitance: object,
         loop_inductance: object,
     ) -> ComponentInstance:
-        """Declare the explicit two-junction finite-loop SQUID component."""
+        """Declare a finite-loop SQUID from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.symmetric_squid")
 
@@ -401,7 +407,7 @@ class Library:
         capacitance: object,
         inductance: object,
     ) -> ComponentInstance:
-        """Declare a grounded parallel-C/linear-L resonator with pin ``signal``."""
+        """Declare a grounded parallel-C/linear-L resonator with pin ``terminal``."""
 
         unavailable("Library.grounded_parallel_linear_lc_resonator")
 
@@ -409,12 +415,12 @@ class Library:
         self,
         *,
         id: str,
-        terminal_a_to_reference_capacitance: object,
-        terminal_b_to_reference_capacitance: object,
+        terminal_1_to_reference_capacitance: object,
+        terminal_2_to_reference_capacitance: object,
         terminal_mutual_capacitance: object,
         inductance: object,
     ) -> ComponentInstance:
-        """Declare a floating three-capacitance/linear-L resonator."""
+        """Declare a floating linear resonator from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.floating_parallel_linear_lc_resonator")
 
@@ -426,7 +432,7 @@ class Library:
         josephson_inductance: object,
         junction_capacitance: object,
     ) -> ComponentInstance:
-        """Declare a grounded C resonator with one Josephson branch and Cj."""
+        """Declare a grounded C/JJ resonator with pin ``terminal`` and Cj."""
 
         unavailable("Library.grounded_parallel_single_junction_resonator")
 
@@ -434,13 +440,13 @@ class Library:
         self,
         *,
         id: str,
-        terminal_a_to_reference_capacitance: object,
-        terminal_b_to_reference_capacitance: object,
+        terminal_1_to_reference_capacitance: object,
+        terminal_2_to_reference_capacitance: object,
         terminal_mutual_capacitance: object,
         josephson_inductance: object,
         junction_capacitance: object,
     ) -> ComponentInstance:
-        """Declare a floating resonator with one nonlinear Josephson branch."""
+        """Declare a floating C/JJ resonator from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.floating_parallel_single_junction_resonator")
 
@@ -453,7 +459,7 @@ class Library:
         junction_capacitance: object,
         loop_inductance: object,
     ) -> ComponentInstance:
-        """Declare a grounded C resonator with an explicit finite-loop SQUID."""
+        """Declare a grounded SQUID resonator with pin ``terminal`` and finite loop."""
 
         unavailable("Library.grounded_parallel_symmetric_squid_resonator")
 
@@ -461,14 +467,14 @@ class Library:
         self,
         *,
         id: str,
-        terminal_a_to_reference_capacitance: object,
-        terminal_b_to_reference_capacitance: object,
+        terminal_1_to_reference_capacitance: object,
+        terminal_2_to_reference_capacitance: object,
         terminal_mutual_capacitance: object,
         josephson_inductance: object,
         junction_capacitance: object,
         loop_inductance: object,
     ) -> ComponentInstance:
-        """Declare a floating resonator with an explicit finite-loop SQUID."""
+        """Declare a floating SQUID resonator from ``terminal_1`` to ``terminal_2``."""
 
         unavailable("Library.floating_parallel_symmetric_squid_resonator")
 
@@ -477,11 +483,12 @@ class CircuitPlan:
     """The single physical authority for one reusable circuit model.
 
     A model developer adds exact Library components, assigns every electrical
-    pin to one Public or Internal electric node or the one reference, declares
-    logical Port components on those nodes, and records mutual couplings here.
-    ``CircuitPlan`` owns no solver, reduction, optimization, workspace, or
-    result state.  A :class:`CircuitRun` later seals the completed Plan for
-    execution.
+    pin to one Public or Internal electric node or the canonical Plan ground,
+    declares logical Port components on those nodes, and records mutual
+    couplings here.  The ground exists at construction and lowers to backend
+    node ``"0"``; callers never declare a second reference.  ``CircuitPlan``
+    owns no solver, reduction, optimization, workspace, or result state.  A
+    :class:`CircuitRun` later seals the completed Plan for execution.
     """
 
     def __init__(self, *, id: str) -> None:
@@ -498,15 +505,21 @@ class CircuitPlan:
         ``id`` creates a Public node coordinate.  Omitting it creates an
         anonymous Internal node with deterministic endpoint-derived identity;
         attaching a Port may later promote that node under the Port ID.  This
-        call never incrementally merges a previously declared node.
+        call never incrementally merges a previously declared node, and the
+        reserved ID ``"ground"`` is invalid here.
         """
 
         unavailable("CircuitPlan.net")
 
-    def reference(self, id: str, *pins: PinRef) -> None:
-        """Declare the Plan's one node-flux reference and its attached pins."""
+    def ground(self, *pins: PinRef) -> None:
+        """Attach one nonempty local pin group to the canonical Plan ground.
 
-        unavailable("CircuitPlan.reference")
+        Calls may repeat for separate authoring blocks.  Every call targets the
+        same physical reference; its endpoint group is retained only so an
+        authoring schematic can draw one local ground bus and glyph.
+        """
+
+        unavailable("CircuitPlan.ground")
 
     def add_port(
         self,

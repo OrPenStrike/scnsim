@@ -27,8 +27,9 @@ from scnsim import (
 ## Compose the physical Plan
 
 The coupling capacitor joins the measurement boundary to the grounded LC
-signal node. The logical Port attaches to the returned boundary-node handle.
-See
+terminal. Every Plan already owns the canonical ground used by the resonator's
+internal L/C return. The logical Port attaches to the returned boundary-node
+handle. See
 [Component Authoring](../../docs/component-authoring.qmd) for the full contract.
 
 ```{python}
@@ -46,11 +47,10 @@ resonator = plan.add(
     )
 )
 
-plan.reference("ground")
-signal_boundary = plan.net(coupling_cap.pin("a"))
+signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
 resonator_node = plan.net(
-    coupling_cap.pin("b"),
-    resonator.pin("signal"),
+    coupling_cap.pin("terminal_2"),
+    resonator.pin("terminal"),
     id="resonator_node",
 )
 signal_port = plan.add_port(
@@ -64,8 +64,8 @@ signal_port = plan.add_port(
 ## Inspect the reflection topology
 
 The authoring diagram makes the measurement path explicit before any analysis:
-Port, coupling capacitor, resonator node, and the parallel L/C branches to the
-Plan reference. `show()` only presents the materialized diagram.
+Port, coupling capacitor, resonator node, and the parallel L/C branches sharing
+one local bus and ground glyph. `show()` only presents the materialized diagram.
 
 ```{python}
 #| id: author-schematic
