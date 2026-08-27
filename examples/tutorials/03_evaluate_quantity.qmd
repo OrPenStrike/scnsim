@@ -1,5 +1,5 @@
 ---
-title: "4 — Evaluate one physical quantity"
+title: "3 — Evaluate one physical quantity"
 jupyter: python3
 execute:
   enabled: false
@@ -49,4 +49,4 @@ root.slope
 root.show()
 ```
 
-[Previous](03_solve_direct.qmd) · [Course map](../../docs/index.qmd) · [Next: optimize a primitive](05_optimize_primitive.qmd) · [Concept: request and Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)
+[Previous](02_solve_direct.qmd) · [Course map](../../docs/index.qmd) · [Next: optimize a primitive](04_optimize_primitive.qmd) · [Concept: request and Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

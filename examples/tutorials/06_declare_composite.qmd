@@ -1,5 +1,5 @@
 ---
-title: "7 — Declare a reusable Composite"
+title: "6 — Declare a reusable Composite"
 jupyter: python3
 execute:
   enabled: false
@@ -45,4 +45,4 @@ resonator.parameter("capacitance").show()
 resonator.pin("terminal")
 ```
 
-[Previous](06_report_resolve.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](08_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)
+[Previous](05_report_resolve.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](07_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)

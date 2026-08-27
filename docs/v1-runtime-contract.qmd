@@ -129,13 +129,13 @@ names and does not own their Design Target.
 The native-API micro-course keeps those responsibilities visible instead of
 wrapping them in a project façade. Begin by
 [authoring a primitive Plan](../examples/tutorials/01_author_primitive.qmd),
-[optimizing its public parameter](../examples/tutorials/05_optimize_primitive.qmd),
-then [declaring](../examples/tutorials/07_declare_composite.qmd) and
-[using](../examples/tutorials/08_use_custom_component.qmd) a Composite. The
+[optimizing its public parameter](../examples/tutorials/04_optimize_primitive.qmd),
+then [declaring](../examples/tutorials/06_declare_composite.qmd) and
+[using](../examples/tutorials/07_use_custom_component.qmd) a Composite. The
 advanced lessons apply the same Run/Ref/Spec vocabulary directly to
-[RLGC](../examples/tutorials/09_model_n_trace_line.qmd),
-[PTC and transforms](../examples/tutorials/11_transform_retain.qmd), and
-[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd).
+[RLGC](../examples/tutorials/08_model_n_trace_line.qmd),
+[PTC and transforms](../examples/tutorials/10_transform_retain.qmd), and
+[Direct/HB comparison](../examples/tutorials/12_compare_direct_hb.qmd).
 
 This separation is a UX boundary, not a second Runtime. Both users ultimately
 receive the same typed SCNSim Results and exact receipt identities.
@@ -1480,9 +1480,9 @@ replayed deterministically rather than published as complete evidence.
 ### Tutorial realization {#ipf-optimization-example}
 
 The Contract does not duplicate a complete workflow. The micro-course teaches
-[primitive optimization](../examples/tutorials/05_optimize_primitive.qmd),
-[general RLGC](../examples/tutorials/09_model_n_trace_line.qmd), and
-[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd) as
+[primitive optimization](../examples/tutorials/04_optimize_primitive.qmd),
+[general RLGC](../examples/tutorials/08_model_n_trace_line.qmd), and
+[Direct/HB comparison](../examples/tutorials/12_compare_direct_hb.qmd) as
 separate native-API operations without becoming a second contract authority.
 
 ### Relative objective normalization

@@ -1,6 +1,6 @@
 # SCNSim micro-course sources
 
-`tutorials/01_*.qmd` through `tutorials/13_*.qmd` form one linear native-API
+`tutorials/01_*.qmd` through `tutorials/12_*.qmd` form one linear native-API
 course. Each page answers one focused user need with one operation and
 inspection. A page never uses a public SCNSim object before the course
 introduces it.

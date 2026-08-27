@@ -36,7 +36,7 @@ Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
 [authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
-and then [declaring a reusable Composite](../examples/tutorials/07_declare_composite.qmd).
+and then [declaring a reusable Composite](../examples/tutorials/06_declare_composite.qmd).
 For the design reasoning behind the boundary, read
 [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and

@@ -1,5 +1,5 @@
 ---
-title: "10 — Compensate nonloading probes"
+title: "9 — Compensate nonloading probes"
 jupyter: python3
 execute:
   enabled: false
@@ -50,4 +50,4 @@ explanation = run.explain(ptc_view, spec)
 explanation.show()
 ```
 
-[Previous](09_model_n_trace_line.qmd) · [Course map](../../docs/index.qmd) · [Next: transform coordinates](11_transform_retain.qmd) · [Concept: view lineage](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)
+[Previous](08_model_n_trace_line.qmd) · [Course map](../../docs/index.qmd) · [Next: transform coordinates](10_transform_retain.qmd) · [Concept: view lineage](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

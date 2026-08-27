@@ -74,4 +74,4 @@ diagram.show()
 The current scaffold stops explicitly at construction, so this page promises
 no rendered circuit or numerical evidence yet.
 
-[Course map](../../docs/index.qmd) · [Next: prepare a Direct request](02_prepare_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)
+[Course map](../../docs/index.qmd) · [Next: prepare and solve a Direct response](02_solve_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)

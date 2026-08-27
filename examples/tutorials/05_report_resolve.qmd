@@ -1,5 +1,5 @@
 ---
-title: "6 — Report and resolve exact Results"
+title: "5 — Report and resolve exact Results"
 jupyter: python3
 execute:
   enabled: false
@@ -64,4 +64,4 @@ resolved = run_after_restart.resolve(view_after_restart, spec_after_restart)
 resolved.show()
 ```
 
-[Previous](05_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: declare a Composite](07_declare_composite.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)
+[Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: declare a Composite](06_declare_composite.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

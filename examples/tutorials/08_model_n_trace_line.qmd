@@ -1,5 +1,5 @@
 ---
-title: "9 — Model an N-trace transmission line"
+title: "8 — Model an N-trace transmission line"
 jupyter: python3
 execute:
   enabled: false
@@ -63,4 +63,4 @@ expanded = plan.render_schematic(
 expanded.show()
 ```
 
-[Previous](08_use_custom_component.qmd) · [Course map](../../docs/index.qmd) · [Next: compensate probes](10_compensate_probes.qmd) · [Concept: compilation](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)
+[Previous](07_use_custom_component.qmd) · [Course map](../../docs/index.qmd) · [Next: compensate probes](09_compensate_probes.qmd) · [Concept: compilation](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

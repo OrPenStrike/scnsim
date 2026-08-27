@@ -32,11 +32,11 @@ How do I state every component and electrical connection once?
 ::: {.card-body}
 <p class="course-card-eyebrow">Lesson 02</p>
 
-### [Prepare a Direct request](../examples/tutorials/02_prepare_direct.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Prepare and solve a Direct response](../examples/tutorials/02_solve_direct.qmd){.stretched-link} {.course-card-title .unlisted}
 
-How do I choose a view and response request without solving?
+How do I define and execute one selected-network response?
 
-<p class="course-card-outcome"><strong>Produces</strong> · Deterministic preflight evidence.</p>
+<p class="course-card-outcome"><strong>Produces</strong> · Typed Direct S/Y/Z surfaces and one named trace.</p>
 :::
 ::::
 
@@ -44,19 +44,7 @@ How do I choose a view and response request without solving?
 ::: {.card-body}
 <p class="course-card-eyebrow">Lesson 03</p>
 
-### [Solve a Direct response](../examples/tutorials/03_solve_direct.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I obtain S/Y/Z and one named trace?
-
-<p class="course-card-outcome"><strong>Produces</strong> · A typed `DirectSolveResult`.</p>
-:::
-::::
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 04</p>
-
-### [Evaluate one physical quantity](../examples/tutorials/04_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Evaluate one physical quantity](../examples/tutorials/03_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I find a resonance without an unrelated response sweep?
 
@@ -66,9 +54,9 @@ How do I find a resonance without an unrelated response sweep?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 05</p>
+<p class="course-card-eyebrow">Lesson 04</p>
 
-### [Optimize a primitive parameter](../examples/tutorials/05_optimize_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Optimize a primitive parameter](../examples/tutorials/04_optimize_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
 
 Can I optimize before packaging a Composite?
 
@@ -78,9 +66,9 @@ Can I optimize before packaging a Composite?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 06</p>
+<p class="course-card-eyebrow">Lesson 05</p>
 
-### [Report and resolve exact Results](../examples/tutorials/06_report_resolve.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Report and resolve exact Results](../examples/tutorials/05_report_resolve.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I report explicit evidence and reload it after restart?
 
@@ -92,9 +80,9 @@ How do I report explicit evidence and reload it after restart?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 07</p>
+<p class="course-card-eyebrow">Lesson 06</p>
 
-### [Declare a reusable Composite](../examples/tutorials/07_declare_composite.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Declare a reusable Composite](../examples/tutorials/06_declare_composite.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I stop rebuilding the same subsystem internals?
 
@@ -104,9 +92,9 @@ How do I stop rebuilding the same subsystem internals?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 08</p>
+<p class="course-card-eyebrow">Lesson 07</p>
 
-### [Use a custom component in another Plan](../examples/tutorials/08_use_custom_component.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Use a custom component in another Plan](../examples/tutorials/07_use_custom_component.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How does a reusable subsystem connect to a larger circuit?
 
@@ -118,9 +106,9 @@ How does a reusable subsystem connect to a larger circuit?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 09</p>
+<p class="course-card-eyebrow">Lesson 08</p>
 
-### [Model an N-trace transmission line](../examples/tutorials/09_model_n_trace_line.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Model an N-trace transmission line](../examples/tutorials/08_model_n_trace_line.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I preserve full RLGC matrices through π-section lowering?
 
@@ -130,9 +118,9 @@ How do I preserve full RLGC matrices through π-section lowering?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 10</p>
+<p class="course-card-eyebrow">Lesson 09</p>
 
-### [Compensate nonloading probes](../examples/tutorials/10_compensate_probes.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Compensate nonloading probes](../examples/tutorials/09_compensate_probes.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I remove measurement shunts without deleting Port identity?
 
@@ -142,9 +130,9 @@ How do I remove measurement shunts without deleting Port identity?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 11</p>
+<p class="course-card-eyebrow">Lesson 10</p>
 
-### [Transform and retain paired coordinates](../examples/tutorials/11_transform_retain.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Transform and retain paired coordinates](../examples/tutorials/10_transform_retain.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I inspect one floating pair in automatic common/differential coordinates?
 
@@ -154,9 +142,9 @@ How do I inspect one floating pair in automatic common/differential coordinates?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 12</p>
+<p class="course-card-eyebrow">Lesson 11</p>
 
-### [Declare a pump-off HB request](../examples/tutorials/12_prepare_hb.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Declare a pump-off HB request](../examples/tutorials/11_prepare_hb.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do axes, drives, cases, and truncation describe a zero-drive experiment?
 
@@ -166,9 +154,9 @@ How do axes, drives, cases, and truncation describe a zero-drive experiment?
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 13</p>
+<p class="course-card-eyebrow">Lesson 12</p>
 
-### [Solve and compare Direct/HB responses](../examples/tutorials/13_compare_direct_hb.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Solve and compare Direct/HB responses](../examples/tutorials/12_compare_direct_hb.qmd){.stretched-link} {.course-card-title .unlisted}
 
 How do I compare the same selected network across both solvers?
 

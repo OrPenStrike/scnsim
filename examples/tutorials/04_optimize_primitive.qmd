@@ -1,5 +1,5 @@
 ---
-title: "5 — Optimize a primitive parameter"
+title: "4 — Optimize a primitive parameter"
 jupyter: python3
 execute:
   enabled: false
@@ -77,4 +77,4 @@ optimization.best.parameters
 optimization.show()
 ```
 
-[Previous](04_evaluate_quantity.qmd) · [Course map](../../docs/index.qmd) · [Next: report and resolve](06_report_resolve.qmd) · [Concept: units and optimization](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable)
+[Previous](03_evaluate_quantity.qmd) · [Course map](../../docs/index.qmd) · [Next: report and resolve](05_report_resolve.qmd) · [Concept: units and optimization](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable)

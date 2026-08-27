@@ -1,5 +1,5 @@
 ---
-title: "12 — Declare a pump-off HB request"
+title: "11 — Declare a pump-off HB request"
 jupyter: python3
 execute:
   enabled: false
@@ -77,4 +77,4 @@ case classification, and selected-network order without starting HB.
 run.explain(view, hb_spec).show()
 ```
 
-[Previous](11_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](13_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)
+[Previous](10_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](12_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)

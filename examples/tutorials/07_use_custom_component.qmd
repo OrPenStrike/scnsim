@@ -1,5 +1,5 @@
 ---
-title: "8 — Use a custom component in another Plan"
+title: "7 — Use a custom component in another Plan"
 jupyter: python3
 execute:
   enabled: false
@@ -63,4 +63,4 @@ diagram = plan.render_schematic(
 diagram.show()
 ```
 
-[Previous](07_declare_composite.qmd) · [Course map](../../docs/index.qmd) · [Next: model an N-trace line](09_model_n_trace_line.qmd) · [Concept: Plan and Composite roles](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)
+[Previous](06_declare_composite.qmd) · [Course map](../../docs/index.qmd) · [Next: model an N-trace line](08_model_n_trace_line.qmd) · [Concept: Plan and Composite roles](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)
