@@ -35,7 +35,7 @@ resonator_ind = plan.add(
 )
 
 signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
-plan.net(
+resonator_node = plan.net(
     coupling_cap.pin("terminal_2"),
     resonator_cap.pin("terminal_1"),
     resonator_ind.pin("terminal_1"),
@@ -45,13 +45,16 @@ plan.ground(
     resonator_cap.pin("terminal_2"),
     resonator_ind.pin("terminal_2"),
 )
-plan.add_port(
+signal_port = plan.add_port(
     id="signal_in",
     at=signal_boundary,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
 ```
+
+Keep the returned component, node, and Port handles. Later requests can refer
+to the exact authored objects without replacing their identities with strings.
 
 ## Inspect before analysis
 

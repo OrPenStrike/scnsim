@@ -1,12 +1,12 @@
 ---
-title: "3 — Evaluate one physical quantity"
+title: "3 — Evaluate one loaded resonance"
 jupyter: python3
 execute:
   enabled: false
 ---
 
 ::: {.callout-note title="Lesson focus" appearance="simple"}
-**Learn:** request a named physical quantity without an unrelated S/Y/Z sweep.
+**Learn:** choose the node whose loaded diagonal resonance is required.
 **Run:** evaluate one diagonal-root branch.
 **Inspect:** root frequency, linewidth, and slope evidence.
 **Status:** `CONVERGING` scaffold.
@@ -14,9 +14,16 @@ execute:
 
 ## Identify the intended root branch
 
-`DiagonalRootSpec` finds a root of the selected Direct dynamic-matrix diagonal.
-`root_hint` chooses the baseline branch near 6.0 GHz; it is not the answer,
-target, or search window. Later ParameterSets follow that same branch by
+Unlike the Port response in lesson 2, this question is about the authored
+resonator node. `retain(fixture.resonator_node)` keeps that coordinate and
+eliminates its complement with zero external injection. The logical Port load
+remains in the effective operator, so `DiagonalRootSpec` finds the node's
+loaded, Schur-reduced diagonal root.
+
+This quantity is neither the uncoupled LC formula nor an S11 dip. It is also
+not a hybridized pole of a retained multi-coordinate block. `root_hint`
+selects the baseline simple-root branch near 6.0 GHz; it is not the answer,
+target, or search window. Later ParameterSets follow the same branch by
 deterministic continuation.
 
 ```{python}
@@ -49,4 +56,4 @@ root.slope
 root.show()
 ```
 
-[Previous](02_solve_direct.qmd) · [Course map](../../docs/index.qmd) · [Next: optimize a primitive](04_optimize_primitive.qmd) · [Concept: request and Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)
+[Previous](02_solve_direct.qmd) · [Course map](../../docs/index.qmd) · [Next: tune and verify a primitive resonance](04_optimize_primitive.qmd) · [Concept: request and Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

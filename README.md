@@ -41,13 +41,14 @@ uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-Executable authoring and runtime calls deliberately raise
+Custom `Library` declarations are inspectable. Component creation, physical
+Plan authoring, and Runtime operations deliberately raise
 `ScaffoldUnavailableError` at this checkpoint.
 
 ## Read the documentation
 
 - [Overview](README.md) — product boundary, status, and installation.
-- [Tutorial](docs/index.qmd) — twelve focused native-API lessons from
+- [Tutorial](docs/index.qmd) — thirteen focused native-API lessons from
   primitive authoring through optimization, reuse, and pump-off HB.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim uses Plans, views, typed requests, and explicit ownership.

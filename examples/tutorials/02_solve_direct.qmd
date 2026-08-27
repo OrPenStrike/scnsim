@@ -6,20 +6,23 @@ execute:
 ---
 
 ::: {.callout-note title="Lesson focus" appearance="simple"}
-**Learn:** describe one selected-network response before executing it.
+**Learn:** describe one Port response before executing it.
 **Run:** prepare and solve one Direct S/Y/Z request.
-**Inspect:** the named reflection trace and matrix surfaces.
+**Inspect:** the complete one-Port S/Y/Z surfaces.
 **Status:** `CONVERGING` scaffold.
 :::
 
 ## Describe the response you need
 
 The adjacent [construction fixture](fixtures/primitive_resonator.py) only
-repeats lesson 1's Plan and handles. `CircuitRun` owns execution, while
-`run.original` and `retain()` describe a lazy [network-view lineage](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage).
-`DirectSolveSpec` requests the complete selected-view S/Y/Z response on an
-explicit frequency grid; `SParameterTrace` names one ordered projection of
-that response.
+repeats lesson 1's Plan and handles. `CircuitRun` owns execution and
+`run.original` is its zero-reduction [network view](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage).
+Because this Plan has one logical Port, the original view already means its
+complete one-Port response. `DirectSolveSpec` requests S/Y/Z on an explicit
+frequency grid; it does not require a named trace.
+
+The workspace stores exact request receipts and artifacts. It is not a
+mutable “latest result” directory, and independent requests may coexist in it.
 
 ```{python}
 #| id: prepare-direct-response
@@ -27,26 +30,13 @@ from fixtures.primitive_resonator import build_primitive_resonator
 from scnsim import (
     CircuitRun,
     DirectSolveSpec,
-    ReductionPipeline,
-    SParameterTrace,
     units as u,
 )
 
 fixture = build_primitive_resonator()
 run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
-response_view = run.original.reduce(
-    ReductionPipeline().retain("signal_in")
-)
-reflection = SParameterTrace(
-    id="reflection",
-    input_port="signal_in",
-    input_mode=(),
-    output_port="signal_in",
-    output_mode=(),
-)
 direct_spec = DirectSolveSpec(
     frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
-    traces=(reflection,),
 )
 ```
 
@@ -54,27 +44,30 @@ direct_spec = DirectSolveSpec(
 `run.explain()` returns an `ExplanationResult` from deterministic preflight
 without solving or writing a workspace Result. Use it when you want to inspect
 the resolved request first.
+:::
 
 ```{python}
 #| id: explain-direct-response
-run.explain(response_view, direct_spec).show()
+run.explain(run.original, direct_spec).show()
 ```
-:::
 
 ## Solve and inspect the response
 
 `run.solve()` materializes a typed `DirectSolveResult`; it does not store a
-mutable current Result on the Run. The named trace is a convenient projection,
-while `direct.s`, `direct.y`, and `direct.z` expose parallel matrix families.
-`show()` only presents materialized data and never solves again.
+mutable current Result on the Run. `direct.s`, `direct.y`, and `direct.z`
+describe the same selected network in three matrix families. `show()` only
+presents materialized data and never solves again.
 
 ```{python}
 #| id: solve-direct-response
-direct = run.solve(response_view, direct_spec)
-direct.traces["reflection"].show(magnitude="db")
-direct.s.view
+direct = run.solve(run.original, direct_spec)
+direct.s.show(magnitude="db")
 direct.y.view
 direct.z.view
 ```
+
+These four samples establish a typed response surface; they are not a dense
+sweep used to guess the resonance. The next lesson asks for that physical
+quantity directly.
 
 [Previous](01_author_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: evaluate a quantity](03_evaluate_quantity.qmd) · [Concept: Run, request, Result](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

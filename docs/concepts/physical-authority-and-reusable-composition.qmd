@@ -22,6 +22,14 @@ to several nearly equivalent descriptions.
 SCNSim gives a `CircuitPlan` sole physical authority. Immutable component
 catalogs provide instances with attributable source identity.
 
+## Library names catalog ownership
+
+`scnsim.components` owns the built-in catalog. A project subclasses `Library`
+and publishes a separate singleton containing only the reusable factories it
+owns. Custom factories call the built-in catalog explicitly for primitive
+children, so provenance does not depend on an ambient registry or inherited
+factory namespace.
+
 ## CompositePlan is the reuse boundary {#composite-as-reuse-boundary}
 
 A Composite is one component that deliberately publishes only the pins,

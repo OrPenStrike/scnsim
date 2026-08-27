@@ -130,12 +130,13 @@ The native-API micro-course keeps those responsibilities visible instead of
 wrapping them in a project façade. Begin by
 [authoring a primitive Plan](../examples/tutorials/01_author_primitive.qmd),
 [optimizing its public parameter](../examples/tutorials/04_optimize_primitive.qmd),
-then [declaring](../examples/tutorials/06_declare_composite.qmd) and
-[using](../examples/tutorials/07_use_custom_component.qmd) a Composite. The
+then [creating a custom Library](../examples/tutorials/06_create_library.qmd),
+[adding a Composite factory](../examples/tutorials/07_add_composite_factory.qmd),
+and [using](../examples/tutorials/08_use_custom_component.qmd) its component. The
 advanced lessons apply the same Run/Ref/Spec vocabulary directly to
-[RLGC](../examples/tutorials/08_model_n_trace_line.qmd),
-[PTC and transforms](../examples/tutorials/10_transform_retain.qmd), and
-[Direct/HB comparison](../examples/tutorials/12_compare_direct_hb.qmd).
+[RLGC](../examples/tutorials/09_model_n_trace_line.qmd),
+[PTC and transforms](../examples/tutorials/11_transform_retain.qmd), and
+[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd).
 
 This separation is a UX boundary, not a second Runtime. Both users ultimately
 receive the same typed SCNSim Results and exact receipt identities.
@@ -1228,6 +1229,13 @@ $$
 \left[\mathbf D_R^{E\downarrow}(\widetilde\Omega_r)\right]_{rr}=0.
 $$
 
+The selected Ref determines what this diagonal means. Retaining one authored
+node eliminates its complement with `I_external = 0`; logical-Port loads and
+other uncompensated stamps remain in the effective operator. The resulting
+root is therefore loaded when those attachments are present. It is not the
+uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
+larger retained block.
+
 Required `root_hint` is a Quantity-valued approximate location used only to
 identify one unique simple root at the sealed baseline ParameterSet. It is not
 the returned root, an optimization target, a constraint, or an implicit search
@@ -1406,6 +1414,19 @@ optimization_spec = OptimizationSpec(
 optimization = run.optimize(quantity_view, optimization_spec)
 ```
 
+The best values remain an immutable `ParameterSet`. Reusing them is an
+explicitly new request and never mutates the Plan baseline or the selected
+Ref:
+
+```python
+winner_root = run.evaluate(
+    quantity_view,
+    readout_root,
+    parameters=optimization.best.parameters,
+)
+winner_root.frequency
+```
+
 The model default is immutable. A consumer creates a `custom_spec` only when a
 notebook must depart from it:
 
@@ -1481,8 +1502,8 @@ replayed deterministically rather than published as complete evidence.
 
 The Contract does not duplicate a complete workflow. The micro-course teaches
 [primitive optimization](../examples/tutorials/04_optimize_primitive.qmd),
-[general RLGC](../examples/tutorials/08_model_n_trace_line.qmd), and
-[Direct/HB comparison](../examples/tutorials/12_compare_direct_hb.qmd) as
+[general RLGC](../examples/tutorials/09_model_n_trace_line.qmd), and
+[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd) as
 separate native-API operations without becoming a second contract authority.
 
 ### Relative objective normalization
@@ -1714,15 +1735,20 @@ Quantity-valued linear presentation.
 Reports name every source rather than selecting a latest result:
 
 ```python
+direct_report = run.build_report(
+    ReportSpec(inputs=(direct, evaluated))
+)
+
 report = run.build_report(
     ReportSpec(inputs=(direct, unbiased, dc_only, dc_pump_a_low))
 )
 ```
 
-Report assembly records the exact chosen inputs and may be Direct-only, contain
-one HB case, contain several operating cases, or present one exact optimization
-result and its candidate/failure evidence. Report assembly never changes which
-candidate is best or turns a Design Target into a pass/fail Gate.
+Report assembly records the exact chosen inputs and may combine a Direct
+response with a typed quantity, contain one HB case, contain several operating
+cases, or present one exact optimization result and its candidate/failure
+evidence. Report assembly never changes which candidate is best or turns a
+Design Target into a pass/fail Gate.
 
 The Direct/HB comparison operation is intentionally not named yet. Its public
 shape depends on the unresolved comparison-grid decision and must not imply an

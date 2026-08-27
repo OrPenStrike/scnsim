@@ -1,5 +1,5 @@
 ---
-title: "10 — Transform and retain paired coordinates"
+title: "11 — Transform and retain paired coordinates"
 jupyter: python3
 execute:
   enabled: false
@@ -46,4 +46,4 @@ whether the final coordinates are realizable for its Direct or HB request.
 run.explain(analysis_view, spec).show()
 ```
 
-[Previous](09_compensate_probes.qmd) · [Course map](../../docs/index.qmd) · [Next: prepare pump-off HB](11_prepare_hb.qmd) · [Concept: immutable views](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)
+[Previous](10_compensate_probes.qmd) · [Course map](../../docs/index.qmd) · [Next: prepare pump-off HB](12_prepare_hb.qmd) · [Concept: immutable views](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage)

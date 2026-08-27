@@ -23,6 +23,7 @@ from fixtures.primitive_resonator import build_primitive_resonator
 from scnsim import (
     CircuitRun,
     DiagonalRootSpec,
+    DirectSolveSpec,
     ReductionPipeline,
     ReportSpec,
     units as u,
@@ -31,13 +32,20 @@ from scnsim import (
 workspace = "workspaces/primitive-course"
 fixture = build_primitive_resonator()
 run = CircuitRun(plan=fixture.plan, workspace=workspace)
-view = run.original.reduce(ReductionPipeline().retain(fixture.resonator_node))
-spec = DiagonalRootSpec(
+direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
+)
+direct = run.solve(run.original, direct_spec)
+
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain(fixture.resonator_node)
+)
+root_spec = DiagonalRootSpec(
     coordinate=fixture.resonator_node,
     root_hint=6.0 * u.GHz,
 )
-root = run.evaluate(view, spec)
-report = run.build_report(ReportSpec(inputs=(root,)))
+root = run.evaluate(quantity_view, root_spec)
+report = run.build_report(ReportSpec(inputs=(direct, root)))
 report.show()
 ```
 
@@ -53,15 +61,22 @@ run_after_restart = CircuitRun(
     plan=fixture_after_restart.plan,
     workspace=workspace,
 )
-view_after_restart = run_after_restart.original.reduce(
+quantity_view_after_restart = run_after_restart.original.reduce(
     ReductionPipeline().retain(fixture_after_restart.resonator_node)
 )
-spec_after_restart = DiagonalRootSpec(
+root_spec_after_restart = DiagonalRootSpec(
     coordinate=fixture_after_restart.resonator_node,
     root_hint=6.0 * u.GHz,
 )
-resolved = run_after_restart.resolve(view_after_restart, spec_after_restart)
+resolved = run_after_restart.resolve(
+    quantity_view_after_restart,
+    root_spec_after_restart,
+)
 resolved.show()
 ```
 
-[Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: declare a Composite](06_declare_composite.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)
+A different Spec, ParameterSet, Plan, Ref, or workspace is a different request
+and fails closed if its exact receipt is absent. `resolve()` never substitutes
+the most recent compatible-looking Result.
+
+[Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: create a custom Library](06_create_library.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

@@ -12,8 +12,8 @@ from scnsim import (
 )
 
 
-class _ResonatorComponents(Library):
-    """Catalog implementation kept private behind the public object below."""
+class ResonatorLibrary(Library):
+    """Project catalog containing only reusable resonator factories."""
 
     def parallel_linear_lc_resonator(
         self,
@@ -59,5 +59,5 @@ class _ResonatorComponents(Library):
         return composite.build()
 
 
-components = object.__new__(_ResonatorComponents)
+components = ResonatorLibrary()
 """Immutable custom component catalog exported by this module."""

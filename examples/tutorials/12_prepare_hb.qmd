@@ -1,5 +1,5 @@
 ---
-title: "11 — Declare a pump-off HB request"
+title: "12 — Declare a pump-off HB request"
 jupyter: python3
 execute:
   enabled: false
@@ -18,6 +18,10 @@ execute:
 a coefficient could be applied; the case owns its actual current. Omitting the
 drive from `currents={}` materializes exact zero, so this named case is pump
 off even though the request schema can support a later driven case.
+
+`SParameterTrace` names one ordered input/output projection of the complete HB
+response. Its mode tuples select Fourier-lattice channels rather than creating
+a second solve.
 
 ```{python}
 #| id: prepare-pump-off-hb
@@ -77,4 +81,4 @@ case classification, and selected-network order without starting HB.
 run.explain(view, hb_spec).show()
 ```
 
-[Previous](10_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](12_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)
+[Previous](11_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](13_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)

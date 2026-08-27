@@ -1,5 +1,5 @@
 ---
-title: "4 — Optimize a primitive parameter"
+title: "4 — Tune and verify a primitive resonance"
 jupyter: python3
 execute:
   enabled: false
@@ -7,14 +7,16 @@ execute:
 
 ::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** distinguish a component parameter from an active search variable.
-**Run:** optimize the primitive resonator capacitor.
-**Inspect:** variables, bounds, normalization, and the best ParameterSet.
+**Run:** tune the primitive capacitor toward 6.2 GHz.
+**Inspect:** the best ParameterSet and its explicit resonance readback.
 **Status:** `CONVERGING` scaffold.
 :::
 
 ## Declare the search, not a new circuit
 
-The Plan's `ParameterRef` identifies a bindable physical value. Only
+The capacitor retained from lesson 1 exposes its bindable value through
+`parameter("capacitance")`. The resulting `ParameterRef` identifies that
+physical value. Only
 `OptimizationVariable` activates it and supplies finite bounds. This separation
 is the [parameter-versus-variable contract](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable);
 it does not require a `CompositePlan`.
@@ -40,6 +42,7 @@ from scnsim import (
 fixture = build_primitive_resonator()
 run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
 view = run.original.reduce(ReductionPipeline().retain(fixture.resonator_node))
+resonator_capacitance = fixture.resonator_cap.parameter("capacitance")
 root_spec = DiagonalRootSpec(
     coordinate=fixture.resonator_node,
     root_hint=6.0 * u.GHz,
@@ -47,7 +50,7 @@ root_spec = DiagonalRootSpec(
 optimization_spec = OptimizationSpec(
     variables=(
         OptimizationVariable(
-            parameter=fixture.resonator_capacitance,
+            parameter=resonator_capacitance,
             bounds=(80.0 * u.fF, 140.0 * u.fF),
         ),
     ),
@@ -64,6 +67,10 @@ optimization_spec = OptimizationSpec(
 optimization_spec.show()
 ```
 
+`root_spec.frequency` is a typed quantity selector used to define the
+objective; accessing it does not execute. By contrast, `root.frequency` on an
+evaluated Result is a materialized physical Quantity.
+
 ## Execute once and keep the winner explicit
 
 Candidate binding, quantity evaluation, objective aggregation, and CMA-ES stay
@@ -75,6 +82,17 @@ mutable state on the Run.
 optimization = run.optimize(view, optimization_spec)
 optimization.best.parameters
 optimization.show()
+
+winner_root = run.evaluate(
+    view,
+    root_spec,
+    parameters=optimization.best.parameters,
+)
+winner_root.frequency
+winner_root.show()
 ```
+
+The winner remains an explicit immutable `ParameterSet`. Passing it creates a
+new exact request; it does not mutate the Plan baseline or the View.
 
 [Previous](03_evaluate_quantity.qmd) · [Course map](../../docs/index.qmd) · [Next: report and resolve](05_report_resolve.qmd) · [Concept: units and optimization](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable)

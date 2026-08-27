@@ -36,7 +36,8 @@ Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
 [authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
-and then [declaring a reusable Composite](../examples/tutorials/06_declare_composite.qmd).
+and then [creating a custom Library](../examples/tutorials/06_create_library.qmd)
+before [adding its first Composite factory](../examples/tutorials/07_add_composite_factory.qmd).
 For the design reasoning behind the boundary, read
 [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and
@@ -57,6 +58,35 @@ Every component instance carries the exact catalog name, version, source, and
 component-schema identity that created it. SCNSim does not provide string-based
 component discovery, a Notebook-global registry, or a mutable
 `CircuitLibrary.register_component(...)` workflow.
+
+`Library` is the constructible base for a project's custom catalog. A package
+subclasses it and exports one normally constructed singleton:
+
+```python
+from scnsim import Library
+
+class ResonatorLibrary(Library):
+    """Project-specific reusable resonator components."""
+
+components = ResonatorLibrary()
+```
+
+The caller supplies no catalog ID or version argument. SCNSim derives the
+catalog name from the concrete module and qualified class, then seals exact
+distribution or source provenance when a component is created. Missing or
+ambiguous exact source identity fails closed before a `ComponentInstance` is
+returned.
+
+A catalog subclass may inherit only from `Library`-derived bases and may not
+declare instance storage. This keeps both the singleton and its factory surface
+immutable; multiple inheritance that could reintroduce mutable state fails at
+class declaration.
+
+The public base does not inherit SCNSim's built-in factories. The package
+singleton `scnsim.components` is a separate private concrete implementation
+of the same `Library` contract. A custom factory therefore calls
+`scnsim.components.capacitor(...)` or another built-in factory explicitly;
+the custom catalog exposes only the factories its package owns.
 
 Built-in and custom components use the same authoring surface:
 
@@ -110,11 +140,10 @@ are inspection evidence, not automatically a consumer API. The factory must
 deliberately expose every supported `ParameterRef`. This keeps refactoring an
 internal expansion from silently changing Notebook contracts.
 
-Custom libraries publish the same immutable `Library` object, use
-`scnsim.units`, and declare the same pin, public-parameter, and lowering
-evidence. V1 does not add a second unit registry or a global plugin mechanism.
-The Python mechanism used to implement a custom factory is package work that
-follows this outward contract; it is not a second Notebook UX.
+Custom libraries use `scnsim.units` and declare the same pin,
+public-parameter, provenance, and lowering evidence. V1 does not add a second
+unit registry, a global plugin mechanism, manual catalog metadata, or mutable
+factory registration.
 
 ## Electrical topology and logical Ports
 

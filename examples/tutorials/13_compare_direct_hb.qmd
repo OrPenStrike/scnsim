@@ -1,5 +1,5 @@
 ---
-title: "12 — Solve and compare Direct/HB responses"
+title: "13 — Solve and compare Direct/HB responses"
 jupyter: python3
 execute:
   enabled: false
@@ -100,4 +100,4 @@ direct.z.view
 pump_off.z.view
 ```
 
-[Previous](11_prepare_hb.qmd) · [Course map](../../docs/index.qmd) · [Concept: selected-network symmetry](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network) · [Contract](../../docs/v1-runtime-contract.qmd)
+[Previous](12_prepare_hb.qmd) · [Course map](../../docs/index.qmd) · [Concept: selected-network symmetry](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network) · [Contract](../../docs/v1-runtime-contract.qmd)

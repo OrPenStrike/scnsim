@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from scnsim import (
     CircuitPlan,
+    ComponentInstance,
     ElectricNodeRef,
-    ParameterRef,
     PortRef,
     components,
     units as u,
@@ -21,7 +21,7 @@ class PrimitiveResonatorFixture:
     plan: CircuitPlan
     signal_port: PortRef
     resonator_node: ElectricNodeRef
-    resonator_capacitance: ParameterRef
+    resonator_cap: ComponentInstance
 
 
 def build_primitive_resonator() -> PrimitiveResonatorFixture:
@@ -59,5 +59,5 @@ def build_primitive_resonator() -> PrimitiveResonatorFixture:
         plan=plan,
         signal_port=signal_port,
         resonator_node=resonator_node,
-        resonator_capacitance=resonator_cap.parameter("capacitance"),
+        resonator_cap=resonator_cap,
     )
