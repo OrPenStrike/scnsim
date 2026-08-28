@@ -80,7 +80,7 @@ website:
               href: examples/tutorials/01_author_primitive.qmd
             - text: "2. Prepare and solve Direct"
               href: examples/tutorials/02_solve_direct.qmd
-            - text: "3. Evaluate a loaded resonance"
+            - text: "3. Choose a View and evaluate"
               href: examples/tutorials/03_evaluate_quantity.qmd
             - text: "4. Tune and verify a resonance"
               href: examples/tutorials/04_optimize_primitive.qmd

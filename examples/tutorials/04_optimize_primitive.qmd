@@ -23,6 +23,8 @@ is the [parameter-versus-variable contract](../../docs/concepts/units-parameters
 `CostObjective` compares a typed quantity with a target after relative
 normalization. `CMAESSpec` supplies execution controls, and `OptimizationSpec`
 binds the variables, objectives, and optimizer into one inspectable request.
+The optimization reuses lesson 3's quantity View boundary; changing candidate
+parameters does not change that View or the physical Plan.
 
 ```{python}
 #| id: define-primitive-optimization
@@ -40,7 +42,9 @@ from scnsim import (
 
 fixture = build_primitive_resonator()
 run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
-view = run.original.reduce(ReductionPipeline().retain(fixture.resonator_node))
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain(fixture.resonator_node)
+)
 resonator_capacitance = fixture.resonator_cap.parameter("capacitance")
 root_spec = DiagonalRootSpec(
     coordinate=fixture.resonator_node,
@@ -78,12 +82,12 @@ mutable state on the Run.
 
 ```{python}
 #| id: run-primitive-optimization
-optimization = run.optimize(view, optimization_spec)
+optimization = run.optimize(quantity_view, optimization_spec)
 optimization.best.parameters
 optimization.show()
 
 winner_root = run.evaluate(
-    view,
+    quantity_view,
     root_spec,
     parameters=optimization.best.parameters,
 )
@@ -94,4 +98,4 @@ winner_root.show()
 The winner remains an explicit immutable `ParameterSet`. Passing it creates a
 new exact request; it does not mutate the Plan baseline or the View.
 
-[Previous](03_evaluate_quantity.qmd) · [Course map](../../docs/index.qmd) · [Next: report and resolve](05_report_resolve.qmd) · [Concept: units and optimization](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable)
+[Previous: choose a View and evaluate a loaded resonance](03_evaluate_quantity.qmd) · [Course map](../../docs/index.qmd) · [Next: report and resolve](05_report_resolve.qmd) · [Concept: units and optimization](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable)
