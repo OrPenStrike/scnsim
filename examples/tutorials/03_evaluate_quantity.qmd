@@ -21,8 +21,9 @@ evaluates it. The 50-ohm Port already placed in the circuit remains, so
 `DiagonalRootSpec` finds a loaded root.
 
 This quantity is neither the uncoupled LC formula nor the minimum of lesson
-2's S response. `root_hint` selects the baseline root branch near 6.0 GHz; it
-is not the answer, target, or search window.
+2's S response. `root_hint` initializes complex Newton at 6.0 GHz and thereby
+selects its deterministic baseline basin. It is not the answer, target, search
+window, nearest-root request, or proof that the spectrum has only one root.
 
 ```{python}
 #| id: evaluate-diagonal-root

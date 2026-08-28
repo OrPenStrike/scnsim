@@ -1,6 +1,6 @@
 ---
 title: "Catalog and Runtime Identity"
-subtitle: "How is source provenance portable across wheels, Git, and Notebooks?"
+subtitle: "How is source provenance portable across wheels, Git, modules, and Notebooks?"
 toc-depth: 2
 ---
 
@@ -18,12 +18,13 @@ The canonical `catalog_id` is `module:qualified_class`. Multiple immutable
 instances of the same class therefore share catalog semantics; component
 identity still includes the invoked factory and its bound arguments.
 
-SCNSim resolves one of three portable provenance forms:
+SCNSim resolves the first applicable portable provenance form in this order:
 
 | Source | Canonical evidence |
 |---|---|
 | installed wheel | normalized distribution name/version and sorted `RECORD` rows with their content hashes |
 | editable Git package | Git object ID, package-relative source file list and bytes, plus a digest of the dirty package-tree overlay |
+| imported source module | logical module name and the complete normalized bytes of its defining `.py` module |
 | Notebook definition | dedented UTF-8/NFC class and factory source with normalized newlines |
 
 For a wheel, SCNSim parses `RECORD` as CSV, normalizes separators, preserves
@@ -38,6 +39,21 @@ root. The dirty-overlay digest covers modified, deleted, and untracked
 non-ignored files relative to the recorded commit; cache/build/VCS metadata is
 excluded. Clean trees use the SHA-256 of the empty canonical overlay. Notebook
 source hashes the class and invoked factory definitions in definition order.
+
+An ordinary imported source module uses `module_source` only when no installed
+wheel or editable-install identity owns it. SCNSim obtains the defining regular
+`.py` file, decodes its declared Python source encoding, normalizes newlines and
+NFC, encodes UTF-8, and hashes the complete module text. The logical import name
+remains part of `catalog_id`; the source path, file timestamps, inode, and Git
+checkout location do not. Bytecode-only modules, extension modules, ambiguous
+origins, and unreadable source fail before component creation.
+
+V1 does not recursively hash an arbitrary Python import graph for
+`module_source`. Project-local code that affects a factory must remain in that
+defining module or move into an installed/editable package with closed source
+provenance. Built-in SCNSim factories called by the module retain their own
+catalog identity, and the resulting complete component graph remains part of
+Plan identity.
 
 Absolute checkout/venv paths, Notebook execution count, cell or temporary
 filename, line number, kernel ID, and object address are excluded. A Notebook

@@ -116,9 +116,19 @@ class CircuitRun:
     ``optimize()`` execute.  ``resolve()`` only verifies and loads the exact
     prior receipt.  Results are returned directly and are never stored as a
     mutable current result on the Run or Ref.
+
+    ``versioned=False`` uses the replaceable Notebook-workbench policy.
+    ``versioned=True`` preserves distinct Plan identities in iteration
+    subworkspaces.  Construction remains unavailable in the current scaffold.
     """
 
-    def __init__(self, *, plan: CircuitPlan, workspace: str | PathLike[str]) -> None:
+    def __init__(
+        self,
+        *,
+        plan: CircuitPlan,
+        workspace: str | PathLike[str],
+        versioned: bool = False,
+    ) -> None:
         unavailable("CircuitRun construction")
 
     @property

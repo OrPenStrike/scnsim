@@ -42,7 +42,7 @@ bound to `superconducting-circuits-research-workbench@19c26e86`:
 | one-shot Python-to-Julia process and canonical JSON mechanics | `core/python/runtime/superconducting_circuits_runtime/runtime.py` | reuse mechanics after renaming, schema review, and path hardening |
 | C/K/G factorization, Schur solve, matched-Port algebra | `core/julia/SuperconductingCircuitsCore/src/analysis/linear_response.jl` | reuse the generic algorithm; revalidate against the current Contract |
 | uncompressed Zarr V2 real/imag writer | `core/julia/SuperconductingCircuitsRunner/src/staging/zarr_writer.jl` | reuse the small format mechanics with SCNSim manifests and relative paths |
-| progress JSONL | Workbench Runtime and Runner progress surfaces | rewrite as the fixed `progress: bool` presentation contract; exclude callbacks |
+| progress JSONL | Workbench Runtime and Runner progress surfaces | reuse only as an internal generation-level protocol; expose neither a public toggle nor callbacks |
 | logical Port role and load correction algorithms | Core/Runner Port realization surfaces | port algorithm reference only; implement the current selected-network/PTC contract |
 | targeted roots, staged action graph, report workflow, App/polling | Workbench application and staged workflow surfaces | rewrite or exclude; none becomes a reachable fallback |
 | private consumer models, targets, paths, artifacts, and evidence | outside the reusable public mechanics boundary | exclude completely |

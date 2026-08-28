@@ -38,15 +38,16 @@ class DirectSolveSpec:
 
 
 class DiagonalRootSpec:
-    """Select one simple root of a named Direct-operator diagonal.
+    """Select one machine-resolved Newton root of a Direct-operator diagonal.
 
     This is the local or "bare-coordinate" resonance associated with one
     selected-view coordinate, not necessarily a hybridized pole of the full
-    coupled network.  Required ``root_hint`` locates the intended simple root
-    at the sealed baseline ParameterSet; it is not the returned root, an
-    optimization target, a constraint, or a search window.  Non-baseline
-    evaluations preserve that baseline branch by deterministic continuation
-    rather than selecting the root nearest the hint again.
+    coupled network.  Required ``root_hint`` initializes the deterministic
+    complex-Newton basin at the sealed baseline ParameterSet; it is not the
+    returned root, an optimization target, a constraint, a search window, or a
+    nearest-root request.  Non-baseline evaluations follow baseline-owned
+    deterministic continuation rather than reapplying the hint.  This is not
+    a proof of global spectral uniqueness or a complete branch enclosure.
 
     The Spec exposes quantity selectors such as ``frequency`` and ``linewidth``
     for reuse in an ``OptimizationSpec``; accessing a selector does not run a
@@ -132,11 +133,13 @@ class TransferZeroSpec:
 
 
 class ResidueNormalizedCouplingSpec:
-    """Evaluate local complex coupling between two simple-root branches.
+    """Evaluate local complex coupling between two machine-resolved branches.
 
     Use this for coupling derived from the two declared branch residues at one
     explicit evaluation point.  It is not a fitted normal-mode splitting and
-    it fails when either required branch is not a unique simple root.
+    it fails when either branch lacks the required local nonzero-slope or
+    residue evidence.  It does not require a proof of global spectral
+    uniqueness.
     """
 
     def __init__(

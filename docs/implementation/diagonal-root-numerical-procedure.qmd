@@ -1,6 +1,6 @@
 ---
 title: "Diagonal-Root Numerical Procedure"
-subtitle: "How does root_hint select one reproducible loaded root?"
+subtitle: "How does root_hint initialize one reproducible loaded-root procedure?"
 toc-depth: 2
 ---
 

@@ -214,7 +214,7 @@ class DirectQuantityResult(Result):
 
     @property
     def slope(self) -> object:
-        """Local derivative evidence used to establish a simple root."""
+        """Local nonzero-derivative evidence for the machine-resolved root."""
 
         unavailable("DirectQuantityResult.slope")
 

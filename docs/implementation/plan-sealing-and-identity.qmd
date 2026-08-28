@@ -52,7 +52,7 @@ rather than embedded as enormous JSON lists.
 
 Catalog provenance binds the public catalog class/module and exact obtainable
 distribution or source identity. Empty custom catalogs remain constructible;
-source proof becomes mandatory when a factory creates a component. The three
+source proof becomes mandatory when a factory creates a component. The four
 portable provenance forms are fixed in
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
 

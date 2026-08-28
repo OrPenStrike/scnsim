@@ -29,9 +29,8 @@ In an authoring Notebook, keep the builder in an earlier editable cell. Redefine
 that builder, then rerun this construction cell to bind `fixture` and `run` to a
 newly sealed Plan. This lesson imports an adjacent fixture only to avoid
 repeating lesson 1; after editing that Python module, reload it or restart the
-kernel before rebuilding. The default `versioned=False` replaces evidence for
-the previous topology at this workspace. Use `versioned=True` when those
-topologies must remain available as separate iteration workspaces.
+kernel before rebuilding. The default workspace policy replaces evidence for
+the previous topology after the new Plan seals successfully.
 :::
 
 ```{python}

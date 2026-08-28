@@ -321,10 +321,11 @@ abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
 quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
-example, finds the required-hint simple root of one physically anchored
-coordinate's operator diagonal and returns its root, frequency, linewidth, and
-slope evidence. The coordinate owns physical identity; `root_hint` only locates
-the baseline branch. `ResponseElementSpec` may
+example, runs the required-hint deterministic Newton procedure on one physically
+anchored coordinate's operator diagonal and returns its machine-resolved root,
+frequency, linewidth, and local slope evidence. The coordinate owns physical
+identity; `root_hint` only initializes the baseline Newton basin.
+`ResponseElementSpec` may
 evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
 does not imply a frequency-grid response. `OperatorSpec` is the deliberate
 exception that materializes the complete labeled Direct operator.
@@ -1193,7 +1194,7 @@ A driven PTC Result also records
 Direct quantity and optimization receipts additionally record quantity-spec
 identity, selector and dimensionality, root/pole/zero branch and its declared
 locator, the `DiagonalRootSpec.root_hint`, baseline selection, continuation and
-simple-root/slope evidence where applicable, shared dependency nodes, expanded
+local slope/residue evidence where applicable, shared dependency nodes, expanded
 residual scale and source, objective weight, candidate failure ledger, and the
 one Julia-process execution identity. Optimization receipts additionally keep
 model-default bounds, any immutable consumer overrides, resolved bounds,
@@ -1323,7 +1324,7 @@ The V1 catalog is intentionally small:
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of one ordered retained block | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
-| `ResidueNormalizedCouplingSpec` | Coupling from two selected simple-root branches and one declared evaluation point | complex coupling and magnitude |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
 | `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
 
@@ -1351,9 +1352,12 @@ operator = run.evaluate(
 Root-like bundles expose only physically defined typed scalar selectors such as
 `.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
 branch locator (including `DiagonalRootSpec.root_hint`), continuation,
-simple-root/slope evidence, units, ParameterSet, selected Ref boundary, and
-operator identity remain attached. An ambiguous, repeated, or non-simple branch
-fails when the requested spec requires a unique simple root.
+local slope/residue evidence, units, ParameterSet, selected Ref boundary, and
+operator identity remain attached. `DiagonalRootSpec` promises the documented
+machine-resolved Newton procedure, not a globally unique spectral root. A
+locally repeated/non-simple pole or zero, or a coupling input without its
+required local slope/residue evidence, fails closed under that quantity's own
+contract.
 `TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
 generic cofactor/minor object is not part of the V1 scaffold. The Spec also
 requires its selected transfer denominator to
@@ -1541,18 +1545,11 @@ process. Python submits the sealed request and receives process-local progress
 and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
 daemon. Repeated quantity identities share dependency nodes within a candidate.
 
-Generation-level progress is the only public progress control:
-
-```python
-optimization = run.optimize(view, spec, progress=True)  # default
-quiet = run.optimize(view, spec, progress=False)
-```
-
-`progress=True` renders completed-generation updates in the active Python
-environment; `False` suppresses them. The choice is presentation state, so it
-does not enter Plan, request, optimization, candidate, or Result identity and
-cannot become a scientific Gate. V1 does not expose a callback framework,
-per-candidate observer, public JobRef, or persistent daemon.
+The Julia process may emit generation-level JSONL progress for internal
+presentation and diagnostics. Progress records never enter Plan, request,
+optimization, candidate, or Result identity and cannot become a scientific
+Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
+observer, public JobRef, or persistent daemon.
 
 `CMAESSpec` requires a deterministic `seed` and finite `max_evaluations` work
 budget; optional `population_size` is an algorithm control. These values bound
@@ -2029,8 +2026,8 @@ SCNSim fails closed for:
 - deterministic diagonal-root continuation whose physical path, branch, or
   subdivision cannot be completed, reported with its typed non-continuable
   failure rather than a different root;
-- an ambiguous/repeated/non-simple root, pole, or zero when its quantity spec
-  requires one unique simple branch;
+- a locally repeated/non-simple pole or zero, or a residue-coupling input
+  without the local slope/residue evidence required by its quantity spec;
 - a transfer-zero candidate with a non-finite or singular denominator, or an
   unresolved pole-zero cancellation;
 - a missing or mismatched exact receipt during resolve;

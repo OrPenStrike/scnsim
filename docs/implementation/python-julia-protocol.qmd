@@ -23,9 +23,9 @@ outlive request identity.
 The request file is the only command authority. Julia stdout may emit
 schema-tagged JSONL progress records; stderr and non-progress stdout are logs.
 Optimization progress contains completed generation and declared work-budget
-information only. Python renders or suppresses those records according to
-`progress=True | False`; malformed progress cannot alter the request or final
-outcome.
+information only. Python may consume those records for internal presentation
+or diagnostics, but V1 exposes no public progress toggle or callback. Malformed
+progress cannot alter the request or final outcome.
 
 Julia writes an outcome envelope and referenced artifacts into staging. It
 does not write the final SCNSim receipt. Python waits for process completion,
