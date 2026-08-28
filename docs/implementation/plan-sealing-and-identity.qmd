@@ -9,28 +9,39 @@ toc-depth: 2
 ## Seal once at the Run boundary
 
 `CircuitPlan` remains editable only during authoring. `CircuitRun(plan=...,
-workspace=...)` validates and permanently seals a canonical snapshot. The Run
-then supports any number of Refs, Specs, and ParameterSets against that
-snapshot. Execution never mutates it.
+workspace=..., versioned=False)` validates and permanently seals both the
+Python Plan and its canonical snapshot. The Run then supports any number of
+Refs, Specs, and ParameterSets against that snapshot. Execution never mutates
+it. Calling `add()`, `net()`, `ground()`, `add_port()`, or another authoring
+mutator on the sealed object raises `PlanSealedError`; SCNSim does not create a
+hidden mutable copy.
 
 A change to sealed topology, an authoring baseline, Ports, couplings, or a
-public component schema creates a new Plan, Run, and workspace binding. A
-parameter value selected through a declared `ParameterRef` and supplied in a
-`ParameterSet` does not. Multiple sealed Runs may coexist in one kernel; no
-global epoch invalidates an older Run.
+public component schema creates a new Plan and Run. A parameter value selected
+through a declared `ParameterRef` and supplied in a `ParameterSet` does not.
+Notebook authors may edit their builder and rerun the same cell, rebinding the
+same `plan` and `run` variable names without restarting the kernel. This is a
+new pair of objects, never mutation of the earlier Run.
+
+By default, binding a different Plan to the same workspace replaces the prior
+workspace evidence after the new Plan has sealed. `versioned=True` instead
+selects a Plan-specific iteration subworkspace. The exact replacement,
+one-way-upgrade, and stale-handle behavior is defined in
+[Workspace, Attempts, Receipts, and Artifacts](workspace-attempts-and-artifacts.qmd#iterate-topology-in-one-workspace).
 
 ## Separate three identities
 
 | Identity | Includes | Excludes |
 |---|---|---|
-| Plan | canonical component schemas, topology, nodes, ground, Ports, couplings, baselines, and catalog source identity | workspace path, display theme, execution history |
+| Plan | canonical component schemas, topology, nodes, ground, Ports, couplings, baselines, and catalog source identity | workspace path, display theme, schematic grouping, execution history |
 | Request | Plan, Ref lineage, Spec, bound ParameterSet, operation, and numerical runtime | workspace location, progress display, and attempt history |
 | Evidence | request plus workspace binding, source units, runtime files, attempt, artifacts, and receipt hashes | mutable latest pointers |
 
 Physical values cross the computation boundary as coherent-SI magnitude,
 canonical SI unit, and declared dimensionality. Source unit and authoring form
-remain evidence. Consequently `92 * u.fF` and `0.092 * u.pF` may share semantic
-computation identity while retaining distinct provenance.
+from the executed attempt remain receipt evidence. Consequently `92 * u.fF`
+and `0.092 * u.pF` may share semantic computation identity; reusing that
+success does not create a new receipt only to preserve the later spelling.
 
 ## Canonicalize before hashing
 
@@ -40,10 +51,13 @@ absolute machine paths. Arrays are referenced by relative artifact identity
 rather than embedded as enormous JSON lists.
 
 Catalog provenance binds the public catalog class/module and exact obtainable
-distribution or source identity. If a component instance cannot prove that
-identity at seal time, sealing fails; a display name is not sufficient.
+distribution or source identity. Empty custom catalogs remain constructible;
+source proof becomes mandatory when a factory creates a component. The three
+portable provenance forms are fixed in
+[Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
 
-The Plan snapshot, request JSON, and receipt each carry their own schema and
-hash. Hashing the containing workspace directory is not an identity protocol.
+The six document envelopes, canonical binary64 encoding, and exact hash ranges
+are fixed in [Canonical Identities and Schemas](canonical-identities-and-schemas.qmd).
+Hashing the containing workspace directory is not an identity protocol.
 
-[Next: Julia runtime preparation](julia-runtime-preparation.qmd)
+[Next: Canonical identities and schemas](canonical-identities-and-schemas.qmd)

@@ -66,6 +66,13 @@ The first source PR after Human review is **Primitive Direct E2E**:
 6. ephemeral open/matched, unit-equivalence, retry, interrupt, and corruption
    probes.
 
+The slice implements the exact
+[identity schema bundle](schemas/identity-v1.schema.json), replacement/versioned
+workspace contract, portable catalog/runtime provenance, and
+[diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
+Composite Plans are rejected by schema until their later slice defines the
+complete private-graph snapshot.
+
 That integrated candidate advances the development version to `1.0.0.dev3`.
 Composite authoring, RLGC/Q2D, PTC/transform, optimization, HB, and compiled
 schematic follow as independently reviewable slices. Unimplemented surfaces

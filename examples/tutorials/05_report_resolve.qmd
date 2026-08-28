@@ -17,6 +17,13 @@ execute:
 The report request names exact Result objects. It does not solve, search a
 workspace for “latest,” or invent an acceptance decision.
 
+::: {.callout-tip title="Preserve topology iterations" appearance="simple"}
+This lesson opts into `versioned=True`. Each distinct Plan is kept under
+`iteration01`, `iteration02`, and so on, while the same Plan returns to its
+existing iteration. Enabling versioning on an existing workspace is a one-way
+conversion: turning it off later is forbidden and requires another workspace.
+:::
+
 ```{python}
 #| id: build-explicit-report
 from fixtures.primitive_resonator import build_primitive_resonator
@@ -31,7 +38,11 @@ from scnsim import (
 
 workspace = "workspaces/primitive-course"
 fixture = build_primitive_resonator()
-run = CircuitRun(plan=fixture.plan, workspace=workspace)
+run = CircuitRun(
+    plan=fixture.plan,
+    workspace=workspace,
+    versioned=True,
+)
 direct_spec = DirectSolveSpec(
     frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
 )
@@ -60,6 +71,7 @@ fixture_after_restart = build_primitive_resonator()
 run_after_restart = CircuitRun(
     plan=fixture_after_restart.plan,
     workspace=workspace,
+    versioned=True,
 )
 quantity_view_after_restart = run_after_restart.original.reduce(
     ReductionPipeline().retain(fixture_after_restart.resonator_node)

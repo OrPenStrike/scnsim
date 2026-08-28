@@ -77,6 +77,14 @@ distribution or source provenance when a component is created. Missing or
 ambiguous exact source identity fails closed before a `ComponentInstance` is
 returned.
 
+An empty custom catalog may therefore be constructed and inspected without
+source proof. Component creation resolves one portable provenance form:
+normalized wheel `RECORD`, editable-Git package source plus dirty overlay, or
+normalized Notebook class/factory source. Absolute paths, execution counts,
+temporary filenames, and memory addresses never enter identity. The exact
+rules are maintained in
+[Catalog and Runtime Identity](implementation/catalog-and-runtime-identity.qmd).
+
 A catalog subclass may inherit only from `Library`-derived bases and may not
 declare instance storage. This keeps both the singleton and its factory surface
 immutable; multiple inheritance that could reintroduce mutable state fails at

@@ -21,9 +21,11 @@ evidence without inventing an acceptance threshold.
 
 Each quantity Spec compiles to a typed dependency node: response element,
 diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
-`root_hint` selects the unique simple baseline branch. Non-baseline
-ParameterSets follow deterministic continuation from that sealed baseline;
-they never reselect by nearest hint or by the preceding optimizer candidate.
+The exact `DiagonalRootSpec` complex-Newton residual, analytic derivative,
+machine-resolution certificate, and baseline-owned continuation are fixed in
+[Diagonal-Root Numerical Procedure](diagonal-root-numerical-procedure.qmd).
+Non-baseline ParameterSets never reselect by nearest hint or by the preceding
+optimizer candidate.
 
 ## Share work inside one request
 

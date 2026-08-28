@@ -45,4 +45,4 @@ view. HB and S/Y/Z solving require a Port-realizable final basis. Every failure
 is attached to the step that could not prove its invariant rather than
 returning a smaller or backend-specific fallback view.
 
-[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)
+[Next: Diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd)

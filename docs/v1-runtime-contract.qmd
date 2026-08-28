@@ -193,25 +193,46 @@ from scnsim import CircuitRun
 run = CircuitRun(
     plan=plan,
     workspace="results/example_run",
+    versioned=False,
 )
 
 original = run.original
 ```
 
-Opening an existing workspace with a different sealed Plan or runtime identity
-must fail rather than relabel, overwrite, or silently select prior evidence.
 The Run has no global `action`, current Ref, current parameters, or current
-result.
+result. `versioned=False` is the default topology-iteration policy: opening the
+same workspace with a different successfully sealed Plan atomically replaces
+the prior Plan workspace and its request evidence without a confirmation
+prompt. Opening it with the same Plan identity reuses the existing workspace.
 
-Sealing is permanent for that Run. The same `CircuitRun` may execute any number
-of immutable Refs, Specs, and ParameterSets derived from its sealed Plan; none
+`versioned=True` preserves topologies beneath the selected parent workspace as
+`iteration01`, `iteration02`, and so on. Each iteration is a complete ordinary
+Plan workspace; the parent index maps Plan identity to iteration, and the same
+Plan reuses its existing directory. Changing a Spec or ParameterSet alone does
+not allocate an iteration.
+
+An existing unversioned workspace may be upgraded atomically to
+`versioned=True`; its current Plan becomes `iteration01` without changing its
+requests. The reverse transition is forbidden before mutation because it would
+delete evidence the user explicitly chose to preserve. The error directs the
+user to supply a different workspace path for replacement mode.
+
+Sealing is permanent for both that Run and the supplied Python Plan. The same
+`CircuitRun` may execute any number of immutable Refs, Specs, and ParameterSets
+derived from its sealed Plan; none
 of those questions changes the Plan or invalidates earlier Results. Editing
 sealed Plan content—including topology, an authoring baseline, Ports,
-couplings, or a public component schema—requires a new `CircuitPlan`, new
-`CircuitRun`, and different workspace binding. Supplying a declared
-`ParameterSet` does not. Neither case requires a Python-kernel restart. Several
-old and new Runs may coexist in one kernel, and creating a newer Run never
-makes an older Run stale.
+couplings, or a public component schema—raises `PlanSealedError`. The author
+reruns the builder to create a new `CircuitPlan` and `CircuitRun`; the same
+Python variable names and workspace path may be rebound without restarting the
+kernel. Supplying a declared `ParameterSet` does not change topology.
+
+In replacement mode, an older Run or lazy Result fails with
+`WorkspacePlanReplacedError` once another Plan has replaced its backing
+workspace. The check binds an evidence-only workspace-instance ID in addition
+to the Plan hash, so an `A → B → A` sequence cannot accidentally revive the old
+A handle. With `versioned=True`, each Run remains bound to its retained
+iteration and may coexist with newer topology Runs.
 
 ### Declare the floating-qubit Ref graph without executing {#floating-qubit-ref-graph}
 
@@ -385,8 +406,8 @@ request already has one complete verified success receipt, the operation
 reuses that Result without recomputing or overwriting it.
 
 The workspace path is an evidence location, not part of computational request
-identity. `CircuitRun` verifies that the selected workspace is bound to the
-same Plan and runtime, then resolves the request only inside that workspace. A
+identity. A leaf workspace binds one Plan; each request binds its semantic
+runtime. `CircuitRun` resolves the request only inside that Plan workspace. A
 different or relocated workspace does not rename the request, but it may not
 contain the required receipt.
 
@@ -486,6 +507,9 @@ Physically identical `92.0 * u.fF` and `0.092 * u.pF` produce the same
 computational identity after canonicalization. Their source units remain
 visible provenance and may be displayed differently without splitting the
 physical request identity.
+The receipt preserves the source spelling used by the executed attempt. A
+later semantic-equivalent reuse returns that verified evidence and does not
+append a new attempt merely to log the caller's alternate spelling.
 
 ### Static and runtime checks
 
@@ -1265,14 +1289,28 @@ uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
 larger retained block.
 
 Required `root_hint` is a Quantity-valued approximate location used only to
-identify one unique simple root at the sealed baseline ParameterSet. It is not
+start deterministic complex Newton for one locally simple, machine-resolved
+root at the sealed baseline ParameterSet. It is not
 the returned root, an optimization target, a constraint, or an implicit search
 window. The evaluated frequency may differ from the hint. A non-baseline
-ParameterSet, including every optimization candidate, follows the identified
-baseline branch by deterministic continuation; it never selects whichever root
-is then closest to the original hint or to the preceding CMA-ES candidate.
-Missing or dimensionally invalid hints and ambiguous, repeated, or
-non-continuable branches fail closed.
+ParameterSet, including every optimization candidate, uses deterministic
+continuation owned by the identified baseline root; it never selects whichever
+root is then closest to the original hint or to the preceding CMA-ES candidate.
+Missing or dimensionally invalid hints and detected repeated or
+non-continuable roots fail closed.
+
+The Primitive Direct E2E realization supports one retained coordinate and
+requires the complete compiled capacitance matrix to be positive definite for
+`DiagonalRootSpec`. Singular-C descriptor/infinite-mode handling remains a
+later quantity scope; real-grid Direct S/Y/Z does not inherit this restriction.
+The exact scalar Schur residual, analytic derivative, 32-update complex-Newton
+limit, machine-resolution certificate, and deterministic dyadic continuation
+are fixed in
+[Diagonal-Root Numerical Procedure](implementation/diagonal-root-numerical-procedure.qmd).
+V1 does not enumerate the complete QEP spectrum to certify this root.
+Its certificate is machine-resolution evidence, not a validated global root or
+analytic-branch enclosure; possible undetected Newton-basin exchange remains a
+known V1 limitation.
 
 `readout_root.frequency` on the Spec is an immutable selector that can be
 placed in an objective; `evaluated.frequency` is the resulting Quantity. Merely
@@ -1897,7 +1935,9 @@ diagram identity additionally preserves the endpoint-derived local grouping.
 
 SCNSim fails closed for:
 
-- a workspace bound to another Plan or runtime identity;
+- an attempted `versioned=True` to `versioned=False` workspace downgrade, a
+  malformed versioned index, duplicate Plan-to-iteration mapping, or replaced
+  workspace accessed through a stale Run/Result handle;
 - a request directory whose canonical request differs from the sealed Plan,
   Ref, Spec, ParameterSet, runtime, or operation; a second writer for the same
   workspace; or an attempt that would overwrite prior evidence;
@@ -1977,8 +2017,18 @@ SCNSim fails closed for:
   one scalar objective;
 - a target/selector dimensionality mismatch, non-positive/non-finite weight or
   explicit scale, or a zero dimensionful target without explicit scale;
-- a missing, non-finite, or dimensionally invalid
-  `DiagonalRootSpec.root_hint`;
+- a missing, non-finite, non-positive, or dimensionally invalid
+  `DiagonalRootSpec.root_hint` (`InvalidDiagonalRootHint`);
+- a sealed `CircuitPlan` authoring mutation;
+- `DiagonalRootSpec` applied to a non-positive-definite complete capacitance
+  matrix in the Primitive Direct V1
+  (`UnsupportedSingularCapacitanceForDiagonalRootV1`), an unsolved eliminated
+  block (`EliminatedBlockSolveFailure`), an unresolved/non-simple slope
+  (`RootSlopeUnresolved`), or a complex-Newton machine certificate that does not
+  close within 32 updates (`NumericalResolutionUnresolved`);
+- deterministic diagonal-root continuation whose physical path, branch, or
+  subdivision cannot be completed, reported with its typed non-continuable
+  failure rather than a different root;
 - an ambiguous/repeated/non-simple root, pole, or zero when its quantity spec
   requires one unique simple branch;
 - a transfer-zero candidate with a non-finite or singular denominator, or an
@@ -2029,6 +2079,10 @@ or overwrite unrelated success receipts.
 - Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
   callbacks, expression ASTs, and calibration-table interpolation are not
   included.
+- Primitive Direct `DiagonalRootSpec` supports one retained coordinate with a
+  positive-definite complete capacitance matrix. Singular-C descriptor roots
+  and complete-QEP spectrum enumeration are not included. Deterministic dyadic
+  continuation does not provide a validated global analytic-branch enclosure.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its

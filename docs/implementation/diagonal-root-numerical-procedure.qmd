@@ -1,0 +1,147 @@
+---
+title: "Diagonal-Root Numerical Procedure"
+subtitle: "How does root_hint select one reproducible loaded root?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The physical quantity remains
+defined by the [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog);
+this page fixes only its V1 numerical realization.
+
+## Solve one scalar Schur residual
+
+For the `exp(-i omega t)` convention, the complete loaded Direct operator is
+
+$$
+Q(\omega)=K-\omega^2C-i\omega G.
+$$
+
+The Primitive Direct V1 supports one retained coordinate $r$ and requires the
+complete $C$ to be positive definite. This limitation avoids descriptor and
+infinite-mode handling for `DiagonalRootSpec`; it does not restrict real-grid
+Direct S/Y/Z.
+
+With $E$ the eliminated complement, factorize $Q_{EE}$ and solve
+
+$$
+X=Q_{EE}^{-1}Q_{Er},\qquad
+f=Q_{rr}-Q_{rE}X.
+$$
+
+For $Q'=-2\omega C-iG$, solve
+
+$$
+X'=Q_{EE}^{-1}(Q'_{Er}-Q'_{EE}X)
+$$
+
+and evaluate
+
+$$
+f'=Q'_{rr}-Q'_{rE}X-Q_{rE}X'.
+$$
+
+The baseline starts at real $\omega_0=2\pi\,\texttt{root_hint}$ and performs
+at most 32 analytic complex-Newton updates
+
+$$
+\omega_{k+1}=\omega_k-\frac{f(\omega_k)}{f'(\omega_k)}.
+$$
+
+`root_hint` is only this deterministic initial locator. SCNSim does not sweep
+for a minimum, enumerate the QEP spectrum, or replace the converged root with a
+nearer eigenvalue.
+
+## Require a machine-resolution certificate
+
+Let $n$ be the complete operator dimension,
+$\epsilon=\operatorname{eps}(\mathrm{Float64})$, and
+
+$$
+\tau(n)=256(n+1)\epsilon.
+$$
+
+Define $x_r=1$, $x_E=-X$ and
+
+$$
+A_{\rm abs}=|K|+|\omega||G|+|\omega|^2|C|.
+$$
+
+The Result is materialized only when all values are finite, $Q_{EE}$ is
+solvable, $\operatorname{Re}\omega>0$, $\operatorname{Im}\omega\le0$, and
+all four normalized errors are at most $\tau(n)$:
+
+$$
+\eta_E=
+\frac{\|Q_{EE}X-Q_{Er}\|_\infty}
+{\||Q_{EE}||X|+|Q_{Er}|\|_\infty},
+\qquad
+\eta_Q=
+\frac{\|Q(\omega)x\|_\infty}
+{\|A_{\rm abs}|x|\|_\infty},
+$$
+
+$$
+\eta_f=\frac{|f|}{[A_{\rm abs}|x|]_r},
+\qquad
+\rho_\omega=\frac{|f/f'|}{|\omega|}.
+$$
+
+When $E$ is empty, its solve is a no-op and $\eta_E=0$. For a nonempty but
+exactly decoupled complement, the $0/0$ eliminated-block ratio is likewise
+defined as zero; a zero denominator with nonzero numerator is infinity and
+fails the certificate. Other zero normalization denominators fail rather than
+being replaced by an arbitrary floor.
+
+With
+
+$$
+s_{f'}=|Q'_{rr}|+|Q'_{rE}||X|+|Q_{rE}||X'|,
+$$
+
+the normalized slope must also satisfy $|f'|/s_{f'}>\tau(n)$. The full
+$Q(\omega)x$ residual is recomputed from C/G/K rather than reconstructed from
+the Schur residual. Condition and slope evidence are recorded, but SCNSim adds
+no separate design-quality threshold.
+
+The normalized nonzero slope is machine-resolution evidence consistent with a
+simple, locally isolated root. It is not a validated complex enclosure or a
+proof of global uniqueness. V1 makes no claim that it found the root nearest to
+`root_hint`; the hint selects the deterministic Newton basin only.
+
+Bitwise stagnation is success only if this certificate passes. Otherwise the
+request returns `NumericalResolutionUnresolved`,
+`EliminatedBlockSolveFailure`, or `RootSlopeUnresolved`. A missing, non-finite,
+non-positive, or non-frequency `root_hint` returns `InvalidDiagonalRootHint`.
+A non-positive-definite $C$ returns
+`UnsupportedSingularCapacitanceForDiagonalRootV1`; it is not called
+nonphysical.
+
+## Continue every ParameterSet from the baseline
+
+For a non-baseline ParameterSet, bind physical parameters in canonical SI and
+follow
+
+$$
+p(t)=p_0+t(p_1-p_0),\qquad 0\le t\le1.
+$$
+
+Every candidate begins again at the sealed baseline root. Newton first attempts
+the endpoint of the current interval. A numerical nonconvergence bisects that
+interval and retries from its certified left endpoint, to a maximum depth of
+32. After a midpoint succeeds, continuation resumes toward the original right
+endpoint. It never uses the preceding CMA-ES candidate, reapplies `root_hint`,
+or takes an automatic detour.
+
+A repeated/unresolved slope, eliminated-block singularity, mapped physical
+domain failure, or exhausted subdivision returns a typed non-continuable
+failure. All constants, formulas, branching rules, and failure mappings are
+part of the runtime algorithm ID.
+
+This procedure fixes a reproducible baseline-owned numerical lineage, not a
+validated enclosure of the entire analytic branch. A collision exposed by an
+unresolved slope or failed continuation is rejected, but V1 does not claim to
+detect every possible Newton-basin jump between certified endpoints. A global
+branch proof would require a later enclosure-based algorithm and a new runtime
+algorithm identity; complete-QEP nearest-root matching is not a substitute.
+
+[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)

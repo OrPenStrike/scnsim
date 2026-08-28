@@ -35,14 +35,17 @@ one maintainer question.
 
 1. [Which layer owns each responsibility?](../implementation/system-architecture.qmd)
 2. [When is a Plan sealed, and what is hashed?](../implementation/plan-sealing-and-identity.qmd)
-3. [How is Julia prepared without manual setup?](../implementation/julia-runtime-preparation.qmd)
-4. [What crosses the Python–Julia process boundary?](../implementation/python-julia-protocol.qmd)
-5. [How are requests, attempts, receipts, and arrays stored?](../implementation/workspace-attempts-and-artifacts.qmd)
-6. [How do compilation, Ports, and views become one selected network?](../implementation/compilation-ports-and-views.qmd)
-7. [How are Direct quantities and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
-8. [How are HB normalization and partial case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
-9. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
-10. [How are Q2D input, legacy provenance, and implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
+3. [Which canonical bytes and schemas define identity?](../implementation/canonical-identities-and-schemas.qmd)
+4. [How are catalog and runtime identities made portable?](../implementation/catalog-and-runtime-identity.qmd)
+5. [How is Julia prepared without manual setup?](../implementation/julia-runtime-preparation.qmd)
+6. [What crosses the Python–Julia process boundary?](../implementation/python-julia-protocol.qmd)
+7. [How are requests, attempts, receipts, and arrays stored?](../implementation/workspace-attempts-and-artifacts.qmd)
+8. [How do compilation, Ports, and views become one selected network?](../implementation/compilation-ports-and-views.qmd)
+9. [How is one loaded diagonal root solved and certified?](../implementation/diagonal-root-numerical-procedure.qmd)
+10. [How are Direct quantities and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
+11. [How are HB normalization and partial case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
+12. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
+13. [How are Q2D input, legacy provenance, and implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
 The collection describes the intended candidate implementation, not source
 that already exists. When a future slice changes one of these decisions, only
