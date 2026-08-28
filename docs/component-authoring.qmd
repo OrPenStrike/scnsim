@@ -379,10 +379,16 @@ V_i=V(\text{conductor }i)-V(\text{reference conductor}),
 \qquad I_i>0\text{ from head to tail}.
 $$
 
-Head-to-tail is the extractor's recorded `+z` direction. Consequently the
-signs of off-diagonal L/R entries and every derived HB mutual-inductor row are
-meaningful only in that ordered, oriented basis; SCNSim never guesses or
-silently flips an unknown source direction.
+The carrier always maps positive series current to head-to-tail. A manual
+author therefore declares R/L in that oriented basis. The supported AEDT Q2D
+producer profile uses an XY cross-section and the solver's longitudinal `+z`
+current convention; the 2D Extractor formulation assumes longitudinal
+z-directed currents and distributed line position `z` ([Ansys eddy-current
+solver](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/EddyCurrentSolver.htm),
+[distributed model](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/DistributedModels.htm)).
+Consequently the signs of off-diagonal L/R entries and every derived HB
+mutual-inductor row are meaningful only in that ordered, oriented basis;
+SCNSim never guesses or silently flips an unknown source direction.
 
 Manual declarations may omit `extraction_frequency`. Their receipt says
 `manual / source frequency unspecified / frozen coefficients`; it does not
@@ -407,11 +413,23 @@ bijective. It changes public labels only: it cannot reorder rows, discard a
 conductor, select a diagonal, or remove mutual terms. SCNSim parses exactly one
 primary C, G, L, and R block with identical source order; optional Spice or
 coupling-output blocks never replace those matrices. It preserves native
-labels/order, units, extraction frequency, extractor `+z` direction,
-file-content SHA-256, and canonical values. The loader verifies that one
-consistent source direction is present and maps it to head-to-tail; missing or
-inconsistent direction evidence fails closed. It does not run AEDT, import
-PyAEDT, or infer that an SCGSim/AEDT run converged from the CSV alone.
+labels/order, units, extraction frequency, file-content SHA-256, canonical
+values, and the fixed producer convention
+`aedt_q2d_xy_cross_section_positive_z`.
+
+The raw CSV contains no independent per-file direction field. Direction
+therefore comes from the caller's choice of this specialized loader: invoking
+`load_q2d_rlgc()` explicitly asserts that the file was produced by the
+supported AEDT Q2D XY-cross-section profile and maps extractor `+z` to line
+head-to-tail. The parser verifies the strict `Problem Type: CG, RL` schema but
+cannot independently prove file origin or direction; the receipt labels the
+profile `caller_asserted`, never solver-verified. A caller unable to make that
+assertion must not use this loader.
+
+`reference_conductor` is the public name assigned to the Q2D reference group
+omitted from matrix rows; it does not claim that the raw CSV carries that name.
+The loader does not run AEDT, import PyAEDT, or infer that an SCGSim/AEDT run
+converged from the CSV alone.
 
 For `N = len(conductors) >= 1`, every matrix is a finite SCNSim-registry
 Quantity-valued `N x N` array. C and G are reciprocal Maxwell shunt matrices:
@@ -1052,8 +1070,7 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
   primary C/G/L/R matrix blocks; invalid per-length units or extraction
   frequency; inconsistent conductor labels/order or dimensions; an incomplete
-  or non-bijective conductor map; missing/inconsistent extractor `+z`
-  direction; or non-finite parsed values;
+  or non-bijective conductor map; or non-finite parsed values;
 - `N < 1`; duplicate/unknown conductor or reference labels; a reference included
   in matrix rows; non-square or shape-inconsistent R/L/G/C; nonreciprocal
   matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;

@@ -177,5 +177,5 @@ How do I compare the same selected network across both solvers?
 ::::
 
 For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd).
-For exact signatures, equations, failures, and evidence, use
-[Contract](component-authoring.qmd).
+For exact signatures, equations, failures, evidence, and maintainer design, use
+the [Contract map](contracts/index.qmd).

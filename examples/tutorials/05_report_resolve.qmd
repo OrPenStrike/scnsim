@@ -75,8 +75,9 @@ resolved = run_after_restart.resolve(
 resolved.show()
 ```
 
-A different Spec, ParameterSet, Plan, Ref, or workspace is a different request
-and fails closed if its exact receipt is absent. `resolve()` never substitutes
-the most recent compatible-looking Result.
+A different Spec, ParameterSet, Plan, or Ref is a different request. A different
+workspace is a different evidence location and fails closed if that same exact
+request receipt is absent. `resolve()` never substitutes the most recent
+compatible-looking Result.
 
 [Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: create a custom Library](06_create_library.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

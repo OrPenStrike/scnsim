@@ -1,0 +1,46 @@
+---
+title: "Results, Reports, and Diagrams"
+subtitle: "How does verified evidence become a Python-facing presentation?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Reconstruct typed Results in Python
+
+Python verifies the receipt and manifest before constructing a Result. Scalars
+and axes become SCNSim-registry Pint Quantities; matrix payloads become labeled
+NumPy arrays with ordered coordinate, mode, frequency, unit, and load-state
+metadata. A Result retains request, attempt, artifact, and runtime identity even
+when its chunks are loaded lazily.
+
+No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
+unit disagreement, non-finite forbidden values, or a real/imag manifest mismatch
+fails during verification rather than returning a partially typed object.
+
+## Keep presentation downstream of execution
+
+Matplotlib renders numerical `show()` and subtype-specific `plot()` surfaces.
+`magnitude="linear" | "db"` transforms only the displayed S magnitude; source
+arrays remain unchanged. Headless use returns or exports the figure through an
+explicit supported path and never claims an interactive window was shown.
+
+Schemdraw renders authoring and compiler-expanded schematics as vector output.
+Authoring diagrams are a read-only projection of a structurally complete
+authored Plan; they do not seal it. Compiled diagrams consume a Julia preflight
+graph and must show every declared pi section and matrix-valued block without
+pretending to be a reduced or backend-result circuit.
+
+## Assemble reports from explicit inputs
+
+`ReportSpec.inputs` contains exact Result or case-outcome objects already held
+by the caller. Report assembly verifies those identities, preserves each native
+grid, and records any failed HB outcomes it was given. It does not search the
+workspace, infer a latest Result, run an analysis, interpolate curves, or decide
+whether a Design Target passed.
+
+HTML is the first report presentation because it supports Notebook and static
+review without a report service. Additional export formats are added only when
+a named consumer requires them; they must preserve the same source identities.
+
+[Next: External inputs and delivery](external-inputs-and-delivery.qmd)

@@ -1,0 +1,70 @@
+---
+title: "Workspace, Attempts, Receipts, and Artifacts"
+subtitle: "How is durable evidence appended and resolved safely?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Bind one workspace to one Plan and runtime
+
+A V1 workspace is a relocatable directory with one sealed Plan and numerical
+runtime binding plus append-only request attempts:
+
+```text
+workspace.json
+plan.json
+requests/<request-sha256>/
+  request.json
+  attempts/000001/
+    attempt.json
+    logs/
+    artifacts/result.zarr/
+    result.json
+    receipt.json
+```
+
+The workspace location is not part of computational request identity. It
+selects the evidence store in which that request must be found; relocating the
+whole verified workspace does not rename the request. All stored paths are
+relative to the workspace. `receipt.json` is written last and only after Python
+verifies the attempt outcome. It seals success, typed failure, or interruption;
+only a verified success receipt can materialize a Result. A temporary staging
+directory is never a successful Result.
+
+V1 uses one writer lock per workspace; different workspaces may run in
+parallel. This deliberately simple ceiling avoids two processes selecting the
+same next attempt number or sealing competing successes. Per-request locking
+is considered only if measured same-workspace throughput requires it.
+
+## Reuse success and append failure history
+
+The request directory is derived from canonical request identity. If one
+attempt contains a complete verified success, the terminal operation returns
+it. Otherwise a new call appends the next immutable attempt. Failed and
+interrupted attempts remain visible to `inventory()` and cannot be overwritten.
+
+A verified `HBBatchResult` is successful request evidence even when every case
+contains a numerical `HBCaseFailure`; repeating it reuses the batch. Only a
+request-level failure or interruption is retryable.
+
+`resolve()` acquires no execution slot. It recomputes the request identity,
+finds the verified success, and validates Plan, runtime, receipt, manifest, and
+artifact hashes. Missing or corrupt evidence is an error; it never falls back
+to another attempt or request.
+
+## Store arrays without pickling
+
+Scalar metadata, schemas, failures, and receipts use canonical JSON. Large real
+arrays use Zarr V2 chunks; complex arrays use paired Float64 real/imag arrays
+with one typed manifest. V1 starts with uncompressed chunks so another language
+can implement the format without a codec dependency. The OGC-endorsed
+[Zarr V2 standard](https://www.ogc.org/standards/zarr-storage-specification/)
+defines JSON metadata and optionally compressed binary chunks for
+multidimensional arrays.
+
+Chunk shape, array order, dtype, axes, units, coordinate IDs, and real/imag
+pairing are manifest authority. A Python Result may load chunks lazily, but
+must reconstruct the declared NumPy/Pint surface before returning it.
+
+[Next: Compilation, Ports, and views](compilation-ports-and-views.qmd)

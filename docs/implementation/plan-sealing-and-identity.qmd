@@ -1,0 +1,49 @@
+---
+title: "Plan Sealing and Canonical Identity"
+subtitle: "When is a Plan immutable, and what is safe to share?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Seal once at the Run boundary
+
+`CircuitPlan` remains editable only during authoring. `CircuitRun(plan=...,
+workspace=...)` validates and permanently seals a canonical snapshot. The Run
+then supports any number of Refs, Specs, and ParameterSets against that
+snapshot. Execution never mutates it.
+
+A change to sealed topology, an authoring baseline, Ports, couplings, or a
+public component schema creates a new Plan, Run, and workspace binding. A
+parameter value selected through a declared `ParameterRef` and supplied in a
+`ParameterSet` does not. Multiple sealed Runs may coexist in one kernel; no
+global epoch invalidates an older Run.
+
+## Separate three identities
+
+| Identity | Includes | Excludes |
+|---|---|---|
+| Plan | canonical component schemas, topology, nodes, ground, Ports, couplings, baselines, and catalog source identity | workspace path, display theme, execution history |
+| Request | Plan, Ref lineage, Spec, bound ParameterSet, operation, and numerical runtime | workspace location, progress display, and attempt history |
+| Evidence | request plus workspace binding, source units, runtime files, attempt, artifacts, and receipt hashes | mutable latest pointers |
+
+Physical values cross the computation boundary as coherent-SI magnitude,
+canonical SI unit, and declared dimensionality. Source unit and authoring form
+remain evidence. Consequently `92 * u.fF` and `0.092 * u.pF` may share semantic
+computation identity while retaining distinct provenance.
+
+## Canonicalize before hashing
+
+Python emits UTF-8 canonical JSON with deterministic object-key order and
+explicit type/schema tags. It rejects NaN, infinity, pickle payloads, and
+absolute machine paths. Arrays are referenced by relative artifact identity
+rather than embedded as enormous JSON lists.
+
+Catalog provenance binds the public catalog class/module and exact obtainable
+distribution or source identity. If a component instance cannot prove that
+identity at seal time, sealing fails; a display name is not sufficient.
+
+The Plan snapshot, request JSON, and receipt each carry their own schema and
+hash. Hashing the containing workspace directory is not an identity protocol.
+
+[Next: Julia runtime preparation](julia-runtime-preparation.qmd)

@@ -1,0 +1,50 @@
+---
+title: "Python–Julia Process Protocol"
+subtitle: "What crosses the process boundary for one terminal request?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Launch one process for one request
+
+Every `solve()`, `evaluate()`, or `optimize()` request that is not already a
+verified success launches one external Julia process. Python passes the
+canonical request file and an empty attempt-staging directory. Julia runs with
+the committed project, no user startup file, and the recorded thread count.
+
+This boundary keeps Julia compilation, factorization reuse, root continuation,
+candidate evaluation, and CMA-ES inside one process. SCNSim does not embed
+libjulia through JuliaCall and does not keep a daemon whose mutable state could
+outlive request identity.
+
+## Use files for authority and JSONL for progress
+
+The request file is the only command authority. Julia stdout may emit
+schema-tagged JSONL progress records; stderr and non-progress stdout are logs.
+Optimization progress contains completed generation and declared work-budget
+information only. Python renders or suppresses those records according to
+`progress=True | False`; malformed progress cannot alter the request or final
+outcome.
+
+Julia writes an outcome envelope and referenced artifacts into staging. It
+does not write the final SCNSim receipt. Python waits for process completion,
+validates schemas, relative paths, hashes, dimensions, and expected artifact
+inventory, then seals the receipt last.
+
+## Make interruption an attempt outcome
+
+On `KeyboardInterrupt`, Python sends process termination, escalates only if the
+child does not exit, validates whatever staging evidence remains, records an
+interrupted attempt, and re-raises the interrupt. A later identical operation
+creates a new attempt. No public timeout, cancel handle, or JobRef is added.
+
+Protocol failure, invalid JSON, an unexpected file, missing outcome, or
+runtime-identity mismatch fails the whole attempt. Every declared artifact path
+must be normalized, relative, contain no `..`, traverse no symlink, and resolve
+inside the attempt-staging root. An absolute or escaping path is rejected
+before any artifact is opened. A numerical failure that the operation contract
+can represent remains typed numerical evidence instead of becoming a transport
+error.
+
+[Next: Workspace, attempts, and artifacts](workspace-attempts-and-artifacts.qmd)

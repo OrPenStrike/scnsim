@@ -52,8 +52,8 @@ Plan authoring, and Runtime operations deliberately raise
   primitive authoring through optimization, reuse, and pump-off HB.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim uses Plans, views, typed requests, and explicit ownership.
-- [Contract](docs/component-authoring.qmd) — exact public signatures,
-  invariants, failure behavior, evidence, and known limits.
+- [Contract](docs/contracts/index.qmd) — public behavior plus the maintainer
+  implementation design that precedes executable Runtime work.
 
 Each lesson also has a generated Notebook in
 [`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)

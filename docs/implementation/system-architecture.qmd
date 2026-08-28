@@ -1,0 +1,58 @@
+---
+title: "System Architecture and Ownership"
+subtitle: "Which layer owns each Runtime responsibility?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The
+[public contracts](../contracts/index.qmd#public-contracts) remain authoritative.
+
+## Keep the Notebook boundary in Python
+
+Python owns every user-facing object and every trust boundary that benefits
+from ordinary Python discovery:
+
+- component authoring, units, Specs, Refs, Runs, and typed Results;
+- dimensional validation and canonical serialization;
+- workspace locking, request/attempt discovery, receipt verification, and
+  exact `resolve()`;
+- AEDT Q2D parsing; and
+- Matplotlib and Schemdraw presentation.
+
+Julia never imports Notebook objects or calls a Python objective callback. It
+receives one sealed request and owns the numerical work inside that request:
+component realization, candidate compilation, reduction, Direct quantities,
+CMA-ES, and HB.
+
+```text
+Notebook
+  -> Python validation and canonical request
+  -> one external Julia process
+  -> staged outcome and artifacts
+  -> Python verification and receipt seal
+  -> typed Python Result
+```
+
+`run.explain()` and a compiled schematic may use the same Julia compile
+preflight, but neither launches a solver nor writes the evidence workspace.
+
+## Keep dependencies narrow
+
+The first executable candidate is expected to add Pint, NumPy, JuliaPkg, Zarr,
+Matplotlib, and Schemdraw to Python. The internal Julia project is expected to
+use JosephsonCircuits, JSON3, and CMAEvolutionStrategy. These are design inputs,
+not current package metadata; the docs-only checkpoint changes no lockfile.
+
+V1 deliberately does not add Pydantic, a database, a web service, a distributed
+runner, JuliaCall, or a persistent daemon. Canonical files, one child process,
+and typed Python classes cover the declared ownership without another service
+layer.
+
+## Preserve provenance without inheriting the old product
+
+The legacy Circuit Workbench remains historical implementation provenance. It
+does not own SCNSim names, workspace layout, public API, consumers, or release
+train. Reusable algorithms are admitted only through the classified matrix in
+[External Inputs and Delivery](external-inputs-and-delivery.qmd#legacy-adoption-matrix).
+
+[Next: Plan sealing and identity](plan-sealing-and-identity.qmd)
