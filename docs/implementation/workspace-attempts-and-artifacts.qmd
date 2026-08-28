@@ -1,0 +1,128 @@
+---
+title: "Workspace, Attempts, Receipts, and Artifacts"
+subtitle: "How is durable evidence appended and resolved safely?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Bind one leaf workspace to one Plan
+
+A V1 leaf workspace is a relocatable directory with one sealed Plan plus
+append-only request attempts. Each request carries its own semantic runtime:
+
+```text
+workspace.json
+plan.json
+requests/<request-sha256>/
+  request.json
+  attempts/000001/
+    attempt.json
+    logs/
+    artifacts/result.zarr/
+    result.json
+    receipt.json
+```
+
+The workspace location is not part of computational request identity. It
+selects the evidence store in which that request must be found; relocating the
+whole verified workspace does not rename the request. All stored paths are
+relative to the workspace. `receipt.json` is written last and only after Python
+verifies the attempt outcome. It seals success, typed failure, or interruption;
+only a verified success receipt can materialize a Result. A temporary staging
+directory is never a successful Result.
+
+V1 uses one writer lock per workspace; different workspaces may run in
+parallel. This deliberately simple ceiling avoids two processes selecting the
+same next attempt number or sealing competing successes. Per-request locking
+is considered only if measured same-workspace throughput requires it.
+
+## Iterate topology in one workspace {#iterate-topology-in-one-workspace}
+
+`CircuitRun(..., versioned=False)` is the default Notebook behavior. Reopening
+the same path with the same Plan identity reuses its evidence. A different Plan
+is validated and sealed first, then an exclusive lock, sibling staging
+directory, and atomic rename replace the old leaf workspace. No prompt,
+recycle area, or implicit topology history is added. A prior Run or lazy Result
+whose bound leaf `workspace_instance_id` or Plan no longer matches that path
+raises
+`WorkspacePlanReplacedError` instead of reading unrelated evidence.
+
+Every replacement creates a new evidence-only leaf instance ID. This keeps an
+old Run stale through an `A → B → A` topology sequence instead of accepting the
+later A workspace merely because its Plan hash matches again.
+
+With `versioned=True`, the selected path is a parent index:
+
+```text
+workspace.json
+iteration01/
+  workspace.json
+  plan.json
+  requests/...
+iteration02/
+  workspace.json
+  plan.json
+  requests/...
+```
+
+Each `iterationNN` is an ordinary leaf workspace. The parent maps exact Plan
+hashes to monotonically assigned directories, using at least two decimal
+digits. Reopening the same Plan reuses its existing iteration; only a new Plan
+identity allocates the next ordinal. Specs and ParameterSets remain requests
+inside that iteration.
+
+Index entries are stored in ascending ordinal order. Ordinals and directories
+are unique, every Plan hash appears once, and `next_iteration` is one greater
+than the greatest existing ordinal (or `1` when empty). These cross-entry
+invariants are semantic validation in addition to the JSON Schema shape. The
+parent and all leaf workspace-instance IDs are also mutually distinct.
+
+Opening an existing unversioned leaf with `versioned=True` is a supported,
+atomic one-way conversion: the leaf becomes `iteration01` and the parent index
+is written around it without changing its leaf instance or request identities;
+the new parent receives its own instance ID. Opening a
+versioned parent with `versioned=False` raises
+`WorkspaceVersioningDowngradeForbidden` before mutation. The message explains
+that versioning was an explicit preservation choice and directs the user to a
+different workspace path for replacement mode.
+
+A pre-upgrade Run follows its preserved leaf instance into `iteration01` after
+the conversion. It does not become stale merely because the user enabled
+preservation; subsequent replacements of that leaf remain detectable by its
+instance ID.
+
+## Reuse success and append failure history
+
+The request directory is derived from canonical request identity. If one
+attempt contains a complete verified success, the terminal operation returns
+it. Otherwise a new call appends the next immutable attempt. Failed and
+interrupted attempts remain visible to `inventory()` and cannot be overwritten.
+
+A verified `HBBatchResult` is successful request evidence even when every case
+contains a numerical `HBCaseFailure`; repeating it reuses the batch. Only a
+request-level failure or interruption is retryable.
+
+`resolve()` acquires no execution slot. It recomputes the request identity,
+finds the verified success, and validates Plan, semantic runtime, receipt, manifest, and
+artifact hashes. Missing or corrupt evidence is an error; it never falls back
+to another attempt or request.
+
+## Store arrays without pickling
+
+Scalar metadata, schemas, failures, and receipts use canonical JSON. Large real
+arrays use Zarr V2 chunks; complex arrays use paired Float64 real/imag arrays
+with one typed manifest. V1 starts with uncompressed chunks so another language
+can implement the format without a codec dependency. The OGC-endorsed
+[Zarr V2 standard](https://www.ogc.org/standards/zarr-storage-specification/)
+defines JSON metadata and optionally compressed binary chunks for
+multidimensional arrays.
+
+Chunk shape, array order, dtype, axes, units, coordinate IDs, and real/imag
+pairing are manifest authority. A Python Result may load chunks lazily, but
+must reconstruct the declared NumPy/Pint surface before returning it.
+
+The exact envelopes and Result/artifact references are defined by the
+[machine-readable identity schemas](canonical-identities-and-schemas.qmd).
+
+[Next: Compilation, Ports, and views](compilation-ports-and-views.qmd)

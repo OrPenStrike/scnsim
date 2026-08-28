@@ -44,11 +44,11 @@ How do I request and inspect the circuit's one-Port response?
 ::: {.card-body}
 <p class="course-card-eyebrow">Lesson 03</p>
 
-### [Evaluate one loaded resonance](../examples/tutorials/03_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
+### [Choose a View and evaluate one loaded resonance](../examples/tutorials/03_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
 
-Which loaded diagonal resonance belongs to the authored resonator node?
+How do I ask a node-level quantity question without changing the circuit?
 
-<p class="course-card-outcome"><strong>Produces</strong> · A typed diagonal-root Result.</p>
+<p class="course-card-outcome"><strong>Produces</strong> · An immutable retained View and a typed loaded-root Result.</p>
 :::
 ::::
 
@@ -177,5 +177,5 @@ How do I compare the same selected network across both solvers?
 ::::
 
 For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd).
-For exact signatures, equations, failures, and evidence, use
-[Contract](component-authoring.qmd).
+For exact signatures, equations, failures, evidence, and maintainer design, use
+the [Contract map](contracts/index.qmd).

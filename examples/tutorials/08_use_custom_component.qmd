@@ -19,6 +19,8 @@ its one public terminal connects. Built-in `components` and the custom catalog
 both return exact-identity `ComponentInstance`s, so `plan.add()` treats them
 the same way.
 
+This lesson imports the same project-owned catalog shown and used in lesson 7.
+
 ```{python}
 #| id: use-custom-component
 from fixtures import resonator_library

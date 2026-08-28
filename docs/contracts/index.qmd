@@ -1,0 +1,52 @@
+---
+title: "Contract"
+subtitle: "Public behavior and the design that will implement it"
+---
+
+::: {.callout-warning appearance="simple"}
+## CONVERGING authority
+
+These pages describe the current SCNSim V1 candidate. They do not claim Human
+acceptance, executable solver behavior, stabilization, or release. The
+installable package remains a fail-fast scaffold until a reviewed
+implementation slice replaces the corresponding unavailable paths.
+:::
+
+## Public contracts
+
+Read these when deciding what a Notebook user may declare, execute, inspect,
+and resolve.
+
+- [Component Authoring Contract](../component-authoring.qmd) defines catalogs,
+  components, pins, electric nodes, ground, Ports, parameters, composites, and
+  schematic projections.
+- [V1 Runtime Contract](../v1-runtime-contract.qmd) defines Runs, Refs, Specs,
+  units, reduction, Direct/HB behavior, optimization, Results, attempts,
+  receipts, failure, and known limits.
+
+Public contracts own product semantics. An implementation page may explain a
+mechanism, dependency, data layout, or delivery slice, but it cannot weaken or
+replace a public invariant.
+
+## Implementation Design {#implementation-design}
+
+Read this collection in order before changing the scaffold. Each page answers
+one maintainer question.
+
+1. [Which layer owns each responsibility?](../implementation/system-architecture.qmd)
+2. [When is a Plan sealed, and what is hashed?](../implementation/plan-sealing-and-identity.qmd)
+3. [Which canonical bytes and schemas define identity?](../implementation/canonical-identities-and-schemas.qmd)
+4. [How are catalog and runtime identities made portable?](../implementation/catalog-and-runtime-identity.qmd)
+5. [How is Julia prepared without manual setup?](../implementation/julia-runtime-preparation.qmd)
+6. [What crosses the Python–Julia process boundary?](../implementation/python-julia-protocol.qmd)
+7. [How are requests, attempts, receipts, and arrays stored?](../implementation/workspace-attempts-and-artifacts.qmd)
+8. [How do compilation, Ports, and views become one selected network?](../implementation/compilation-ports-and-views.qmd)
+9. [How is one loaded diagonal root solved and certified?](../implementation/diagonal-root-numerical-procedure.qmd)
+10. [How are Direct quantities and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
+11. [How are HB normalization and partial case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
+12. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
+13. [How are Q2D input, legacy provenance, and implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
+
+The collection describes the intended candidate implementation, not source
+that already exists. When a future slice changes one of these decisions, only
+the affected page and public contract return for Human review.

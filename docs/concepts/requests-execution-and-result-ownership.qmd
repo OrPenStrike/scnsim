@@ -26,6 +26,16 @@ work and return typed Results. A Result owns one verified answer and its exact
 evidence identity, while `resolve()` retrieves that answer without making a
 new computation.
 
+The question and the attempt have separate identities. Repeating a failed or
+interrupted request appends a new immutable attempt; it does not change the
+question or overwrite the earlier record. A verified success is reused.
+
+By default, a workspace is a replaceable Notebook workbench: binding a new
+sealed Plan at the same path atomically replaces the preceding topology's
+evidence. Authors who need topology history opt into `versioned=True`, which
+keeps each Plan in its own iteration workspace; request, attempt, and receipt
+ownership inside each leaf does not change.
+
 `explain()` occupies the useful middle ground: it returns a typed
 `ExplanationResult` that makes the bound request reviewable without starting
 an execution job, numerical analysis, or workspace write.
@@ -52,5 +62,7 @@ physical or product authority.
 - [One execution owner](../v1-runtime-contract.qmd#solve-versus-evaluate)
 - [Explain before execution](../v1-runtime-contract.qmd#explain-before-execution)
 - [Resolve without execution](../v1-runtime-contract.qmd#resolve-without-execution)
+- [Request identity and immutable attempts](../v1-runtime-contract.qmd#request-identity-and-immutable-attempts)
+- [Workspace topology policy](../v1-runtime-contract.qmd#seal-one-plan-into-one-run)
 - [Typed Quantity results](../v1-runtime-contract.qmd#typed-quantity-results)
 - [Failure and evidence contract](../v1-runtime-contract.qmd#failure-and-evidence-contract)

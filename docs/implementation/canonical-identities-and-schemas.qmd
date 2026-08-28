@@ -1,0 +1,113 @@
+---
+title: "Canonical Identities and Schemas"
+subtitle: "Which bytes name a Plan, request, attempt, Result, and receipt?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The
+[machine-readable V1 schema bundle](schemas/identity-v1.schema.json) is the
+field-and-type authority for this page.
+
+## Encode one canonical byte stream
+
+Python owns canonical serialization. It converts physical inputs to coherent
+SI and finite IEEE-754 binary64, then writes each physical floating scalar as
+its 16 lowercase big-endian hexadecimal bits. Counts, booleans, identities,
+and enum values keep their declared JSON types. Complex quantities store
+separate real and imaginary bit strings. This avoids Python/Julia
+decimal-printer differences while preserving one exact numerical value.
+
+Every document is UTF-8, normalizes strings and object keys to NFC, orders
+object keys lexicographically, and contains no insignificant whitespace. Key
+normalization collisions fail closed. Every envelope contains `schema` and
+integer `schema_version` discriminators; canonical key ordering determines
+their byte position. SHA-256 covers the complete canonical document; no
+document contains its own recursive hash. NaN, infinity, pickle, absolute
+paths, `..`, backslashes, and symlink escapes are invalid before any hash or
+artifact read.
+
+Arrays whose order is physical—Ports, pins, coordinates, lineage steps, modes,
+and axes—retain that order. Set-like collections sort by their canonical
+identity. A typed map stores lexicographically ordered string-key entries;
+duplicate keys fail before serialization.
+
+Source values and units from the executed attempt remain receipt evidence, but
+only the coherent-SI bits, canonical SI unit, and dimensionality enter Plan or
+request semantic identity. Thus `92 * u.fF` and `0.092 * u.pF` may reuse one
+verified computation. Reuse does not append a second provenance event merely
+to log the later caller's equivalent spelling.
+
+## Give each file one job
+
+| File | Required identity content | Mutability |
+|---|---|---|
+| `workspace.json` | evidence-only workspace-instance ID plus one Plan binding, or a versioned Plan-to-iteration index | mutable only under the workspace lock |
+| `plan.json` | primitive authored topology, ordered identities, baselines, and catalog sources | immutable |
+| `request.json` | Plan hash, operation, Ref lineage, Spec, ParameterSet, and semantic runtime | immutable |
+| `attempt.json` | request hash, ordinal, launch time, executable and machine-resource evidence | immutable launch record |
+| `result.json` | typed Direct scalar and array catalogs | immutable |
+| `receipt.json` | request, attempt, Result/artifact hashes, source-unit/provenance evidence, and terminal outcome | written last; immutable |
+
+The Primitive Direct E2E schema admits only primitive R/L/C Plans, Direct
+response requests, and `DiagonalRootSpec` quantity requests. Composite graphs,
+couplings, optimization, and HB require an explicit schema-version extension in
+their implementation slices; an unknown discriminator never falls through to a
+generic map.
+
+JSON Schema enforces each envelope's shape. Cross-document semantic validation
+then verifies the complete chain before reuse or `resolve()`:
+
+- a leaf `workspace.json` names the SHA-256 of its exact `plan.json` bytes;
+- every versioned index entry names a child directory whose leaf workspace and
+  Plan hashes match that entry;
+- `requests/<sha256>/` is named by its exact `request.json` hash, whose Plan hash
+  matches the leaf Plan;
+- `attempts/<ordinal>/` matches `attempt.json.ordinal`, and that attempt names
+  the enclosing request hash;
+- `receipt.json` names the exact request and attempt hashes, and a success names
+  the exact `result.json` hash;
+- the Result discriminator matches the request operation
+  (`solve_direct` to `direct_response`, or `evaluate_diagonal_root` to
+  `direct_quantity`); and
+- the receipt artifact list exactly matches the Result catalogs and manifest
+  hashes before any artifact is opened.
+
+Validation also enforces ordered/unique identities, matching retained/spec
+coordinates, physical dimensionality, artifact IDs, and the versioned-index
+invariants described by their owning contracts. Any mismatch is corrupt or
+stale evidence, never a nearby Result or retry target.
+
+Large arrays are not embedded in JSON. Each `array_catalog` entry requires a
+relative Zarr path, SHA-256, media type, dtype, shape, axes, and unit;
+`scalar_catalog` stores the exact fields required by its Result discriminator.
+A regular-file artifact hashes its raw bytes. A directory-backed Zarr artifact
+hashes a canonical JSON manifest of every contained regular file: NFC-normalized
+POSIX-relative path, file mode, byte length, and raw-byte SHA-256, sorted by
+path. The directory's own name and empty directories are excluded; symlinks and
+normalization collisions fail closed. Python and Julia therefore verify the
+same metadata-and-chunk byte set rather than a filesystem-dependent directory
+encoding.
+A Direct response requires frequency, S, Y, and Z arrays. A Direct quantity
+requires root, frequency, linewidth, and slope scalars. A success receipt
+requires the Result hash. Failure and interruption receipts instead require a
+typed failure and cannot advertise a Result.
+
+## Keep evidence out of semantic identity
+
+Request identity excludes workspace location, source-unit spelling,
+presentation theme, schematic ground grouping, progress display, attempt
+ordinal, host, executable path, CPU, and thread counts. Those facts remain
+auditable in the workspace and attempt evidence.
+
+Each concrete leaf and versioned parent receives a canonical UUIDv4
+`workspace_instance_id`. A Run binds the leaf ID as well as its Plan hash. A
+replacement creates a new leaf ID, so an old Run remains stale even if later
+iterations produce the same Plan hash again; the UUID is evidence only and
+never enters Plan or request identity.
+
+The workspace is an evidence location, not a request namespace. Relocating an
+intact workspace does not rename its requests. Conversely, copying one
+`request.json` without its verified receipt and artifacts cannot materialize a
+Result.
+
+[Next: Catalog and runtime identity](catalog-and-runtime-identity.qmd)

@@ -38,8 +38,9 @@ components = ResonatorLibrary()
 ## Inspect before adding a factory
 
 Python's native documentation tools are enough to inspect this empty catalog.
-It has a stable type and docstring but no custom component factory yet; the
-next lesson adds the first one.
+It has a stable type and docstring but no custom component factory yet. The
+next lesson moves this pattern into the canonical project module and defines
+the first factory there.
 
 ```{python}
 #| id: inspect-custom-library

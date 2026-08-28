@@ -24,6 +24,15 @@ frequency grid; it does not require a named trace.
 The workspace stores exact request receipts and artifacts. It is not a
 mutable “latest result” directory, and independent requests may coexist in it.
 
+::: {.callout-tip title="Iterate the topology in the same kernel" appearance="simple"}
+In an authoring Notebook, keep the builder in an earlier editable cell. Redefine
+that builder, then rerun this construction cell to bind `fixture` and `run` to a
+newly sealed Plan. This lesson imports an adjacent fixture only to avoid
+repeating lesson 1; after editing that Python module, reload it or restart the
+kernel before rebuilding. The default workspace policy replaces evidence for
+the previous topology after the new Plan seals successfully.
+:::
+
 ```{python}
 #| id: prepare-direct-response
 from fixtures.primitive_resonator import build_primitive_resonator

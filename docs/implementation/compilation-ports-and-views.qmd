@@ -1,0 +1,48 @@
+---
+title: "Compilation, Ports, and Network Views"
+subtitle: "How does one authored Plan become a selected Direct or HB network?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Compile one backend-neutral physical graph
+
+After ParameterSet binding, Julia expands every component into oriented
+physical rows and one ordered node-flux basis. The compile product carries
+component, parameter, node, ground, Port, coupling, and source provenance. It
+forms reciprocal C/K/G evidence for Direct and an exact JosephsonCircuits
+netlist realization for HB; neither backend becomes the Plan authority.
+
+`run.explain()` uses this compile product to show deterministic rows and maps
+without solving. A compiled schematic projects the same expanded physical
+graph, while an authoring schematic remains a Python projection of the Plan.
+
+## Lower one logical Port two ways
+
+Direct maps each Port to selector column `B`, reference admittance `Y0`, load
+stamp `B Y0 B^T`, and power-wave conversion. HB lowers the same Port to exact
+JosephsonCircuits `P + R` rows and solver indices. The receipt proves that node,
+orientation, reference impedance, and load are equivalent across lowerings.
+
+PTC removes only declared, evidenced `nonloading_probe` loads from the analysis
+network. For driven HB it leaves the nonlinear/static balance loaded and
+compensates only the linearized response, as required by the public contract.
+
+## Replay one ordered view lineage
+
+The selected network is formed in the public order:
+
+1. bind parameters and compile the original Plan;
+2. apply PTC to the evidenced load mask;
+3. resolve automatic paired-node transforms and their induced reference matrix;
+4. retain the ordered requested coordinates; and
+5. eliminate the complement at zero external current using factorization or
+   linear solve, never an explicit inverse.
+
+Direct may evaluate named internal coordinates without a Port-realizable solve
+view. HB and S/Y/Z solving require a Port-realizable final basis. Every failure
+is attached to the step that could not prove its invariant rather than
+returning a smaller or backend-specific fallback view.
+
+[Next: Diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd)

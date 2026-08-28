@@ -16,7 +16,9 @@ execute:
 
 Rebuilding the same parallel capacitor and inductor in every outer Plan is
 noisy and exposes internals that consumers should not wire directly. The
-custom `Library` from lesson 6 therefore gains one instance method.
+empty catalog in lesson 6 established the subclass-and-singleton pattern. The
+canonical project module now implements that pattern; its `ResonatorLibrary`
+defines the first instance method.
 
 Inside that method, `CompositePlan` owns the private construction graph.
 `ParameterSpec` declares the two public physical parameters, while the
@@ -24,11 +26,11 @@ built-in `scnsim.components` catalog creates the primitive children. Internal
 nodes and ground stay hidden until `expose_pin()` deliberately publishes the
 one supported terminal. `build()` returns an immutable `ComponentInstance`.
 
-The adjacent source below is the one canonical catalog implementation; the
-Tutorial includes it directly instead of maintaining a copied code sample.
+The adjacent source below is the one canonical catalog implementation. It is
+shown as a code listing for review, but the executable cell imports that module
+instead of redefining its classes in Notebook-global state.
 
-```{python}
-#| id: define-resonator-composite
+```python
 {{< include fixtures/resonator_library.py >}}
 ```
 
@@ -40,7 +42,10 @@ internal node, and ground group remain implementation evidence.
 
 ```{python}
 #| id: create-custom-composite
-resonator = components.parallel_linear_lc_resonator(
+from fixtures import resonator_library
+from scnsim import units as u
+
+resonator = resonator_library.components.parallel_linear_lc_resonator(
     id="resonator",
     capacitance=110.0 * u.fF,
     inductance=5.8 * u.nH,
@@ -48,5 +53,8 @@ resonator = components.parallel_linear_lc_resonator(
 resonator.parameter("capacitance").show()
 resonator.pin("terminal")
 ```
+
+Because the executable cell imports the displayed module, this lesson and the
+next use the same project-owned catalog.
 
 [Previous](06_create_library.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](08_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)

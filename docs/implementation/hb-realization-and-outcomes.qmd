@@ -1,0 +1,52 @@
+---
+title: "HB Realization and Case Outcomes"
+subtitle: "How are modes normalized and partial batches kept consumable?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Materialize one request-global mode lattice
+
+Python validates pump axes, drive identities, case currents, truncation, and
+trace modes. Julia materializes the finite ordered Fourier lattice once for the
+request, records signed physical frequencies, and lowers each case's effective
+source coefficients to JosephsonCircuits indices.
+
+SCNSim uses `exp(-i omega t)`, while JosephsonCircuits uses the opposite phasor
+convention. Source coefficients therefore follow the exact conjugate-mode map
+in the Runtime Contract. Response adaptation first reorders by the same signed
+physical frequency, then conjugates once and applies the input/output frequency
+normalization. Zero-frequency response modes and ambiguous frequency collisions
+fail before numerical response construction.
+
+## Derive the same selected network
+
+For each case, Julia normalizes full mode-by-Port `returnZ`, de-embeds backend
+source resistors, applies PTC, pair transforms, retained mapping, omitted
+matched loads, and selected reference boundaries in the contract order. Public
+Y, Z, and matrix-reference power-wave S all come from that one selected
+network. Native S is retained only as reconciliation evidence.
+
+Reconciliation lifts the Port map to the canonical port-major/mode-minor basis.
+A plain original-Port subset is comparable when omitted channels keep matched
+loads; unequal PTC, topology, reference, frequency, or normalization produces
+typed non-comparability rather than a fabricated residual.
+
+## Seal one outcome for every case
+
+Case numerical work is isolated within the batch process. Every declared case
+produces an `HBCaseOutcome` in declaration order. Success contains S/Y/Z,
+traces, source states, and evidence, with `failure is None`. Numerical failure
+sets `failure` to a receipt-reconstructible `HBCaseFailure` carrying a stable
+kind, stage, message, and available case evidence. Accessing a success-only
+property raises that same typed failure.
+
+The final batch may be fully successful, partial, or all-numerical-failure and
+is still a completed, reusable typed request result. Case failures do not make
+the request retryable. A runtime, protocol, or receipt-integrity failure fails
+the request itself and may be retried as a new attempt. `hb.show()` plots
+successes and visibly lists all failures. Direct and HB retain their own
+requested grids; presentation does not interpolate them.
+
+[Next: Results, reports, and diagrams](results-reports-and-diagrams.qmd)

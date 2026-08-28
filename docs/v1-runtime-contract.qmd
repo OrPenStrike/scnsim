@@ -42,7 +42,10 @@ Concept pages explain the design pressures behind
 [Direct/HB realization](concepts/direct-and-hb-realizations.qmd), and
 [optimization](concepts/units-parameters-and-optimization.qmd). This Contract
 remains the exact authority for signatures, formulas, invariants, failures,
-receipt evidence, limits, and open Human decisions.
+receipt evidence, and limits. The separate
+[Implementation Design](contracts/index.qmd#implementation-design) explains how
+the candidate Runtime will realize this public behavior without becoming a
+second public contract.
 
 ## Review map
 
@@ -60,11 +63,11 @@ accepted yet:
 | How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
 | How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
+| How will maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
 
-Two decisions deliberately remain open: partial HB batch consumability and
-the Direct/HB comparison grid or interpolation policy. They are stated under
-[Open Human decisions](#open-human-decisions); examples elsewhere do not choose
-answers for them.
+Partial HB case failure and Direct/HB grid comparison now have explicit
+contracts below. This candidate does not leave either behavior to backend or
+implementation convenience.
 
 ## Product and lifecycle boundary
 
@@ -190,15 +193,46 @@ from scnsim import CircuitRun
 run = CircuitRun(
     plan=plan,
     workspace="results/example_run",
+    versioned=False,
 )
 
 original = run.original
 ```
 
-Opening an existing workspace with a different sealed Plan or runtime identity
-must fail rather than relabel, overwrite, or silently select prior evidence.
 The Run has no global `action`, current Ref, current parameters, or current
-result.
+result. `versioned=False` is the default topology-iteration policy: opening the
+same workspace with a different successfully sealed Plan atomically replaces
+the prior Plan workspace and its request evidence without a confirmation
+prompt. Opening it with the same Plan identity reuses the existing workspace.
+
+`versioned=True` preserves topologies beneath the selected parent workspace as
+`iteration01`, `iteration02`, and so on. Each iteration is a complete ordinary
+Plan workspace; the parent index maps Plan identity to iteration, and the same
+Plan reuses its existing directory. Changing a Spec or ParameterSet alone does
+not allocate an iteration.
+
+An existing unversioned workspace may be upgraded atomically to
+`versioned=True`; its current Plan becomes `iteration01` without changing its
+requests. The reverse transition is forbidden before mutation because it would
+delete evidence the user explicitly chose to preserve. The error directs the
+user to supply a different workspace path for replacement mode.
+
+Sealing is permanent for both that Run and the supplied Python Plan. The same
+`CircuitRun` may execute any number of immutable Refs, Specs, and ParameterSets
+derived from its sealed Plan; none
+of those questions changes the Plan or invalidates earlier Results. Editing
+sealed Plan content—including topology, an authoring baseline, Ports,
+couplings, or a public component schema—raises `PlanSealedError`. The author
+reruns the builder to create a new `CircuitPlan` and `CircuitRun`; the same
+Python variable names and workspace path may be rebound without restarting the
+kernel. Supplying a declared `ParameterSet` does not change topology.
+
+In replacement mode, an older Run or lazy Result fails with
+`WorkspacePlanReplacedError` once another Plan has replaced its backing
+workspace. The check binds an evidence-only workspace-instance ID in addition
+to the Plan hash, so an `A → B → A` sequence cannot accidentally revive the old
+A handle. With `versioned=True`, each Run remains bound to its retained
+iteration and may coexist with newer topology Runs.
 
 ### Declare the floating-qubit Ref graph without executing {#floating-qubit-ref-graph}
 
@@ -270,7 +304,7 @@ different user-visible jobs:
 | Question | Call | Compatible Spec family | Result |
 |---|---|---|---|
 | What is the selected-view S/Y/Z response over a grid? | `run.solve(ref, spec)` | `DirectSolveSpec` | Direct response matrices and named traces |
-| What are the named HB case responses? | `run.solve(ref, spec)` | `HBSolveSpec` | `HBBatchResult` with S/Y/Z per case |
+| What are the named HB case responses? | `run.solve(ref, spec)` | `HBSolveSpec` | `HBBatchResult` with one typed outcome per declared case |
 | What is one Direct root, pole, zero, coupling, or response scalar? | `run.evaluate(ref, spec)` | Typed Direct quantity Spec | Typed quantity Result |
 | What is the complete Direct dynamic operator? | `run.evaluate(ref, spec)` | `OperatorSpec` | `OperatorResult` |
 | Which parameters minimize declared typed quantity objectives? | `run.optimize(ref, spec)` | `OptimizationSpec` | `OptimizationResult` |
@@ -287,10 +321,11 @@ abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
 quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
-example, finds the required-hint simple root of one physically anchored
-coordinate's operator diagonal and returns its root, frequency, linewidth, and
-slope evidence. The coordinate owns physical identity; `root_hint` only locates
-the baseline branch. `ResponseElementSpec` may
+example, runs the required-hint deterministic Newton procedure on one physically
+anchored coordinate's operator diagonal and returns its machine-resolved root,
+frequency, linewidth, and local slope evidence. The coordinate owns physical
+identity; `root_hint` only initializes the baseline Newton basin.
+`ResponseElementSpec` may
 evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
 does not imply a frequency-grid response. `OperatorSpec` is the deliberate
 exception that materializes the complete labeled Direct operator.
@@ -364,10 +399,25 @@ is no hidden current Result and neither request changes the meaning of the
 other. The Report records both exact input identities rather than deriving the
 root from a plotted S minimum or pretending the diagonal root is S21.
 
-If the same exact request already has a complete verified success receipt, the
-operation reuses it without recomputing or overwriting it. A genuinely new
-attempt uses a new request identity or workspace; V1 has no force-overwrite
-flag.
+### Request identity and immutable attempts {#request-identity-and-immutable-attempts}
+
+A canonical request identifies the sealed Plan, Ref, Spec, ParameterSet,
+runtime, and operation. Execution history is not part of that identity. If the
+request already has one complete verified success receipt, the operation
+reuses that Result without recomputing or overwriting it.
+
+The workspace path is an evidence location, not part of computational request
+identity. A leaf workspace binds one Plan; each request binds its semantic
+runtime. `CircuitRun` resolves the request only inside that Plan workspace. A
+different or relocated workspace does not rename the request, but it may not
+contain the required receipt.
+
+If every prior attempt failed or was interrupted, calling the same operation
+again keeps the canonical request identity and appends a new immutable attempt.
+Earlier requests, logs, failure receipts, and partial artifacts remain
+auditable; there is no force-overwrite flag and no mutable current attempt.
+Only the operation methods create attempts. `resolve()` never retries, resumes,
+or launches work.
 
 ### Explain before execution
 
@@ -416,10 +466,10 @@ direct = run.resolve(feedline, direct_spec)
 
 It recomputes the expected request identity, then reads and verifies the sealed
 workspace request, receipt, and artifacts. It never executes, searches for a
-latest stage, or relies on a process-local cache. The same call must therefore
-work after a Notebook kernel restart when every bound identity remains exact.
-Missing, stale, corrupt, or mismatched evidence fails closed with the missing
-or mismatched identity named.
+latest stage, retries a failed or interrupted attempt, or relies on a
+process-local cache. The same call must therefore work after a Notebook kernel
+restart when every bound identity remains exact. Missing, stale, corrupt, or
+mismatched evidence fails closed with the missing or mismatched identity named.
 
 `run.inventory()` may list known requests and their identities, but listing
 does not establish a hidden current selection.
@@ -458,6 +508,9 @@ Physically identical `92.0 * u.fF` and `0.092 * u.pF` produce the same
 computational identity after canonicalization. Their source units remain
 visible provenance and may be displayed differently without splitting the
 physical request identity.
+The receipt preserves the source spelling used by the executed attempt. A
+later semantic-equivalent reuse returns that verified evidence and does not
+append a new attempt merely to log the caller's alternate spelling.
 
 ### Static and runtime checks
 
@@ -1141,7 +1194,7 @@ A driven PTC Result also records
 Direct quantity and optimization receipts additionally record quantity-spec
 identity, selector and dimensionality, root/pole/zero branch and its declared
 locator, the `DiagonalRootSpec.root_hint`, baseline selection, continuation and
-simple-root/slope evidence where applicable, shared dependency nodes, expanded
+local slope/residue evidence where applicable, shared dependency nodes, expanded
 residual scale and source, objective weight, candidate failure ledger, and the
 one Julia-process execution identity. Optimization receipts additionally keep
 model-default bounds, any immutable consumer overrides, resolved bounds,
@@ -1237,14 +1290,28 @@ uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
 larger retained block.
 
 Required `root_hint` is a Quantity-valued approximate location used only to
-identify one unique simple root at the sealed baseline ParameterSet. It is not
+start deterministic complex Newton for one locally simple, machine-resolved
+root at the sealed baseline ParameterSet. It is not
 the returned root, an optimization target, a constraint, or an implicit search
 window. The evaluated frequency may differ from the hint. A non-baseline
-ParameterSet, including every optimization candidate, follows the identified
-baseline branch by deterministic continuation; it never selects whichever root
-is then closest to the original hint or to the preceding CMA-ES candidate.
-Missing or dimensionally invalid hints and ambiguous, repeated, or
-non-continuable branches fail closed.
+ParameterSet, including every optimization candidate, uses deterministic
+continuation owned by the identified baseline root; it never selects whichever
+root is then closest to the original hint or to the preceding CMA-ES candidate.
+Missing or dimensionally invalid hints and detected repeated or
+non-continuable roots fail closed.
+
+The Primitive Direct E2E realization supports one retained coordinate and
+requires the complete compiled capacitance matrix to be positive definite for
+`DiagonalRootSpec`. Singular-C descriptor/infinite-mode handling remains a
+later quantity scope; real-grid Direct S/Y/Z does not inherit this restriction.
+The exact scalar Schur residual, analytic derivative, 32-update complex-Newton
+limit, machine-resolution certificate, and deterministic dyadic continuation
+are fixed in
+[Diagonal-Root Numerical Procedure](implementation/diagonal-root-numerical-procedure.qmd).
+V1 does not enumerate the complete QEP spectrum to certify this root.
+Its certificate is machine-resolution evidence, not a validated global root or
+analytic-branch enclosure; possible undetected Newton-basin exchange remains a
+known V1 limitation.
 
 `readout_root.frequency` on the Spec is an immutable selector that can be
 placed in an objective; `evaluated.frequency` is the resulting Quantity. Merely
@@ -1257,7 +1324,7 @@ The V1 catalog is intentionally small:
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of one ordered retained block | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
-| `ResidueNormalizedCouplingSpec` | Coupling from two selected simple-root branches and one declared evaluation point | complex coupling and magnitude |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
 | `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
 
@@ -1285,9 +1352,12 @@ operator = run.evaluate(
 Root-like bundles expose only physically defined typed scalar selectors such as
 `.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
 branch locator (including `DiagonalRootSpec.root_hint`), continuation,
-simple-root/slope evidence, units, ParameterSet, selected Ref boundary, and
-operator identity remain attached. An ambiguous, repeated, or non-simple branch
-fails when the requested spec requires a unique simple root.
+local slope/residue evidence, units, ParameterSet, selected Ref boundary, and
+operator identity remain attached. `DiagonalRootSpec` promises the documented
+machine-resolved Newton procedure, not a globally unique spectral root. A
+locally repeated/non-simple pole or zero, or a coupling input without its
+required local slope/residue evidence, fails closed under that quantity's own
+contract.
 `TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
 generic cofactor/minor object is not part of the V1 scaffold. The Spec also
 requires its selected transfer denominator to
@@ -1475,6 +1545,12 @@ process. Python submits the sealed request and receives process-local progress
 and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
 daemon. Repeated quantity identities share dependency nodes within a candidate.
 
+The Julia process may emit generation-level JSONL progress for internal
+presentation and diagnostics. Progress records never enter Plan, request,
+optimization, candidate, or Result identity and cannot become a scientific
+Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
+observer, public JobRef, or persistent daemon.
+
 `CMAESSpec` requires a deterministic `seed` and finite `max_evaluations` work
 budget; optional `population_size` is an algorithm control. These values bound
 execution and reproducibility but do not decide whether the resulting circuit
@@ -1617,11 +1693,11 @@ instruction rather than claiming it displayed output.
 figure contract exposes it. Plot methods return the supported figure object so
 the caller can display, save, or further configure it.
 
-### HB cases, traces, and display {#hb-cases-traces-and-display}
+### HB case outcomes, traces, and display {#hb-cases-traces-and-display}
 
-A complete successful HB solve returns an `HBBatchResult`. Its public case
-index is one ordered, read-only mapping keyed by the unique IDs declared in
-`HBSolveSpec`:
+A completed HB request returns an `HBBatchResult`. Its public case index is one
+ordered, read-only mapping keyed by every unique ID declared in `HBSolveSpec`.
+Each value is an `HBCaseOutcome`, including a case that failed numerically:
 
 ```python
 unbiased = hb.cases["unbiased"]
@@ -1629,6 +1705,7 @@ dc_only = hb.cases["dc_only"]
 dc_pump_a_low = hb.cases["dc_pump_a_low"]
 dc_two_tone = hb.cases["dc_two_tone"]
 
+assert unbiased.succeeded
 assert unbiased.bias_state is BiasState.OFF
 assert unbiased.pump_state is PumpState.OFF
 assert dc_only.bias_state is BiasState.ON
@@ -1639,10 +1716,26 @@ assert dc_two_tone.pump_state is PumpState.ON
 ```
 
 `HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
-classification on each case result, not an alternate lookup key. `BiasState`
+classification on each successful outcome, not an alternate lookup key. `BiasState`
 independently records effective all-zero-mode drive. A case whose declared
 drives sum to zero remains addressable by its declared ID while reporting the
 corresponding Off states.
+
+A successful outcome exposes S/Y/Z, traces, `BiasState`, and `PumpState`
+directly, and its `failure` property is `None`. A failed outcome exposes
+`succeeded=False` and `failure: HBCaseFailure`, whose stable `kind`, `stage`,
+`message`, and evidence identity are receipt-backed. It also preserves case
+identity and effective sources. Accessing S/Y/Z, traces, or success-only states
+on that failed outcome raises that same `HBCaseFailure`; it never returns
+`None`, an empty matrix, or a stale value.
+
+A valid request may therefore produce a fully successful, partially
+successful, or all-numerical-failure batch. All three are completed, verified
+`HBBatchResult` receipts and are reused by the same request; a case numerical
+failure does not make the request retryable. A process, protocol,
+runtime-preparation, or receipt-integrity failure remains a request-level
+failure rather than a fabricated case outcome, so a later identical operation
+may append a new attempt.
 
 An `SParameterTrace` names one complex matrix projection across the request's
 frequency grid. Its `input_port` and `output_port` fields are selected-view wave
@@ -1720,8 +1813,11 @@ rather than drawing incomparable lines. The full-matrix fallback applies the
 same rule. It does not guess S21, truncate the matrix, rerun a request,
 interpolate, or mix backend-native evidence into the selected-view plot.
 
-These display rules apply to a consumable batch and do not decide whether a
-partially failed batch is consumable; that failure policy remains open below.
+For a partially successful batch, `hb.show()` plots only the successful
+outcomes and appends a visible failed-case summary containing every failed case
+ID and typed reason. It never silently omits a declared case. An all-failed
+numerical batch produces the failure summary without inventing an empty plot or
+promoting any case to success.
 
 Complex S display shows magnitude and wrapped phase in `[-180 deg, 180 deg]`.
 The default `magnitude="linear"` displays `abs(S)`. `magnitude="db"` displays
@@ -1729,6 +1825,20 @@ The default `magnitude="linear"` displays `abs(S)`. `magnitude="db"` displays
 or clipping, and its phase is shown as undefined rather than zero. This option
 changes presentation only. Dimensionful Y/Z results retain their
 Quantity-valued linear presentation.
+
+### Independent Direct and HB grids {#independent-direct-and-hb-grids}
+
+Direct and HB Results retain the exact grids requested by their own Specs.
+SCNSim does not create a hidden shared grid, interpolate one Result onto the
+other, or derive pointwise residuals merely because both Results describe the
+same selected network.
+
+`show()` and Report presentation may overlay traces that use different grids;
+each curve keeps its own coordinates and identity. Numerical comparison is an
+explicit downstream calculation on already materialized typed scalar
+Quantities with compatible dimensionality. V1 adds no general `compare()` API
+and does not infer peaks, dips, bandwidths, roots, or resonances from plotted
+curves.
 
 ### Explicit downstream sources
 
@@ -1749,10 +1859,6 @@ response with a typed quantity, contain one HB case, contain several operating
 cases, or present one exact optimization result and its candidate/failure
 evidence. Report assembly never changes which candidate is best or turns a
 Design Target into a pass/fail Gate.
-
-The Direct/HB comparison operation is intentionally not named yet. Its public
-shape depends on the unresolved comparison-grid decision and must not imply an
-interpolation policy before Human review.
 
 ## Authoring and compiled schematics
 
@@ -1826,7 +1932,12 @@ diagram identity additionally preserves the endpoint-derived local grouping.
 
 SCNSim fails closed for:
 
-- a workspace bound to another Plan or runtime identity;
+- an attempted `versioned=True` to `versioned=False` workspace downgrade, a
+  malformed versioned index, duplicate Plan-to-iteration mapping, or replaced
+  workspace accessed through a stale Run/Result handle;
+- a request directory whose canonical request differs from the sealed Plan,
+  Ref, Spec, ParameterSet, runtime, or operation; a second writer for the same
+  workspace; or an attempt that would overwrite prior evidence;
 - a duplicate component, Public node, logical Port, or coupling identity, a
   reserved `"ground"` node collision, or duplicate pin/public-parameter names
   inside one component schema;
@@ -1841,9 +1952,8 @@ SCNSim fails closed for:
   changes its promoted node identity after seal;
 - a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
   conductor/reference identity, matrix shape/order/units/reciprocity/passivity,
-  missing or inconsistent head-to-tail/extractor `+z` direction, invalid AEDT
-  Q2D primary blocks or conductor map, or non-positive/non-integer section
-  count;
+  invalid AEDT Q2D primary blocks or conductor map, or
+  non-positive/non-integer section count;
 - a Direct/HB general-line mismatch, including nonzero off-diagonal R in HB;
 - an invalid Composite public/hidden identity, wired `CoordinateRef`, invalid
   `AffineMap` units/support/baseline, or mapped nonphysical child value;
@@ -1904,10 +2014,20 @@ SCNSim fails closed for:
   one scalar objective;
 - a target/selector dimensionality mismatch, non-positive/non-finite weight or
   explicit scale, or a zero dimensionful target without explicit scale;
-- a missing, non-finite, or dimensionally invalid
-  `DiagonalRootSpec.root_hint`;
-- an ambiguous/repeated/non-simple root, pole, or zero when its quantity spec
-  requires one unique simple branch;
+- a missing, non-finite, non-positive, or dimensionally invalid
+  `DiagonalRootSpec.root_hint` (`InvalidDiagonalRootHint`);
+- a sealed `CircuitPlan` authoring mutation;
+- `DiagonalRootSpec` applied to a non-positive-definite complete capacitance
+  matrix in the Primitive Direct V1
+  (`UnsupportedSingularCapacitanceForDiagonalRootV1`), an unsolved eliminated
+  block (`EliminatedBlockSolveFailure`), an unresolved/non-simple slope
+  (`RootSlopeUnresolved`), or a complex-Newton machine certificate that does not
+  close within 32 updates (`NumericalResolutionUnresolved`);
+- deterministic diagonal-root continuation whose physical path, branch, or
+  subdivision cannot be completed, reported with its typed non-continuable
+  failure rather than a different root;
+- a locally repeated/non-simple pole or zero, or a residue-coupling input
+  without the local slope/residue evidence required by its quantity spec;
 - a transfer-zero candidate with a non-finite or singular denominator, or an
   unresolved pole-zero cancellation;
 - a missing or mismatched exact receipt during resolve;
@@ -1927,6 +2047,12 @@ SCNSim fails closed for:
 - an optimization resume fingerprint, expanded-normalization identity, or
   completed-generation mismatch; or
 - a corrupt request, receipt, or artifact hash.
+
+V1 exposes no public timeout, JobRef, or cancellation object. A
+`KeyboardInterrupt` terminates the active Julia child process, seals the
+attempt as interrupted when its staging evidence is valid, and re-raises the
+interrupt in Python. A later call to the same operation appends a new attempt;
+`resolve()` does not continue or retry it.
 
 Condition number is published evidence, not an automatic pass/fail decision.
 SCNSim does not invent conditioning thresholds, optimization Gates, search
@@ -1950,6 +2076,10 @@ or overwrite unrelated success receipts.
 - Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
   callbacks, expression ASTs, and calibration-table interpolation are not
   included.
+- Primitive Direct `DiagonalRootSpec` supports one retained coordinate with a
+  positive-definite complete capacitance matrix. Singular-C descriptor roots
+  and complete-QEP spectrum enumeration are not included. Deterministic dyadic
+  continuation does not provide a validated global analytic-branch enclosure.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its
@@ -1971,22 +2101,8 @@ or overwrite unrelated success receipts.
 - No compatibility alias exists for the legacy Workbench import or bare-float
   physical inputs.
 - No implicit latest-result selector exists.
+- V1 has no public timeout, JobRef, cancellation API, callback progress
+  framework, or persistent Julia daemon.
 - Schematic auto-layout is deterministic Grid + Attach, not a general
   constraint solver.
 - V1 has no public linear-algebra scaling configuration.
-
-## Open Human decisions
-
-These semantics remain `CONVERGING`. PTC, automatic paired-node coordinates,
-retained-view elimination, HB case lookup, and display are no longer open in this
-candidate.
-
-1. If one case in a valid multi-case HB batch fails numerically, should
-   successful cases remain directly consumable from a partial batch receipt,
-   or should the whole batch be non-consumable?
-2. For numerical Direct/HB comparison, must both solver specs contain an exact
-   shared comparison grid, or should SCNSim provide one explicitly selected
-   interpolation policy?
-
-Until the Human resolves these questions, implementation and durable tests
-must not freeze an answer.

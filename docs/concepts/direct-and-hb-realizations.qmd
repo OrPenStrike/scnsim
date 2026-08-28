@@ -41,9 +41,10 @@ capability. This avoids silently weakening a Plan merely to make it portable.
 
 This concept does not make JosephsonCircuits the topology authority, invent a
 fake Direct backend marker, imply arbitrary bias-point linearization, or claim
-that every Direct-capable Plan is HB-capable. It also does not define a Direct
-and HB comparison policy; that candidate decision remains open in the Runtime
-Contract.
+that every Direct-capable Plan is HB-capable. It also does not force Direct and
+HB onto one frequency grid. Each request owns its native grid; presentation may
+overlay them without interpolation, while numerical comparison is limited to
+explicit typed scalar Quantities.
 
 ## Contract sections
 
@@ -53,4 +54,4 @@ Contract.
 - [Operation support](../v1-runtime-contract.qmd#operation-support)
 - [Common matrix surface](../v1-runtime-contract.qmd#common-matrix-surface)
 - [Named HB drives, cases, mixing, and driven PTC](../v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
-- [Open Human decisions](../v1-runtime-contract.qmd#open-human-decisions)
+- [Independent Direct and HB grids](../v1-runtime-contract.qmd#independent-direct-and-hb-grids)

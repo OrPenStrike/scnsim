@@ -1,0 +1,72 @@
+---
+title: "Julia Runtime Preparation"
+subtitle: "How does the first backend operation obtain a reproducible Julia?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Prepare on the first backend-bound operation
+
+The user installs SCNSim with `uv sync --locked`; no separate Julia setup step
+is part of the Notebook UX. SCNSim ships static runtime metadata naming one
+exact Julia patch version for that package release. The first operation that
+needs Julia asks JuliaPkg for that version: JuliaPkg reuses an exact matching
+system installation when available and otherwise installs it automatically.
+See the official [JuliaPkg package documentation](https://pypi.org/project/juliapkg/).
+
+JuliaPkg owns executable discovery and installation only. SCNSim does not use
+JuliaPkg's managed project as its numerical environment. Every child process
+uses the separate SCNSim-owned project described below.
+
+Pure authoring and authoring-schematic operations do not prepare Julia.
+`run.explain()` and the compiled schematic may prepare it because both need the
+real compiler preflight. Preparation is dependency work, not a solver action
+and not workspace evidence.
+
+## Ship one internal Julia environment
+
+SCNSim will commit one internal `Project.toml` and `Manifest.toml`. The package
+launches the JuliaPkg-resolved executable with `--project` pointing to that
+internal project and instantiates it when needed. A committed Manifest fixes
+the resolved dependency state; Julia's environment guidance
+documents that `instantiate` restores the packages recorded by a project and
+Manifest ([Pkg environments](https://pkgdocs.julialang.org/v1.10/environments/)).
+
+Semantic runtime identity records:
+
+- SCNSim Python and Julia source-tree hashes;
+- the exact Julia version;
+- Project and Manifest hashes; and
+- the versioned numerical algorithm identity.
+
+A merely compatible version constraint is not enough to resolve an old
+receipt.
+
+Python computes this identity from package-owned static runtime metadata,
+source manifests, and the committed Project/Manifest before launching Julia.
+`resolve()` uses those same installed bytes and never selects, starts, or
+queries an executable. The executable subsequently used for a new attempt must
+report the declared exact Julia version or preparation fails before numerical
+work.
+
+The attempt separately records the actual executable hash, host OS and
+architecture, CPU description, Julia threads, BLAS threads, and BLAS vendor.
+Those execution resources do not rename the request. The Primitive Direct E2E
+launcher fixes Julia and BLAS to one thread to reduce avoidable variation, but
+still records the observed values. See
+[Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
+
+## Fail without a hidden fallback
+
+Offline mode uses only an already available exact-version Julia and cached
+packages. If either is absent, preparation fails with the missing runtime or
+package named. SCNSim does not silently switch environment, edit a user Julia
+project, download during `resolve()`, or fall back to an unrecorded system
+installation.
+
+Precompilation belongs to environment preparation. Additional custom
+precompile workloads are deferred until representative measurements show that
+startup cost materially affects the one-process request boundary.
+
+[Next: Python–Julia process protocol](python-julia-protocol.qmd)

@@ -31,7 +31,10 @@ from scnsim import (
 
 workspace = "workspaces/primitive-course"
 fixture = build_primitive_resonator()
-run = CircuitRun(plan=fixture.plan, workspace=workspace)
+run = CircuitRun(
+    plan=fixture.plan,
+    workspace=workspace,
+)
 direct_spec = DirectSolveSpec(
     frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
 )
@@ -48,6 +51,24 @@ root = run.evaluate(quantity_view, root_spec)
 report = run.build_report(ReportSpec(inputs=(direct, root)))
 report.show()
 ```
+
+::: {.callout-tip title="Optional: preserve topology iterations" appearance="simple"}
+The course keeps its main path on the default replaceable workspace. If you
+want topology history, use a separate path and opt in deliberately:
+
+```python
+history_run = CircuitRun(
+    plan=fixture.plan,
+    workspace="workspaces/primitive-course-history",
+    versioned=True,
+)
+```
+
+Distinct Plans then live under `iteration01`, `iteration02`, and so on; the
+same Plan returns to its existing iteration. Upgrading an existing unversioned
+workspace is supported, but switching that parent back to `versioned=False` is
+forbidden. Use another workspace instead.
+:::
 
 ## Reconstruct the exact request after restart
 
@@ -75,8 +96,9 @@ resolved = run_after_restart.resolve(
 resolved.show()
 ```
 
-A different Spec, ParameterSet, Plan, Ref, or workspace is a different request
-and fails closed if its exact receipt is absent. `resolve()` never substitutes
-the most recent compatible-looking Result.
+A different Spec, ParameterSet, Plan, or Ref is a different request. A different
+workspace is a different evidence location and fails closed if that same exact
+request receipt is absent. `resolve()` never substitutes the most recent
+compatible-looking Result.
 
 [Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: create a custom Library](06_create_library.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

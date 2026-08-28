@@ -1,0 +1,65 @@
+---
+title: "Direct Quantities and Optimization"
+subtitle: "How are typed quantities evaluated without Python candidate callbacks?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Build one labeled Direct operator
+
+For the declared `exp(-i omega t)` convention, the compiled operator is
+
+$$
+D(\omega)=K-\omega^2 C-i\omega G.
+$$
+
+Port loading and selected-network conversion follow the Runtime Contract.
+Schur reduction, Y/Z conversion, and S conversion use factorizations and linear
+solves. The Result records matrix norm, conditioning, precision, and residual
+evidence without inventing an acceptance threshold.
+
+Each quantity Spec compiles to a typed dependency node: response element,
+diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
+The exact `DiagonalRootSpec` complex-Newton residual, analytic derivative,
+machine-resolution certificate, and baseline-owned continuation are fixed in
+[Diagonal-Root Numerical Procedure](diagonal-root-numerical-procedure.qmd).
+Non-baseline ParameterSets never reselect by nearest hint or by the preceding
+optimizer candidate.
+
+## Share work inside one request
+
+The Julia request planner deduplicates identical compile, reduction,
+factorization, and root nodes. A Direct response and quantity remain distinct
+public requests, but objectives within one optimization candidate share their
+common dependency graph.
+
+Optimization converts finite physical bounds to unit-interval coordinates,
+evaluates declared normalized objectives, and keeps the CMA-ES loop entirely
+inside Julia. Python receives completed-generation progress only. A candidate
+whose bound values produce a singular operator, physically invalid mapped
+child value, or non-continuable branch records a typed failure and `Inf` cost;
+it cannot reuse a stale quantity. Invalid request schemas, mapping definitions,
+or compiler invariants fail the request rather than being relabeled as bad
+candidates. `Inf` is Julia optimizer state only: canonical JSON records a
+tagged failed-candidate penalty and never emits a non-finite JSON number.
+
+## Resume only complete generations
+
+Every completed generation seals its population, physical ParameterSets,
+objective components, failures, and optimizer state in an append-only ledger.
+An interrupted generation is discarded and deterministically replayed. Resume
+requires exact Plan, request, algorithm, seed, controls, normalization, runtime,
+and completed-ledger identity. No public resume switch changes those rules.
+
+Before a retry starts, Python selects the verified compatible ledger with the
+greatest completed generation and records its exact attempt and ledger hash in
+the new attempt. Equal-generation ledgers must have identical hashes; a
+disagreement is corruption, not a tie to resolve by recency. With no compatible
+ledger, the request starts from its declared seed.
+
+The winning `ParameterSet` is ordinary immutable output. Passing it to another
+solve or evaluate call creates a new exact request; reduction lineage and
+extrapolation approval are never inherited implicitly.
+
+[Next: HB realization and outcomes](hb-realization-and-outcomes.qmd)

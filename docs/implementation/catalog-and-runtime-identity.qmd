@@ -1,0 +1,103 @@
+---
+title: "Catalog and Runtime Identity"
+subtitle: "How is source provenance portable across wheels, Git, modules, and Notebooks?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Prove a factory when it creates a component
+
+Constructing an empty custom `Library` remains ordinary, inspectable Python.
+Exact source proof becomes mandatory only when one of its factories would
+return a `ComponentInstance`. The resulting Plan records the catalog module,
+qualified class, factory name, provenance kind, and source digest; neither a
+display name nor a memory address is sufficient.
+
+The canonical `catalog_id` is `module:qualified_class`. Multiple immutable
+instances of the same class therefore share catalog semantics; component
+identity still includes the invoked factory and its bound arguments.
+
+SCNSim resolves the first applicable portable provenance form in this order:
+
+| Source | Canonical evidence |
+|---|---|
+| installed wheel | normalized distribution name/version and sorted `RECORD` rows with their content hashes |
+| editable Git package | Git object ID, package-relative source file list and bytes, plus a digest of the dirty package-tree overlay |
+| imported source module | logical module name and the complete normalized bytes of its defining `.py` module |
+| Notebook definition | dedented UTF-8/NFC class and factory source with normalized newlines |
+
+For a wheel, SCNSim parses `RECORD` as CSV, normalizes separators, preserves
+the declared hash/size fields (including the ordinary empty self row), sorts by
+distribution-relative path, verifies every declared file hash, and hashes the
+canonical row list. Distribution names use normalized package-name spelling;
+versions use installed metadata spelling.
+
+For editable Git, `source_sha256` hashes a sorted manifest of package-relative
+path, Git file mode, and current file bytes beneath the catalog's Python package
+root. The dirty-overlay digest covers modified, deleted, and untracked
+non-ignored files relative to the recorded commit; cache/build/VCS metadata is
+excluded. Clean trees use the SHA-256 of the empty canonical overlay. Notebook
+source hashes the class and invoked factory definitions in definition order.
+
+An ordinary imported source module uses `module_source` only when no installed
+wheel or editable-install identity owns it. SCNSim obtains the defining regular
+`.py` file, decodes its declared Python source encoding, normalizes newlines and
+NFC, encodes UTF-8, and hashes the complete module text. The logical import name
+remains part of `catalog_id`; the source path, file timestamps, inode, and Git
+checkout location do not. Bytecode-only modules, extension modules, ambiguous
+origins, and unreadable source fail before component creation.
+
+V1 does not recursively hash an arbitrary Python import graph for
+`module_source`. Project-local code that affects a factory must remain in that
+defining module or move into an installed/editable package with closed source
+provenance. Built-in SCNSim factories called by the module retain their own
+catalog identity, and the resulting complete component graph remains part of
+Plan identity.
+
+Absolute checkout/venv paths, Notebook execution count, cell or temporary
+filename, line number, kernel ID, and object address are excluded. A Notebook
+factory whose source is no longer available through Python's source/line cache
+fails before creating the component; SCNSim does not ask the author to invent a
+manual catalog ID.
+
+Built-in `scnsim.components` follows the same rule through the installed-wheel
+or editable-Git identity of SCNSim. A custom package calling a built-in
+primitive therefore records both the custom factory provenance and the exact
+built-in catalog provenance.
+
+## Separate semantic runtime from the machine
+
+The request binds a semantic runtime containing:
+
+- SCNSim Python and Julia source digests;
+- the numerical algorithm ID;
+- exact Julia version; and
+- committed `Project.toml` and `Manifest.toml` hashes.
+
+The Python source digest uses a sorted manifest of package-relative path, file
+mode, and bytes for shipped `.py` files plus every runtime-consumed schema and
+static metadata file, including the identity schema bundle. The Julia digest
+does the same for the shipped `.jl` tree. Generated caches, checkout paths, and
+VCS metadata are excluded. Changing any manifest entry creates a different
+semantic runtime.
+
+The exact Julia version and algorithm ID come from package-owned static runtime
+metadata, not from host discovery. This lets Python recompute request identity
+during `resolve()` without starting Julia. JuliaPkg may reuse a system Julia
+only when its complete version equals that declared patch; the chosen
+executable's bytes remain attempt evidence.
+
+The attempt separately records the actual Julia executable hash, OS,
+architecture, CPU description, Julia thread count, BLAS thread count, and BLAS
+vendor. Available host core count and those execution resources do not rename
+the request. The Primitive Direct slice launches Julia and BLAS single-threaded
+to reduce avoidable drift; the observed values are still verified and stored.
+
+`resolve()` never prepares Julia or compares current hardware. It verifies the
+stored request, receipt, Result, and artifacts. A later execution under a
+different semantic runtime is a different request, while the same semantic
+runtime on another machine may reuse the verified request already present in a
+relocated workspace.
+
+[Next: Julia runtime preparation](julia-runtime-preparation.qmd)

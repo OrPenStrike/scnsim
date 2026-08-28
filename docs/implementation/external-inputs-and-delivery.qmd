@@ -1,0 +1,83 @@
+---
+title: "External Inputs and Delivery Slices"
+subtitle: "What may be reused, parsed, and implemented first?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design.
+
+## Parse one native Q2D artifact
+
+`load_q2d_rlgc()` will parse SCGSim's public AEDT 2024.2 combined `CG, RL`
+export directly. The candidate carrier contains one exact header and one primary
+Capacitance, Conductance, Inductance, and Resistance matrix block with source
+labels, units, extraction frequency, and original order. SCNSim validates the
+complete conductor map and records a content hash.
+
+Parser provenance is bound to
+`scgsim@3e70aa8b6effc400d29fcef889814073b567d68e` and
+`src/scgsim/aedt/_matrix_export.py`. This identifies the public producer format;
+SCNSim still owns its parser, validation, and failure contract.
+
+The native CSV has no per-file direction field. Its exact Q2D header is
+therefore not independent provenance evidence. Calling `load_q2d_rlgc()` is an
+explicit assertion that the file follows the fixed producer profile
+`aedt_q2d_xy_cross_section_positive_z`; SCNSim records that profile as
+`caller_asserted` and maps it to line head-to-tail. The parser validates only
+the strict native schema and never upgrades the assertion to solver-verified
+provenance. `reference_conductor` supplies the public name of the omitted Q2D
+reference group.
+
+The loader does not import SCGSim, accept a normalized compatibility CSV,
+reconstruct missing mutual terms, or interpolate frequency. It returns one
+frozen general `RLGC`; `N=1` remains the 1-by-1 case of the same carrier.
+
+## Classify legacy adoption {#legacy-adoption-matrix}
+
+Historical source is provenance, not product authority. The initial audit is
+bound to `superconducting-circuits-research-workbench@19c26e86`:
+
+| Legacy surface | Public relative source | SCNSim treatment |
+|---|---|---|
+| one-shot Python-to-Julia process and canonical JSON mechanics | `core/python/runtime/superconducting_circuits_runtime/runtime.py` | reuse mechanics after renaming, schema review, and path hardening |
+| C/K/G factorization, Schur solve, matched-Port algebra | `core/julia/SuperconductingCircuitsCore/src/analysis/linear_response.jl` | reuse the generic algorithm; revalidate against the current Contract |
+| uncompressed Zarr V2 real/imag writer | `core/julia/SuperconductingCircuitsRunner/src/staging/zarr_writer.jl` | reuse the small format mechanics with SCNSim manifests and relative paths |
+| progress JSONL | Workbench Runtime and Runner progress surfaces | reuse only as an internal generation-level protocol; expose neither a public toggle nor callbacks |
+| logical Port role and load correction algorithms | Core/Runner Port realization surfaces | port algorithm reference only; implement the current selected-network/PTC contract |
+| targeted roots, staged action graph, report workflow, App/polling | Workbench application and staged workflow surfaces | rewrite or exclude; none becomes a reachable fallback |
+| private consumer models, targets, paths, artifacts, and evidence | outside the reusable public mechanics boundary | exclude completely |
+
+Useful historical revisions include `af6a7b30` (progress), `3b41463e`
+(independent Direct/HB grids), `e7a47bac` (Port roles), `a4c58e6c`
+(fixed-candidate evaluation), and `19c26e86` (resolved override binding). These
+hashes explain mechanics only; they do not transfer acceptance or consumers.
+
+## Deliver executable behavior in slices
+
+The first source PR after Human review is **Primitive Direct E2E**:
+
+1. Pint units and primitive R/L/C authoring;
+2. Plan sealing, one logical Port, canonical request identity, and append-only
+   attempts;
+3. authoring schematic plus Julia preparation, compile preflight, and
+   `run.explain()`;
+4. one-port Direct S/Y/Z and loaded `DiagonalRootSpec`;
+5. typed Results, receipt verification, and restart-safe `resolve()`; and
+6. ephemeral open/matched, unit-equivalence, retry, interrupt, and corruption
+   probes.
+
+The slice implements the exact
+[identity schema bundle](schemas/identity-v1.schema.json), replacement/versioned
+workspace contract, portable catalog/runtime provenance, and
+[diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
+Composite Plans are rejected by schema until their later slice defines the
+complete private-graph snapshot.
+
+That integrated candidate advances the development version to `1.0.0.dev3`.
+Composite authoring, RLGC/Q2D, PTC/transform, optimization, HB, and compiled
+schematic follow as independently reviewable slices. Unimplemented surfaces
+continue to raise `ScaffoldUnavailableError`; no placeholder success path is
+introduced. Durable tests begin only after the Human accepts the corresponding
+semantics.
+
+[Back to the Contract map](../contracts/index.qmd)
