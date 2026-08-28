@@ -24,11 +24,11 @@ built-in `scnsim.components` catalog creates the primitive children. Internal
 nodes and ground stay hidden until `expose_pin()` deliberately publishes the
 one supported terminal. `build()` returns an immutable `ComponentInstance`.
 
-The adjacent source below is the one canonical catalog implementation; the
-Tutorial includes it directly instead of maintaining a copied code sample.
+The adjacent source below is the one canonical catalog implementation. It is
+shown as a code listing for review, but the executable cell imports that module
+instead of redefining its classes in Notebook-global state.
 
-```{python}
-#| id: define-resonator-composite
+```python
 {{< include fixtures/resonator_library.py >}}
 ```
 
@@ -40,7 +40,10 @@ internal node, and ground group remain implementation evidence.
 
 ```{python}
 #| id: create-custom-composite
-resonator = components.parallel_linear_lc_resonator(
+from fixtures import resonator_library
+from scnsim import units as u
+
+resonator = resonator_library.components.parallel_linear_lc_resonator(
     id="resonator",
     capacitance=110.0 * u.fF,
     inductance=5.8 * u.nH,
@@ -48,5 +51,9 @@ resonator = components.parallel_linear_lc_resonator(
 resonator.parameter("capacitance").show()
 resonator.pin("terminal")
 ```
+
+Lessons 7 and 8 therefore execute the same `module_source` catalog identity:
+the logical module is `fixtures.resonator_library`, and its normalized source
+bytes—not a Notebook `__main__` definition—supply the catalog provenance.
 
 [Previous](06_create_library.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](08_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)
