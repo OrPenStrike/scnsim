@@ -58,7 +58,7 @@ diagram may expand it for audit, but neither projection replaces the Plan.
 ```{python}
 #| id: inspect-custom-component
 diagram = plan.render_schematic(
-    CircuitDiagramSpec(representation="authoring", show_parameter_values=True)
+    CircuitDiagramSpec(show_parameter_values=True)
 )
 diagram.show()
 ```

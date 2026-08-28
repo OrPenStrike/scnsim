@@ -1,4 +1,4 @@
-"""One custom component catalog used by lessons 7 and 8."""
+"""Project-owned reusable resonator component catalog."""
 
 from __future__ import annotations
 

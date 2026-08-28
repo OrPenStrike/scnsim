@@ -15,16 +15,14 @@ execute:
 ## Identify the intended root branch
 
 Unlike the Port response in lesson 2, this question is about the authored
-resonator node. `retain(fixture.resonator_node)` keeps that coordinate and
-eliminates its complement with zero external injection. The logical Port load
-remains in the effective operator, so `DiagonalRootSpec` finds the node's
-loaded, Schur-reduced diagonal root.
+resonator node. `retain(fixture.resonator_node)` keeps that coordinate in this
+quantity; the other coordinates receive zero external current while SCNSim
+evaluates it. The 50-ohm Port already placed in the circuit remains, so
+`DiagonalRootSpec` finds a loaded root.
 
-This quantity is neither the uncoupled LC formula nor an S11 dip. It is also
-not a hybridized pole of a retained multi-coordinate block. `root_hint`
-selects the baseline simple-root branch near 6.0 GHz; it is not the answer,
-target, or search window. Later ParameterSets follow the same branch by
-deterministic continuation.
+This quantity is neither the uncoupled LC formula nor the minimum of lesson
+2's S response. `root_hint` selects the baseline root branch near 6.0 GHz; it
+is not the answer, target, or search window.
 
 ```{python}
 #| id: evaluate-diagonal-root

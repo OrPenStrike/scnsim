@@ -18,8 +18,7 @@ The capacitor retained from lesson 1 exposes its bindable value through
 `parameter("capacitance")`. The resulting `ParameterRef` identifies that
 physical value. Only
 `OptimizationVariable` activates it and supplies finite bounds. This separation
-is the [parameter-versus-variable contract](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable);
-it does not require a `CompositePlan`.
+is the [parameter-versus-variable contract](../../docs/concepts/units-parameters-and-optimization.qmd#parameter-vs-optimization-variable).
 
 `CostObjective` compares a typed quantity with a target after relative
 normalization. `CMAESSpec` supplies execution controls, and `OptimizationSpec`

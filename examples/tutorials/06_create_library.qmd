@@ -18,7 +18,7 @@ execute:
 project components should publish a different, clearly named Python module
 rather than register factories in global Notebook state. `Library` is the
 base class for that custom catalog; it intentionally does not inherit the
-built-in capacitor, inductor, or resonator factories.
+built-in factories.
 
 SCNSim derives catalog identity from the concrete subclass and its installed
 or source provenance. The author supplies no manual identity string.
