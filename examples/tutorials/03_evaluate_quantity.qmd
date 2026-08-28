@@ -32,11 +32,11 @@ CircuitPlan → CircuitRun → original View → ReductionPipeline
 | Spec and `run.evaluate()` | The physical question and the terminal operation that executes it. |
 | typed Result | The materialized answer and its evidence surfaces. |
 
-A pipeline has three ordered jobs. `ptc()` can first change the effective
-analysis topology; lesson 10 applies it to nonloading probes.
-`transform_pair()` can then change the coordinate basis; lesson 11 derives
-common and differential coordinates. Terminal `retain()` selects the final
-external boundary, and this lesson uses that simplest pipeline.
+A pipeline can contain up to three kinds of step in a fixed order; unused
+kinds are omitted. When present, `ptc()` changes the effective analysis
+topology before `transform_pair()` changes the coordinate basis, and terminal
+`retain()` selects the final external boundary. This lesson uses only `retain()`;
+lessons 10 and 11 add the earlier steps when their questions require them.
 
 Declaring a pipeline does not compile, solve, or write the workspace.
 `reduce()` returns a new child Ref without mutating its parent or the Plan, so

@@ -19,10 +19,7 @@ its one public terminal connects. Built-in `components` and the custom catalog
 both return exact-identity `ComponentInstance`s, so `plan.add()` treats them
 the same way.
 
-This lesson imports an ordinary adjacent `.py` module rather than an installed
-package. SCNSim records that catalog as `module_source`: its logical module name
-and normalized source bytes are portable, while its checkout path is not part
-of Plan identity.
+This lesson imports the same project-owned catalog shown and used in lesson 7.
 
 ```{python}
 #| id: use-custom-component
