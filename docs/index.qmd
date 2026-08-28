@@ -1,60 +1,181 @@
 ---
 title: "Tutorial"
-description: "A linear SCNSim course from primitive circuit authoring to reusable Direct, optimization, and HB workflows."
+description: "A linear SCNSim micro-course from primitive authoring to Direct, optimization, reusable composition, and pump-off HB."
+anchor-sections: false
 ---
 
-The SCNSim Tutorial follows one rule: **if an API has not been taught, the
-course does not use it.** Each page starts with a real circuit-modeling need,
-introduces only the objects needed to solve it, and finishes with a complete
-inspectable workflow.
+Follow the course in order. Each page answers one user question with one focused
+operation and inspection. If an API has not been taught, the course does not
+use it.
 
-::: {.callout-warning}
-## Candidate package
-
-SCNSim remains `CONVERGING`. The code in this course expresses the intended V1
-UX, but the current package is a fail-fast scaffold and does not yet simulate a
-circuit.
+::: {.callout-warning title="Candidate package" appearance="simple"}
+SCNSim remains `CONVERGING`. The course expresses the intended native V1 API,
+but the current package is a fail-fast scaffold and produces no simulation
+evidence.
 :::
 
-## Follow the course in order
+## Author and analyze
 
-| Part | Starting need | Prerequisites | Main objects introduced | Produced surface |
-| --- | --- | --- | --- | --- |
-| [1. Build a complete circuit from primitives](../examples/simple_resonator/01_model_author.qmd) | Understand every branch in a one-port reflective resonator | None | units, primitive R/L/C-style components, `CircuitPlan`, nodes, ground, Port, diagram, Run, View, Direct solve/evaluate, Results | authoring diagram, Direct S/Y/Z, root quantity, report |
-| [2. Package the LC as a reusable Composite](../examples/reusable_composite/01_composite_plan.qmd) | Stop rebuilding the same resonator internals | Part 1 | immutable custom `Library`, `CompositePlan`, public parameters, exposed pin, `ComponentInstance` | reusable grounded-resonator component |
-| [3. Publish and use a team-owned model](../examples/simple_resonator/02_model_user.qmd) | Let teammates use an owned model without restating topology or analysis choices | Parts 1–2 | target, optimization variables/objectives, default recipe, team façade, workspace, exact resolve | optimization Result through a reusable model boundary |
-| [4. Author an optimization-ready IPF Composite](../examples/ipf_optimization/01_model_author.qmd) | Assemble coupled transmission-line sections and calibrated lumped mappings once | Parts 1–3 | general RLGC, Q2D input, transmission lines, IDC, fan-out, `AffineMap`, `CoordinateRef`, PTC, quantity selectors, compiled diagram, explain | sealed IPF model and inspectable default request |
-| [5. Optimize once and reuse the winner](../examples/ipf_optimization/02_model_user.qmd) | Reuse one optimized ParameterSet across Direct and pump-off HB analysis | Parts 1–4 | override/extrapolation, best parameters, HB axes/drives/cases/truncation, case Results, display, report, resolve | optimization, winner Direct/HB Results, durable report |
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 01</p>
 
-Tutorial pages explain the API needed for their workflow. Deeper design
-reasoning lives under [Concept](concepts/physical-authority-and-reusable-composition.qmd),
-while exact signatures, formulas, invariants, failures, and evidence live under
+### [Author one primitive reflective circuit](../examples/tutorials/01_author_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I state every component and electrical connection once?
+
+<p class="course-card-outcome"><strong>Produces</strong> · An inspectable authoring schematic.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 02</p>
+
+### [Prepare and solve a Direct response](../examples/tutorials/02_solve_direct.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I request and inspect the circuit's one-Port response?
+
+<p class="course-card-outcome"><strong>Produces</strong> · Typed Direct S/Y/Z surfaces.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 03</p>
+
+### [Evaluate one loaded resonance](../examples/tutorials/03_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
+
+Which loaded diagonal resonance belongs to the authored resonator node?
+
+<p class="course-card-outcome"><strong>Produces</strong> · A typed diagonal-root Result.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 04</p>
+
+### [Tune and verify a primitive resonance](../examples/tutorials/04_optimize_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I tune the resonance to 6.2 GHz and verify the winner?
+
+<p class="course-card-outcome"><strong>Produces</strong> · An optimization Result, immutable best `ParameterSet`, and explicit readback.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 05</p>
+
+### [Report and resolve exact Results](../examples/tutorials/05_report_resolve.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I report explicit evidence and reload it after restart?
+
+<p class="course-card-outcome"><strong>Produces</strong> · A report and exact receipt-backed resolution path.</p>
+:::
+::::
+
+## Reusable composition
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 06</p>
+
+### [Create a custom component Library](../examples/tutorials/06_create_library.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I give a project its own explicit component catalog?
+
+<p class="course-card-outcome"><strong>Produces</strong> · One documented custom catalog singleton.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 07</p>
+
+### [Add a Composite factory](../examples/tutorials/07_add_composite_factory.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I stop rebuilding the same subsystem internals?
+
+<p class="course-card-outcome"><strong>Produces</strong> · One reusable grounded-LC `ComponentInstance`.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 08</p>
+
+### [Use a custom component in another Plan](../examples/tutorials/08_use_custom_component.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How does a reusable subsystem connect to a larger circuit?
+
+<p class="course-card-outcome"><strong>Produces</strong> · An outer Plan with a custom `ComponentInstance`.</p>
+:::
+::::
+
+## Advanced native workflows
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 09</p>
+
+### [Model an N-trace transmission line](../examples/tutorials/09_model_n_trace_line.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I preserve full RLGC matrices through π-section lowering?
+
+<p class="course-card-outcome"><strong>Produces</strong> · A complete compiled ladder diagram.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 10</p>
+
+### [Compensate nonloading probes](../examples/tutorials/10_compensate_probes.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I remove measurement shunts without deleting Port identity?
+
+<p class="course-card-outcome"><strong>Produces</strong> · A PTC view and load evidence.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 11</p>
+
+### [Transform and retain paired coordinates](../examples/tutorials/11_transform_retain.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I inspect one floating pair in automatic common/differential coordinates?
+
+<p class="course-card-outcome"><strong>Produces</strong> · One backend-neutral transformed view.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 12</p>
+
+### [Declare a pump-off HB request](../examples/tutorials/12_prepare_hb.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do axes, drives, cases, and truncation describe a zero-drive experiment?
+
+<p class="course-card-outcome"><strong>Produces</strong> · HB preflight and derived pump-off state.</p>
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+<p class="course-card-eyebrow">Lesson 13</p>
+
+### [Solve and compare Direct/HB responses](../examples/tutorials/13_compare_direct_hb.qmd){.stretched-link} {.course-card-title .unlisted}
+
+How do I compare the same selected network across both solvers?
+
+<p class="course-card-outcome"><strong>Produces</strong> · Symmetric Direct/HB S/Y/Z surfaces.</p>
+:::
+::::
+
+For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd).
+For exact signatures, equations, failures, and evidence, use
 [Contract](component-authoring.qmd).
-
-## Choose a different reading layer
-
-::: {.grid}
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Understand the design
-
-Read [Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd),
-then continue through the Concept sidebar. These pages explain the pressures
-behind Plans, immutable views, typed requests, and explicit ownership.
-:::
-
-::: {.g-col-12 .g-col-md-6 .border .rounded .p-3}
-### Review exact behavior
-
-Use the [Component Authoring Contract](component-authoring.qmd) and
-[V1 Runtime Contract](v1-runtime-contract.qmd) when a signature, physical
-boundary, failure mode, receipt field, or open Human decision must be exact.
-:::
-:::
-
-::: {.callout-important}
-## Human acceptance remains explicit
-
-Package import, CI, Quarto rendering, and review can reject malformed candidate
-bytes. They cannot accept SCNSim semantics or promote this development package
-to a stable product line.
-:::

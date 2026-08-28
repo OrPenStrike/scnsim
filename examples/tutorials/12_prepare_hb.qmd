@@ -1,0 +1,84 @@
+---
+title: "12 — Declare a pump-off HB request"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** separate HB axes, possible drives, named cases, and finite truncation.
+**Run:** prepare one exact pump-off case.
+**Inspect:** retained modes, signed frequencies, and derived Pump state.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Declare the experiment without driving it
+
+`PumpAxis` names a Fourier-lattice fundamental. `CurrentDrive` declares where
+a coefficient could be applied; the case owns its actual current. Omitting the
+drive from `currents={}` materializes exact zero, so this named case is pump
+off even though the request schema can support a later driven case.
+
+`SParameterTrace` names one ordered input/output projection of the complete HB
+response. Its mode tuples select Fourier-lattice channels rather than creating
+a second solve.
+
+```{python}
+#| id: prepare-pump-off-hb
+from fixtures.floating_probe import build_floating_probe_circuit
+from scnsim import (
+    CircuitRun,
+    CurrentDrive,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    PumpAxis,
+    ReductionPipeline,
+    SParameterTrace,
+    units as u,
+)
+
+fixture = build_floating_probe_circuit()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
+view = run.original.reduce(
+    ReductionPipeline()
+    .ptc(fixture.probe_plus, fixture.probe_minus)
+    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
+    .retain("feedline_in", "feedline_out", "qubit.differential")
+)
+pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+pump_drive = CurrentDrive(id="pump_drive", at=fixture.feedline_in, mode=(1,))
+hb_spec = HBSolveSpec(
+    pump_axes=(pump,),
+    drives=(pump_drive,),
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    cases=(HBCaseSpec(id="pump_off", currents={}),),
+    truncation=HBTruncation(
+        pump_harmonics=(3,),
+        modulation_harmonics=(1,),
+        three_wave_mixing=False,
+        four_wave_mixing=False,
+    ),
+    traces=(
+        SParameterTrace(
+            id="transmission",
+            input_port="feedline_in",
+            input_mode=(0,),
+            output_port="feedline_out",
+            output_mode=(0,),
+        ),
+    ),
+)
+```
+
+## Preflight the finite lattice
+
+Preflight lists actual tuples, signed physical frequencies, source bindings,
+case classification, and selected-network order without starting HB.
+
+```{python}
+#| id: explain-pump-off-hb
+run.explain(view, hb_spec).show()
+```
+
+[Previous](11_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](13_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)

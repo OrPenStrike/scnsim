@@ -105,7 +105,7 @@ exact public handoff with its Git provenance.
 
 | Object | Owns | Does not own |
 |---|---|---|
-| `CircuitPlan` | Components, parameters, electric nodes, canonical ground, logical Ports, and library identities | Execution state or results |
+| `CircuitPlan` | Components, parameters, electric nodes, canonical ground, logical Ports, and catalog identities | Execution state or results |
 | `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
 | typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
@@ -126,21 +126,17 @@ evidence. The model developer may expose `optimize_readout(target, workspace)`
 or another domain-named function; SCNSim does not prescribe those project
 names and does not own their Design Target.
 
-The first three Tutorials establish both layers in order:
-
-- [build the physical circuit from primitives](../examples/simple_resonator/01_model_author.qmd);
-- [package the repeated subsystem as a Composite](../examples/reusable_composite/01_composite_plan.qmd);
-- [publish and consume the team-owned model](../examples/simple_resonator/02_model_user.qmd); and
-- [team-owned façade](../examples/simple_resonator/circuit_model.py).
-
-The final two Tutorials apply the same boundary to a general N-trace RLGC
-Composite and multi-objective optimization:
-
-- [author and inspect the model](../examples/ipf_optimization/01_model_author.qmd);
-- [optimize and reuse the winner](../examples/ipf_optimization/02_model_user.qmd);
-- [custom Library](../examples/ipf_optimization/circuit_library.py); and
-- [model-owned façade](../examples/ipf_optimization/circuit_model.py) plus its
-  [terminal workflow](../examples/ipf_optimization/workflow.py).
+The native-API micro-course keeps those responsibilities visible instead of
+wrapping them in a project façade. Begin by
+[authoring a primitive Plan](../examples/tutorials/01_author_primitive.qmd),
+[optimizing its public parameter](../examples/tutorials/04_optimize_primitive.qmd),
+then [creating a custom Library](../examples/tutorials/06_create_library.qmd),
+[adding a Composite factory](../examples/tutorials/07_add_composite_factory.qmd),
+and [using](../examples/tutorials/08_use_custom_component.qmd) its component. The
+advanced lessons apply the same Run/Ref/Spec vocabulary directly to
+[RLGC](../examples/tutorials/09_model_n_trace_line.qmd),
+[PTC and transforms](../examples/tutorials/11_transform_retain.qmd), and
+[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd).
 
 This separation is a UX boundary, not a second Runtime. Both users ultimately
 receive the same typed SCNSim Results and exact receipt identities.
@@ -157,11 +153,11 @@ pins, public/anonymous electric nodes, the automatic canonical ground, logical
 Ports, and inductive coupling. The shortest authoring route is:
 
 ```python
-from scnsim import CircuitPlan, library as sc, units as u
+from scnsim import CircuitPlan, components, units as u
 
 plan = CircuitPlan(id="example")
 readout_cap = plan.add(
-    sc.capacitor(
+    components.capacitor(
         id="readout_cap",
         capacitance=92.0 * u.fF,
     )
@@ -1233,6 +1229,13 @@ $$
 \left[\mathbf D_R^{E\downarrow}(\widetilde\Omega_r)\right]_{rr}=0.
 $$
 
+The selected Ref determines what this diagonal means. Retaining one authored
+node eliminates its complement with `I_external = 0`; logical-Port loads and
+other uncompensated stamps remain in the effective operator. The resulting
+root is therefore loaded when those attachments are present. It is not the
+uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
+larger retained block.
+
 Required `root_hint` is a Quantity-valued approximate location used only to
 identify one unique simple root at the sealed baseline ParameterSet. It is not
 the returned root, an optimization target, a constraint, or an implicit search
@@ -1329,8 +1332,8 @@ Notebook consumer
   inspect the default + provide a Design Target + optional immutable override
 ```
 
-`ParameterSpec` never owns optimization bounds. A circuit-model façade instead
-exposes one clearly named model default:
+`ParameterSpec` never owns optimization bounds. A circuit-model package may
+instead expose one clearly named model default:
 
 ```python
 def build_default_optimization_spec(target) -> OptimizationSpec:
@@ -1358,7 +1361,7 @@ default_spec = model.build_default_optimization_spec(target)
 model.idc_finger_length.show()
 default_spec.show()
 default_spec.variable(model.idc_finger_length).bounds
-session.run.explain(session.optimization_view, default_spec).show()
+run.explain(optimization_view, default_spec).show()
 ```
 
 These surfaces answer different questions. `parameter.show()` reports the
@@ -1409,6 +1412,19 @@ optimization_spec = OptimizationSpec(
 )
 
 optimization = run.optimize(quantity_view, optimization_spec)
+```
+
+The best values remain an immutable `ParameterSet`. Reusing them is an
+explicitly new request and never mutates the Plan baseline or the selected
+Ref:
+
+```python
+winner_root = run.evaluate(
+    quantity_view,
+    readout_root,
+    parameters=optimization.best.parameters,
+)
+winner_root.frequency
 ```
 
 The model default is immutable. A consumer creates a `custom_spec` only when a
@@ -1484,12 +1500,11 @@ replayed deterministically rather than published as complete evidence.
 
 ### Tutorial realization {#ipf-optimization-example}
 
-The Contract does not duplicate a complete workflow. The linear Tutorial first
-[authors and inspects the IPF model](../examples/ipf_optimization/01_model_author.qmd),
-then [optimizes once and reuses the winner](../examples/ipf_optimization/02_model_user.qmd).
-Those pages apply the normative RLGC, ParameterRef, objective, Julia execution,
-Direct/HB, report, and resolve rules defined here without becoming a second
-contract authority.
+The Contract does not duplicate a complete workflow. The micro-course teaches
+[primitive optimization](../examples/tutorials/04_optimize_primitive.qmd),
+[general RLGC](../examples/tutorials/09_model_n_trace_line.qmd), and
+[Direct/HB comparison](../examples/tutorials/13_compare_direct_hb.qmd) as
+separate native-API operations without becoming a second contract authority.
 
 ### Relative objective normalization
 
@@ -1720,15 +1735,20 @@ Quantity-valued linear presentation.
 Reports name every source rather than selecting a latest result:
 
 ```python
+direct_report = run.build_report(
+    ReportSpec(inputs=(direct, evaluated))
+)
+
 report = run.build_report(
     ReportSpec(inputs=(direct, unbiased, dc_only, dc_pump_a_low))
 )
 ```
 
-Report assembly records the exact chosen inputs and may be Direct-only, contain
-one HB case, contain several operating cases, or present one exact optimization
-result and its candidate/failure evidence. Report assembly never changes which
-candidate is best or turns a Design Target into a pass/fail Gate.
+Report assembly records the exact chosen inputs and may combine a Direct
+response with a typed quantity, contain one HB case, contain several operating
+cases, or present one exact optimization result and its candidate/failure
+evidence. Report assembly never changes which candidate is best or turns a
+Design Target into a pass/fail Gate.
 
 The Direct/HB comparison operation is intentionally not named yet. Its public
 shape depends on the unresolved comparison-grid decision and must not imply an

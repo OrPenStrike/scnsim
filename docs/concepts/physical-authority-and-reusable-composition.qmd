@@ -17,13 +17,24 @@ author can improve its internal expansion. At the same time, every consumer,
 compiler, diagram, and backend must refer to one physical circuit rather than
 to several nearly equivalent descriptions.
 
-## Selected abstraction
+## CircuitPlan is the physical authority {#plan-as-physical-authority}
 
-SCNSim gives a `CircuitPlan` sole physical authority. Immutable Libraries
-provide components with attributable source identity, and a Composite is one
-component that deliberately publishes only the pins, parameters, and
-observation coordinates intended for its consumer. Its children are expansion
-evidence, not automatically public circuit API.
+SCNSim gives a `CircuitPlan` sole physical authority. Immutable component
+catalogs provide instances with attributable source identity.
+
+## Library names catalog ownership
+
+`scnsim.components` owns the built-in catalog. A project subclasses `Library`
+and publishes a separate singleton containing only the reusable factories it
+owns. Custom factories call the built-in catalog explicitly for primitive
+children, so provenance does not depend on an ambient registry or inherited
+factory namespace.
+
+## CompositePlan is the reuse boundary {#composite-as-reuse-boundary}
+
+A Composite is one component that deliberately publishes only the pins,
+parameters, and observation coordinates intended for its consumer. Its
+children are expansion evidence, not automatically public circuit API.
 
 This makes composition a boundary, not a shorthand for leaking a component's
 internal topology. A diagram or compiled expansion can explain that authority,
@@ -34,7 +45,7 @@ but neither becomes another circuit definition.
 The boundary lets a model author reuse a Composite without forcing every
 Notebook to know its child IDs, wiring, or calibration fan-out. It also means a
 consumer can identify the exact component source and physical Plan behind an
-analysis, even when the model is assembled from built-in and custom Libraries.
+analysis, even when the model is assembled from built-in and custom catalogs.
 
 ## Intentionally not owned
 

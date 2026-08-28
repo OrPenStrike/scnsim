@@ -4,11 +4,19 @@ project:
   render:
     - README.md
     - docs/index.qmd
-    - examples/simple_resonator/01_model_author.qmd
-    - examples/reusable_composite/01_composite_plan.qmd
-    - examples/simple_resonator/02_model_user.qmd
-    - examples/ipf_optimization/01_model_author.qmd
-    - examples/ipf_optimization/02_model_user.qmd
+    - examples/tutorials/01_author_primitive.qmd
+    - examples/tutorials/02_solve_direct.qmd
+    - examples/tutorials/03_evaluate_quantity.qmd
+    - examples/tutorials/04_optimize_primitive.qmd
+    - examples/tutorials/05_report_resolve.qmd
+    - examples/tutorials/06_create_library.qmd
+    - examples/tutorials/07_add_composite_factory.qmd
+    - examples/tutorials/08_use_custom_component.qmd
+    - examples/tutorials/09_model_n_trace_line.qmd
+    - examples/tutorials/10_compensate_probes.qmd
+    - examples/tutorials/11_transform_retain.qmd
+    - examples/tutorials/12_prepare_hb.qmd
+    - examples/tutorials/13_compare_direct_hb.qmd
     - docs/concepts/physical-authority-and-reusable-composition.qmd
     - docs/concepts/compilation-coordinates-and-network-views.qmd
     - docs/concepts/requests-execution-and-result-ownership.qmd
@@ -50,16 +58,38 @@ website:
       contents:
         - text: "Course map"
           href: docs/index.qmd
-        - text: "1. Build from primitives"
-          href: examples/simple_resonator/01_model_author.qmd
-        - text: "2. Package a Composite"
-          href: examples/reusable_composite/01_composite_plan.qmd
-        - text: "3. Publish a team model"
-          href: examples/simple_resonator/02_model_user.qmd
-        - text: "4. Author an IPF Composite"
-          href: examples/ipf_optimization/01_model_author.qmd
-        - text: "5. Optimize and reuse"
-          href: examples/ipf_optimization/02_model_user.qmd
+        - section: "Author and analyze"
+          contents:
+            - text: "1. Author a primitive circuit"
+              href: examples/tutorials/01_author_primitive.qmd
+            - text: "2. Prepare and solve Direct"
+              href: examples/tutorials/02_solve_direct.qmd
+            - text: "3. Evaluate a loaded resonance"
+              href: examples/tutorials/03_evaluate_quantity.qmd
+            - text: "4. Tune and verify a resonance"
+              href: examples/tutorials/04_optimize_primitive.qmd
+            - text: "5. Report and resolve"
+              href: examples/tutorials/05_report_resolve.qmd
+        - section: "Reusable composition"
+          contents:
+            - text: "6. Create a custom Library"
+              href: examples/tutorials/06_create_library.qmd
+            - text: "7. Add a Composite factory"
+              href: examples/tutorials/07_add_composite_factory.qmd
+            - text: "8. Use a custom component"
+              href: examples/tutorials/08_use_custom_component.qmd
+        - section: "Advanced native workflows"
+          contents:
+            - text: "9. Model an N-trace line"
+              href: examples/tutorials/09_model_n_trace_line.qmd
+            - text: "10. Compensate probes"
+              href: examples/tutorials/10_compensate_probes.qmd
+            - text: "11. Transform coordinates"
+              href: examples/tutorials/11_transform_retain.qmd
+            - text: "12. Prepare pump-off HB"
+              href: examples/tutorials/12_prepare_hb.qmd
+            - text: "13. Compare Direct/HB"
+              href: examples/tutorials/13_compare_direct_hb.qmd
     - id: concept
       title: "Concept"
       style: "floating"

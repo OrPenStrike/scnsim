@@ -1,0 +1,82 @@
+---
+title: "5 — Report and resolve exact Results"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** aggregate explicit Results and reload an exact request after restart.
+**Run:** build a report, then resolve the same quantity request.
+**Inspect:** durable request/Result identity rather than “latest.”
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Report only Results you already hold
+
+The report request names exact Result objects. It does not solve, search a
+workspace for “latest,” or invent an acceptance decision.
+
+```{python}
+#| id: build-explicit-report
+from fixtures.primitive_resonator import build_primitive_resonator
+from scnsim import (
+    CircuitRun,
+    DiagonalRootSpec,
+    DirectSolveSpec,
+    ReductionPipeline,
+    ReportSpec,
+    units as u,
+)
+
+workspace = "workspaces/primitive-course"
+fixture = build_primitive_resonator()
+run = CircuitRun(plan=fixture.plan, workspace=workspace)
+direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
+)
+direct = run.solve(run.original, direct_spec)
+
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain(fixture.resonator_node)
+)
+root_spec = DiagonalRootSpec(
+    coordinate=fixture.resonator_node,
+    root_hint=6.0 * u.GHz,
+)
+root = run.evaluate(quantity_view, root_spec)
+report = run.build_report(ReportSpec(inputs=(direct, root)))
+report.show()
+```
+
+## Reconstruct the exact request after restart
+
+A new Run may resolve the same Plan, Ref, Spec, parameters, and workspace
+identity. `resolve()` never executes and never falls back to another receipt.
+
+```{python}
+#| id: resolve-exact-root
+fixture_after_restart = build_primitive_resonator()
+run_after_restart = CircuitRun(
+    plan=fixture_after_restart.plan,
+    workspace=workspace,
+)
+quantity_view_after_restart = run_after_restart.original.reduce(
+    ReductionPipeline().retain(fixture_after_restart.resonator_node)
+)
+root_spec_after_restart = DiagonalRootSpec(
+    coordinate=fixture_after_restart.resonator_node,
+    root_hint=6.0 * u.GHz,
+)
+resolved = run_after_restart.resolve(
+    quantity_view_after_restart,
+    root_spec_after_restart,
+)
+resolved.show()
+```
+
+A different Spec, ParameterSet, Plan, Ref, or workspace is a different request
+and fails closed if its exact receipt is absent. `resolve()` never substitutes
+the most recent compatible-looking Result.
+
+[Previous](04_optimize_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: create a custom Library](06_create_library.qmd) · [Concept: exact Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

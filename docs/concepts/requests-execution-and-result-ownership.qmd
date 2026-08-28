@@ -17,7 +17,7 @@ different questions share a model, and when evidence is revisited later.
 Hidden mutable state such as a current view, latest result, or implicit solve
 would make those situations ambiguous.
 
-## Selected abstraction
+## Selected abstraction {#run-request-result-ownership}
 
 `CircuitRun` owns the sealed Plan's runtime context, workspace, requests,
 receipts, and terminal execution. A Ref and Spec describe one exact question;
@@ -34,9 +34,9 @@ an execution job, numerical analysis, or workspace write.
 
 The model can support a response surface, a physical quantity, and an
 optimization independently without one request changing the meaning of
-another. Exact receipt-backed identity also lets a team façade reproduce an
-answer across processes instead of depending on in-memory caches or a
-Notebook's execution order.
+another. Exact receipt-backed identity also lets a consumer reconstruct and
+resolve a request across processes instead of depending on in-memory caches or
+a Notebook's execution order.
 
 ## Intentionally not owned
 

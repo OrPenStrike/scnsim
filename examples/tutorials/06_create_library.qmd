@@ -1,0 +1,50 @@
+---
+title: "6 — Create a custom component Library"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** give one project its own explicit component catalog.
+**Run:** subclass `Library` and create its module-level singleton.
+**Inspect:** the catalog's Python documentation surface.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Name the catalog your project owns
+
+`scnsim.components` is the built-in catalog. A team that owns reusable
+project components should publish a different, clearly named Python module
+rather than register factories in global Notebook state. `Library` is the
+base class for that custom catalog; it intentionally does not inherit the
+built-in factories.
+
+SCNSim derives catalog identity from the concrete subclass and its installed
+or source provenance. The author supplies no manual identity string.
+
+```{python}
+#| id: create-custom-library
+from scnsim import Library
+
+
+class ResonatorLibrary(Library):
+    """Project-specific reusable resonator components."""
+
+
+components = ResonatorLibrary()
+```
+
+## Inspect before adding a factory
+
+Python's native documentation tools are enough to inspect this empty catalog.
+It has a stable type and docstring but no custom component factory yet; the
+next lesson adds the first one.
+
+```{python}
+#| id: inspect-custom-library
+help(ResonatorLibrary)
+help(components)
+```
+
+[Previous](05_report_resolve.qmd) · [Course map](../../docs/index.qmd) · [Next: add a Composite factory](07_add_composite_factory.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)

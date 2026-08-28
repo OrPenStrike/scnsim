@@ -60,11 +60,29 @@ jobs:
           from importlib.metadata import version
 
           import scnsim
-          from scnsim import CircuitPlan, ScaffoldUnavailableError
+          from scnsim import (
+              CircuitPlan,
+              Library,
+              ScaffoldUnavailableError,
+              components,
+          )
 
           assert scnsim.__version__ == version("scnsim")
+          assert "components" in scnsim.__all__
+          assert "library" not in scnsim.__all__
+          assert not hasattr(scnsim, "library")
+          assert isinstance(components, Library)
+          assert components is scnsim.components
+          assert inspect.getdoc(Library)
+          assert inspect.signature(components.capacitor).return_annotation == "ComponentInstance"
           assert inspect.signature(CircuitPlan).parameters["id"].kind.name == "KEYWORD_ONLY"
           assert inspect.getdoc(CircuitPlan)
+          try:
+              components.capacitor(id="ci-cap", capacitance=object())
+          except ScaffoldUnavailableError:
+              pass
+          else:
+              raise SystemExit("component factories must remain fail-fast")
           try:
               CircuitPlan(id="ci-probe")
           except ScaffoldUnavailableError:
@@ -162,7 +180,7 @@ jobs:
 
           sources = sorted(Path("examples").rglob("*.qmd"))
           notebooks = sorted(Path("examples").rglob("*.ipynb"))
-          assert len(sources) == len(notebooks) == 5, (sources, notebooks)
+          assert sources, "no tutorial QMD sources found"
           assert [path.with_suffix(".ipynb") for path in sources] == notebooks
 
           for source, artifact in zip(sources, notebooks):

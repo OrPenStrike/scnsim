@@ -9,6 +9,7 @@ $sidebar-bg: #f7f9fc;
 $sidebar-fg: #243044;
 $border-color: #d8e1ec;
 $code-bg: #eaf0f7;
+$code-block-bg: #edf2f7;
 $code-color: #193326;
 $callout-color-note: #2f80d1;
 
@@ -28,6 +29,9 @@ $mermaid-label-fg-color: #243044;
   --scq-text-secondary: #5b677a;
   --scq-line-subtle: #d8e1ec;
   --scq-accent: #2f80d1;
+  --scq-card-shadow: 0 4px 14px rgba(36, 48, 68, 0.08);
+  --scq-card-shadow-hover: 0 8px 22px rgba(36, 48, 68, 0.12);
+  --scq-focus-ring: rgba(47, 128, 209, 0.24);
   --mermaid-fg-color--lighter: #9eb3ca;
   --mermaid-fg-color--lightest: #d8e6f4;
 }

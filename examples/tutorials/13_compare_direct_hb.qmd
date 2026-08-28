@@ -1,0 +1,103 @@
+---
+title: "13 — Solve and compare Direct/HB responses"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** solve the same selected network with Direct and pump-off HB.
+**Run:** materialize both response Results.
+**Inspect:** symmetric S/Y/Z surfaces and named-case lookup.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Solve the same view twice
+
+Direct and HB consume the same backend-neutral lineage. Their Specs differ
+because HB also declares axes, drives, cases, and truncation; their public
+selected-network S/Y/Z surfaces remain symmetric.
+
+```{python}
+#| id: solve-direct-and-hb
+from fixtures.floating_probe import build_floating_probe_circuit
+from scnsim import (
+    CircuitRun,
+    CurrentDrive,
+    DirectSolveSpec,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    PumpAxis,
+    ReductionPipeline,
+    SParameterTrace,
+    units as u,
+)
+
+fixture = build_floating_probe_circuit()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
+view = run.original.reduce(
+    ReductionPipeline()
+    .ptc(fixture.probe_plus, fixture.probe_minus)
+    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
+    .retain("feedline_in", "feedline_out", "qubit.differential")
+)
+frequencies = [5.5, 6.0, 6.5] * u.GHz
+direct_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(),
+    output_port="feedline_out",
+    output_mode=(),
+)
+direct = run.solve(
+    view,
+    DirectSolveSpec(frequencies=frequencies, traces=(direct_trace,)),
+)
+
+pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+pump_drive = CurrentDrive(id="pump_drive", at=fixture.feedline_in, mode=(1,))
+hb_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(0,),
+    output_port="feedline_out",
+    output_mode=(0,),
+)
+hb = run.solve(
+    view,
+    HBSolveSpec(
+        pump_axes=(pump,),
+        drives=(pump_drive,),
+        frequencies=frequencies,
+        cases=(HBCaseSpec(id="pump_off", currents={}),),
+        truncation=HBTruncation(
+            pump_harmonics=(3,),
+            modulation_harmonics=(1,),
+            three_wave_mixing=False,
+            four_wave_mixing=False,
+        ),
+        traces=(hb_trace,),
+    ),
+)
+```
+
+## Compare only materialized Results
+
+Case lookup uses the user-declared ID. `magnitude` changes presentation only;
+it does not recompute, clip exact zeros, or interpolate either result.
+
+```{python}
+#| id: compare-direct-and-hb
+pump_off = hb.cases["pump_off"]
+direct.traces["transmission"].show(magnitude="db")
+pump_off.traces["transmission"].show(magnitude="db")
+direct.s.view
+pump_off.s.view
+direct.y.view
+pump_off.y.view
+direct.z.view
+pump_off.z.view
+```
+
+[Previous](12_prepare_hb.qmd) · [Course map](../../docs/index.qmd) · [Concept: selected-network symmetry](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network) · [Contract](../../docs/v1-runtime-contract.qmd)

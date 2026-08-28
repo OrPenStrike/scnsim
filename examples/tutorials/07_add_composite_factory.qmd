@@ -1,0 +1,52 @@
+---
+title: "7 — Add a Composite factory"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** package repeated private topology behind one catalog factory.
+**Run:** define a grounded parallel-LC `CompositePlan`.
+**Inspect:** the resulting component's public parameters and pin.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Build the topology once inside the factory
+
+Rebuilding the same parallel capacitor and inductor in every outer Plan is
+noisy and exposes internals that consumers should not wire directly. The
+custom `Library` from lesson 6 therefore gains one instance method.
+
+Inside that method, `CompositePlan` owns the private construction graph.
+`ParameterSpec` declares the two public physical parameters, while the
+built-in `scnsim.components` catalog creates the primitive children. Internal
+nodes and ground stay hidden until `expose_pin()` deliberately publishes the
+one supported terminal. `build()` returns an immutable `ComponentInstance`.
+
+The adjacent source below is the one canonical catalog implementation; the
+Tutorial includes it directly instead of maintaining a copied code sample.
+
+```{python}
+#| id: define-resonator-composite
+{{< include fixtures/resonator_library.py >}}
+```
+
+## Create the component through its public surface
+
+The module exports one singleton named `components`. Its custom factory exposes
+only the two declared values and the terminal; the capacitor, inductor,
+internal node, and ground group remain implementation evidence.
+
+```{python}
+#| id: create-custom-composite
+resonator = components.parallel_linear_lc_resonator(
+    id="resonator",
+    capacitance=110.0 * u.fF,
+    inductance=5.8 * u.nH,
+)
+resonator.parameter("capacitance").show()
+resonator.pin("terminal")
+```
+
+[Previous](06_create_library.qmd) · [Course map](../../docs/index.qmd) · [Next: use the custom component](08_use_custom_component.qmd) · [Concept: reusable composition](../../docs/concepts/physical-authority-and-reusable-composition.qmd#composite-as-reuse-boundary)

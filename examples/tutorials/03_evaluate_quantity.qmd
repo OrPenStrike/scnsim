@@ -1,0 +1,57 @@
+---
+title: "3 — Evaluate one loaded resonance"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** choose the node whose loaded diagonal resonance is required.
+**Run:** evaluate one diagonal-root branch.
+**Inspect:** root frequency, linewidth, and slope evidence.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Identify the intended root branch
+
+Unlike the Port response in lesson 2, this question is about the authored
+resonator node. `retain(fixture.resonator_node)` keeps that coordinate in this
+quantity; the other coordinates receive zero external current while SCNSim
+evaluates it. The 50-ohm Port already placed in the circuit remains, so
+`DiagonalRootSpec` finds a loaded root.
+
+This quantity is neither the uncoupled LC formula nor the minimum of lesson
+2's S response. `root_hint` selects the baseline root branch near 6.0 GHz; it
+is not the answer, target, or search window.
+
+```{python}
+#| id: evaluate-diagonal-root
+from fixtures.primitive_resonator import build_primitive_resonator
+from scnsim import CircuitRun, DiagonalRootSpec, ReductionPipeline, units as u
+
+fixture = build_primitive_resonator()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain(fixture.resonator_node)
+)
+root_spec = DiagonalRootSpec(
+    coordinate=fixture.resonator_node,
+    root_hint=6.0 * u.GHz,
+)
+root = run.evaluate(quantity_view, root_spec)
+```
+
+## Read the typed quantity Result
+
+Unlike `solve()`, `evaluate()` computes only the requested physical quantity
+and its branch evidence.
+
+```{python}
+#| id: inspect-diagonal-root
+root.frequency
+root.linewidth
+root.slope
+root.show()
+```
+
+[Previous](02_solve_direct.qmd) · [Course map](../../docs/index.qmd) · [Next: tune and verify a primitive resonance](04_optimize_primitive.qmd) · [Concept: request and Result ownership](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

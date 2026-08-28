@@ -1,0 +1,68 @@
+---
+title: "2 — Prepare and solve a Direct response"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+::: {.callout-note title="Lesson focus" appearance="simple"}
+**Learn:** describe one Port response before executing it.
+**Run:** prepare and solve one Direct S/Y/Z request.
+**Inspect:** the complete one-Port S/Y/Z surfaces.
+**Status:** `CONVERGING` scaffold.
+:::
+
+## Describe the response you need
+
+The adjacent [construction fixture](fixtures/primitive_resonator.py) only
+repeats lesson 1's Plan and handles. `CircuitRun` owns execution and
+`run.original` is its zero-reduction [network view](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage).
+Because this Plan has one logical Port, the original view already means its
+complete one-Port response. `DirectSolveSpec` requests S/Y/Z on an explicit
+frequency grid; it does not require a named trace.
+
+The workspace stores exact request receipts and artifacts. It is not a
+mutable “latest result” directory, and independent requests may coexist in it.
+
+```{python}
+#| id: prepare-direct-response
+from fixtures.primitive_resonator import build_primitive_resonator
+from scnsim import (
+    CircuitRun,
+    DirectSolveSpec,
+    units as u,
+)
+
+fixture = build_primitive_resonator()
+run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
+direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
+)
+```
+
+::: {.callout-tip title="Optional: inspect before solving" appearance="simple"}
+`run.explain()` returns an `ExplanationResult` from deterministic preflight
+without solving or writing a workspace Result. Use it when you want to inspect
+the resolved request first.
+
+```python
+run.explain(run.original, direct_spec).show()
+```
+:::
+
+## Solve and inspect the response
+
+`run.solve()` materializes a typed `DirectSolveResult`; it does not store a
+mutable current Result on the Run. `direct.s`, `direct.y`, and `direct.z`
+describe the same selected network in three matrix families. `show()` only
+presents materialized data and never solves again.
+
+```{python}
+#| id: solve-direct-response
+direct = run.solve(run.original, direct_spec)
+direct.s.show(magnitude="db")
+direct.y.view
+direct.z.view
+```
+
+[Previous](01_author_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: evaluate a quantity](03_evaluate_quantity.qmd) · [Concept: Run, request, Result](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

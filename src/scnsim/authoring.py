@@ -5,8 +5,11 @@ components, public or internal electrical nodes, logical Port components,
 parameters, and inductive couplings in one :class:`CircuitPlan`.  Solver
 requests and results belong to ``scnsim.runtime`` instead.
 
-All call bodies fail intentionally.  The classes and signatures are the
-reviewable V1 UX scaffold, not a permissive partial circuit compiler.
+Only custom ``Library`` construction is real so a package can declare and
+inspect its catalog normally.  Component factories, Plans, compilation, and
+all physical authoring actions still fail intentionally.  The remaining
+classes and signatures are the reviewable V1 UX scaffold, not a permissive
+partial circuit compiler.
 """
 
 from __future__ import annotations
@@ -321,31 +324,84 @@ class CompositePlan:
         unavailable("CompositePlan.build")
 
 
-class Library:
-    """Immutable catalog that creates exact-identity component instances.
+class _LibraryMeta(type):
+    """Keep every catalog subclass free of mutable instance storage."""
 
-    SCNSim exports one built-in object as ``scnsim.library``.  A custom Python
-    package may export another immutable ``Library`` object, but there is no
-    mutable Notebook-global registry or string discovery mechanism.
+    def __new__(
+        cls,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, object],
+        **kwargs: object,
+    ) -> _LibraryMeta:
+        if bases and any(not isinstance(base, _LibraryMeta) for base in bases):
+            raise TypeError("Library subclasses cannot use non-Library bases")
+        declared_slots = namespace.get("__slots__", ())
+        if declared_slots not in ((), []):
+            raise TypeError("Library subclasses cannot declare instance state")
+        namespace["__slots__"] = ()
+        return super().__new__(cls, name, bases, namespace, **kwargs)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Reject changes to a catalog's declared factory surface."""
+
+        raise AttributeError("Library catalog types are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        """Reject deletion from a catalog's declared factory surface."""
+
+        raise AttributeError("Library catalog types are immutable")
+
+
+class Library(metaclass=_LibraryMeta):
+    """Base class for one immutable, project-owned component catalog.
+
+    Subclass this type, define only the project's custom instance factories,
+    and export one normally constructed module-level singleton.  SCNSim binds
+    catalog provenance automatically from the subclass module and qualified
+    class; component creation will additionally require exact distribution or
+    source identity.  Callers never supply identity metadata or mutate a
+    Notebook-global registry.  A catalog may inherit only from Library-derived
+    bases so multiple inheritance cannot reintroduce mutable instance state.
+
+    Built-in factories are deliberately absent from this base class.  They
+    remain available on the separate :data:`scnsim.components` singleton, so
+    a custom factory uses that object explicitly when composing primitives.
+    Constructing a catalog is real scaffold behavior; creating any component
+    remains unavailable until the component-authoring runtime exists.
     """
 
     def __init__(self) -> None:
-        unavailable("Library construction")
+        """Create a catalog whose identity is derived from its concrete class."""
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Reject mutable catalog state, including state added by subclasses."""
+
+        raise AttributeError("Library catalogs are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        """Reject deletion from an immutable catalog."""
+
+        raise AttributeError("Library catalogs are immutable")
+
+
+class _BuiltinComponents(Library):
+    """Concrete implementation behind the public built-in ``components``."""
 
     def resistor(self, *, id: str, resistance: object) -> ComponentInstance:
         """Declare a resistor oriented from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.resistor")
+        unavailable("components.resistor")
 
     def capacitor(self, *, id: str, capacitance: object) -> ComponentInstance:
         """Declare a capacitor oriented from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.capacitor")
+        unavailable("components.capacitor")
 
     def inductor(self, *, id: str, inductance: object) -> ComponentInstance:
         """Declare an inductor from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.inductor")
+        unavailable("components.inductor")
 
     def josephson_junction(
         self,
@@ -362,7 +418,7 @@ class Library:
         registry needed to create that physical default does not exist yet.
         """
 
-        unavailable("Library.josephson_junction")
+        unavailable("components.josephson_junction")
 
     def transmission_line(
         self,
@@ -374,7 +430,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a uniform N-conductor RLGC pi ladder from one typed input."""
 
-        unavailable("Library.transmission_line")
+        unavailable("components.transmission_line")
 
     def interdigitated_capacitor(
         self,
@@ -386,7 +442,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare the complete C1G/C2G/C12 two-terminal lumped model."""
 
-        unavailable("Library.interdigitated_capacitor")
+        unavailable("components.interdigitated_capacitor")
 
     def symmetric_squid(
         self,
@@ -398,7 +454,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a finite-loop SQUID from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.symmetric_squid")
+        unavailable("components.symmetric_squid")
 
     def grounded_parallel_linear_lc_resonator(
         self,
@@ -409,7 +465,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a grounded parallel-C/linear-L resonator with pin ``terminal``."""
 
-        unavailable("Library.grounded_parallel_linear_lc_resonator")
+        unavailable("components.grounded_parallel_linear_lc_resonator")
 
     def floating_parallel_linear_lc_resonator(
         self,
@@ -422,7 +478,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a floating linear resonator from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.floating_parallel_linear_lc_resonator")
+        unavailable("components.floating_parallel_linear_lc_resonator")
 
     def grounded_parallel_single_junction_resonator(
         self,
@@ -434,7 +490,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a grounded C/JJ resonator with pin ``terminal`` and Cj."""
 
-        unavailable("Library.grounded_parallel_single_junction_resonator")
+        unavailable("components.grounded_parallel_single_junction_resonator")
 
     def floating_parallel_single_junction_resonator(
         self,
@@ -448,7 +504,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a floating C/JJ resonator from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.floating_parallel_single_junction_resonator")
+        unavailable("components.floating_parallel_single_junction_resonator")
 
     def grounded_parallel_symmetric_squid_resonator(
         self,
@@ -461,7 +517,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a grounded SQUID resonator with pin ``terminal`` and finite loop."""
 
-        unavailable("Library.grounded_parallel_symmetric_squid_resonator")
+        unavailable("components.grounded_parallel_symmetric_squid_resonator")
 
     def floating_parallel_symmetric_squid_resonator(
         self,
@@ -476,7 +532,7 @@ class Library:
     ) -> ComponentInstance:
         """Declare a floating SQUID resonator from ``terminal_1`` to ``terminal_2``."""
 
-        unavailable("Library.floating_parallel_symmetric_squid_resonator")
+        unavailable("components.floating_parallel_symmetric_squid_resonator")
 
 
 class CircuitPlan:
@@ -565,5 +621,5 @@ class CircuitPlan:
         unavailable("CircuitPlan.couple_inductive")
 
 
-library = object.__new__(Library)
+components = _BuiltinComponents()
 """The immutable built-in SCNSim component catalog."""
