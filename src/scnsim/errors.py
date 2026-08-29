@@ -136,7 +136,7 @@ class DirectResponseFormationError(SCNSimExecutionError):
 
 
 class InvalidCandidatePhysicalParameter(SCNSimExecutionError):
-    """One optimization candidate produced an invalid primitive parameter."""
+    """A candidate failed affine-support or mapped-physical validation."""
 
     kind = "invalid_candidate_physical_parameter"
 

@@ -171,6 +171,16 @@ then verifies the complete chain before reuse or `resolve()`:
   `optimize_direct` to `optimization`, and `evaluate_direct` to exactly one of
   `diagonal_root`, `hybridized_pole`, `transfer_zero`,
   `residue_normalized_coupling`, `response_element`, or `operator`;
+- every successful HB case has an ordered `state_node_map` whose length equals
+  the `states` artifact's second axis, whose `state_index` values equal their
+  zero-based array positions, and whose `compiler_node_id` values reproduce the
+  compiler node order and the state artifact's node-axis values;
+- each `state_node_map.source` resolves against the sealed Plan hash: a
+  `plan_node` names one Plan node with exact `public` or `port_promoted`
+  visibility, a `component_private` names one frozen snapshot node by
+  segment-array `component_path` plus `private_node_id`, and an
+  `anonymous_internal` carries only the endpoint-derived full-digest
+  `internal-<sha256>` audit ID;
 - the receipt artifact list exactly matches the Result catalogs and manifest
   hashes before any artifact is opened.
 
@@ -252,14 +262,17 @@ metadata above, unit `siemens / second`, and chunk policy
 
 A successful HB case with minimum-six-digit ordinal text stores selected
 `s`, `y`, `z`, `backend_native_s`, and `backend_native_z` groups beneath
-`artifacts/cases/<case-ordinal-text>/`. Its public `states` artifact is
+`artifacts/cases/<case-ordinal-text>/`. Its `states` operating-point evidence is
 `artifacts/cases/<case-ordinal-text>/states.zarr` with corresponding
 `.manifest.json`, complex `weber` values, and chunk policy
 `single_complete_array_v1`. Those values are SCNSim `exp(-i omega t)`
 node-flux coefficients exposed through the case's `.states` property; the
 complex artifact uses the same root-plus-real/imag layout at its declared state
-shape. Raw backend state and normalization remain reconciliation evidence only;
-they are not a competing public array artifact.
+shape. The adapter derives them from the fixed backend $x_{\mathrm{JC}}^+$ as
+$\Phi^- = \varphi_0\operatorname{conj}(x_{\mathrm{JC}}^+)$ while
+`returnnodeflux=false`; raw backend state and normalization remain
+reconciliation evidence only, and no second node-flux array is requested or
+published.
 
 For $M_p$ ordered operating-point modes and $N_n$ compiled node coordinates,
 both state datasets use axes `(pump_mode, node_coordinate)` and exact metadata:
@@ -267,6 +280,17 @@ both state datasets use axes `(pump_mode, node_coordinate)` and exact metadata:
 ```text
 {"chunks":[Mp,Nn],"compressor":null,"dimension_separator":".","dtype":"<f8","fill_value":null,"filters":null,"order":"C","shape":[Mp,Nn],"zarr_format":2}
 ```
+
+The successful `hbCaseOutcome` carries the required `state_node_map`; a failed
+outcome carries neither it nor artifacts. The map is canonical Result JSON, not
+a separate artifact or selector registry. Its bytes therefore enter the
+`result.json` SHA-256 named by the success receipt, while the states manifest
+and artifact hashes independently bind the array bytes. Cross-document
+validation joins those chains by requiring the map, compiler basis, state node
+axis, sealed Plan or Composite snapshot source, and array shape to agree.
+Neither the axis kind nor a map entry creates a selectable state type:
+`NetworkViewRef`, `retain()`, `transform_pair()`, and `CurrentDrive.at` keep
+their existing closed selectors, and anonymous Internal nodes remain audit-only.
 
 Frequency uses chunk shape
 `[c(F)]`; matrix artifacts use `[c(F), N, N]`. Frequency has unit
@@ -333,6 +357,24 @@ cannot reconstruct the raw bits during retry because the package box transform
 is many-to-one. Generation ledgers carry no serialized private Julia optimizer
 object; deterministic replay is defined by the optimization implementation
 contract.
+
+Every optimization variable serializes immutable `model_default_bounds`, a
+nullable `consumer_override_bounds`, and resolved `lower`/`upper` Quantities.
+The resolved interval equals the override when present and otherwise the model
+default. `optimizationSpec.allow_extrapolation` is sorted and unique by
+`ParameterRef` identity and contains only active variables. Both bound roles,
+resolved values, and the authorization list enter request identity. Candidate
+and winner ParameterSets require empty `allow_extrapolation`; candidate
+`extrapolation_evidence` uses only `none` or `optimization_spec`, while ordinary
+receipt evidence uses only `parameter_set`. Cross-document validation checks
+each evidence entry against the exact affine consumer, support interval,
+resolved input value, side, nonnegative distance, and owning request.
+It also requires exactly one entry for every out-of-support fan-out and no entry
+for an in-support fan-out, including `none` evidence for a rejected candidate.
+The entry's distance has the input/support dimensionality and equals
+`support_lower - input_value` for `side=lower` or
+`input_value - support_upper` for `side=upper` in coherent SI; it must be
+strictly positive.
 
 In population-column order, the canonical `[n, lambda]` raw matrix hashes to
 `raw_optimizer_population_sha256`, and the matching transformed unit-box matrix

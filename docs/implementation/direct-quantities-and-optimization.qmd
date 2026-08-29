@@ -68,11 +68,15 @@ factorization, and root nodes. A Direct response and quantity remain distinct
 public requests, but objectives within one optimization candidate share their
 common dependency graph.
 
-The first candidate accepts only an original one-Port Direct view with no named
-traces. Its frequency grid is non-empty, one-dimensional, finite, strictly
-increasing, duplicate-free, and positive. A complete Result always contains
-finite frequency, S, Y, and Z arrays. Exact-open one-Port algebra is checked
-below this Result boundary because its Z is not finite.
+The `dev3` restriction to an original one-Port Direct view with no named traces
+belongs only to `solve_direct`. It is neither a general View law nor an
+`optimize_direct` restriction: `dev3` optimization may evaluate
+`DiagonalRootSpec.frequency` and `.linewidth` on any retained View supported by
+the diagonal-root procedure. A `dev3` Direct-response frequency grid is
+non-empty, one-dimensional, finite, strictly increasing, duplicate-free, and
+positive. A complete response Result always contains finite frequency, S, Y,
+and Z arrays. Exact-open one-Port algebra is checked below this Result boundary
+because its Z is not finite.
 
 Optimization converts finite physical bounds to unit-interval coordinates,
 evaluates declared normalized objectives, and keeps the CMA-ES loop entirely
@@ -96,17 +100,52 @@ $\widehat x=\widehat x_{\min}
 (\widehat x_{\max}/\widehat x_{\min})^z$. Invalid bounds or baseline fail
 before an attempt.
 
+Each variable's schema keeps three distinct roles:
+`model_default_bounds` is the immutable original interval,
+`consumer_override_bounds` is either `null` or the consumer interval, and
+resolved `lower` and `upper` are the bounds that execute. Repeated
+`with_variable_overrides()` calls always retain the same original model
+defaults, replace overrides for the named variables, and preserve prior
+overrides for variables not named by that call. A provided
+`allow_extrapolation` collection is a full replacement, never a union with
+prior authorization. A freshly constructed `OptimizationSpec` serializes an
+empty authorization list; every nonempty list is sorted by `ParameterRef`
+identity and contains only unique active variables.
+
+The complete optimization Spec, including those bound roles and request-local
+extrapolation authorization, enters the request hash. Equivalent source-unit
+spellings remain receipt-only provenance. The receipt binds the request hash
+rather than duplicating a second bounds authority.
+
+Candidate binding is ordered and fail closed: resolve the public parameter
+value, check every calibration-support interval, check request-local
+authorization for any out-of-support value, apply the `AffineMap`, and then
+validate the mapped physical child value. Every out-of-support fan-out emits
+exactly one `extrapolationEvidence` entry naming the parameter,
+`consumer_target`, resolved input value, support interval, lower/upper side,
+canonical distance beyond support, and authorization source. A rejected
+candidate records `none`; an approved candidate records `optimization_spec`;
+ordinary solve/evaluate receipt evidence records `parameter_set`. In-support
+fan-out emits no entry. Distance has the input/support dimensionality and is
+stored in coherent SI as `support_lower - input_value` on the lower side or
+`input_value - support_upper` on the upper side; every emitted distance is
+strictly positive. None claims calibration evidence outside that interval.
+
 Failure ownership is exact. Malformed variables, bounds, objectives, selectors,
 or controls raise `InvalidOptimizationSpec` before an attempt. A sealed compiler
 invariant violated during execution fails the request as `CompilerInvariantError`.
-After the successful baseline, a candidate-dependent nonphysical primitive
-value becomes `InvalidCandidatePhysicalParameter`: every bound primitive R, L,
-and C must remain finite and strictly positive. Bounds may cross that physical
-domain, but such a sampled candidate cannot compile. An eliminated solve,
-unresolved local slope, or exhausted Newton/continuation procedure becomes
+After the successful baseline, an unapproved out-of-support optimizer sample is
+the existing `InvalidCandidatePhysicalParameter` with
+`stage="affine_support"`; it
+receives the tagged positive-infinity penalty and the generation continues. A
+candidate-dependent nonphysical mapped primitive value uses the same failure
+type at its physical-validation stage: every bound primitive R, L, and C must
+remain finite and strictly positive. Bounds may cross that physical domain,
+but such a sampled candidate cannot compile. An eliminated solve, unresolved
+local slope, or exhausted Newton/continuation procedure becomes
 `EliminatedBlockSolveFailure`, `RootSlopeUnresolved`, or
-`NumericalResolutionUnresolved`. Those candidate failures receive the tagged
-positive-infinity penalty and the generation continues. The same numerical
+`NumericalResolutionUnresolved`. Those candidate failures also receive the
+tagged positive-infinity penalty. The same support, physical, or numerical
 failure during the mandatory baseline fails the whole request. Runtime or
 transport failures remain request-level `RuntimePreparationError` or
 `BackendProtocolError` rather than candidate outcomes.
@@ -167,9 +206,19 @@ $$
 
 Candidate failure and cache reuse still consume population ordinals. Exact
 cost ties resolve by the earliest baseline/generation/population ordinal. The
-first candidate supports any number of primitive R/L/C parameters and
-objectives, but objective selectors are limited to `DiagonalRootSpec.frequency`
-and `.linewidth`; every other family remains fail fast.
+`dev3` candidate supports any number of primitive R/L/C parameters and
+objectives, with `DiagonalRootSpec.frequency` and `.linewidth` selectors on a
+supported retained View.
+
+`dev5` adds the schema-backed selectors
+`HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
+`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResponseElementSpec.magnitude`/`.real`/`.imag`. `QuantitySum` remains legal
+only as the `quantity` inside a `CostObjective`; it is not a standalone
+quantity request or a new scalar selector. This selector expansion reuses the
+identical CMA replay, generation-ledger, candidate-cache, winner/tie, and retry
+semantics above and below; it changes no CMA numerical behavior or algorithm
+identity.
 
 The candidate cache is request-local and keyed by the exact canonical resolved
 `ParameterSet` plus the selected View/objective dependency identity. It may
@@ -277,8 +326,11 @@ A final replay must match the terminal certificate. This one-generation
 evidence lag is intentional and prevents an unchecked post-update divergence
 from becoming resume state.
 
-The winning `ParameterSet` is ordinary immutable output. Passing it to another
-solve or evaluate call creates a new exact request; reduction lineage and
+Every candidate `ParameterSet`, including the immutable winner, carries an
+empty `allow_extrapolation` collection even when the optimization request was
+authorized to explore outside support. Reusing those values in another solve
+or evaluate call requires a new `ParameterSet` with explicit request-local
+approval. The new call creates a new exact request; reduction lineage and
 extrapolation approval are never inherited implicitly.
 
 [Next: HB realization and outcomes](hb-realization-and-outcomes.qmd)

@@ -240,7 +240,11 @@ class OptimizationVariable:
 
     @property
     def bounds(self) -> tuple[object, object]:
-        """Finite physical lower/upper bounds after any immutable override."""
+        """Resolved finite physical lower/upper bounds used by this variable.
+
+        Immutable model-default and consumer-override provenance belongs to
+        the owning ``OptimizationSpec``, not this resolved view.
+        """
 
         unavailable("OptimizationVariable.bounds")
 
@@ -316,6 +320,15 @@ class OptimizationSpec:
     binding, Plan compilation, reduction replay, shared quantity evaluation,
     objective aggregation, and CMA-ES remain inside one Julia process; Python
     does not receive a callback for each candidate.
+
+    The ``dev3`` runtime slice accepts diagonal-root ``frequency`` and
+    ``linewidth`` selectors; same-dimensional ``QuantitySum`` composition is
+    legal only inside a ``CostObjective``.
+    ``dev5`` completes the catalog with hybridized-pole frequency/linewidth,
+    transfer-zero frequency, residue-coupling magnitude, and response-element
+    magnitude/real/imaginary selectors.  Later-slice selectors remain
+    fail-fast until their owning runtime slice exists.  The Spec is immutable
+    and owns model-default bounds plus any named consumer overrides.
     """
 
     def __init__(
@@ -328,7 +341,11 @@ class OptimizationSpec:
         unavailable("OptimizationSpec construction")
 
     def show(self) -> object:
-        """Inspect variables, bounds, objectives, normalization, and optimizer."""
+        """Inspect variables, bound provenance, objectives, and optimizer.
+
+        Presentation distinguishes immutable model defaults, named consumer
+        overrides, resolved bounds, objectives, and optimizer controls.
+        """
 
         unavailable("OptimizationSpec.show")
 
@@ -343,7 +360,15 @@ class OptimizationSpec:
         bounds: Mapping[ParameterRef, tuple[object, object]],
         allow_extrapolation: Sequence[ParameterRef] = (),
     ) -> OptimizationSpec:
-        """Return an immutable consumer-customized copy of this model default."""
+        """Return an immutable consumer-customized copy of this Spec.
+
+        Named bounds replace that variable's prior consumer override; unnamed
+        variables preserve their existing default or override.  The supplied
+        ``allow_extrapolation`` sequence is the complete authorization set for
+        the returned Spec, replacing rather than extending the source set.
+        Authorization is request-local and is not inherited by winner
+        parameters or a later solve/evaluate request.
+        """
 
         unavailable("OptimizationSpec.with_variable_overrides")
 

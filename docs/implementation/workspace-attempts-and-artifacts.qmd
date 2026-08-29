@@ -130,6 +130,45 @@ finds the verified success, and validates Plan, semantic runtime, receipt, manif
 artifact hashes. Missing or corrupt evidence is an error; it never falls back
 to another attempt or request.
 
+## Inspect one bound leaf without selecting it {#inventory-one-bound-leaf}
+
+`run.inventory()` is pure workspace inspection. It takes the persistent
+workspace lock in shared mode while it resolves the Run's leaf and verifies the
+request/attempt chains, then releases the lock before returning. It takes no
+execution slot, launches no child process, creates no request or attempt,
+cleans no staging directory, changes no root pointer or index, and writes
+nothing.
+
+Inventory operates on exactly the leaf bound to the invoking Run. At a
+replaceable root it inspects only the current active leaf and verifies that the
+leaf instance ID and Plan still match the Run; a stale Run raises
+`WorkspacePlanReplacedError`. A versioned Run inspects only its own retained
+iteration, including `iteration01` for a Run preserved by the supported
+one-way upgrade, and never scans sibling iterations.
+
+Within that leaf, inventory verifies every request directory against its exact
+`request.json` hash and Plan binding. Request rows are ordered
+lexicographically by `request_sha256`. Canonical hidden staging directories are
+ignored for listing and status and are left untouched; malformed staging names
+retain the existing integrity failure behavior. Every visible final attempt is
+validated against the existing attempt, outcome, Result, and receipt contracts,
+and its ordinal text is listed in numeric ascending ordinal order.
+
+A request is `succeeded` when any attempt contains a complete verified success.
+This includes a verified HB batch whose every case is a numerical
+`HBCaseFailure`. Without a verified success, the request status is `failed` or
+`interrupted` according to the sealed outcome of the greatest finalized
+ordinal. A request directory with no final attempt after hidden staging entries
+are ignored, any broken request/attempt/receipt hash chain, or any invalid
+final attempt raises `EvidenceIntegrityError` for the whole inspection;
+inventory never skips the bad request or returns a partial listing.
+
+The returned `InventoryResult` remains inspection output, not a request
+selector. `resolve()`, `build_report()`, and every other public API refuse to
+consume it as a latest or current request; resolution still requires the exact
+Ref, Spec, and ParameterSet contract, and reports still require explicit
+receipt-backed analysis Results.
+
 Optimization adds one immutable, hash-linked ledger per completed generation.
 The ledger records package-visible optimizer coordinates, population ordinals,
 physical bindings, objective components, cache/failure state, and the prior

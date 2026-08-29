@@ -490,8 +490,18 @@ process-local cache. The same call must therefore work after a Notebook kernel
 restart when every bound identity remains exact. Missing, stale, corrupt, or
 mismatched evidence fails closed with the missing or mismatched identity named.
 
-`run.inventory()` may list known requests and their identities, but listing
-does not establish a hidden current selection.
+`run.inventory()` is a shared-lock, read-only inspection of the exact leaf
+bound to that `CircuitRun`. A replaceable workspace lists only its active leaf;
+a versioned Run lists only its own iteration, never sibling iterations. A
+stale Run raises `WorkspacePlanReplacedError`. Requests are ordered by
+`request_sha256`, attempt ordinals are numeric ascending, and request status is
+`succeeded` when a verified success exists or otherwise the failure/interruption
+state of the greatest finalized ordinal. A verified HB batch remains
+`succeeded` even when every case is a numerical failure. Hidden staging is not
+an attempt; an empty request, broken hash chain, or invalid finalized attempt
+is `EvidenceIntegrityError` rather than an omitted row. Inventory never writes
+evidence and does not establish a hidden current/latest selection for
+`resolve()`, reports, or any other API.
 
 ## Units, identity, and parameter variants
 
@@ -1262,10 +1272,13 @@ identity, selector and dimensionality, root/pole/zero branch and its declared
 locator, the `DiagonalRootSpec.root_hint`, baseline selection, continuation and
 local slope/residue evidence where applicable, shared dependency nodes, expanded
 residual scale and source, objective weight, candidate failure ledger, and the
-one Julia-process execution identity. Optimization receipts additionally keep
-model-default bounds, any immutable consumer overrides, resolved bounds,
-AffineMap support/extrapolation state and authorization provenance, physical
-candidate values, and dimensionless optimizer coordinates.
+one Julia-process execution identity. The canonical optimization request owns
+model-default bounds, any immutable consumer overrides, resolved bounds, and
+the authorization set. Its receipt retains those roles only transitively by
+binding that request hash; receipt-local evidence records AffineMap
+support/extrapolation outcomes and authorization provenance, physical candidate
+values, dimensionless optimizer coordinates, and the source-unit spelling used
+by the executed attempt. It never duplicates a second bounds authority.
 
 ### Direct and HB component realization
 
@@ -1536,6 +1549,18 @@ Notebook consumer
   inspect the default + provide a Design Target + optional immutable override
 ```
 
+Runtime slices change which already-declared selectors are executable, not the
+View model or optimizer. `1.0.0.dev3` evaluates
+`DiagonalRootSpec.frequency` and `.linewidth` on a supported retained quantity
+View. Its original one-Port/no-trace restriction belongs only to that slice's
+`solve_direct` response surface. `1.0.0.dev5` reuses the same CMA replay,
+ledger, cache, retry, and winner contract while enabling
+`HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
+`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResponseElementSpec.magnitude`/`.real`/`.imag`. Before its owning slice, each
+selector fails fast with `ScaffoldUnavailableError`; it is not excluded from
+full V1. `QuantitySum` remains legal only inside a `CostObjective`.
+
 `ParameterSpec` never owns optimization bounds. A circuit-model package may
 instead expose one clearly named model default:
 
@@ -1647,15 +1672,37 @@ custom_spec = default_spec.with_variable_overrides(
 ```
 
 Overrides use exact `ParameterRef` keys. `show()` distinguishes
-`model_default`, `consumer_override`, and resolved bounds; receipts retain all
-three. There is no global extrapolation switch or second hidden bound source.
+`model_default`, `consumer_override`, and resolved bounds; the request owns all
+three and its receipt binds them transitively through the request hash. There
+is no global extrapolation switch or second hidden bound source.
+Calling `with_variable_overrides()` never mutates its source: original
+model-default bounds remain fixed, named overrides replace any prior override,
+and unmentioned overrides are preserved. Its `allow_extrapolation=` argument
+is the complete authorization set for the returned Spec rather than an
+implicit union with the source. The full Spec, resolved bounds, and sorted
+authorization identities enter request identity; only authoring-unit spelling
+stays evidence-only.
 
 Each `AffineMap.support` is a calibration-evidence interval. Values inside it
 need no authorization. An out-of-support value fails by default; a request may
 approve extrapolation only for named `ParameterRef` objects. An unapproved
-optimization candidate becomes a typed failure with `Inf` cost. An approved
-candidate records distance beyond support and authorization provenance without
+optimization candidate becomes
+`InvalidCandidatePhysicalParameter(stage="affine_support")` with tagged `Inf`
+cost. Every out-of-support fan-out records exactly one evidence entry: a
+rejected candidate uses authorization source `none`, while an approved
+candidate uses `optimization_spec` (or `parameter_set` for an ordinary
+solve/evaluate receipt). Each entry records the public parameter, exact
+consumer, support, input value, lower/upper side, canonical distance beyond
+support, and authorization source without
 claiming that Q2D or another calibration validated the extrapolated region.
+Distance uses the public input/support dimensionality and coherent-SI value
+`support_lower - input_value` on the lower side or
+`input_value - support_upper` on the upper side, and is strictly positive.
+Binding order is fixed: resolve the public value, check every fan-out support,
+validate authorization, apply each `AffineMap`, then validate mapped primitive
+physical domains. Candidate ledgers own candidate extrapolation evidence;
+ordinary solve/evaluate receipts own evidence authorized by their explicit
+`ParameterSet`.
 Authorization is request-local: passing an extrapolated winner to a later
 solve/evaluate request requires a new explicit ParameterSet approval:
 
@@ -1668,7 +1715,8 @@ approved_winner = ParameterSet(
 direct = run.solve(response_view, direct_spec, parameters=approved_winner)
 ```
 
-The original winner values remain immutable; the new request records its own
+The original winner values remain immutable; candidate and winner
+`ParameterSet.allow_extrapolation` are empty. The new request records its own
 authorization instead of inheriting the optimizer's approval.
 
 The public `run.evaluate()` contract does not force candidate work back through
@@ -1990,6 +2038,18 @@ directly, and its `failure` property is `None`. A failed outcome exposes
 identity and effective sources. Accessing S/Y/Z, traces, or success-only states
 on that failed outcome raises that same `HBCaseFailure`; it never returns
 `None`, an empty matrix, or a stale value.
+
+`states` is operating-point evidence, not a `NetworkViewRef`, coordinate
+handle, or drive target. It cannot be supplied to `retain()`,
+`transform_pair()`, or `CurrentDrive.at`; anonymous Internal nodes remain
+non-selectable. Its ordered state-node map matches the compiler node order and
+the array's node axis exactly: Plan Public/port-promoted nodes map back to the
+sealed Plan, Composite-private nodes map by component-path segments plus their
+private-node ID, and anonymous Internal nodes expose only their
+`internal-<sha256>` audit identity. The adapter derives the weber-valued
+$\Phi^-_{m,n}=\varphi_0\operatorname{conj}(x^+_{\mathrm{JC},m,n})$ artifact
+from the fixed backend state while `returnnodeflux=false`; it does not request
+or publish a second backend node-flux authority.
 
 A valid request may therefore produce a fully successful, partially
 successful, or all-numerical-failure batch. All three are completed, verified

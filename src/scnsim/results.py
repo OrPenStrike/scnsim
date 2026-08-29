@@ -442,7 +442,11 @@ class HBCaseOutcome(Result):
 
     @property
     def states(self) -> object:
-        """Ordered SCNSim-convention node-flux Fourier coefficients in weber."""
+        """Operating-point node-flux Fourier evidence in weber.
+
+        Nodes are the ordered mapped compiled non-ground nodes, not selectable
+        Ref or coordinate identities and not drive targets.
+        """
 
         unavailable("HBCaseOutcome.states")
 
@@ -501,7 +505,11 @@ class ExplanationResult(Result):
 
 
 class InventoryResult(Result):
-    """Listing of exact request identities known to a workspace, never latest."""
+    """Pure deterministic listing from the current bound workspace leaf.
+
+    It lists exact request identities without selecting or implying a latest
+    request.
+    """
 
 
 class ReportResult(Result):

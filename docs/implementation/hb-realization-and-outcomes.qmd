@@ -182,11 +182,13 @@ match. Otherwise the outcome records `comparable=False`, one closed reason
 identity of the longest canonical Ref-lineage prefix that remained comparable.
 It does not fabricate a residual.
 
-## Normalize public operating-point states
+## Normalize operating-point state evidence
 
-Pinned JosephsonCircuits returns dimensionless reduced-flux coefficients in a
-node-major/mode-minor vector. SCNSim reshapes using recorded backend indices,
-selects the request's representative pump tuples, and stores
+Pinned JosephsonCircuits returns its fixed dimensionless reduced-flux solution
+$x_{\mathrm{JC}}^+$ in a node-major/mode-minor vector. The call keeps
+`returnnodeflux=false`: the SCNSim adapter reshapes that returned solution using
+recorded backend indices, selects the request's representative pump tuples, and
+derives
 
 $$
 \Phi^-_{m,n}=\varphi_0\,\operatorname{conj}(x_{\mathrm{JC},m,n}^+),
@@ -194,14 +196,32 @@ $$
 \varphi_0=3.29105976\times10^{-16}\ \mathrm{Wb}.
 $$
 
-The Result `states` surface is therefore the nonlinear operating-point
-node-flux Fourier coefficient array in SCNSim's `exp(-i omega t)` convention,
-not linearized signal response and not raw backend $x$. It has shape `[Mp,Nn]`,
-axes `(pump_mode,node_coordinate)`, mode-major/node-minor order, every compiled
+The adapter does not request, accept, or publish a second backend node-flux
+output. The Result `states` surface is therefore nonlinear operating-point
+evidence in SCNSim's `exp(-i omega t)` convention, not linearized signal
+response and not raw backend $x$. It has shape `[Mp,Nn]`, axes
+`(pump_mode,node_coordinate)`, mode-major/node-minor order, every compiled
 non-ground node in compiler order, and unit `weber`. Evidence records tuples,
-signed frequencies, node mapping, backend normalization, and the real-signal
-relation $\Phi^-_{-m}=\operatorname{conj}(\Phi^-_m)$; omitted conjugate partners
-are not silently duplicated.
+signed frequencies, backend normalization, and the real-signal relation
+$\Phi^-_{-m}=\operatorname{conj}(\Phi^-_m)$; omitted conjugate partners are not
+silently duplicated.
+
+Every successful case also records one ordered `state_node_map` entry for each
+column of the second `states` axis. Array position and `state_index` equal the
+compiler node index, and `compiler_node_id` is that compiled node's exact
+identity. The entry's closed `source` discriminator binds it back to sealed
+topology:
+
+| `source.kind` | Required sealed-topology binding |
+|---|---|
+| `plan_node` | `plan_node_id` names the exact Plan node and `visibility` is its exact `public` or `port_promoted` value. |
+| `component_private` | segment-array `component_path` locates the frozen component snapshot and `private_node_id` names its exact private node. |
+| `anonymous_internal` | `internal_node_id` is only the endpoint-derived `internal-<64 lowercase hexadecimal digits>` audit identity. |
+
+The map is provenance for interpreting operating-point evidence. It creates no
+selectable state, `NetworkViewRef`, coordinate, or drive target; neither
+`states` nor a map entry may be supplied to `retain()`, `transform_pair()`, or
+`CurrentDrive.at`. Anonymous Internal nodes remain non-selectable.
 
 ## Seal exact case artifacts
 
@@ -213,7 +233,7 @@ first case owns `artifacts/cases/000001/` with local artifact IDs and files:
 |---|---|---|
 | `s`, `y`, `z` | `s.zarr`, `y.zarr`, `z.zarr` | complete selected network |
 | `backend_native_s`, `backend_native_z` | matching `.zarr` files | normalized original-backend boundary evidence |
-| `states` | `states.zarr` | public operating-point node flux in weber |
+| `states` | `states.zarr` | operating-point node-flux evidence in weber |
 | `effective_source_vectors` | `effective_source_vectors.zarr` | exact accumulated physical drive vectors |
 
 Each file has a same-basename `.manifest.json`. Every requested named trace is
@@ -231,11 +251,11 @@ The request-global frequency axis is
 referenced from every matrix manifest rather than copied into each case.
 
 A successful case must form complete selected S/Y/Z at every requested
-frequency and publish the complete inventory above, its declared
-traces, all manifests, channel/mode/node labels, probe-load state, convention,
-normalization, and hashes. A failed case has no `artifacts` member and its
-reserved ordinal directory must not exist. Raw backend arrays remain evidence,
-not a competing public artifact.
+frequency and publish the complete inventory above, its declared traces, all
+manifests, channel/mode labels, ordered `state_node_map`, probe-load state,
+convention, normalization, and hashes. A failed case has no `artifacts` member
+or `state_node_map`, and its reserved ordinal directory must not exist. Raw
+backend arrays remain evidence, not a competing public artifact.
 
 ## Keep every declared outcome consumable
 
