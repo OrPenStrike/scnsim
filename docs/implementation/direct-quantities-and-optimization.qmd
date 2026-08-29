@@ -75,7 +75,7 @@ whose bound values produce a singular operator, physically invalid mapped
 child value, or non-continuable branch records a typed failure and `Inf` cost;
 it cannot reuse a stale quantity. Invalid request schemas, mapping definitions,
 or compiler invariants fail the request rather than being relabeled as bad
-candidates. `Inf` is Julia optimizer state only: canonical JSON records a
+candidates. `Inf` is optimizer-call data only: canonical JSON records a
 tagged failed-candidate penalty and never emits a non-finite JSON number.
 
 Each active `ParameterRef` is unique. Bounds have matching dimensionality,
@@ -93,7 +93,9 @@ Failure ownership is exact. Malformed variables, bounds, objectives, selectors,
 or controls raise `InvalidOptimizationSpec` before an attempt. A sealed compiler
 invariant violated during execution fails the request as `CompilerInvariantError`.
 After the successful baseline, a candidate-dependent nonphysical primitive
-value becomes `InvalidCandidatePhysicalParameter`; an eliminated solve,
+value becomes `InvalidCandidatePhysicalParameter`: every bound primitive R, L,
+and C must remain finite and strictly positive. Bounds may cross that physical
+domain, but such a sampled candidate cannot compile. An eliminated solve,
 unresolved local slope, or exhausted Newton/continuation procedure becomes
 `EliminatedBlockSolveFailure`, `RootSlopeUnresolved`, or
 `NumericalResolutionUnresolved`. Those candidate failures receive the tagged
@@ -107,12 +109,42 @@ transport failures remain request-level `RuntimePreparationError` or
 `CMAESSpec` defaults to `seed=0`, `max_evaluations=200`,
 `population_size=None`, and `initial_sigma=0.25`. For $n$ variables the default
 population is $4+\lfloor3\ln n\rfloor$. The baseline maps to the initial mean,
-is evaluated once before generation 1, consumes budget, and may win. Initial
-covariance is identity. The Manifest-pinned CMAEvolutionStrategy box transform
-is the only bound transform; hidden tolerance, stagnation, target, time, and
-noise stops are disabled. The seed is a signed 64-bit integer; an explicit
+is evaluated once before generation 1, consumes budget, and may win.
+
+The first slice pins
+[CMAEvolutionStrategy.jl 0.2.6](https://github.com/jbrea/CMAEvolutionStrategy.jl/tree/v0.2.6),
+registry tree `6bf0985be2c5ea58305d2d04e336684f64fdc12a`. Its public
+`minimize()` initializes the covariance to
+
+$$
+C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
+\qquad i=0,\ldots,n-1,
+$$
+
+not exact identity. That package behavior is part of the optimization
+algorithm identity.
+
+SCNSim first maps physical values to $z\in[0,1]$, calls
+`minimize(objective, baseline_z, initial_sigma, ...)`, passes
+`lower=zeros(n)` and `upper=ones(n)`, and lets the package apply its one
+lin-quad unit-box transform in $z$ space. SCNSim does not clip, mirror, or apply
+a second physical-bound transform. The exact call additionally uses
+`popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
+`parallel_evaluation=true`, `multi_threading=false`, `verbosity=0`, and sets
+`ftol`, `xtol`, `stagnation`, `ftarget`, `maxtime`, and `noise_handling` to
+`nothing`. Its internal callback captures generation evidence and emits
+progress without changing sampling or stopping; ledger sealing follows the
+post-update continuation boundary defined below. The signed Int64 seed
+is passed as the UInt64 with the same bits; the package then constructs its
+pinned `MersenneTwister`. An explicit
 population is an integer of at least two, and `initial_sigma` is positive and
 finite.
+
+The request constants are
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"` and
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
+for changed sampling, update, transform, replay, or stop semantics is invalid;
+that change requires a new ID.
 
 Only complete generations count:
 
@@ -134,8 +166,12 @@ still recorded as a cache hit with its own evaluation ordinal.
 
 ## Resume only complete generations
 
-Every completed generation seals its population, physical ParameterSets,
-objective components, failures, and optimizer state in an append-only ledger.
+Every verified generation ledger contains its population, the callback-visible
+raw CMA sample columns as `optimizer_latent_coordinates_f64`, the transformed
+unit-box columns as `optimizer_coordinates_f64`, physical ParameterSets,
+objective components, and failures in an append-only ledger. Both coordinate
+arrays have length $n$ and use request-variable order within each population
+column; candidate records remain in population-column order.
 Each successful objective component records its evaluated Quantity, signed
 normalized residual, and weighted cost; the request-owned target, resolved
 scale/source, and weight therefore reproduce both the component and total cost.
@@ -152,9 +188,63 @@ the new attempt. Equal-generation ledgers must have identical hashes; a
 disagreement is corruption, not a tie to resolve by recency. With no compatible
 ledger, the request starts from its declared seed.
 
-Julia restores the recorded optimizer state and verifies its sealed sample and
-population identities against the completed ledger chain before continuing; a
-mismatch is evidence corruption, not a new population to accept.
+Julia does not serialize or restore the package's private `Optimizer` object.
+It starts the exact pinned call again from the request seed. For every already
+sealed generation, the batch objective verifies each transformed unit-box
+Float64 bit pattern, generation, and population column before returning the
+sealed costs without executing candidate physics. The package callback then
+verifies every raw `y` Float64 bit pattern before the package updates its mean
+or covariance. This second check is required because the lin-quad transform is
+many-to-one. The first unsealed generation resumes real evaluation. Any replay
+mismatch is `EvidenceIntegrityError`, not a population to accept or a reason to
+fall back to physical-value round-tripping.
+
+The callback runs before the package's `update!`, so callback evidence alone
+does not make that generation resumable. Every verified generation ledger also
+carries a `continuation_certificate` with projection ID
+`cmaes-jl-0.2.6-julia-1.12.6-continuation-state.v1`. Its `state_sha256` hashes a
+canonical JSON projection of every dynamic field that can affect a later
+sample, update, or enabled stop:
+
+- `Parameters.n`, `Parameters.λ`, `Parameters.mean`; every field of `Sigma`;
+  every field of `Covariance`, including `C.mat`, eigenvalues, eigenvectors,
+  and square roots; all recombination weights; box-constraint vectors; seed,
+  execution flags, and the fixed `nothing` noise state;
+- `Stop.it`, `Stop.maxiter`, and `Stop.reason`; wall-clock `t0` and logger state
+  are excluded because `maxtime`, `ftol`, `stagnation`, `ftarget`, and `xtol`
+  are all disabled and SCNSim selects the winner from its own ledger;
+- every Julia 1.12.6 `MersenneTwister` field: seed, the DSFMT Int32 state
+  words in `state.val`, `vals`, `ints`, `idxF`, `idxI`, `adv`, `adv_jump`,
+  `adv_vals`, and `adv_ints`; and
+- for a nonterminal boundary, both the next callback's raw `y` and transformed
+  `z` matrices with shape `[n, lambda]`, generation, and population-column
+  order.
+
+Float64 values use the canonical 16-digit bit encoding, Int32/UInt64/UInt128
+values use fixed-width two's-complement or unsigned lowercase hexadecimal, and
+remaining signed integers use canonical decimal strings. Vectors use their
+declared order and square matrices use row order followed by column order. The
+certificate is a continuation-integrity comparison only, not an independently
+reconstructable state artifact; SCNSim never restores this projection or a
+private package object. Its discriminator, projection ID, field set, and array
+order are versioned with the optimization algorithm ID.
+
+Because the only public hook is pre-update, generation $k<g$ becomes verified
+at callback $k+1$, before `update!(k+1)`, with boundary
+`post_update_post_next_sample_pre_next_update`. The projection contains
+post-update-$k$ numerical state, the RNG after sampling generation $k+1$, and
+the exact raw/transformed next population. If an attempt ends before this
+boundary, generation $k$ remains unverified and retry falls back to the
+preceding ledger. Generation $g$ is verified only after `minimize()` returns
+with boundary `terminal_post_update`, `Stop.it=g`, `Stop.reason=:maxiter`, its
+post-update state, and no next-population field. During retry, the batch
+objective verifies transformed `z` before returning stored costs for a sealed
+generation. For the first unsealed generation it caches `z` and evaluates the
+physics normally; its callback recomputes the preceding ledger's certificate
+from package state, RNG, raw `y`, and cached `z`, then aborts on mismatch before
+the package may update or publish evidence. A final replay must match the
+terminal certificate. This one-generation evidence lag is intentional and
+prevents an unchecked post-update divergence from becoming resume state.
 
 The winning `ParameterSet` is ordinary immutable output. Passing it to another
 solve or evaluate call creates a new exact request; reduction lineage and

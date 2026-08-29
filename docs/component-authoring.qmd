@@ -182,7 +182,9 @@ plan.net(
 An Internal node remains part of the original compiled physical operator even
 though a user cannot address its opaque evidence identity as a Runtime
 coordinate. Its identity is derived deterministically from the canonical set
-of exact component/pin endpoints, not from randomness or call order.
+of exact component/pin endpoints, not from randomness or call order. The exact
+canonical envelope and full-digest `internal-<sha256>` spelling are fixed by
+[Canonical Identities and Schemas](implementation/canonical-identities-and-schemas.qmd#encode-one-canonical-byte-stream).
 
 Every pin belongs to exactly one electric node or the canonical Plan ground. All
 pins for a node are supplied together; a second call cannot incrementally

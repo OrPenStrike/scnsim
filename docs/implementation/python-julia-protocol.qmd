@@ -9,9 +9,11 @@ toc-depth: 2
 ## Launch one process for one request
 
 Every `solve()`, `evaluate()`, or `optimize()` request that is not already a
-verified success launches one external Julia process. Python passes the
-canonical request file and an empty attempt-staging directory. Julia runs with
-the committed project, no user startup file, and the recorded thread count.
+verified success launches one external Julia process after runtime preparation
+has succeeded and an attempt has been allocated. Python passes the
+canonical request file and the same-request staging directory
+`attempts/.staging-<ordinal>-<uuid>/`. Julia runs with the committed project,
+no user startup file, and the recorded thread count.
 
 This boundary keeps Julia compilation, factorization reuse, root continuation,
 candidate evaluation, and CMA-ES inside one process. SCNSim does not embed
@@ -22,6 +24,24 @@ Python launches an argv vector without a shell, passes the package resource
 project explicitly, disables startup/history files, and fixes Julia and BLAS to
 one thread. It creates a new process group so interruption cannot leave a child
 backend running.
+
+Attempt allocation is the transport boundary. It reserves the ordinal and
+staging directory but does not yet publish or hash `attempt.json`. Python starts
+Julia in a blocked bootstrap that may report actual thread and BLAS evidence
+but cannot execute the request or emit authoritative progress/outcome until
+Python supplies the finalized attempt hash.
+
+If process creation or that bootstrap fails, Python seals one immutable
+`attempt_state="allocated"` record, writes a `BackendProtocolError` failure
+receipt, and promotes the attempt; the ordinal is consumed. This record contains
+the prepared executable hash and Python-observed host evidence, but omits all
+child-observed Julia/BLAS fields; `started_at_utc` is the allocation timestamp
+in both states. If the bootstrap succeeds, Python instead
+seals one immutable `attempt_state="launched"` record with those observed
+fields, sends its hash to the blocked child, and only then authorizes request
+execution. The in-memory bootstrap framing is internal process control, not a
+second request authority or durable artifact. No Julia `outcome.json` exists on
+the allocated-failure path.
 
 ## Use files for authority and JSONL for progress
 
@@ -38,11 +58,16 @@ artifacts into staging. The envelope binds request, attempt, semantic runtime,
 terminal status, typed result or failure, and the exact artifact inventory. It
 does not write the final SCNSim receipt. Python waits for process completion,
 validates schemas, relative paths, hashes, dimensions, and expected artifact
-inventory, then seals the receipt last.
+inventory, then seals the receipt last, fsyncs, and atomically promotes the
+sibling staging directory. A promoted valid outcome keeps the authoritative
+name `outcome.json`, and its SHA-256 is linked by the receipt. Invalid raw
+outcome bytes may be retained only under `logs/`, never under that name.
 
-A completed success or typed-failure attempt requires both process exit status
-zero and one valid matching outcome. Exit zero without that envelope, or any
-nonzero exit even if staging resembles an outcome, is `BackendProtocolError`.
+A completed Julia success or Julia typed-failure attempt requires both process
+exit status zero and one valid matching outcome. Exit zero without that
+envelope, or any nonzero exit even if staging resembles an outcome, is
+`BackendProtocolError`. A pre-launch failure uses the Python-sealed protocol
+failure path above instead of inventing an exit status or outcome envelope.
 
 ## Make interruption an attempt outcome
 
@@ -54,7 +79,8 @@ JobRef is added.
 
 An interrupted receipt does not require Julia to have reached `outcome.json`.
 If an outcome exists it is validated, but no staged Result is promoted after
-the interrupt.
+the interrupt. A crash-left hidden staging directory is not an attempt and is
+cleaned by the next exclusive writer.
 
 Outside that explicit interrupt path, protocol failure, invalid JSON, an
 unexpected file, missing outcome, or

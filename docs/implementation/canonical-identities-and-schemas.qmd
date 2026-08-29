@@ -35,6 +35,54 @@ and axes—retain that order. Set-like collections sort by their canonical
 identity. A typed map stores lexicographically ordered string-key entries;
 duplicate keys fail before serialization.
 
+For the primitive Plan schema, that rule is mechanical rather than inferred:
+
+| Array | Canonical order |
+|---|---|
+| `catalog_sources` | ascending `catalog_id` |
+| `components` | ascending `component_id` |
+| component `parameters` | ascending parameter `id` |
+| component `pin_order` | Library-schema declaration order |
+| `nodes` | ascending `node_id` |
+| node `endpoints` and `grounded_endpoints` | ascending `(component_id, pin_id)` |
+| `ports` | Plan declaration order |
+| `couplings` | empty in this schema version |
+
+An anonymous non-Port node hashes the canonical envelope
+`{"schema":"scnsim.internal_node","schema_version":1,"endpoints":[...]}`,
+where `endpoints` uses the order above. Its opaque evidence identity is
+`internal-<sha256>`, retaining all 64 lowercase hexadecimal digits. Public IDs
+cannot use that reserved shape. This makes the identity independent of
+`plan.net()` call order without treating an Internal node as a selectable API.
+
+The Lessons 1–5 quantity vocabulary is also closed. SCNSim never serializes a
+Pint formatter's current spelling:
+
+| Physical kind | `si_unit` | `dimensionality` |
+|---|---|---|
+| capacitance | `farad` | `capacitance` |
+| inductance | `henry` | `inductance` |
+| resistance | `ohm` | `resistance` |
+| conductance or root slope | `siemens` | `conductance` |
+| ordinary frequency or linewidth | `hertz` | `inverse_time` |
+| complex angular frequency | `radian / second` | `inverse_time` |
+| S or optimizer coordinates | `dimensionless` | `dimensionless` |
+
+An extension that needs another physical kind must extend the schema rather
+than insert a locally formatted unit string.
+
+Runtime algorithms are likewise closed for this slice:
+
+| Operation | `algorithm_id` |
+|---|---|
+| one-Port Direct S/Y/Z | `scnsim.direct_response.v1` |
+| loaded diagonal root | `scnsim.diagonal_root.newton32.v1` |
+| primitive Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1` |
+
+The CMA request additionally fixes
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
+replay semantics require a new ID.
+
 Source values and units from the executed attempt remain receipt evidence, but
 only the coherent-SI bits, canonical SI unit, and dimensionality enter Plan or
 request semantic identity. Thus `92 * u.fF` and `0.092 * u.pF` may reuse one
@@ -48,11 +96,11 @@ to log the later caller's equivalent spelling.
 | `workspace.json` | one leaf binding, a replaceable root's active-leaf pointer, or a versioned Plan-to-iteration index, all with evidence-only instance IDs | mutable only at a root under the workspace lock; immutable in a leaf |
 | `plan.json` | primitive authored topology, ordered identities, baselines, and catalog sources | immutable |
 | `request.json` | Plan hash, operation, Ref lineage, Spec, ParameterSet, and semantic runtime | immutable |
-| `attempt.json` | request hash, ordinal, launch time, executable, resume-ledger, and machine-resource evidence | immutable launch record |
+| `attempt.json` | request hash, ordinal, allocation time, allocated/launched state, executable, resume-ledger, and state-appropriate machine evidence | finalized once after the launch bootstrap; immutable |
 | `outcome.json` | Julia-staged request/attempt/runtime binding, terminal status, typed result/failure, and artifact inventory | immutable staging authority |
 | `result.json` | typed Direct response, diagonal-root, or optimization result | immutable |
 | `receipt.json` | request, attempt, Result/artifact hashes, source-unit/provenance evidence, and terminal outcome | written last; immutable |
-| generation ledger | one complete CMA-ES generation, optimizer state, candidate outcomes, and previous-ledger hash | immutable artifact |
+| generation ledger | one complete CMA-ES generation, package-visible coordinates, candidate outcomes, and previous-ledger hash | immutable artifact |
 | artifact manifest | one Zarr artifact ID plus its complete ordered regular-file inventory | immutable artifact |
 | progress record | non-authoritative completed-generation status bound to one request and attempt | transient JSONL only |
 
@@ -78,9 +126,16 @@ then verifies the complete chain before reuse or `resolve()`:
   the enclosing request hash;
 - `receipt.json` names the exact request and attempt hashes, and a success names
   the exact `result.json` hash;
-- a completed non-interrupted attempt has staged `outcome.json` naming that
-  same request, attempt, and semantic runtime, and its
-  status/result/failure/artifact inventory matches the sealed receipt;
+- a completed Julia success or Julia-produced typed failure has staged
+  `outcome.json` naming that same request, attempt, and semantic runtime, and
+  its status/result/failure/artifact inventory matches the sealed receipt;
+- when a receipt carries `outcome_sha256`, the final attempt contains the exact
+  valid `outcome.json` bytes with that hash; without that field, no authoritative
+  `outcome.json` may exist under its final name;
+- success and Julia-produced typed-failure receipts require that hash;
+  `BackendProtocolError` from allocated process/bootstrap failure or from a
+  missing/invalid envelope may omit it, and an interrupted attempt records it
+  only when a valid envelope existed;
 - the Result discriminator matches the request operation
   (`solve_direct` to `direct_response`, or `evaluate_diagonal_root` to
   `diagonal_root`, or `optimize_direct` to `optimization`);
@@ -112,10 +167,27 @@ path. The directory's own name and empty directories are excluded; symlinks and
 normalization collisions fail closed. Python and Julia therefore verify the
 same metadata-and-chunk byte set rather than a filesystem-dependent directory
 encoding.
-A Direct response requires frequency, S, Y, and Z arrays with ordered
-coordinate IDs, axis references, units, and probe-load state. Complex arrays
-use paired little-endian Float64 real/imag Zarr V2 arrays, C order,
-uncompressed chunks, and a canonical sorted file manifest. A Direct quantity
+A Direct response requires four fixed artifact groups:
+`artifacts/frequencies.zarr`, `artifacts/s.zarr`, `artifacts/y.zarr`, and
+`artifacts/z.zarr`, with correspondingly fixed artifact IDs and external
+manifest names. Every group is Zarr V2 with little-endian Float64, C order,
+`compressor=null`, `filters=null`, `fill_value=null`, and dot-separated chunk
+keys. The frequency group contains the real dataset `values`; each matrix group
+contains the paired datasets `real` and `imag`.
+
+For grid length $F$, let $c(F)=\min(F,1024)$. Frequency uses chunk shape
+`[c(F)]`; the one-Port matrix artifacts use `[c(F), 1, 1]`. Frequency has unit
+`hertz`; S is `dimensionless`, Y is `siemens`, and Z is `ohm`. The manifest
+still records ordered coordinate IDs, axis references, and probe-load state.
+Future N-port or alternative chunking is a schema/algorithm extension, not a
+writer-selected option.
+
+Semantic validation requires the four artifacts to share the same positive
+$F$, and each matrix's coordinate and probe-load lists to name exactly the one
+selected Port. It also checks the fixed artifact ID/path against the matching
+manifest before receipt sealing and again on `resolve()`.
+
+A Direct quantity
 requires root, frequency, linewidth, and slope scalars. An optimization result
 requires the successful baseline outcome, a winner, completed-generation count,
 unused budget, and the complete hash-linked ledger inventory. Each successful
@@ -135,6 +207,21 @@ parameter_id)`. A request carries the complete resolved binding for every Plan
 parameter: explicit values override the sealed baseline, and omitted values are
 expanded from that baseline before hashing. Bindings sort by this pair and must
 be unique.
+
+Each population candidate stores the callback-visible raw CMA sample as
+`optimizer_latent_coordinates_f64` and its transformed unit-box sample as
+`optimizer_coordinates_f64`. Physical values or transformed coordinates alone
+cannot reconstruct the raw bits during retry because the package box transform
+is many-to-one. Generation ledgers carry no serialized private Julia optimizer
+object; deterministic replay is defined by the optimization implementation
+contract.
+
+Every generation ledger also binds a closed continuation certificate. Its
+`completed_generation` must equal the ledger generation; nonfinal generations
+use `post_update_post_next_sample_pre_next_update`, while the request's last
+generation uses `terminal_post_update`. Cross-file semantic validation rejects
+another boundary or a certificate projection ID that differs from the request
+algorithm identity.
 
 For a Direct grid of length $F$ and selected coordinate count $N$, frequency
 has shape `[F]`; S, Y, and Z each have shape `[F, N, N]` with axes ordered as

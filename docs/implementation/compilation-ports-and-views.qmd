@@ -14,9 +14,47 @@ component, parameter, node, ground, Port, coupling, and source provenance. It
 forms reciprocal C/K/G evidence for Direct and an exact JosephsonCircuits
 netlist realization for HB; neither backend becomes the Plan authority.
 
+The primitive slice follows the canonical
+[branch-stamping rule](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/physical-circuit-coordinates-node-flux-basis.qmd#g2--stamp-branches-before-interpreting-matrix-entries).
+Non-reference node rows use ascending canonical `node_id`; ground has no row.
+Components use ascending `component_id`, and rows within one component use its
+factory-schema order. For a branch oriented `terminal_1 -> terminal_2`, its
+incidence vector $b$ has `+1` at the first non-ground endpoint and `-1` at the
+second. A grounded endpoint is simply omitted, so a ground-to-node branch keeps
+the sign implied by that same orientation.
+
+The three primitive stamps are
+
+$$
+\Delta C=C_b\,\mathbf b\mathbf b^T,
+\qquad
+\Delta K=L_b^{-1}\mathbf b\mathbf b^T,
+\qquad
+\Delta G=R_b^{-1}\mathbf b\mathbf b^T.
+$$
+
+Every physical value is finite and strictly positive before stamping. The
+compiler accumulates complete symmetric Float64 matrices in that basis; it
+does not infer orientation from matrix position.
+
+Logical Ports are absent from these intrinsic primitive C/K/G stamps. Direct
+selected-network construction subsequently adds the declared Port through its
+selector $B$, reference admittance $Y_0$, and source/load boundary, and then
+performs the documented de-embedding. This prevents the Port reference
+impedance from becoming a DUT resistor.
+
 `run.explain()` uses this compile product to show deterministic rows and maps
-without solving. A compiled schematic projects the same expanded physical
-graph, while an authoring schematic remains a Python projection of the Plan.
+without solving. In the Lessons 1–5 slice its presentation contains only the
+supported evidence: Plan/request/runtime identity and bound parameters; ordered
+nodes and primitive rows; C/K/G; Port `B`, `Y0`, load and selected-network
+steps; Ref lineage and retained/eliminated coordinates; Direct grid or root
+preflight; and, for optimization, variables, unit maps, objectives, expanded
+scales, budget, seed, and algorithm IDs. It omits unsupported Composite,
+PTC/transform, N-port, and HB sections instead of printing fabricated `N/A`
+rows.
+
+A compiled schematic projects the same expanded physical graph, while an
+authoring schematic remains a Python projection of the Plan.
 
 ## Lower one logical Port two ways
 

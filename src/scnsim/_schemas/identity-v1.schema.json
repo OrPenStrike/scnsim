@@ -44,6 +44,27 @@
       "minLength": 1,
       "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f])[^/]+(?:/[^/]+)*$"
     },
+    "siUnit": {
+      "enum": [
+        "farad",
+        "henry",
+        "ohm",
+        "siemens",
+        "hertz",
+        "radian / second",
+        "dimensionless"
+      ]
+    },
+    "dimensionality": {
+      "enum": [
+        "capacitance",
+        "inductance",
+        "resistance",
+        "conductance",
+        "inverse_time",
+        "dimensionless"
+      ]
+    },
     "quantity": {
       "type": "object",
       "additionalProperties": false,
@@ -51,9 +72,17 @@
       "properties": {
         "type": { "const": "quantity_f64" },
         "si_value_f64": { "$ref": "#/$defs/f64" },
-        "si_unit": { "type": "string", "minLength": 1 },
-        "dimensionality": { "type": "string", "minLength": 1 }
-      }
+        "si_unit": { "$ref": "#/$defs/siUnit" },
+        "dimensionality": { "$ref": "#/$defs/dimensionality" }
+      },
+      "allOf": [
+        { "if": { "properties": { "si_unit": { "const": "farad" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
+        { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
+      ]
     },
     "complexQuantity": {
       "type": "object",
@@ -63,9 +92,17 @@
         "type": { "const": "complex_quantity_f64" },
         "real_si_f64": { "$ref": "#/$defs/f64" },
         "imag_si_f64": { "$ref": "#/$defs/f64" },
-        "si_unit": { "type": "string", "minLength": 1 },
-        "dimensionality": { "type": "string", "minLength": 1 }
-      }
+        "si_unit": { "$ref": "#/$defs/siUnit" },
+        "dimensionality": { "$ref": "#/$defs/dimensionality" }
+      },
+      "allOf": [
+        { "if": { "properties": { "si_unit": { "const": "farad" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
+        { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
+      ]
     },
     "typedValue": {
       "oneOf": [
@@ -163,7 +200,8 @@
       "required": [
         "id", "path", "sha256", "media_type", "file_manifest",
         "dtype", "endianness", "shape", "chunks",
-        "order", "compressor", "complex_storage", "axes", "unit"
+        "order", "compressor", "filters", "fill_value", "zarr_format",
+        "dimension_separator", "complex_storage", "axes", "unit"
       ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
@@ -185,7 +223,14 @@
         },
         "order": { "const": "C" },
         "compressor": { "type": "null" },
+        "filters": { "type": "null" },
+        "fill_value": { "type": "null" },
+        "zarr_format": { "const": 2 },
+        "dimension_separator": { "const": "." },
         "complex_storage": { "enum": ["real", "paired_float64_real_imag"] },
+        "values_path": { "const": "values" },
+        "real_path": { "const": "real" },
+        "imag_path": { "const": "imag" },
         "axes": {
           "type": "array",
           "minItems": 1,
@@ -212,8 +257,16 @@
       "allOf": [
         {
           "if": { "properties": { "dtype": { "const": "complex128" } }, "required": ["dtype"] },
-          "then": { "properties": { "complex_storage": { "const": "paired_float64_real_imag" } } },
-          "else": { "properties": { "complex_storage": { "const": "real" } } }
+          "then": {
+            "required": ["real_path", "imag_path"],
+            "properties": { "complex_storage": { "const": "paired_float64_real_imag" } },
+            "not": { "required": ["values_path"] }
+          },
+          "else": {
+            "required": ["values_path"],
+            "properties": { "complex_storage": { "const": "real" } },
+            "not": { "anyOf": [{ "required": ["real_path"] }, { "required": ["imag_path"] }] }
+          }
         }
       ]
     },
@@ -228,10 +281,14 @@
         { "$ref": "#/$defs/zarrArtifact" },
         {
           "properties": {
+            "id": { "const": "frequencies" },
+            "path": { "const": "artifacts/frequencies.zarr" },
+            "file_manifest": { "const": "artifacts/frequencies.manifest.json" },
             "dtype": { "const": "float64" },
-            "shape": { "type": "array", "minItems": 1, "maxItems": 1 },
-            "chunks": { "type": "array", "minItems": 1, "maxItems": 1 },
-            "axes": { "type": "array", "minItems": 1, "maxItems": 1 }
+            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
+            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 1024 } },
+            "axes": { "type": "array", "minItems": 1, "maxItems": 1 },
+            "unit": { "const": "hertz" }
           }
         }
       ]
@@ -243,12 +300,30 @@
           "required": ["coordinate_ids", "probe_load_state"],
           "properties": {
             "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 3, "maxItems": 3 },
-            "chunks": { "type": "array", "minItems": 3, "maxItems": 3 },
+            "shape": { "type": "array", "minItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "const": 1 }, { "const": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "const": 1 }, { "const": 1 }], "items": false },
             "axes": { "type": "array", "minItems": 3, "maxItems": 3 },
-            "coordinate_ids": { "type": "array", "minItems": 1 }
+            "coordinate_ids": { "type": "array", "minItems": 1, "maxItems": 1 }
           }
         }
+      ]
+    },
+    "directSArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/directMatrixArtifact" },
+        { "properties": { "id": { "const": "s" }, "path": { "const": "artifacts/s.zarr" }, "file_manifest": { "const": "artifacts/s.manifest.json" }, "unit": { "const": "dimensionless" } } }
+      ]
+    },
+    "directYArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/directMatrixArtifact" },
+        { "properties": { "id": { "const": "y" }, "path": { "const": "artifacts/y.zarr" }, "file_manifest": { "const": "artifacts/y.manifest.json" }, "unit": { "const": "siemens" } } }
+      ]
+    },
+    "directZArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/directMatrixArtifact" },
+        { "properties": { "id": { "const": "z" }, "path": { "const": "artifacts/z.zarr" }, "file_manifest": { "const": "artifacts/z.manifest.json" }, "unit": { "const": "ohm" } } }
       ]
     },
     "artifactLink": {
@@ -297,7 +372,13 @@
         "manifest_sha256"
       ],
       "properties": {
-        "algorithm_id": { "type": "string", "minLength": 1 },
+        "algorithm_id": {
+          "enum": [
+            "scnsim.direct_response.v1",
+            "scnsim.diagonal_root.newton32.v1",
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"
+          ]
+        },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
         "julia_source_sha256": { "$ref": "#/$defs/sha256" },
         "julia_version": { "type": "string", "minLength": 1 },
@@ -310,15 +391,17 @@
       "additionalProperties": false,
       "required": [
         "catalog_id",
+        "catalog_kind",
         "module",
-        "qualified_class",
         "source_kind",
         "source_sha256"
       ],
       "properties": {
         "catalog_id": { "type": "string", "minLength": 1 },
+        "catalog_kind": { "enum": ["builtin", "custom"] },
         "module": { "type": "string", "minLength": 1 },
         "qualified_class": { "type": "string", "minLength": 1 },
+        "public_symbol": { "type": "string", "minLength": 1 },
         "source_kind": { "enum": ["wheel_record", "editable_git", "module_source", "notebook_source"] },
         "source_sha256": { "$ref": "#/$defs/sha256" },
         "distribution": { "type": "string", "minLength": 1 },
@@ -327,6 +410,24 @@
         "dirty_overlay_sha256": { "$ref": "#/$defs/sha256" }
       },
       "allOf": [
+        {
+          "if": { "properties": { "catalog_kind": { "const": "builtin" } }, "required": ["catalog_kind"] },
+          "then": {
+            "required": ["public_symbol"],
+            "properties": {
+              "catalog_id": { "const": "scnsim.components" },
+              "module": { "const": "scnsim" },
+              "public_symbol": { "const": "components" },
+              "source_kind": { "enum": ["wheel_record", "editable_git"] }
+            },
+            "not": { "required": ["qualified_class"] }
+          },
+          "else": {
+            "required": ["qualified_class"],
+            "properties": { "catalog_id": { "pattern": "^(?!scnsim\\.components$).+:.+$" } },
+            "not": { "required": ["public_symbol"] }
+          }
+        },
         {
           "if": {
             "properties": { "source_kind": { "const": "wheel_record" } },
@@ -498,7 +599,14 @@
         "ground_id": { "const": "ground" },
         "catalog_sources": {
           "type": "array",
-          "items": { "$ref": "#/$defs/catalogSource" }
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/catalogSource" },
+              { "properties": { "catalog_kind": { "const": "builtin" } } }
+            ]
+          }
         },
         "components": {
           "type": "array",
@@ -508,7 +616,7 @@
             "required": ["component_id", "catalog_id", "factory", "parameters", "pin_order"],
             "properties": {
               "component_id": { "type": "string", "minLength": 1 },
-              "catalog_id": { "type": "string", "minLength": 1 },
+              "catalog_id": { "const": "scnsim.components" },
               "factory": { "enum": ["resistor", "capacitor", "inductor"] },
               "parameters": {
                 "type": "array",
@@ -526,7 +634,64 @@
                 "type": "array",
                 "items": { "type": "string", "minLength": 1 }
               }
-            }
+            },
+            "allOf": [
+              { "properties": { "pin_order": { "const": ["terminal_1", "terminal_2"] } } },
+              {
+                "if": { "properties": { "factory": { "const": "resistor" } }, "required": ["factory"] },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "prefixItems": [{
+                        "properties": {
+                          "id": { "const": "resistance" },
+                          "baseline": { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }
+                        }
+                      }],
+                      "items": false
+                    }
+                  }
+                }
+              },
+              {
+                "if": { "properties": { "factory": { "const": "capacitor" } }, "required": ["factory"] },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "prefixItems": [{
+                        "properties": {
+                          "id": { "const": "capacitance" },
+                          "baseline": { "properties": { "si_unit": { "const": "farad" }, "dimensionality": { "const": "capacitance" } } }
+                        }
+                      }],
+                      "items": false
+                    }
+                  }
+                }
+              },
+              {
+                "if": { "properties": { "factory": { "const": "inductor" } }, "required": ["factory"] },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "prefixItems": [{
+                        "properties": {
+                          "id": { "const": "inductance" },
+                          "baseline": { "properties": { "si_unit": { "const": "henry" }, "dimensionality": { "const": "inductance" } } }
+                        }
+                      }],
+                      "items": false
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "nodes": {
@@ -543,7 +708,14 @@
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/endpoint" }
               }
-            }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "visibility": { "const": "internal" } }, "required": ["visibility"] },
+                "then": { "properties": { "node_id": { "pattern": "^internal-[0-9a-f]{64}$" } } },
+                "else": { "properties": { "node_id": { "pattern": "^(?!internal-[0-9a-f]{64}$).+$" } } }
+              }
+            ]
           }
         },
         "grounded_endpoints": {
@@ -609,7 +781,13 @@
           "then": {
             "properties": {
               "ref_lineage": { "$ref": "#/$defs/originalRef" },
-              "spec": { "$ref": "#/$defs/directSolveSpec" }
+              "spec": { "$ref": "#/$defs/directSolveSpec" },
+              "runtime_semantic": {
+                "allOf": [
+                  { "$ref": "#/$defs/runtimeSemantic" },
+                  { "properties": { "algorithm_id": { "const": "scnsim.direct_response.v1" } } }
+                ]
+              }
             }
           },
           "else": {
@@ -620,13 +798,25 @@
             "then": {
               "properties": {
                 "ref_lineage": { "$ref": "#/$defs/retainedRef" },
-                "spec": { "$ref": "#/$defs/diagonalRootSpec" }
+                "spec": { "$ref": "#/$defs/diagonalRootSpec" },
+                "runtime_semantic": {
+                  "allOf": [
+                    { "$ref": "#/$defs/runtimeSemantic" },
+                    { "properties": { "algorithm_id": { "const": "scnsim.diagonal_root.newton32.v1" } } }
+                  ]
+                }
               }
             },
             "else": {
               "properties": {
                 "ref_lineage": { "$ref": "#/$defs/retainedRef" },
-                "spec": { "$ref": "#/$defs/optimizationSpec" }
+                "spec": { "$ref": "#/$defs/optimizationSpec" },
+                "runtime_semantic": {
+                  "allOf": [
+                    { "$ref": "#/$defs/runtimeSemantic" },
+                    { "properties": { "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1" } } }
+                  ]
+                }
               }
             }
           }
@@ -751,7 +941,7 @@
         },
         "resolved_population_size": { "type": "integer", "minimum": 2, "maximum": 9223372036854775807 },
         "initial_sigma_f64": { "$ref": "#/$defs/f64" },
-        "box_transform_id": { "type": "string", "minLength": 1 },
+        "box_transform_id": { "const": "cmaes-jl-0.2.6-linquad-unit-box.v1" },
         "complete_generations": { "type": "integer", "minimum": 1 },
         "unused_evaluations": { "type": "integer", "minimum": 0 },
         "hidden_stops": { "const": "disabled" }
@@ -809,17 +999,14 @@
         "julia_executable_sha256",
         "os",
         "architecture",
-        "cpu",
-        "julia_threads",
-        "blas_threads",
-        "blas_vendor"
+        "cpu"
       ],
       "properties": {
         "schema": { "const": "scnsim.attempt" },
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "ordinal": { "type": "integer", "minimum": 1 },
-        "attempt_state": { "const": "launched" },
+        "attempt_state": { "enum": ["allocated", "launched"] },
         "started_at_utc": { "$ref": "#/$defs/utcTimestamp" },
         "julia_executable_sha256": { "$ref": "#/$defs/sha256" },
         "os": { "type": "string", "minLength": 1 },
@@ -829,7 +1016,27 @@
         "blas_threads": { "type": "integer", "minimum": 1 },
         "blas_vendor": { "type": "string", "minLength": 1 },
         "resume_ledger_sha256": { "$ref": "#/$defs/sha256" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "attempt_state": { "const": "launched" } },
+            "required": ["attempt_state"]
+          },
+          "then": {
+            "required": ["julia_threads", "blas_threads", "blas_vendor"]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["julia_threads"] },
+                { "required": ["blas_threads"] },
+                { "required": ["blas_vendor"] }
+              ]
+            }
+          }
+        }
+      ]
     },
     "directResponseResult": {
       "type": "object",
@@ -855,9 +1062,9 @@
           "required": ["frequencies", "s", "y", "z"],
           "properties": {
             "frequencies": { "$ref": "#/$defs/directFrequencyArtifact" },
-            "s": { "$ref": "#/$defs/directMatrixArtifact" },
-            "y": { "$ref": "#/$defs/directMatrixArtifact" },
-            "z": { "$ref": "#/$defs/directMatrixArtifact" }
+            "s": { "$ref": "#/$defs/directSArtifact" },
+            "y": { "$ref": "#/$defs/directYArtifact" },
+            "z": { "$ref": "#/$defs/directZArtifact" }
           }
         }
       }
@@ -1070,7 +1277,7 @@
       "additionalProperties": false,
       "required": [
         "evaluation_ordinal", "origin", "generation", "population_column",
-        "parameters", "cache_hit", "outcome"
+        "optimizer_coordinates_f64", "parameters", "cache_hit", "outcome"
       ],
       "properties": {
         "evaluation_ordinal": { "type": "integer", "minimum": 0 },
@@ -1081,6 +1288,16 @@
             { "type": "null" },
             { "type": "integer", "minimum": 1 }
           ]
+        },
+        "optimizer_coordinates_f64": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/f64" }
+        },
+        "optimizer_latent_coordinates_f64": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/f64" }
         },
         "parameters": { "$ref": "#/$defs/parameterSet" },
         "cache_hit": { "type": "boolean" },
@@ -1096,6 +1313,7 @@
       "allOf": [
         { "$ref": "#/$defs/candidateOutcome" },
         {
+          "not": { "required": ["optimizer_latent_coordinates_f64"] },
           "properties": {
             "evaluation_ordinal": { "const": 0 },
             "origin": { "const": "baseline" },
@@ -1111,6 +1329,7 @@
       "allOf": [
         { "$ref": "#/$defs/candidateOutcome" },
         {
+          "required": ["optimizer_latent_coordinates_f64"],
           "properties": {
             "evaluation_ordinal": { "type": "integer", "minimum": 1 },
             "origin": { "const": "population" },
@@ -1120,13 +1339,34 @@
         }
       ]
     },
+    "cmaContinuationCertificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "projection_id", "boundary",
+        "completed_generation", "state_sha256"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.cmaes_continuation_certificate" },
+        "schema_version": { "const": 1 },
+        "projection_id": { "const": "cmaes-jl-0.2.6-julia-1.12.6-continuation-state.v1" },
+        "boundary": {
+          "enum": [
+            "post_update_post_next_sample_pre_next_update",
+            "terminal_post_update"
+          ]
+        },
+        "completed_generation": { "type": "integer", "minimum": 1 },
+        "state_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
     "generationLedger": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "schema", "schema_version", "request_sha256", "attempt_sha256",
         "generation", "previous_ledger_sha256", "population_size",
-        "candidates", "optimizer_state"
+        "continuation_certificate", "candidates"
       ],
       "properties": {
         "schema": { "const": "scnsim.optimization_ledger" },
@@ -1141,12 +1381,12 @@
           ]
         },
         "population_size": { "type": "integer", "minimum": 2 },
+        "continuation_certificate": { "$ref": "#/$defs/cmaContinuationCertificate" },
         "candidates": {
           "type": "array",
           "minItems": 2,
           "items": { "$ref": "#/$defs/populationOutcome" }
-        },
-        "optimizer_state": { "$ref": "#/$defs/fileArtifact" }
+        }
       }
     },
     "receipt": {
@@ -1168,6 +1408,7 @@
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "attempt_sha256": { "$ref": "#/$defs/sha256" },
         "outcome": { "enum": ["success", "failure", "interrupted"] },
+        "outcome_sha256": { "$ref": "#/$defs/sha256" },
         "result_sha256": { "$ref": "#/$defs/sha256" },
         "artifacts": {
           "type": "array",
@@ -1185,7 +1426,7 @@
             "required": ["outcome"]
           },
           "then": {
-            "required": ["result_sha256"],
+            "required": ["result_sha256", "outcome_sha256"],
             "not": {
               "anyOf": [
                 { "required": ["failure"] },
@@ -1205,7 +1446,21 @@
                   { "required": ["result_sha256"] },
                   { "required": ["interruption"] }
                 ]
-              }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "failure": {
+                        "properties": { "kind": { "const": "backend_protocol" } },
+                        "required": ["kind"]
+                      }
+                    },
+                    "required": ["failure"]
+                  },
+                  "else": { "required": ["outcome_sha256"] }
+                }
+              ]
             },
             "else": {
               "required": ["interruption"],

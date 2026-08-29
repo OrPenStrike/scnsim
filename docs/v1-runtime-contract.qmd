@@ -1622,14 +1622,38 @@ For $n$ active variables, `population_size=None` resolves to
 $\lambda=4+\lfloor3\ln n\rfloor$. The sealed baseline must lie inside every
 bound, maps to the initial unit-box mean $m_0$, is evaluated first, consumes one
 evaluation, and remains winner-eligible. Baseline evaluation failure fails the
-request. The initial covariance is $I$ and `initial_sigma` is a positive finite
-unit-coordinate scale. `seed` accepts a signed 64-bit integer; an explicit population size
-is an integer of at least two, and the evaluation budget must be large enough
-for the required complete generation.
+request. `initial_sigma` is a positive finite unit-coordinate scale. `seed`
+accepts a signed 64-bit integer; an explicit population size is an integer of
+at least two, and the evaluation budget must be large enough for the required
+complete generation.
 
-The runtime uses the box transform supplied by the Manifest-pinned
-CMAEvolutionStrategy version and disables package ftol, xtol, stagnation,
-target, time, and noise stop rules. With budget $B$, it runs exactly
+The runtime pins
+[CMAEvolutionStrategy.jl 0.2.6](https://github.com/jbrea/CMAEvolutionStrategy.jl/tree/v0.2.6),
+registry tree `6bf0985be2c5ea58305d2d04e336684f64fdc12a`. Its public
+`minimize()` initializes
+
+$$
+C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
+\qquad i=0,\ldots,n-1,
+$$
+
+rather than exact identity. SCNSim maps physical parameters once to
+$z\in[0,1]$, calls `minimize(objective, baseline_z, initial_sigma, ...)`,
+supplies `lower=zeros(n)`, `upper=ones(n)`, and
+lets the package apply its lin-quad unit-box transform. SCNSim does not clip,
+mirror, or apply another physical box transform. The signed Int64 seed is
+reinterpreted as UInt64 with the same bits.
+
+The fixed request identities are
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"` and
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
+`popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
+`parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
+ftol, xtol, stagnation, target, time, and noise controls set to `nothing`. Its
+internal callback captures evaluated-generation evidence and emits progress;
+it does not change sampling or stopping, and ledger sealing waits for the
+continuation boundary below. With
+budget $B$, it runs exactly
 $g=\lfloor(B-1)/\lambda\rfloor$ complete generations and requires $g\ge1$;
 unused remainder is evidence. Candidate failures and cache hits still consume
 their declared population ordinal. The winner is the lowest finite cost among
@@ -1637,6 +1661,36 @@ the baseline and completed candidates; an exact cost tie selects the earliest
 evaluation ordinal in baseline, generation, then population-column order.
 These execution controls bound reproducibility but do not decide whether the
 result meets a Design Target.
+
+Every population outcome records both the callback-visible raw CMA sample
+column `optimizer_latent_coordinates_f64` and its transformed unit-box
+`optimizer_coordinates_f64` beside the physical bindings. Both arrays have
+length $n$ in request-variable order. Retry invokes the
+same pinned `minimize()` from the original seed. The batch objective verifies
+the transformed coordinates, generation, and population column before
+returning stored costs; the package callback then verifies the raw sample bits
+before the mean or covariance update. The raw check is mandatory because the
+lin-quad transform is many-to-one. The first unsealed generation resumes
+physical evaluation. SCNSim neither serializes nor restores the package's
+private optimizer object; either replay mismatch is `EvidenceIntegrityError`.
+
+A callback precedes the package update and therefore cannot by itself seal a
+resumable generation. Each verified ledger also carries the canonical
+`cmaes-jl-0.2.6-julia-1.12.6-continuation-state.v1` certificate over all
+future-affecting mean, sigma/path, covariance/decomposition, stop, constraint,
+and exact MersenneTwister fields. For $k<g$, ledger $k$ becomes verified only at
+callback $k+1$ before its update, under boundary
+`post_update_post_next_sample_pre_next_update`; the certificate also covers the
+next raw and transformed `[n, lambda]` populations. Interruption before that
+boundary falls back to ledger $k-1$. The final ledger is certified only after
+`minimize()` returns under `terminal_post_update`, with `Stop.it=g` and
+`reason=:maxiter`. For sealed generations retry compares transformed samples
+before returning stored costs. For the first unsealed generation it caches the
+transformed sample, evaluates normally, and compares package state, RNG, raw
+sample, and cached transformed sample against the preceding certificate in the
+callback before update or evidence publication. These hashes are
+continuation-integrity evidence, not independently reconstructable state
+artifacts, and are never restored as optimizer state.
 
 For every successful candidate, the ledger stores each objective's evaluated
 Quantity, signed normalized residual, and weighted component cost in request
@@ -2077,6 +2131,14 @@ a stable machine `kind`, an exact `stage`, and immutable evidence. A started
 operation seals its typed failure receipt before raising; preflight validation
 creates no attempt. `resolve()` reconstructs the typed failure boundary but,
 without a verified success, raises `ResultUnavailableError` and never retries.
+Runtime preparation precedes request/attempt mutation; its failure raises
+`RuntimePreparationError` without an attempt and leaves any already Plan-bound
+Run workspace intact. Once an attempt is allocated, child launch failure and
+every later missing or invalid outcome are attempt-backed
+`BackendProtocolError` failures with a sealed failure receipt. Allocation
+reserves ordinal/staging only; a blocked bootstrap lets Python finalize one
+truthful immutable `allocated` or `launched` attempt record before numerical
+execution begins.
 
 The first slice machine-maps `PlanSealedError`,
 `WorkspacePlanReplacedError`,

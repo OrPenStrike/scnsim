@@ -14,9 +14,13 @@ return a `ComponentInstance`. The resulting Plan records the catalog module,
 qualified class, factory name, provenance kind, and source digest; neither a
 display name nor a memory address is sufficient.
 
-The canonical `catalog_id` is `module:qualified_class`. Multiple immutable
-instances of the same class therefore share catalog semantics; component
-identity still includes the invoked factory and its bound arguments.
+For a custom catalog, canonical `catalog_id` is `module:qualified_class`.
+Multiple immutable instances of the same class therefore share catalog
+semantics; component identity still includes the invoked factory and its bound
+arguments. The built-in singleton is the deliberate exception: its reserved
+identity is `scnsim.components`, with public symbol `components`. The private
+concrete Python class is implementation detail and may be renamed without
+renaming every primitive Plan.
 
 SCNSim resolves the first applicable portable provenance form in this order:
 
@@ -61,10 +65,10 @@ factory whose source is no longer available through Python's source/line cache
 fails before creating the component; SCNSim does not ask the author to invent a
 manual catalog ID.
 
-Built-in `scnsim.components` follows the same rule through the installed-wheel
-or editable-Git identity of SCNSim. A custom package calling a built-in
-primitive therefore records both the custom factory provenance and the exact
-built-in catalog provenance.
+Built-in `scnsim.components` still binds the installed-wheel or editable-Git
+source identity of SCNSim. A custom package calling a built-in primitive
+therefore records both the custom factory provenance and the exact built-in
+catalog provenance; only the private class name is excluded.
 
 ## Separate semantic runtime from the machine
 

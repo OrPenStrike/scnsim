@@ -13,16 +13,19 @@ with one sealed Plan plus append-only request attempts. Each request carries
 its own semantic runtime:
 
 ```text
+.scnsim.lock                    # persistent advisory-lock inode
 workspace.json                 # replaceable root and active-leaf pointer
 leaves/<leaf-instance-id>/
   workspace.json               # immutable Plan binding
   plan.json
   requests/<request-sha256>/
     request.json
+    attempts/.staging-<ordinal>-<uuid>/
     attempts/000001/
       attempt.json
       logs/
-      artifacts/result.zarr/
+      artifacts/
+      outcome.json
       result.json
       receipt.json
 ```
@@ -39,6 +42,12 @@ V1 uses one writer lock per workspace; different workspaces may run in
 parallel. This deliberately simple ceiling avoids two processes selecting the
 same next attempt number or sealing competing successes. Per-request locking
 is considered only if measured same-workspace throughput requires it.
+
+On Linux and macOS the stable root permanently retains `.scnsim.lock` and uses
+stdlib `fcntl.flock`: writers take an exclusive lock and `resolve()` takes a
+shared lock. The file is never deleted or replaced; normal exit, crash, or
+process termination releases the kernel-held lock. Windows fails before any
+workspace mutation.
 
 The writer lock spans Plan binding or replacement, attempt-ordinal allocation,
 child execution, staged-artifact promotion, outcome verification, and receipt
@@ -122,13 +131,29 @@ artifact hashes. Missing or corrupt evidence is an error; it never falls back
 to another attempt or request.
 
 Optimization adds one immutable, hash-linked ledger per completed generation.
-The ledger records optimizer state, population ordinals, physical bindings,
-objective components, cache/failure state, and the prior ledger hash. Retry
-selects the greatest verified compatible generation; equal ordinals with
-different hashes are `EvidenceIntegrityError`. An interrupted generation is
-discarded and deterministically replayed. A restored optimizer state whose
-deterministic samples disagree with the sealed ledger is also
-`EvidenceIntegrityError`.
+The ledger records package-visible optimizer coordinates, population ordinals,
+physical bindings, objective components, cache/failure state, and the prior
+ledger hash. It does not serialize package-private optimizer state. Retry
+selects the greatest verified compatible generation, restarts the pinned
+optimizer from the same seed, and replays ledger costs only when coordinates,
+generation, and population column match bitwise. Equal ordinals with different
+hashes or any replay mismatch are `EvidenceIntegrityError`; an interrupted
+generation is discarded and deterministically replayed.
+
+## Promote one attempt atomically
+
+Attempt staging is always a sibling of the final ordinal directory:
+`requests/<request-sha256>/attempts/.staging-<ordinal>-<uuid>/`. Julia writes
+only there. Python validates the outcome and allowed artifacts, writes
+`receipt.json` last, fsyncs the written files and directories, then atomically
+renames the staging directory to `attempts/<ordinal>/` on the same filesystem.
+
+A valid `outcome.json`, logs, and referenced artifacts move with that rename;
+the receipt records the outcome SHA-256. Invalid raw outcome bytes may be moved
+under `logs/`, but the final attempt cannot retain them under the authoritative
+`outcome.json` name. Interruption never promotes an unverified Result. Hidden
+staging left by a crash is neither an attempt nor a Result and is removed by
+the next exclusive writer before allocating a new ordinal.
 
 ## Store arrays without pickling
 
