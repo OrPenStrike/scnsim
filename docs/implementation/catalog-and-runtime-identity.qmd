@@ -75,7 +75,7 @@ catalog provenance; only the private class name is excluded.
 The request binds a semantic runtime containing:
 
 - SCNSim Python and Julia source digests;
-- the numerical algorithm ID;
+- the operation-level numerical algorithm ID;
 - exact Julia version; and
 - committed `Project.toml` and `Manifest.toml` hashes.
 
@@ -86,6 +86,15 @@ does the same for the shipped `.jl` tree. Generated caches, checkout paths, and
 VCS metadata are excluded. Changing any manifest entry creates a different
 semantic runtime.
 
+An operation-level algorithm ID is transitive, not a label for only the outer
+driver. In particular,
+`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2` binds the exact CMA,
+unit-box transform, Direct operator, selected quantity, continuation, and
+replay-certificate algorithms it invokes. Changing any dependency requires a
+new outer ID even when the `OptimizationSpec` bytes are unchanged. The request
+continues to carry one operation ID rather than an unordered set whose
+composition would be ambiguous.
+
 The exact Julia version and algorithm ID come from package-owned static runtime
 metadata, not from host discovery. This lets Python recompute request identity
 during `resolve()` without starting Julia. JuliaPkg may reuse a system Julia
@@ -95,7 +104,7 @@ executable's bytes remain attempt evidence.
 The attempt separately records the actual Julia executable hash, OS,
 architecture, CPU description, Julia thread count, BLAS thread count, and BLAS
 vendor. Available host core count and those execution resources do not rename
-the request. The Primitive Direct slice launches Julia and BLAS single-threaded
+the request. Every V1 numerical slice launches Julia and BLAS single-threaded
 to reduce avoidable drift; the observed values are still verified and stored.
 
 `resolve()` never prepares Julia or compares current hardware. It verifies the

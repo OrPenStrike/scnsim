@@ -6,15 +6,21 @@ toc-depth: 2
 
 **Status:** `CONVERGING` implementation design.
 
-## Seal once at the Run boundary
+## Seal each authoring graph at its ownership boundary
 
-`CircuitPlan` remains editable only during authoring. `CircuitRun(plan=...,
-workspace=..., versioned=False)` validates and permanently seals both the
-Python Plan and its canonical snapshot. The Run then supports any number of
-Refs, Specs, and ParameterSets against that snapshot. Execution never mutates
-it. Calling `add()`, `net()`, `ground()`, `add_port()`, or another authoring
-mutator on the sealed object raises `PlanSealedError`; SCNSim does not create a
-hidden mutable copy.
+`CircuitPlan` and `CompositePlan` remain editable only during their respective
+authoring phases. `CompositePlan.build()` validates and permanently seals its
+private graph before returning an immutable `ComponentInstance`.
+`CircuitRun(plan=..., workspace=..., versioned=False)` similarly validates and
+permanently seals the outer Python Plan and canonical snapshot. Calling
+`add()`, `net()`, `ground()`, `expose_pin()`, `add_port()`, or another mutator
+on either sealed authoring graph raises `PlanSealedError`; SCNSim does not keep
+a hidden mutable copy.
+
+The Run supports any number of Refs, Specs, and ParameterSets against its
+snapshot. Execution never mutates that snapshot. Composite sealing and
+recursive expansion are specified separately in
+[Composite Snapshots and Recursive Expansion](composite-snapshots-and-recursive-expansion.qmd).
 
 A change to sealed topology, an authoring baseline, Ports, couplings, or a
 public component schema creates a new Plan and Run. A parameter value selected

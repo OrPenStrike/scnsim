@@ -36,14 +36,14 @@ Notebook
 `run.explain()` and a compiled schematic may use the same Julia compile
 preflight, but neither launches a solver nor writes the evidence workspace.
 
-## Keep dependencies narrow
+## Add dependencies only when their slice becomes executable
 
-The first executable candidate is expected to add Pint, NumPy, JuliaPkg, Zarr,
-Matplotlib, and Schemdraw to Python. Its internal Julia project uses JSON3,
+The first executable candidate adds Pint, NumPy, JuliaPkg, Zarr, Matplotlib,
+and Schemdraw to Python. Its internal Julia project uses JSON3,
 CMAEvolutionStrategy, and Julia standard libraries. JosephsonCircuits is added
-only with the HB slice, so the first candidate does not pay for or imply an
-unused backend. These are design inputs, not current package metadata; the
-contract checkpoint changes no lockfile.
+only with the HB slice, so earlier candidates do not pay for or imply an unused
+backend. These are design inputs, not current package metadata; this complete
+design checkpoint changes no lockfile.
 
 V1 deliberately does not add Pydantic, a database, a web service, a distributed
 runner, JuliaCall, or a persistent daemon. Canonical files, one child process,

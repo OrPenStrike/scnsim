@@ -6,6 +6,12 @@ toc-depth: 2
 
 **Status:** `CONVERGING` implementation design.
 
+The distributed-line compiler is specified in
+[RLGC, Q2D, and Pi Expansion](rlgc-q2d-and-pi-expansion.qmd); the immutable
+PTC/transform/retain path and selected-network evidence are specified in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
+This page keeps their shared physical-graph and logical-Port boundary aligned.
+
 ## Compile one backend-neutral physical graph
 
 After ParameterSet binding, Julia expands every component into oriented
@@ -66,21 +72,19 @@ orientation, reference impedance, and load are equivalent across lowerings.
 PTC removes only declared, evidenced `nonloading_probe` loads from the analysis
 network. For driven HB it leaves the nonlinear/static balance loaded and
 compensates only the linearized response, as required by the public contract.
+Its canonical port set, transform ordering, retained-coordinate order, and
+selected-network maps are fixed in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
 
 ## Replay one ordered view lineage
 
-The selected network is formed in the public order:
+The compiler replays the public order—bound graph, optional PTC, ordered paired
+transforms, optional terminal retain, then zero-current complement elimination.
+The exact lineage grammar, ParameterSet-dependent weights, port
+canonicalization, N-port realizability, and failure evidence live in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
+Direct may evaluate a named unported coordinate; S/Y/Z and HB require a
+Port-realizable final basis and fail rather than returning a smaller or
+backend-specific fallback view.
 
-1. bind parameters and compile the original Plan;
-2. apply PTC to the evidenced load mask;
-3. resolve automatic paired-node transforms and their induced reference matrix;
-4. retain the ordered requested coordinates; and
-5. eliminate the complement at zero external current using factorization or
-   linear solve, never an explicit inverse.
-
-Direct may evaluate named internal coordinates without a Port-realizable solve
-view. HB and S/Y/Z solving require a Port-realizable final basis. Every failure
-is attached to the step that could not prove its invariant rather than
-returning a smaller or backend-specific fallback view.
-
-[Next: Diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd)
+[Next: RLGC, Q2D, and pi expansion](rlgc-q2d-and-pi-expansion.qmd)

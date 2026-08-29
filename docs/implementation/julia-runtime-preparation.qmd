@@ -49,8 +49,10 @@ src/scnsim/_julia/
 `runtime.json` binds Julia `1.12.6` and the versioned algorithm IDs. The first
 slice Manifest contains JSON3, CMAEvolutionStrategy.jl `0.2.6` at registry tree
 `6bf0985be2c5ea58305d2d04e336684f64fdc12a`, and required standard libraries
-only; JosephsonCircuits enters with HB. Python locates all resources through
-`importlib.resources`, never caller cwd or a user Julia project.
+only. The HB slice adds JosephsonCircuits `0.5.4` at General-registry tree
+`43fa323200866910a93dd06ab8c002ed393ed9bb` (tag commit
+`a88bafb8f57ad5b43ef302ae893288f0b75c11e3`). Python locates all resources
+through `importlib.resources`, never caller cwd or a user Julia project.
 
 SCNSim will commit one internal `Project.toml` and `Manifest.toml`. The package
 launches the JuliaPkg-resolved executable with `--project` pointing to that
@@ -78,9 +80,9 @@ work.
 
 The attempt separately records the actual executable hash, host OS and
 architecture, CPU description, Julia threads, BLAS threads, and BLAS vendor.
-Those execution resources do not rename the request. The Lessons 1--5
-launcher fixes Julia and BLAS to one thread to reduce avoidable variation, but
-still records the observed values. See
+Those execution resources do not rename the request. Every V1 numerical slice
+fixes Julia and BLAS to one thread to reduce avoidable variation, while still
+recording the observed values. See
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
 
 The first candidate supports Linux and macOS. Windows raises

@@ -14,6 +14,9 @@ $$
 D(\omega)=K-\omega^2 C-i\omega G.
 $$
 
+Every entry of $D$ is serialized in coherent `siemens / second` with
+dimensionality `conductance_per_time`.
+
 The selected circuit admittance under the same convention is
 
 $$
@@ -48,6 +51,10 @@ but condition number creates no additional threshold.
 
 Each quantity Spec compiles to a typed dependency node: response element,
 diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
+Family-specific pole, zero, residue, response-element, and materialized-operator
+mechanics belong to
+[Direct Poles, Zeros, Couplings, and Operators](direct-poles-zeros-and-operators.qmd);
+this page owns only the shared Direct operator/evaluation graph and CMA core.
 The exact `DiagonalRootSpec` complex-Newton residual, analytic derivative,
 machine-resolution certificate, and baseline-owned continuation are fixed in
 [Diagonal-Root Numerical Procedure](diagonal-root-numerical-procedure.qmd).
@@ -141,10 +148,16 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
-that change requires a new ID.
+that change requires a new ID. The outer algorithm ID is a transitive binding:
+it includes the exact package release and registry tree, Julia patch, call and
+stop configuration, box transform, candidate compile/Direct/objective
+algorithm IDs, raw/transformed hash encoding, continuation-certificate
+projection and boundary timing, replay checks, and winner/tie rule. A change to
+any of those dependencies requires another outer ID rather than silently
+preserving `.v2`.
 
 Only complete generations count:
 
@@ -172,6 +185,15 @@ unit-box columns as `optimizer_coordinates_f64`, physical ParameterSets,
 objective components, and failures in an append-only ledger. Both coordinate
 arrays have length $n$ and use request-variable order within each population
 column; candidate records remain in population-column order.
+
+The canonical raw `[n, lambda]` matrix hashes to
+`raw_optimizer_population_sha256`; the canonical transformed matrix hashes to
+`transformed_optimizer_population_sha256`. Both hashes cover the declared
+shape, population-column order, and exact Float64 bits, and must reproduce the
+candidate arrays in the same ledger. The raw hash binds callback-visible $y$;
+the transformed hash binds the $z$ actually consumed by physical evaluation.
+Neither may be inferred from the other or from rounded physical values.
+
 Each successful objective component records its evaluated Quantity, signed
 normalized residual, and weighted cost; the request-owned target, resolved
 scale/source, and weight therefore reproduce both the component and total cost.
@@ -229,22 +251,31 @@ reconstructable state artifact; SCNSim never restores this projection or a
 private package object. Its discriminator, projection ID, field set, and array
 order are versioned with the optimization algorithm ID.
 
+A nonterminal certificate also carries
+`next_raw_optimizer_population_sha256` and
+`next_transformed_optimizer_population_sha256`, computed from the exact next
+$y$ and $z$ matrices in that projection. A terminal certificate forbids both
+fields because no next population exists. These hashes are distinct from the
+generation ledger's current-population hashes; together they make the delayed
+boundary check explicit without serializing a private `Optimizer`.
+
 Because the only public hook is pre-update, generation $k<g$ becomes verified
 at callback $k+1$, before `update!(k+1)`, with boundary
 `post_update_post_next_sample_pre_next_update`. The projection contains
 post-update-$k$ numerical state, the RNG after sampling generation $k+1$, and
-the exact raw/transformed next population. If an attempt ends before this
-boundary, generation $k$ remains unverified and retry falls back to the
-preceding ledger. Generation $g$ is verified only after `minimize()` returns
-with boundary `terminal_post_update`, `Stop.it=g`, `Stop.reason=:maxiter`, its
-post-update state, and no next-population field. During retry, the batch
-objective verifies transformed `z` before returning stored costs for a sealed
-generation. For the first unsealed generation it caches `z` and evaluates the
-physics normally; its callback recomputes the preceding ledger's certificate
-from package state, RNG, raw `y`, and cached `z`, then aborts on mismatch before
-the package may update or publish evidence. A final replay must match the
-terminal certificate. This one-generation evidence lag is intentional and
-prevents an unchecked post-update divergence from becoming resume state.
+the exact raw/transformed next population whose hashes the certificate names.
+If an attempt ends before this boundary, generation $k$ remains unverified and
+retry falls back to the preceding ledger. Generation $g$ is verified only after
+`minimize()` returns with boundary `terminal_post_update`, `Stop.it=g`,
+`Stop.reason=:maxiter`, its post-update state, and no next-population hash.
+During retry, the batch objective verifies transformed `z` before returning
+stored costs for a sealed generation. For the first unsealed generation it
+caches `z` and evaluates the physics normally; its callback recomputes the
+preceding ledger's certificate from package state, RNG, raw `y`, and cached
+`z`, then aborts on mismatch before the package may update or publish evidence.
+A final replay must match the terminal certificate. This one-generation
+evidence lag is intentional and prevents an unchecked post-update divergence
+from becoming resume state.
 
 The winning `ParameterSet` is ordinary immutable output. Passing it to another
 solve or evaluate call creates a new exact request; reduction lineage and

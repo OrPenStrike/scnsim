@@ -1,0 +1,592 @@
+---
+title: "Direct Poles, Zeros, Couplings, and Operators"
+subtitle: "How does each typed Direct quantity bind one selected network and close its numerical evidence?"
+toc-depth: 3
+---
+
+**Status:** `CONVERGING` implementation design.
+
+This page realizes the full public Direct quantity catalog. It does not change
+the definitions in the
+[Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog),
+and it does not infer a pole or zero from a sampled response. The fixed
+machine-resolution policy is the Human-approved Runtime Contract value
+
+$$
+\tau(q)=256(q+1)\epsilon_{\mathrm{Float64}}.
+$$
+
+Every square solve uses the normalized backward residual and exact `0/0`
+convention already specified for Direct S/Y/Z. This page introduces no second
+tolerance, conditioning threshold, root window, or public numerical control.
+
+## Bind the exact selected operator first
+
+After coherent-SI ParameterSet binding, compilation produces the original
+non-ground node-flux matrices in one recorded order,
+
+$$
+D_{\mathrm{circ}}(\omega)=K-\omega^2C-i\omega G,
+\qquad
+D'_{\mathrm{circ}}(\omega)=-2\omega C-iG.
+$$
+
+Let $B_p$ be the original logical-Port incidence matrix,
+$R_p=\operatorname{diag}(R_1,\ldots,R_P)$, and let the diagonal mask $M$
+contain zero only for a probe load proved removed by PTC. Root, pole, coupling,
+and operator quantities use the loaded open operator
+
+$$
+Q(\omega)=D_{\mathrm{circ}}(\omega)
+-i\omega B_pR_p^{-1}M B_p^T,
+$$
+
+$$
+Q'(\omega)=-2\omega C-i
+\left(G+B_pR_p^{-1}M B_p^T\right).
+$$
+
+Thus an uncompensated logical Port remains an open-system load. PTC clears
+only its proved load entry; it does not erase the coordinate or reference
+impedance. `transform_pair()` then applies its recorded power-conjugate map,
+and the terminal Ref supplies the ordered retained coordinates $R$. Every
+other transformed non-ground coordinate is the complete complement $E$ and
+obeys zero external current. SCNSim computes
+
+$$
+Q_R^{E\downarrow}=Q_{RR}-Q_{RE}X,
+\qquad Q_{EE}X=Q_{ER},
+$$
+
+and its analytic derivative with one further solve,
+
+$$
+Q_{EE}X'=Q'_{ER}-Q'_{EE}X,
+$$
+
+$$
+\left(Q_R^{E\downarrow}\right)'
+=Q'_{RR}-Q'_{RE}X-Q_{RE}X'.
+$$
+
+No implementation forms an inverse. Empty $E$ is a no-op. Every nonempty
+solve must satisfy its backward-residual certificate; failure is
+`EliminatedBlockSolveFailure`. The exact Ref lineage, coordinate maps, PTC
+mask, retained/eliminated order, ParameterSet, $C/G/K$, solve evidence, and
+operator identity are inputs to the quantity dependency node. A cache entry
+with any different input is ineligible.
+
+Response quantities use the same physical Ref but a different, deliberate
+boundary. All backend source resistors are first de-embedded. Omitted logical
+Ports retain the matched loads selected by $M$; selected external coordinates
+do not retain a source resistor in the published network. With the Runtime
+Contract's selected/omitted maps, the intrinsic node admittance is
+
+$$
+Y_{\mathrm{circ}}(\omega)
+=\frac{D_{\mathrm{circ}}(\omega)}{-i\omega}
+=G-i\omega C+\frac{i}{\omega}K,
+$$
+
+and its derivative is
+
+$$
+Y'_{\mathrm{circ}}(\omega)=-iC-\frac{i}{\omega^2}K.
+$$
+
+The selected public $Y_{\mathrm{net}}$ follows the exact omitted-load,
+selected-source-boundary, and de-embedding order in the Runtime Contract;
+$Z_{\mathrm{net}}$ and matrix-reference power-wave $S$ are formed from that
+same $Y_{\mathrm{net}}$. An S-family quantity therefore requires a completely
+Port-realizable terminal view and its real-SPD $R_k$. A Y/Z-family quantity may
+use an ordered retained power-conjugate voltage/current coordinate without
+inventing a wave reference. In all families, `input_coordinate` is the matrix
+column and `output_coordinate` is the matrix row. Both must occur exactly once
+in the final selected order.
+
+All declared ordinary frequencies are finite positive frequency Quantities.
+SCNSim converts them once by $\omega=2\pi f$. A real root-like anchor $f_a$
+initializes $\omega_0=2\pi f_a+0i$; a complex anchor is converted
+componentwise as $\omega_0=2\pi f_a$. Anchors must be finite with positive real
+part, and a declared imaginary seed is never discarded.
+
+## Evaluate response scalars and operators
+
+### `ResponseElementSpec`
+
+At its one exact frequency, `ResponseElementSpec` materializes the complete
+selected matrix needed by its declared family and returns
+
+$$
+T(\omega)=
+\begin{cases}
+S_{ij}(\omega), & \texttt{family="S"},\\
+Y_{ij}(\omega), & \texttt{family="Y"},\\
+Z_{ij}(\omega), & \texttt{family="Z"}.
+\end{cases}
+$$
+
+Y uses the selected admittance directly. Z uses a certified matrix solve
+$YZ=I$. S uses a certified solve
+
+$$
+\left(I+D_kY D_k\right)S=I-D_kY D_k,
+\qquad D_k=R_k^{1/2},
+$$
+
+where $D_k$ is the recorded principal real-SPD square root. Because a matrix
+inverse couples all channels, SCNSim never computes an isolated Z or S entry
+by scalar inversion. It need not form an unrelated family or frequency sweep.
+The complex value and its real, imaginary, and magnitude selectors are finite;
+S is dimensionless, Y is in siemens, and Z is in ohms.
+
+### `OperatorSpec`
+
+`OperatorSpec` evaluates the complete $Q_R^{E\downarrow}(\omega)$ at every
+frequency in the same nonempty, finite, positive, strictly increasing,
+duplicate-free grid contract used by Direct. The Result shape is `[F, N, N]`
+in terminal coordinate order. It includes every uncompensated Port load in
+$M$ and is not the source-resistor-de-embedded public Y matrix. Its canonical
+unit is `siemens / second`, equivalent to inverse henry under this convention.
+
+The `OperatorResult` has exactly two array-catalog entries:
+
+| ID | Path | Datasets | dtype and shape | Axes and unit |
+|---|---|---|---|---|
+| `frequencies` | `artifacts/frequencies.zarr` | `values` | `<f8`, `[F]` | `frequency`; `hertz` |
+| `operator` | `artifacts/operator.zarr` | `real`, `imag` | paired `<f8`, `[F,N,N]` | `frequency`, `row_coordinate`, `column_coordinate`; `siemens / second` |
+
+The external manifests are respectively
+`artifacts/frequencies.manifest.json` and
+`artifacts/operator.manifest.json`. Both are canonical Zarr V2 artifacts under
+the shared no-codec/no-extra-file rules. With $c(F)=\min(F,1024)$, chunks are
+`[c(F)]` and `[c(F),N,N]`: no coordinate matrix at one frequency is split
+between chunks. C order, paired real/imag storage, ordered coordinate IDs, PTC
+load labels, and exact dataset metadata belong to the artifact manifest and
+runtime identity. An operator matrix is inspectable output and cannot itself
+be one scalar objective.
+
+## Locate one hybridized pole
+
+Every determinant/cofactor certificate on this page uses one fixed mechanical
+rule. For each row $a$ of its unscaled evidence matrix $A$, let
+$m_a=\max_b|A_{ab}|$ and choose $s_a=1$ when $m_a=0$, otherwise
+$s_a=2^{-\lfloor\log_2m_a\rfloor}$. The diagonal $S=\operatorname{diag}(s_a)$
+is applied to both $A$ and $A'$ for that one value/derivative evaluation. LU
+uses partial row pivoting by largest absolute value in the active column, with
+ties resolved by the smallest current row index, and includes permutation
+parity. Determinant ratios use scaled mantissa/exponent arithmetic so products
+cannot silently underflow or overflow. This scaling is determinant/cofactor
+evidence only; SVD, null vectors, and residuals always use the unscaled matrix.
+
+For `HybridizedPoleSpec(coordinates=C, anchor=...)`, $C$ must equal the
+terminal View's complete retained coordinate sequence, in the same order, and
+must contain at least two coordinates. Thus $q=|C|\ge2$; a one-coordinate
+request uses `DiagonalRootSpec`. The Ref complement $E$ receives zero external
+current, and SCNSim uses the already defined retained Schur operator
+
+$$
+F(\omega)=Q_R^{E\downarrow}(\omega),
+\qquad h(\omega)=\det F(\omega),
+$$
+
+with empty $E$ a no-op. Its derivative follows the same analytic Schur rule,
+and the determinant derivative is
+
+$$
+h'(\omega)=\operatorname{tr}\!\left(
+\operatorname{adj}F(\omega)F'(\omega)\right)
+=\sum_{a,b}\operatorname{cof}_{ab}(F)F'_{ab}.
+$$
+
+The shared scaling is held constant inside each $h/h'$ evaluation, so the
+Newton quotient is unchanged. No finite difference, sampled sweep,
+eigenspectrum enumeration, or magnitude minimization enters the solve. The
+baseline iteration is
+
+$$
+\omega_{k+1}=\omega_k-\frac{h(\omega_k)}{h'(\omega_k)}
+$$
+
+for at most 32 updates. The initial anchor is checked before update one. If a
+proposed update leaves both Float64 real/imaginary bit patterns unchanged, the
+complete certificate is checked immediately; failure is
+`NumericalResolutionUnresolved`. Every finite analytic $h/h'$ pair and update
+count is recorded. `anchor` chooses only this deterministic Newton basin. It
+is not a nearest-pole instruction, a search window, or evidence of global
+uniqueness.
+
+At the returned candidate, let
+
+$$
+F=U\,\operatorname{diag}(\sigma_1\ge\cdots\ge\sigma_q)V^\dagger,
+\qquad v=V_{:,q},\qquad u=U_{:,q},
+$$
+
+with unit-2-norm vectors. The first largest-magnitude $v_j$ in declared order
+fixes the phase: multiply both $u$ and $v$ by $\exp(-i\arg v_j)$ so $v_j$ is
+positive real without changing $u^\dagger F'v$. With
+$r_a=\lVert F_{a,:}\rVert_2$, SCNSim requires
+
+$$
+\eta_{\det}=\frac{|\det F|}{\prod_a r_a}\le\tau(q),
+$$
+
+$$
+\eta_R=\frac{\lVert Fv\rVert_\infty}
+{\lVert |F|\,|v|\rVert_\infty}\le\tau(q),
+\qquad
+\eta_L=\frac{\lVert u^\dagger F\rVert_\infty}
+{\lVert |u^\dagger|\,|F|\rVert_\infty}\le\tau(q).
+$$
+
+Exactly one direction must be machine-null:
+
+$$
+\frac{\sigma_q}{\sigma_1}\le\tau(q),
+\qquad
+\frac{\sigma_{q-1}}{\sigma_1}>\tau(q).
+$$
+
+Let
+
+$$
+g=u^\dagger F'(\omega_*)v,
+\qquad
+s_g=|u^\dagger|\,|F'(\omega_*)|\,|v|.
+$$
+
+SCNSim requires finite $s_g>0$, $|g|/s_g>\tau(q)$, and
+$|h/h'|/|\omega_*|\le\tau(q)$. Common power-of-two row scaling is fixed
+inside one $h/h'$ evaluation. Residual `0/0` is zero and nonzero-over-zero is
+infinity; nonzero-slope and rank-gap predicates reject a zero denominator.
+
+Restoring $x_R=v$ and $x_E=-Xv$, the complete loaded-operator certificate is
+
+$$
+\eta_Q=\frac{\lVert Q(\omega_*)x\rVert_\infty}
+{\lVert A_{\mathrm{abs}}|x|\rVert_\infty}\le\tau(n),
+$$
+
+where $n$ is the complete compiled dimension and
+
+$$
+A_{\mathrm{abs}}=|K|+|\omega||G_{\mathrm{loaded}}|
++|\omega|^2|C|
+.$$
+
+This uses the same residual zero convention as the diagonal-root certificate.
+The accepted passive pole also has $\operatorname{Re}\omega>0$ and
+$\operatorname{Im}\omega\le0$. Its public root is in `radian / second`,
+frequency is $\operatorname{Re}\omega/(2\pi)$ in hertz, linewidth is
+$-2\operatorname{Im}\omega/(2\pi)$ in hertz, and slope is in siemens.
+
+The hybridized-pole `DirectQuantityResult` envelope owns one required complex
+artifact: ID `null_vector`,
+path `artifacts/null_vector.zarr`, and manifest
+`artifacts/null_vector.manifest.json`. Its `real`/`imag` datasets are paired
+little-endian Float64 in C order with shape and one complete chunk `[q]`, axis
+the exact retained coordinate sequence $C$, unit `dimensionless`, and the
+canonical phase fixed above. Its required `coordinate_ids` and the inline
+`retained_coordinate` axis contain exactly that same sequence.
+
+This is machine-resolution and local-simple-pole evidence. It is not a
+validated enclosure, a global pole count, or proof that another starting basin
+cannot converge elsewhere.
+
+## Locate one transfer zero
+
+`TransferZeroSpec` binds one ordered scalar $T_{ij}$ from the selected S/Y/Z
+family. It solves the analytic equation $T_{ij}(\omega)=0$ with
+
+$$
+\omega_{k+1}=\omega_k-
+\frac{T_{ij}(\omega_k)}{T'_{ij}(\omega_k)}
+$$
+
+for at most 32 updates. The anchor candidate is checked before update one;
+bitwise stagnation succeeds only when the complete certificate passes. Every
+finite analytic $T/T'$ pair and update count is recorded. All Schur and
+family-formation derivatives come from the analytic solve rule
+
+$$
+AX=B,
+\qquad
+AX'=B'-A'X,
+$$
+
+not finite differences. In particular,
+
+$$
+Z'=-ZY'Z,
+$$
+
+and, with $P=I+D_kYD_k$, $N=I-D_kYD_k$,
+
+$$
+PS=N,
+\qquad
+PS'=N'-P'S.
+$$
+
+Let $H(\omega)$ be the complete source-resistor-de-embedded, PTC/transformed
+intrinsic node admittance after omitted matched loads but before the selected
+source boundary. This is the Runtime Contract quantity
+$Y_{\mathrm{circ,node}}+B_pG_{o,p}B_p^T$. The terminal identity
+
+$$
+Y_{\mathrm{net}}=H_{RR}-H_{RE}H_{EE}^{-1}H_{ER}.
+$$
+
+is evaluated through the Runtime Contract's selected-source solve and
+de-embedding chain, with the same certificates; it is not a second boundary
+order.
+
+The zero bundle carries an explicit analytic numerator/denominator identity:
+
+- for Y, the denominator operator is $A_D=H_{EE}$ and
+  $N_{Y,ij}=[H_{RR}\det(H_{EE})-
+  H_{RE}\operatorname{adj}(H_{EE})H_{ER}]_{ij}$; the numerator matrix is
+  $A_N=[N_{Y,ij}]$, while empty $E$ means denominator one with no solve;
+- for Z, $A_D=Y$ and $A_N=M_{ji}$ is Y with row $j$ and column $i$ deleted,
+  so $N_{Z,ij}=(-1)^{i+j}\det M_{ji}$ and $\Delta_Z=\det Y$; for one-port Y,
+  the empty cofactor is represented canonically as $A_N=[1]$; and
+- for S, with $q_j=Ne_j$, $A_D=P$ and
+  $A_N=\begin{bmatrix}P&q_j\\-e_i^T&0\end{bmatrix}$, so
+  $N_{S,ij}=\det A_N$ and $\Delta_S=\det P$.
+
+These determinants are evidence for the declared transfer, not a new public
+minor selector. Before determinant evidence is computed, every row, unknown,
+and right-hand side is converted by its recorded coherent-SI equation/variable
+unit, making the evidence matrix dimensionless. No frequency-dependent row
+normalization is applied. Define
+$\widehat\omega=\omega/(1\ \mathrm{radian/second})$. Let
+$\chi=(-1)^{i+j}$ for Z and $\chi=1$ for Y/S.
+For the family-specific numerator matrix $A_N$ of order $q_N$, define
+
+$$
+N=\chi\det A_N,
+\qquad
+\widehat N'=\frac{dN}{d\widehat\omega}
+=\chi\sum_{a,b}\operatorname{cof}_{ab}(A_N)
+\frac{dA_{N,ab}}{d\widehat\omega}.
+$$
+
+The coherent-SI and common power-of-two row scaling remain fixed inside one
+$(N,\widehat N')$ evaluation. With singular values
+$\sigma_1\ge\cdots\ge\sigma_{q_N}$, SCNSim requires
+
+$$
+\frac{|N|}{\prod_a\lVert A_N[a,:]\rVert_2}\le\tau(q_N),
+\qquad
+s_{\widehat N'}=\sum_{a,b}|\operatorname{cof}_{ab}(A_N)|
+\left|\frac{dA_{N,ab}}{d\widehat\omega}\right|>0,
+\qquad
+\frac{|\widehat N'|}{s_{\widehat N'}}>\tau(q_N).
+$$
+
+For $q_N>1$, it also requires
+$\sigma_{q_N}/\sigma_1\le\tau(q_N)$ and
+$\sigma_{q_N-1}/\sigma_1>\tau(q_N)$. Both ratios are omitted for $q_N=1$.
+Residual `0/0` is zero; nonzero-slope and rank-gap predicates reject a zero
+denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
+denominator determinant stores $\widehat\Delta$; both are canonical
+dimensionless complex evidence. The conversion factor cancels in the slope
+ratio. The final correction obeys
+$|T/T'|/|\omega|\le\tau(q_N)$.
+
+The denominator operator $A_D$ must remain finite and machine nonsingular: its
+factorization and full `A_D X = I` backward residual must pass at
+$\tau(q_D)$, where $q_D$ is its order, and its condition estimate is recorded
+without a second threshold. Let $\widehat A_D$ be its recorded coherent-SI
+equation/unknown-scaled dimensionless form and
+$\widehat\Delta=\det(\widehat A_D)$, reconstructed through the same canonical
+cofactor/scaling rule; empty Y-complement uses $\widehat\Delta=1$. The Result
+stores `denominator` with unit/dimensionality `dimensionless`. A singular or
+non-finite denominator is not a zero. A simultaneously unresolved numerator
+and denominator is a rejected pole-zero cancellation. Unlike a passive pole,
+a transfer zero is not assigned a damping-sign restriction; it must have a
+finite positive real frequency, while its imaginary part remains part of the
+complex zero evidence.
+
+The anchor again identifies only the baseline Newton basin. The Result never
+substitutes a real-grid minimum, dip, peak, sign crossing, nearest zero, or
+globally unique zero.
+
+The Result stores the converged complex `zero` $\omega_z$ in
+`radian / second`, `frequency=\operatorname{Re}(\omega_z)/(2\pi)` in hertz,
+and no linewidth field. Its `numerator_slope` and `denominator` are the
+dimensionless complex evidence defined above.
+
+## Form residue-normalized coupling
+
+`ResidueNormalizedCouplingSpec` first resolves both branch Specs with their
+own baseline-owned evidence. Both branches must bind the same Ref,
+ParameterSet, loaded selected-operator identity, ordered retained coordinate
+space, phasor convention, and reciprocal basis. A diagonal branch contributes
+its positive-oriented coordinate vector. A hybridized branch contributes its
+phase-canonical right null vector. Mismatched reductions are not silently
+embedded or frequency-sorted.
+
+For this full-V1 coupling operation, a `DiagonalRootSpec` branch names one
+diagonal of the common multi-coordinate $Q_R^{E\downarrow}$; the other retained
+coordinates remain in $R$. It carries its scalar diagonal residual and local
+slope evidence but makes no full-operator eigenvector claim. This extends the
+Primitive Direct slice, whose one-coordinate View additionally permits the
+full-$Q$ closure certificate. A hybridized branch must name the complete
+ordered $R$ as required above. Independently reduced one-coordinate Views are
+not embedded into a common coupling operator.
+
+For diagonal coordinate $i$, define
+
+$$
+f_i(\omega)=\left[Q_R^{E\downarrow}(\omega)\right]_{ii},
+\qquad f_i'(\omega)=
+\left[\left(Q_R^{E\downarrow}\right)'(\omega)\right]_{ii}.
+$$
+
+It uses the same initial-anchor check, 32-update complex Newton,
+real/imag-bit stagnation, and baseline-owned dyadic continuation as the
+one-coordinate procedure. With the eliminated solve columns $X_i,X_i'$,
+
+$$
+s_{f_i'}=|Q'_{ii}|+|Q'_{iE}|\,|X_i|+|Q_{iE}|\,|X_i'|,
+$$
+
+SCNSim requires finite $s_{f_i'}>0$,
+$|f_i'|/s_{f_i'}>\tau(n)$, and
+$|f_i/f_i'|/|\omega_i|\le\tau(n)$. For
+$x_R=e_i,\ x_E=-X_i$, its scalar retained-row closure is
+
+$$
+\eta_{f_i}=\frac{|f_i|}{[A_{\mathrm{abs}}|x|]_i}\le\tau(n).
+$$
+
+The residual zero convention is unchanged. Other retained rows may carry the
+induced current, so this branch deliberately does not claim
+$\lVert Qx\rVert=0$.
+
+For branch vectors $v_a,v_b$ and their locally simple roots
+$\widetilde\omega_a,\widetilde\omega_b$, define the reciprocal bilinear slopes
+
+$$
+s_a=-v_a^T\left(Q_R^{E\downarrow}\right)'
+(\widetilde\omega_a)v_a,
+\qquad
+s_b=-v_b^T\left(Q_R^{E\downarrow}\right)'
+(\widetilde\omega_b)v_b.
+$$
+
+Let $q$ be the common retained-space dimension, normalize both finite branch
+vectors to unit 2-norm, and write $V=[v_a\ v_b]$ with singular values
+$\gamma_1\ge\gamma_2$. SCNSim requires $q\ge2$ and
+$\gamma_2/\gamma_1>\tau(q)$; a zero denominator fails. At each bitwise-distinct
+point in $\{\widetilde\omega_a,\widetilde\omega_b,\omega_*\}$, the selected
+operator must also satisfy
+
+$$
+\eta_{\mathrm{sym}}=
+\frac{\lVert Q-Q^T\rVert_\infty}
+{\lVert |Q|+|Q^T|\rVert_\infty}\le\tau(q),
+$$
+
+with residual `0/0` equal to zero. For each branch,
+
+$$
+s_i=-v_i^TQ'(\widetilde\omega_i)v_i,
+\qquad
+s_{i,\mathrm{abs}}=|v_i|^T|Q'(\widetilde\omega_i)|\,|v_i|,
+$$
+
+must be finite with $s_{i,\mathrm{abs}}>0$ and
+$|s_i|/s_{i,\mathrm{abs}}>\tau(q)$, in addition to the branch's own root
+certificate. The Result stores the corresponding branch residue
+$-1/s_i$ canonically in ohms. At the declared positive real evaluation frequency
+$\omega_*=2\pi f_*$,
+
+$$
+J_{\mathrm{res}}(\omega_*)=
+\frac{v_a^TQ_R^{E\downarrow}(\omega_*)v_b}
+{\sqrt{s_as_b}}.
+$$
+
+The denominator must be finite and nonzero. Its square root is the principal
+complex square root, including its standard branch cut; SCNSim applies no
+later sign flip. The canonical vector phases and ordered branch operands are
+therefore part of identity. For coordinate basis vectors this reduces exactly
+to the canonical retained off-diagonal divided by $\sqrt{s_as_b}$. The
+complex coupling and `abs(J_res)` are in
+`radian / second`; converting an angular rate to cycles per second requires an
+explicit division by $2\pi$. This is a local open-EOM coupling, not a fitted
+normal-mode splitting or automatically a Hamiltonian coefficient.
+
+## Continue roots from the sealed baseline
+
+Hybridized poles and transfer zeros use the same lineage rule as
+`DiagonalRootSpec`. The locator is applied once at the sealed baseline. A
+non-baseline ParameterSet follows the canonical coherent-SI straight line
+
+$$
+p(t)=p_0+t(p_1-p_0),\qquad 0\le t\le1.
+$$
+
+Newton first attempts the current interval endpoint from its certified left
+endpoint. Numerical nonconvergence bisects that interval and retries, with a
+maximum dyadic depth of 32. A successful midpoint resumes toward the original
+right endpoint. Every evaluation starts again from the sealed baseline branch;
+it never uses a previous optimizer candidate, reapplies the locator, enumerates
+and chooses the nearest root, or detours in parameter space.
+
+The Result records every accepted subdivision and certificate. Exhausted
+subdivision, an unresolved local slope/rank, an eliminated-block or transfer
+denominator failure, or a physical-domain failure returns its typed failure
+rather than another root. This deterministic lineage is not a validated
+analytic-branch enclosure; an undetected basin exchange between certified
+endpoints remains a V1 limitation.
+
+## Compose and materialize quantities
+
+`QuantitySum` is legal only as the `quantity` of a `CostObjective`; it is not a
+standalone `run.evaluate()` Spec or Result discriminator. It contains at least
+one scalar selector. Dependencies are evaluated in declaration order, every
+term must have identical dimensionality, and each finite value is converted to
+coherent SI before a declaration-order left fold. It cannot contain a bundle,
+operator, matrix, arbitrary Python callable, or nested expression language. A
+dependency failure propagates to that optimization candidate with its original
+typed context; no partial sum or stale term is published.
+
+Scalar public outputs for `HybridizedPoleSpec`, `TransferZeroSpec`,
+`ResidueNormalizedCouplingSpec`, and `ResponseElementSpec` live canonically in
+the typed `scalar_catalog` of `result.json`; they do not create scalar Zarr
+artifacts. A `QuantitySum` value and its ordered component values live only in
+the optimization candidate's objective evidence. Branch locators,
+continuation steps, null vectors, numerator/denominator identities, analytic
+slopes, solve residuals, units, selected-network identity, and ParameterSet
+remain receipt/result evidence. `HybridizedPoleSpec` uses its one fixed null
+vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
+
+The closed algorithm IDs are
+`scnsim.hybridized_pole.newton32.v1`,
+`scnsim.transfer_zero.newton32.v1`,
+`scnsim.residue_normalized_coupling.v1`,
+`scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
+formula, derivative, normalization, iteration/subdivision rule, artifact
+layout, or branch policy requires a new runtime algorithm identity.
+
+## Failure ownership
+
+| Condition | Typed owner |
+|---|---|
+| Invalid family, locator/frequency, coordinate, dimensionality, composition, or branch compatibility | `SCNSimValidationError` with the exact quantity stage |
+| Valid public Spec outside the implemented slice | `ScaffoldUnavailableError` |
+| Failed retained/complement or response matrix solve | `EliminatedBlockSolveFailure` or `DirectResponseFormationError`, with matrix stage and frequency |
+| Zero/non-finite analytic derivative, repeated pole/zero, unresolved null rank, or missing residue evidence | `RootSlopeUnresolved` with branch and certificate evidence |
+| No machine certificate within 32 Newton updates or dyadic depth | `NumericalResolutionUnresolved` |
+| Non-finite/singular transfer denominator or unresolved cancellation | `NumericalResolutionUnresolved` with `transfer_denominator` or `pole_zero_cancellation` stage |
+| Sealed compiler topology/operator invariant is violated | `CompilerInvariantError`; never a bad quantity or optimizer penalty |
+| Julia envelope, artifact shape/order/unit, or receipt hash disagrees | `BackendProtocolError` or `EvidenceIntegrityError`; never a numerical root failure |
+
+No failure path returns a nearby pole/zero, pseudoinverse, partial operator,
+untyped `None`, or a previous successful value.
+
+[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)

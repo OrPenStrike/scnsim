@@ -17,9 +17,6 @@ def unavailable(surface: str) -> NoReturn:
         evidence={
             "type": "failure_evidence",
             "operation": "scaffold",
-            "context": {
-                "type": "map",
-                "entries": [{"key": "surface", "value": surface}],
-            },
+            "context_kind": "scaffold",
         },
     )

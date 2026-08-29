@@ -583,6 +583,24 @@ An otherwise one-pin internal node is valid only when the Composite explicitly
 exposes it as an external pin or analysis coordinate; an unexposed one-pin
 child endpoint fails seal as accidental open topology.
 
+### Snapshot boundary and recursive expansion {#composite-snapshot-boundary}
+
+A factory executes only while Python is authoring a component. Its final
+`build()` call freezes the complete private child graph into the returned
+immutable `ComponentInstance`; sealing a parent Plan later records that
+snapshot, rather than retaining a Python factory, callback, or expression tree
+to invoke again. A factory exception or invalid graph creates no partial
+component, and a sealed Plan never re-runs a factory.
+
+The frozen boundary includes every public and hidden child, child pin, private
+and exposed node, canonical-ground endpoint, public parameter baseline and
+binding map, explicitly exposed pin/coordinate, and oriented inductive branch.
+The physical private expansion contributes to Plan identity. Local ground
+groups are retained completely for diagram evidence but remain excluded from
+the physical hash because they only choose local glyph grouping. The maintainer
+snapshot format, finite nesting rule, and one data-only Julia expansion path
+are fixed in [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+
 ### Interdigitated capacitor
 
 `interdigitated_capacitor` preserves the complete two-terminal lumped
@@ -894,6 +912,25 @@ shows the relevant two-junction, loop-inductor, pump-inductor, and mutual-coupli
 path, while also describing flux-bias and three-wave-mixing support as
 relatively untested. SCNSim preserves that limitation rather than expanding
 the backend's guarantee.
+
+### Snapshot-backed nonlinear and coupled expansion
+
+Built-in and custom components share one recursive snapshot expansion; neither
+receives a special Python lowering path. Direct expands every JJ into its
+zero-phase, zero-bias `L_J0` row and independently declared parallel `Cj` row.
+HB instead receives the nonlinear Josephson row plus that same independently
+declared `Cj` row. A finite-loop SQUID expands to both junction paths, its
+oriented loop branch, and every declared mutual coupling; no effective-cosine
+replacement or synthetic bias-dependent inductance is permitted.
+
+Exact-zero declared terms may be omitted from backend rows only with their
+component path, value, and `omitted-as-zero` evidence preserved for compiled
+inspection and receipts. The same rule applies to a zero derived mutual term:
+it never becomes an unrecorded disappearance. Signed branch orientation,
+`M = k * sqrt(L1 * L2)`, and complete reciprocal positive-definite inductance
+validation remain the existing public coupling contract, not new tolerances.
+The implementation-facing recursive row order and evidence maps are defined in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
 ## Parameter variants and derived mutual inductance
 

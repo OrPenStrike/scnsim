@@ -16,6 +16,7 @@ from typing import Literal
 
 from ._scaffold import unavailable
 from .authoring import ParameterSet
+from .errors import HBCaseFailure
 
 
 class BiasState(Enum):
@@ -107,9 +108,21 @@ class MatrixView:
 
     @property
     def coordinates(self) -> tuple[str, ...]:
-        """Ordered selected-view coordinate IDs labeling both matrix axes."""
+        """Ordered selected-view coordinate IDs before any HB mode lifting."""
 
         unavailable("MatrixView.coordinates")
+
+    @property
+    def input_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
+        """Flattened input-axis ``(coordinate, mode)`` labels in stored order."""
+
+        unavailable("MatrixView.input_channels")
+
+    @property
+    def output_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
+        """Flattened output-axis ``(coordinate, mode)`` labels in stored order."""
+
+        unavailable("MatrixView.output_channels")
 
     @property
     def probe_loads(self) -> Mapping[str, Literal["raw", "compensated"]]:
@@ -160,8 +173,8 @@ class ReconciliationEvidence:
         unavailable("ReconciliationEvidence.reason")
 
     @property
-    def last_comparable_ancestor(self) -> object:
-        """Evidence identity for the last lineage point that remained comparable."""
+    def last_comparable_ancestor(self) -> str:
+        """SHA-256 identity of the longest comparable Ref-lineage prefix."""
 
         unavailable("ReconciliationEvidence.last_comparable_ancestor")
 
@@ -363,48 +376,75 @@ class OptimizationResult(AnalysisResult):
         unavailable("OptimizationResult.best")
 
 
-class HBCaseResult(Result):
-    """One named HB operating condition from a shared ``HBBatchResult``.
+class HBCaseOutcome(Result):
+    """One named success or numerical failure in a shared ``HBBatchResult``.
 
-    It exposes selected-view S/Y/Z matrices, named trace projections, and
-    derived Bias/Pump classifications.  Its case ID is the only lookup key.
+    Every declared case remains addressable. A successful outcome exposes
+    selected-view S/Y/Z, traces, and derived Bias/Pump classifications. A
+    failed outcome exposes its receipt-backed ``HBCaseFailure``; accessing a
+    success-only property raises that same failure rather than returning an
+    empty or stale value.
     """
 
     @property
-    def bias_state(self) -> BiasState:
-        """Derived DC-bias classification after source-vector summation."""
+    def id(self) -> str:
+        """Exact user-declared case ID used as the batch lookup key."""
 
-        unavailable("HBCaseResult.bias_state")
+        unavailable("HBCaseOutcome.id")
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether this case materialized its complete success surface."""
+
+        unavailable("HBCaseOutcome.succeeded")
+
+    @property
+    def failure(self) -> HBCaseFailure | None:
+        """Receipt-backed numerical failure, or ``None`` after success."""
+
+        unavailable("HBCaseOutcome.failure")
+
+    @property
+    def bias_state(self) -> BiasState:
+        """Derived DC-bias classification for a successful case."""
+
+        unavailable("HBCaseOutcome.bias_state")
 
     @property
     def pump_state(self) -> PumpState:
         """Derived nonzero-mode classification after source-vector summation."""
 
-        unavailable("HBCaseResult.pump_state")
+        unavailable("HBCaseOutcome.pump_state")
 
     @property
     def s(self) -> HBScatteringMatrixResult:
         """Selected-view, backend-native, and reconciliation S evidence."""
 
-        unavailable("HBCaseResult.s")
+        unavailable("HBCaseOutcome.s")
 
     @property
     def y(self) -> MatrixFamilyResult:
         """Selected-view Quantity-valued admittance matrices."""
 
-        unavailable("HBCaseResult.y")
+        unavailable("HBCaseOutcome.y")
 
     @property
     def z(self) -> MatrixFamilyResult:
         """Selected-view Quantity-valued impedance matrices."""
 
-        unavailable("HBCaseResult.z")
+        unavailable("HBCaseOutcome.z")
 
     @property
     def traces(self) -> Mapping[str, TraceResult]:
         """Ordered read-only mapping of declared trace ID to materialized trace."""
 
-        unavailable("HBCaseResult.traces")
+        unavailable("HBCaseOutcome.traces")
+
+    @property
+    def states(self) -> object:
+        """Ordered SCNSim-convention node-flux Fourier coefficients in weber."""
+
+        unavailable("HBCaseOutcome.states")
 
 
 class HBBatchResult(AnalysisResult):
@@ -416,8 +456,8 @@ class HBBatchResult(AnalysisResult):
     """
 
     @property
-    def cases(self) -> Mapping[str, HBCaseResult]:
-        """Ordered read-only mapping keyed only by declared case ID."""
+    def cases(self) -> Mapping[str, HBCaseOutcome]:
+        """Ordered mapping from every declared case ID to its typed outcome."""
 
         unavailable("HBBatchResult.cases")
 

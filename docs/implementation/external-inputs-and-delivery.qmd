@@ -54,36 +54,33 @@ hashes explain mechanics only; they do not transfer acceptance or consumers.
 
 ## Deliver executable behavior in slices
 
-The first source PR after Human review implements the complete **Lessons 1–5
-candidate**:
+The current public V1 documentation candidate is complete in scope: it contains
+the Contract and Concept set plus all 13 ordered QMD/IPYNB lesson pairs. That is
+a design-completeness statement, not a claim that runtime behavior is already
+implemented, accepted, stabilized, integrated, or released.
 
-1. Pint units and primitive R/L/C authoring;
-2. Plan sealing, one logical Port, canonical request identity, and append-only
-   attempts;
-3. authoring schematic plus Julia preparation, compile preflight, and
-   `run.explain()`;
-4. one-port Direct S/Y/Z and loaded `DiagonalRootSpec`;
-5. primitive multi-variable/multi-objective CMA-ES over root frequency and
-   linewidth selectors, including winner readback;
-6. typed Results, presentation, standalone Report HTML, receipt verification,
-   and restart-safe Direct/root/optimization `resolve()`; and
-7. ephemeral open/matched, unit-equivalence, retry, interrupt, and corruption
-   probes.
+Runtime implementation follows four independently reviewable slices. Each
+development version names the integrated runtime candidate for that row; it
+does not change the `CONVERGING` semantic state by itself.
 
-The slice implements the exact
-[identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json), replacement/versioned
-workspace contract, portable catalog/runtime provenance, and
-[diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
-Composite Plans are rejected by schema until their later slice defines the
-complete private-graph snapshot.
+| Runtime slice | Executable scope | Behavior postponed by this slice |
+|---|---|---|
+| `1.0.0.dev3` — Author and analyze, Lessons 1–5 | Pint and primitive R/L/C authoring; Plan sealing; one logical Port; authoring schematic and `run.explain()`; exact Julia preparation and process protocol; one-Port Direct S/Y/Z; loaded diagonal root; primitive multi-variable/multi-objective CMA-ES; typed Results, presentation, standalone Report HTML, receipt verification, and restart-safe Direct/root/optimization `resolve()` | Runtime behavior taught in Lessons 6–13 |
+| `1.0.0.dev4` — Reusable composition, Lessons 6–8 | Frozen custom Libraries, exact factory provenance, complete Composite snapshots, recursive expansion, same-project catalog reuse, and the shared built-in/custom component expansion model including JJ, SQUID, and mutual-coupling graph snapshots | Runtime behavior taught in Lessons 9–13 |
+| `1.0.0.dev5` — Advanced native Direct, Lessons 9–11 | general RLGC and strict native Q2D ingestion, N-trace pi expansion, named/N-Port selected networks, PTC compensation, retained-coordinate transforms, compiled expanded-graph schematic, `inventory()`, consumer override/extrapolation, every remaining documented Direct quantity family, and every scalar optimization selector backed by those families | Full V1 HB and Direct/HB comparison taught in Lessons 12–13 |
+| `1.0.0.dev6` — Full V1 HB, Lessons 12–13 | pump axes, named drives and cases, truncation and mixing, JosephsonCircuits realization, selected-network/PTC adaptation, per-case partial outcomes, HB quantities and presentation/evidence, and Direct/HB comparison on independently declared grids | None within the current public V1; any later feature requires a separately converged contract |
 
-That integrated candidate advances the development version to `1.0.0.dev3`.
-Compiled schematic, named Direct traces, N-port Direct, Composite authoring,
-RLGC/Q2D, PTC/transform, other Direct quantity families, HB, inventory, and
-consumer override/extrapolation follow as independently reviewable slices.
-Unimplemented surfaces
-continue to raise `ScaffoldUnavailableError`; no placeholder success path is
-introduced. Durable tests begin only after the Human accepts the corresponding
-semantics.
+The `dev3` slice implements the exact
+[identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json),
+replacement/versioned workspace contract, portable catalog/runtime provenance,
+and [diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
+Each later slice extends those same authorities rather than introducing a
+parallel schema, workspace, or fallback runtime.
+
+Within each integrated slice, only behavior named in that row's postponed
+column remains fail-fast with `ScaffoldUnavailableError`; earlier rows do not
+regress. The postponed behavior is already designed in the current public
+documentation and is not an unspecified or placeholder success path. Durable
+tests begin only after the Human accepts the corresponding semantics.
 
 [Back to the Contract map](../contracts/index.qmd)

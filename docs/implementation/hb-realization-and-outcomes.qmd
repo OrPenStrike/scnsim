@@ -1,52 +1,274 @@
 ---
 title: "HB Realization and Case Outcomes"
-subtitle: "How are modes normalized and partial batches kept consumable?"
-toc-depth: 2
+subtitle: "How does one fixed nonlinear realization produce auditable selected-network cases?"
+toc-depth: 3
 ---
 
 **Status:** `CONVERGING` implementation design.
 
-## Materialize one request-global mode lattice
+## Bind one backend and one numerical policy
+
+The operation ID is exactly
+`scnsim.hb_response.josephsoncircuits.v1`. It transitively binds Julia `1.12.6`,
+JosephsonCircuits `0.5.4`, General-registry tree
+`43fa323200866910a93dd06ab8c002ed393ed9bb`, tagged source commit
+`a88bafb8f57ad5b43ef302ae893288f0b75c11e3`, source conversion, lattice
+construction, selected-network adaptation, artifact layout, and the fixed
+controls below. V1 exposes no public HB numerics object or keyword.
+
+Each request launches Julia with `--threads=1`, then calls and verifies
+`BLAS.set_num_threads(1)` and `FFTW.set_num_threads(1)` before any case. The
+observed counts enter attempt evidence. It calls the pinned backend with:
+
+```text
+iterations=1000
+ftol=1e-8
+switchofflinesearchtol=1e-5
+alphamin=1e-4
+nbatches=1
+sorting=:none
+keyedarrays=false
+returnS=true
+returnZ=true
+returnSnoise=false
+returnQE=false
+returnCM=false
+returnnodeflux=false
+returnvoltage=false
+returnnodefluxadjoint=false
+returnvoltageadjoint=false
+returnSsensitivity=false
+returnZadjoint=false
+returnZsensitivity=false
+returnZsensitivityadjoint=false
+sensitivitynames=String[]
+symfreqvar=nothing
+factorization=KLUfactorization()
+```
+
+The request supplies its exact `threewavemixing` and `fourwavemixing` booleans.
+The controls, residual OR threshold, `nbatches`, and single-thread policy are
+Human-approved Runtime Contract values. They are not caller-selectable
+convergence knobs.
+
+## Materialize one request-global lattice
 
 Python validates pump axes, drive identities, case currents, truncation, and
-trace modes. Julia materializes the finite ordered Fourier lattice once for the
-request, records signed physical frequencies, and lowers each case's effective
-source coefficients to JosephsonCircuits indices.
+trace modes. Julia materializes the finite ordered operating-point and
+modulation lattices once for the request. For the pump lattice,
+`odd=four_wave_mixing` and `even=three_wave_mixing`; for the modulation lattice,
+`odd=three_wave_mixing` and `even=four_wave_mixing`. Enabling both keeps one
+combined nonlinear balance and linearized response. Disabling both is an
+explicit mixing-disabled request, not a different solver.
 
-SCNSim uses `exp(-i omega t)`, while JosephsonCircuits uses the opposite phasor
-convention. Source coefficients therefore follow the exact conjugate-mode map
-in the Runtime Contract. Response adaptation first reorders by the same signed
-physical frequency, then conjugates once and applies the input/output frequency
-normalization. Zero-frequency response modes and ambiguous frequency collisions
-fail before numerical response construction.
+`max_intermodulation_order=N` maps identically to
+`maxpumpintermodorder=N` and `maxmodulationintermodorder=N`; omission maps both
+to `Inf`. `dc=true` exactly when any declared drive uses the all-zero tuple.
+Pure DC uses `pump_axes=()` and `mode=()`.
 
-## Derive the same selected network
+For an operating-point tuple $m$, the lattice envelope stores the one signed
+ordinary frequency $f_m=\sum_j m_j f_{p,j}$. For an input or output response
+tuple, it instead stores the ordered grid
 
-For each case, Julia normalizes full mode-by-Port `returnZ`, de-embeds backend
-source resistors, applies PTC, pair transforms, retained mapping, omitted
-matched loads, and selected reference boundaries in the contract order. Public
-Y, Z, and matrix-reference power-wave S all come from that one selected
-network. Native S is retained only as reconciliation evidence.
+$$
+f_{k,m}=f_k+\sum_j m_j f_{p,j},
+$$
 
-Reconciliation lifts the Port map to the canonical port-major/mode-minor basis.
-A plain original-Port subset is comparable when omitted channels keep matched
-loads; unequal PTC, topology, reference, frequency, or normalization produces
-typed non-comparability rather than a fabricated residual.
+where `f_k` is `spec.frequencies[k]`; angular frequency is
+$\omega_{k,m}=2\pi f_{k,m}$. Each response-mode grid has exactly the same
+length and index order as `spec.frequencies` and the leading matrix dimension
+$F$. This grid, rather than one representative sample, owns zero-frequency
+preflight, the $W$ factors, mode permutation, and signed-grid reconciliation.
 
-## Seal one outcome for every case
+SCNSim preflights finite tuple lattices, tuple rank/order, every generated
+conjugate, signed physical-frequency mappings and collisions, and trace modes.
+A DC operating-point mode is legal. A zero-frequency linear-response channel
+fails the complete request before an attempt because backend return-Z
+normalization is singular there. Direct and HB frequency grids remain
+independent.
 
-Case numerical work is isolated within the batch process. Every declared case
-produces an `HBCaseOutcome` in declaration order. Success contains S/Y/Z,
-traces, source states, and evidence, with `failure is None`. Numerical failure
-sets `failure` to a receipt-reconstructible `HBCaseFailure` carrying a stable
-kind, stage, message, and available case evidence. Accessing a success-only
-property raises that same typed failure.
+## Convert drives without changing orientation
 
-The final batch may be fully successful, partial, or all-numerical-failure and
-is still a completed, reusable typed request result. Case failures do not make
-the request retryable. A runtime, protocol, or receipt-integrity failure fails
-the request itself and may be retried as a new attempt. `hb.show()` plots
-successes and visibly lists all failures. Direct and HB retain their own
-requested grids; presentation does not interpolate them.
+SCNSim uses `exp(-i omega t)` while JosephsonCircuits uses the conjugate phasor
+convention. For a public coefficient $c_m$ at tuple $m$, the backend coefficient
+at the same tuple is $c_m^*$ and the opposite tuple receives $c_m$; a DC
+coefficient must be real and is unchanged. Port orientation is applied
+separately. SCNSim materializes each conjugate pair before one backend lookup
+and accumulates vector contributions in drive declaration order. The request
+records every effective coefficient, tuple, injection map, and source-vector
+artifact so no backend index becomes public authority.
+
+## Solve each case independently and certify closure
+
+Every case uses the original compiled nonlinear topology, including the full
+Josephson sine rows. Mixing flags select lattice interactions; they do not
+replace those rows with separate solvers. Cases execute in declaration order.
+For every case SCNSim allocates a fresh
+
+```text
+zeros(ComplexF64, (Nnodes - 1) * Mp)
+```
+
+where `Mp` is the request-global operating-point mode count. There is no
+cross-case warm start, state reuse, or continuation.
+
+After the backend returns, SCNSim recomputes its pinned nonlinear residual
+$F(x)$ at the returned $x$ because an upstream line-search warning or cached
+residual is not success evidence. All $x$ and $F$ values must be finite. The
+case closes only when
+
+$$
+\lVert F\rVert_\infty\le10^{-8}
+\quad\text{or}\quad
+\left(\lVert x\rVert_2>0\ \text{and}\
+\frac{\lVert F\rVert_2}{\lVert x\rVert_2}<10^{-8}\right).
+$$
+
+The absolute comparison is non-strict and the relative comparison is strict.
+Both residuals and the successful disjunct are evidence. Upstream warnings do
+not waive this check.
+
+If a Ref contains PTC and any case has an effective DC or AC drive, preflight
+rejects the request unless `allow_driven_ptc=True`. With that explicit approval,
+the nonlinear/static balance still includes the original probe shunts. PTC
+removes only proved probe loads from the response linearization at every
+sideband. Evidence labels these separately as `loaded balance` and
+`compensated analysis topology`; it never calls the operating point unloaded.
+
+## Derive one selected network per case
+
+The backend returns complete native S and return-Z. SCNSim first reorders both
+by the same signed physical-frequency map, conjugates once, and applies the
+frequency normalization
+
+$$
+Z_{\mathrm{native,phys}}^-=
+W_{\mathrm{out}}
+\left[\Pi_{\mathrm{out}}Z_{\mathrm{JC}}^+
+\Pi_{\mathrm{in}}^T\right]^*
+W_{\mathrm{in}}^{-1},
+\qquad
+W=\operatorname{diag}\sqrt{|\omega|},
+$$
+
+with the same map for native power-wave S. It does not reverse tuples a second
+time. From that normalized native boundary SCNSim, in order, de-embeds all
+backend source resistors, applies PTC per sideband, applies every
+`transform_pair()` per sideband, retains/orders selected coordinates, adds
+omitted matched loads, applies the selected source boundary, subtracts selected
+source admittance, and derives public Y, Z, and matrix-reference power-wave S.
+These are three surfaces of one selected network, not independent solves.
+Every square normalization, de-embedding, Y-to-Z, and Y-to-S solve uses the
+Runtime Contract's accepted normalized backward residual
+$\eta(A,X,B)\le\tau(\operatorname{order}A)$. A finite native array with a
+numerically unresolved solve becomes `HBCaseFailure(stage="response_formation")`.
+A missing, nonfinite, or wrongly shaped native array is instead a request-level
+`BackendProtocolError`.
+
+Public matrices are stored exactly as `[F, C_out, C_in]` with axes
+`(frequency, output_channel, input_channel)`. Channel labels are explicit
+`(coordinate_id, mode_tuple)` pairs in coordinate-major/mode-minor order; flat
+index is `coordinate_index * mode_count + mode_index`. `MatrixView.matrix`
+exposes this three-dimensional stack without an implicit five-dimensional
+reshape. Native S/Z use original logical-Port-major/mode-minor channels in the
+same SCNSim signed-frequency order.
+
+Reconciliation lifts an ordinary Port map as $Q\otimes I_{\mathrm{mode}}$ in
+that flattened order. It is comparable only when topology, loads, PTC,
+reference plane, reference matrix, signed frequencies, and normalization all
+match. Otherwise the outcome records `comparable=False`, one closed reason
+(`topology`, `load_or_ptc`, `reference_plane`, `reference_matrix`,
+`signed_frequency_grid`, `channel_basis`, or `normalization`), and the SHA-256
+identity of the longest canonical Ref-lineage prefix that remained comparable.
+It does not fabricate a residual.
+
+## Normalize public operating-point states
+
+Pinned JosephsonCircuits returns dimensionless reduced-flux coefficients in a
+node-major/mode-minor vector. SCNSim reshapes using recorded backend indices,
+selects the request's representative pump tuples, and stores
+
+$$
+\Phi^-_{m,n}=\varphi_0\,\operatorname{conj}(x_{\mathrm{JC},m,n}^+),
+\qquad
+\varphi_0=3.29105976\times10^{-16}\ \mathrm{Wb}.
+$$
+
+The Result `states` surface is therefore the nonlinear operating-point
+node-flux Fourier coefficient array in SCNSim's `exp(-i omega t)` convention,
+not linearized signal response and not raw backend $x$. It has shape `[Mp,Nn]`,
+axes `(pump_mode,node_coordinate)`, mode-major/node-minor order, every compiled
+non-ground node in compiler order, and unit `weber`. Evidence records tuples,
+signed frequencies, node mapping, backend normalization, and the real-signal
+relation $\Phi^-_{-m}=\operatorname{conj}(\Phi^-_m)$; omitted conjugate partners
+are not silently duplicated.
+
+## Seal exact case artifacts
+
+Case ordinal text is `str(ordinal).zfill(6)` with natural growth after six
+digits. Case IDs remain result identity and never enter paths. A successful
+first case owns `artifacts/cases/000001/` with local artifact IDs and files:
+
+| ID | File | Meaning |
+|---|---|---|
+| `s`, `y`, `z` | `s.zarr`, `y.zarr`, `z.zarr` | complete selected network |
+| `backend_native_s`, `backend_native_z` | matching `.zarr` files | normalized original-backend boundary evidence |
+| `states` | `states.zarr` | public operating-point node flux in weber |
+| `effective_source_vectors` | `effective_source_vectors.zarr` | exact accumulated physical drive vectors |
+
+Each file has a same-basename `.manifest.json`. Every requested named trace is
+a projection of selected S, never a second solve, and uses its declared trace
+artifact beneath `traces/`. Matrix trees contain only paired `<f8` `real` and
+`imag` datasets in C order. Selected/native matrices use
+`[F,C_out,C_in]` and chunks `[min(F,1024),C_out,C_in]`; states and
+`effective_source_vectors` use paired real/imag `[Mp,Nn]` arrays, axes
+`(pump_mode,node_coordinate)`, and one complete-array chunk. Trace artifacts
+use paired real/imag `[F]` arrays and chunks `[min(F,1024)]`. Units are:
+selected/native S and traces `dimensionless`, selected Y `siemens`,
+selected/native Z `ohm`, states `weber`, and effective source vectors
+`ampere`. Matrix manifests carry their distinct selected/native channel lists.
+The request-global frequency axis is
+referenced from every matrix manifest rather than copied into each case.
+
+A successful case must form complete selected S/Y/Z at every requested
+frequency and publish the complete inventory above, its declared
+traces, all manifests, channel/mode/node labels, probe-load state, convention,
+normalization, and hashes. A failed case has no `artifacts` member and its
+reserved ordinal directory must not exist. Raw backend arrays remain evidence,
+not a competing public artifact.
+
+## Keep every declared outcome consumable
+
+Every declaration produces one `HBCaseOutcome` in order. A success exposes
+S/Y/Z, traces, states, and evidence with `failure is None`. A numerical failure
+stores an `HBCaseFailure`; accessing a success-only property rethrows that same
+typed failure.
+
+Failure ownership is exact:
+
+| Condition | Owner |
+|---|---|
+| malformed request/lattice, zero response frequency, or missing driven-PTC approval | `SCNSimValidationError`; no attempt |
+| unavailable Julia/package/thread runtime | `RuntimePreparationError`; no attempt |
+| launch/process/envelope/version/source echo/mode order or purported-success shape/unit mismatch | attempt-backed `BackendProtocolError` |
+| sealed compile topology breach | request-level `CompilerInvariantError` |
+| nonlinear factorization/solve/final residual | `HBCaseFailure(stage="operating_point")` |
+| linearized factorization/solve | `HBCaseFailure(stage="linearization")` |
+| complete selected S/Y/Z numerical formation | `HBCaseFailure(stage="response_formation")` |
+| artifact/schema/hash/receipt mismatch | `EvidenceIntegrityError` |
+
+A Julia-detected numeric nonfinite response is a typed case failure; only a
+purported success envelope containing missing, nonfinite, wrongly shaped, or
+wrongly ordered arrays is a protocol failure. Reconciliation inequivalence is
+`comparable=False`, not failure. Partial and all-numerical-failure batches are
+completed reusable `HBBatchResult`s; request-level failures never masquerade
+as case outcomes.
+
+`hb.show()` plots successes and visibly lists every failure. Direct and HB keep
+their native grids; presentation may overlay them but never interpolates or
+infers a resonance. A finite lattice and local residual do not prove solution
+uniqueness, stability, basin independence, or basis convergence. V1 provides
+no warm-start branch control; the pinned backend's 3WM maturity remains an
+explicit implementation risk, not another hidden failure threshold.
 
 [Next: Results, reports, and diagrams](results-reports-and-diagrams.qmd)

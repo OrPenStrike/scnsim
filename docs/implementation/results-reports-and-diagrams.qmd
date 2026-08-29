@@ -11,10 +11,12 @@ toc-depth: 2
 `Result` is the shared immutable, already-materialized value role.
 `AnalysisResult` is the receipt-backed terminal subset and exposes immutable
 `ResultIdentity(plan_sha256, request_sha256, attempt_sha256, result_sha256)`.
-`DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and later
-terminal results derive from it. `ExplanationResult`, `CircuitDiagramResult`,
-and `ReportResult` remain derived values and do not fabricate operation
-receipts.
+`DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and
+`HBBatchResult` derive from it. Each HB batch contains one `HBCaseOutcome` for
+every declared case. The outcome is a derived view of its parent receipt: a
+success exposes matrices and states; a numerical failure exposes its stored
+`HBCaseFailure`. `ExplanationResult`, `CircuitDiagramResult`, and
+`ReportResult` remain derived values and do not fabricate operation receipts.
 
 ## Reconstruct typed Results in Python
 
@@ -23,6 +25,11 @@ and axes become SCNSim-registry Pint Quantities; matrix payloads become labeled
 NumPy arrays with ordered coordinate, mode, frequency, unit, and load-state
 metadata. An Analysis Result retains request, attempt, artifact, and runtime
 identity even when its chunks are loaded lazily.
+
+Direct matrix channels use `(coordinate, ())`. HB input and output channels use
+flattened `(coordinate, mode)` pairs in coordinate-major/mode-minor order.
+`MatrixView.input_channels` and `output_channels` expose those exact stored-axis
+labels; presentation never infers a reshape or relabels a mode.
 
 No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
 unit disagreement, non-finite forbidden values, or a real/imag manifest mismatch

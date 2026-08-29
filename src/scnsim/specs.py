@@ -82,9 +82,11 @@ class HybridizedPoleSpec:
     """Select an anchored complex pole of a retained coupled block.
 
     Use this when coupling between several named coordinates is part of the
-    physical mode being measured.  SCNSim finds a root of the ordered block
-    determinant and records branch/simple-root evidence; it does not relabel a
-    diagonal root as a hybridized pole.
+    physical mode being measured. SCNSim starts the fixed local numerical
+    procedure at ``anchor`` and records root, null-vector, and nonzero-slope
+    evidence for the ordered block. The anchor is not a nearest-root request or
+    proof of global spectral uniqueness, and a diagonal root is never silently
+    relabeled as a hybridized pole.
     """
 
     def __init__(
@@ -438,6 +440,11 @@ class HBSolveSpec:
     singular at zero.  ``allow_driven_ptc`` must be explicit when a PTC view has
     nonzero DC or AC drive; authorization preserves the loaded operating point
     and compensates only its linearized response.
+
+    V1 deliberately exposes no numerical-control object or keyword.  The
+    pinned backend, iteration/line-search controls, single-thread policy, and
+    independent final-residual check belong to the versioned runtime algorithm
+    identity so two callers cannot silently request different HB numerics.
     """
 
     def __init__(

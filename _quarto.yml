@@ -34,8 +34,12 @@ project:
     - docs/implementation/julia-runtime-preparation.qmd
     - docs/implementation/python-julia-protocol.qmd
     - docs/implementation/workspace-attempts-and-artifacts.qmd
+    - docs/implementation/composite-snapshots-and-recursive-expansion.qmd
     - docs/implementation/compilation-ports-and-views.qmd
+    - docs/implementation/rlgc-q2d-and-pi-expansion.qmd
+    - docs/implementation/view-lineage-and-selected-networks.qmd
     - docs/implementation/diagonal-root-numerical-procedure.qmd
+    - docs/implementation/direct-poles-zeros-and-operators.qmd
     - docs/implementation/direct-quantities-and-optimization.qmd
     - docs/implementation/hb-realization-and-outcomes.qmd
     - docs/implementation/results-reports-and-diagrams.qmd
@@ -150,10 +154,18 @@ website:
               href: docs/implementation/python-julia-protocol.qmd
             - text: "Workspace, attempts, and artifacts"
               href: docs/implementation/workspace-attempts-and-artifacts.qmd
+            - text: "Composite snapshots and recursive expansion"
+              href: docs/implementation/composite-snapshots-and-recursive-expansion.qmd
             - text: "Compilation, Ports, and views"
               href: docs/implementation/compilation-ports-and-views.qmd
+            - text: "RLGC, Q2D, and pi expansion"
+              href: docs/implementation/rlgc-q2d-and-pi-expansion.qmd
+            - text: "View lineage and selected networks"
+              href: docs/implementation/view-lineage-and-selected-networks.qmd
             - text: "Diagonal-root numerical procedure"
               href: docs/implementation/diagonal-root-numerical-procedure.qmd
+            - text: "Direct poles, zeros, couplings, and operators"
+              href: docs/implementation/direct-poles-zeros-and-operators.qmd
             - text: "Direct quantities and optimization"
               href: docs/implementation/direct-quantities-and-optimization.qmd
             - text: "HB realization and outcomes"

@@ -88,7 +88,7 @@ class SCNSimEvidenceError(SCNSimError):
 
 
 class PlanSealedError(SCNSimStateError):
-    """A mutating authoring call targeted a Plan already sealed by a Run."""
+    """A mutating call targeted an authoring Plan sealed by build or Run."""
 
     kind = "plan_sealed"
 
@@ -169,6 +169,17 @@ class NumericalResolutionUnresolved(SCNSimExecutionError):
     """The numerical procedure ended without its required resolution evidence."""
 
     kind = "numerical_resolution_unresolved"
+
+
+class HBCaseFailure(SCNSimExecutionError):
+    """One declared HB case failed numerically inside a completed batch.
+
+    The failure is receipt-backed and belongs to exactly one case outcome.  It
+    does not turn a valid completed batch into a retryable request failure.
+    ``str(failure)`` returns its human-readable message.
+    """
+
+    kind = "hb_case_failure"
 
 
 class RuntimePreparationError(SCNSimExecutionError):

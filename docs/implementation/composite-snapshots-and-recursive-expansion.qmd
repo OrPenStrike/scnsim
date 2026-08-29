@@ -1,0 +1,178 @@
+---
+title: "Composite Snapshots and Recursive Expansion"
+subtitle: "How does a custom Python factory become one portable finite physical graph?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The
+[Component Authoring Contract](../component-authoring.qmd#composite-snapshot-boundary)
+owns the public `CompositePlan` and `ComponentInstance` behavior; this page
+fixes the maintainer mechanism that realizes it.
+
+## Freeze factories in Python, not during a solve
+
+A custom Library factory is ordinary Python authoring code. It may construct a
+`CompositePlan`, declare public parameters and baselines, add components, net
+child pins, attach child endpoints to the eventual Plan ground, expose selected
+pins or coordinates, and call `build()`. `build()` validates and freezes that
+complete declaration into one immutable `ComponentInstance` before the outer
+`CircuitPlan` receives it.
+
+The sealed Plan stores the built snapshot, not a callable factory, Python
+object graph, import name to resolve later, callback, expression AST, or
+Notebook execution state. A factory runs neither during `CircuitRun` sealing
+nor in Julia. An exception, a missing public map, an incomplete node, or a
+cycle leaves no partial `ComponentInstance` to add to a Plan. Factory source
+provenance remains required at creation time under
+[Catalog and Runtime Identity](catalog-and-runtime-identity.qmd#prove-a-factory-when-it-creates-a-component).
+
+This makes the boundary explicit:
+
+```text
+Python factory -> built immutable snapshot -> CircuitPlan hash -> Julia expansion
+```
+
+The first arrow is authoring. The remaining arrows consume data only.
+
+## Represent every nested child with path segments
+
+Every component occurrence has a `component_path`: an array of nonempty child
+ID segments from its outer Plan component to that occurrence. For example, a
+Plan component named `filter` containing `readout` containing `section_03` has
+the path `["filter", "readout", "section_03"]`. Paths are arrays, never
+slash-joined strings, so child IDs cannot create ambiguous parsing or accidental
+collisions.
+
+The outer component path also names each child pin, private node endpoint,
+physical branch, mapping consumer, and compiled-diagram row. A child factory
+may itself return a built composite, producing a longer path; built-ins and
+custom components therefore participate in the same traversal.
+
+Expansion is finite and acyclic. A snapshot may contain already-built nested
+snapshots, but cannot contain itself through any descendant. The builder rejects
+a cycle before returning its `ComponentInstance`; Julia walks the sealed tree
+depth-first and stops only at primitive component snapshots. V1 defines no
+numeric nesting-depth limit or truncating fallback.
+
+## Seal the complete public and private graph
+
+The snapshot records the following exact data before Plan sealing:
+
+| Surface | Frozen content |
+|---|---|
+| Child hierarchy | Each child `component_path`, catalog/factory schema identity, ordered pin schema, public parameters, and either primitive leaf data or a nested snapshot. |
+| Private topology | Every private node, its complete endpoint set of `(component_path, pin)`, and every unexposed child endpoint. |
+| Canonical ground | The complete set of grounded endpoints; each local `ground()` group is retained in the diagram projection with its endpoint-derived identity. |
+| Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to its `ParameterSpec`/baseline/binding consumers, and public inductive-branch ID to one oriented expanded branch. |
+| Binding graph | Each child physical slot is a constant, public-parameter identity, or declarative `AffineMap`; every repeated consumer remains a separate fan-out edge. |
+
+No child pin, node, coordinate, parameter, or inductive branch becomes public by
+name coincidence. A public pin is usable only for parent wiring; a public
+coordinate is usable only for analysis selection; the same node appears in both
+maps only when the factory exposed both roles. Hidden nodes and child parameters
+remain snapshot evidence and cannot be selected by a parent or Runtime Spec.
+
+The canonical physical snapshot, including all private children, paths,
+endpoints, public maps, baselines, and bindings, contributes to the Plan hash.
+The complete local ground-group list is preserved for authoring/compiled
+diagrams but excluded from that physical hash: its grouping cannot change the
+canonical ground or compiled operator. This matches the existing Plan identity
+boundary in [Plan Sealing and Canonical Identity](plan-sealing-and-identity.qmd#separate-three-identities).
+
+## Bind parameters as data
+
+`ParameterSpec` and each public baseline are frozen at `build()`. Parameter
+binding later resolves each child slot through exactly one of three data forms:
+
+| Form | Meaning |
+|---|---|
+| constant | A fixed physical value owned by that child slot. |
+| identity | One exact public `ParameterRef`; repeated use is intentional fan-out. |
+| `AffineMap` | `output = slope * input + intercept`, with the declared input ref and support evidence. |
+
+The snapshot preserves every identity and map edge, including multiple child
+slots fed by one `ParameterRef` and several different `AffineMap` outputs fed
+by that same ref. It does not turn equal-valued constants into a shared
+parameter or merge distinct maps. Julia evaluates these frozen bindings after a
+`ParameterSet` is selected; it receives no Python callable, source object, or
+AST. Invalid dimensionality, support, or mapped physical value follows the
+existing typed failure path and never silently reuses a baseline.
+
+The parameter meaning and calibration limits remain the public
+[Parameter variants and derived mutual inductance](../component-authoring.qmd#parameter-variants-and-derived-mutual-inductance)
+contract. This page adds no optimizer bounds, support tolerance, or acceptance
+Gate.
+
+## Expand one snapshot for both backends
+
+Julia receives the sealed Plan snapshot plus the resolved physical parameter
+binding. It validates snapshot structure and recursively emits one
+backend-neutral physical graph in deterministic component-path order. Direct
+and HB then lower that same graph; custom composites do not receive a separate
+backend or a second source of topology.
+
+| Snapshot content | Direct expansion | HB expansion |
+|---|---|---|
+| R/L/C child | One oriented linear physical branch | Corresponding linear row |
+| JJ | `L_J0` at zero phase/zero bias and separately declared parallel `Cj` | Nonlinear Josephson row and the same separate `Cj` |
+| Finite-loop SQUID | Two zero-phase/zero-bias `L_J0` junction branches, finite loop branch, and mutuals | Two nonlinear junction rows, finite loop branch, and the same mutuals |
+| Mutual coupling | Signed branch orientations and derived `M` in the complete inductance system | The corresponding oriented solver coupling realization |
+
+`josephson_inductance` is always the per-junction `L_J0`; it is not an inferred
+finite-bias inductance. `junction_capacitance` remains an independent parallel
+branch. A symmetric SQUID's two junction paths share the public parameter
+identities while its loop branch retains its own orientation. The physical
+meaning is unchanged from [Josephson Current, Phase, Energy, and Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#independent-parallel-junction-capacitance)
+and [DC SQUID Flux Tunability](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid).
+
+For every coupling, Julia binds the two oriented branch paths, resolves
+`M = k * sqrt(L1 * L2)`, and validates the existing signed `k` and complete
+reciprocal positive-definite inductance requirements. It neither guesses a
+sign from drawing placement nor accepts an independent `M`. The physical
+orientation and energy semantics remain canonical in
+[Inductive Coupling Coefficient, Mutual Inductance, and Self Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
+
+An exact declared zero may omit a backend row only after its component path,
+declared value, and `omitted-as-zero` status are retained in the expanded graph
+and evidence. Zero is therefore a documented physical declaration, not a
+missing child, a dropped mutual, or a reason to collapse the remaining graph.
+
+## Project the same snapshot two ways
+
+The authoring diagram projects the semantic outer components, their public pins
+and coordinates, actual outer wiring, and canonical ground. It preserves local
+ground groups as glyph grouping while never creating more than one electrical
+ground. It does not turn hidden children into public handles or show backend
+rows.
+
+The compiled diagram recursively projects the entire baseline snapshot. It
+labels each expanded leaf and private node by its segment-array component path,
+shows all ground groups and their mapping to canonical ground, preserves
+parameter identity/fan-out, and marks every omitted zero term. It does not
+perform PTC, coordinate transforms, Schur elimination, or Direct/HB numerical
+analysis. Those request-specific facts remain with `run.explain()` and the
+resulting typed evidence.
+
+Both diagram forms are read-only projections of the same frozen graph. A theme,
+layout, or local ground glyph cannot mutate the snapshot or rename Plan
+identity. The public projection rules remain in
+[Inspection and evidence](../component-authoring.qmd#inspection-and-evidence).
+
+## Fail before a backend sees ambiguous topology
+
+Python rejects incomplete public maps, foreign or duplicate child snapshots,
+ambiguous component paths, cyclic nesting, incomplete nodes, invalid ground
+endpoints, invalid map bindings, or an exposed reference that does not belong to
+the composite. Julia rejects a snapshot whose canonical bytes, child provenance,
+paths, parameter bindings, branch orientation, or recursive expansion do not
+match the sealed Plan. Neither side imports a custom factory during execution,
+fills a missing mapping by name, drops an ambiguous term, or substitutes a
+primitive approximation.
+
+Structural failure is distinct from a candidate-specific mapped nonphysical
+value: the former prevents the Plan/request from reaching backend execution;
+the latter follows the established candidate failure evidence. Neither creates
+a new Human numerical threshold or an alternate successful model.
+
+[Previous: Workspace, attempts, and artifacts](workspace-attempts-and-artifacts.qmd) ·
+[Next: Compilation, Ports, and Network Views](compilation-ports-and-views.qmd)

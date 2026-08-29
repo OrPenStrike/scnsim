@@ -1,0 +1,122 @@
+---
+title: "View Lineage and Selected Networks"
+subtitle: "How does one compiled Plan yield an ordered Direct or HB observation boundary?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The public view, PTC, and
+terminal-capability contracts in
+[V1 Runtime Contract](../v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
+remain authoritative. This page fixes the immutable lineage and selected-network
+implementation evidence.
+
+## Keep one canonical lineage grammar
+
+Every `NetworkViewRef` starts at the sealed Plan's `original` node basis and
+has exactly this shape:
+
+```text
+original
+-> optional ptc(ports)
+-> zero or more transform_pair(node_a, node_b, id)
+-> optional terminal retain(coordinates)
+```
+
+`ptc()` is present at most once and must precede every transform and `retain()`.
+Its Port arguments are validated against the same Plan, must be unique,
+nonloading, and have one proved attachment/load/lowering; their semantic set is
+canonicalized in Plan Port declaration order. A later call cannot add or remove PTC from a parent
+Ref. Transform steps remain in declaration order because each changes the
+current coordinate basis. `retain()` is terminal and preserves the caller's
+declared coordinate order; empty, duplicate, foreign, stale, or unavailable
+coordinates fail before execution.
+
+Logical Port IDs, Public node IDs, and final wave-channel IDs are distinct
+namespaces. A final channel is exactly its retained coordinate ID—not an alias
+for a Port ID. Without `retain()`, solving uses logical Ports in Plan declaration
+order. With `retain()`, final coordinate order is the public N-port order.
+
+## Bind parameters before deriving a view
+
+The compiler first binds the operation's complete `ParameterSet` and forms the
+original physical graph. `transform_pair()` then recalculates its automatic
+weights from that bound graph, for every candidate during optimization. It does
+not cache baseline weights, use a previously reduced matrix, or expose manual
+weights.
+
+For a selected pair, its external capacitance cuts include ground/reference and
+all nodes outside the pair; their direct mutual capacitance is excluded from
+the weights but stays in the physical energy. This is the full-external-cut rule
+from [Admittance Coordinate Transforms](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting).
+Each transform records its input IDs, generated `id.common` and
+`id.differential` IDs, resolved real coordinate map, and evidence for
+invertibility. It does not claim to diagonalize a distributed, reduced,
+frequency-dependent, or nonlinear operating-point model.
+
+## Apply topology and boundary steps in one order
+
+PTC changes only the effective analysis load mask. It removes the matched load
+of each explicitly selected nonloading probe after source-resistor
+de-embedding; all other physical/environmental loads remain. The mask is
+defined in original logical-Port order and is retained as evidence before and
+after coordinate mapping. A transformed pair must have one common load state:
+both source Port loads are compensated or neither is. Mixed state fails
+preflight rather than assigning a fractional generated-channel load.
+
+After PTC and transforms, `retain()` partitions the current basis into ordered
+selected coordinates and its complement. The complement receives zero external
+current and is eliminated with a factorization/linear solve—never an explicit
+inverse and never a submatrix of a native S result. The boundary meaning is
+maintained in [Schur Complement and Kron Reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices).
+
+For a Port-realizable final basis, the compiler derives and records the ordered
+original-Port selector $B_p$, final coordinate map $A_k$, final injection map
+$B_k$, transformed reference matrix $R_k$, its principal real-SPD square root
+$D_k$, and the selected/omitted projectors. In particular,
+
+$$
+B_k=B_pA_k^T,\qquad R_k=A_kR_pA_k^T,\qquad D_k=R_k^{1/2}.
+$$
+
+The root is the principal SPD root; SCNSim never substitutes diagonal entries
+for a nondiagonal $R_k$. It records map rank, SPD evidence, load mask, selected
+and omitted partitions, factorization/solve residuals, and ordered coordinate
+IDs. The resulting S convention is the canonical generalized power-wave
+construction in
+[Port Reference Impedance Semantics](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+
+## Publish only a realizable selected network
+
+Direct `evaluate()` and Direct optimization may use a named unported Public or
+composite-exposed coordinate because they do not promise a wave network. Direct
+or HB `solve()` must instead prove every final coordinate is Port-realizable:
+one uniquely Port-bound original node, or a generated coordinate from an
+invertible transform of a complete Port-bound subspace. Anonymous Internal
+nodes are never selectable. An unported final coordinate fails rather than
+receiving a special matrix-only response.
+
+For a valid final basis, Direct and HB both publish the same ordered N-port
+selected-network families $Y^{\mathrm{view}}$, $Z^{\mathrm{view}}$, and
+$S^{\mathrm{view}}$. HB first solves the full original nonlinear/static problem,
+then normalizes and lowers the same PTC mask and coordinate maps at every
+retained sideband replica. This leaves Direct and HB free to use their native
+backends without allowing a backend-specific view or load mask.
+
+`SParameterTrace` is a named projection of an already materialized complete
+selected S matrix. Its input/output strings name final channel IDs, not logical
+Port aliases; Direct uses empty mode tuples and HB uses tuples matching the
+ordered pump axes. Binding a trace validates those IDs and modes but never
+launches another solve or hides full S/Y/Z evidence.
+
+## Explain without creating evidence
+
+`run.explain(ref, spec)` validates the complete bound lineage and renders the
+same deterministic preflight facts used by a terminal operation: original
+Port order, node-to-Port canonicalization, PTC selection and load mask,
+ParameterSet-resolved transform weights/maps, retained/complement partitions,
+port-realizability, and selected-network reference construction. It performs
+no Direct/HB numerical solve, creates no attempt, and writes no workspace
+receipt. A failed invariant identifies its lineage step rather than producing a
+smaller fallback view.
+
+[Next: Diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd)

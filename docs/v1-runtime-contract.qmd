@@ -426,6 +426,15 @@ auditable; there is no force-overwrite flag and no mutable current attempt.
 Only the operation methods create attempts. `resolve()` never retries, resumes,
 or launches work.
 
+Attempt ordinals start at one and use a minimum width of six decimal digits:
+`attempts/000001/`, `attempts/000002/`, and so on. Values beyond six digits
+grow naturally without an artificial maximum. Before promotion, the same
+ordinal appears in
+`attempts/.staging-000001-<lowercase-canonical-UUIDv4>/`. An ordinal spelling,
+UUID form, final directory, or staging directory that does not match its
+sealed attempt evidence fails integrity validation; path formatting is not an
+implementation choice.
+
 ### Explain before execution
 
 V1 does not expose a public JobRef layer. A consumer can inspect a request
@@ -1127,6 +1136,20 @@ tuple-frequency collisions. Exact collisions fail closed; SCNSim does not
 invent a near-commensurability tolerance or Gate. See
 [mixing order versus intermodulation truncation](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#mixing-order-versus-intermodulation-truncation).
 
+The operating-point lattice stores one signed ordinary frequency
+$f_m=\sum_jm_jf_{p,j}$ per tuple. The linear-response lattice stores the full
+ordered grid
+
+$$
+f_{k,m}=f_k+\sum_jm_jf_{p,j},\qquad \omega_{k,m}=2\pi f_{k,m},
+$$
+
+for every requested `spec.frequencies[k]` and every input/output tuple. Each
+mode grid must match the request grid and the matrix leading dimension in
+length and order. Zero-frequency preflight, $W_{\mathrm{in/out}}$, signed-mode
+permutation, and reconciliation all consume these full grids; no single sample
+or tuple-only offset may stand in for them.
+
 `HBSolveSpec.allow_driven_ptc` defaults to `False`. If a selected Ref contains
 PTC and any case has nonzero effective DC or AC operating-point drive, the
 complete request fails preflight unless this override is explicit. Undriven
@@ -1135,6 +1158,32 @@ the static/nonlinear balance on the original Plan with probe shunts present,
 then applies PTC only to the response linearized around that loaded operating
 point. Result and receipt must say `loaded balance` and `compensated analysis
 topology`; they cannot claim an unloaded operating point.
+
+HB numerical controls are runtime-owned and have no public override object or
+keyword. V1 binds Julia `1.12.6`, JosephsonCircuits `0.5.4`, one Julia/BLAS
+thread, `iterations=1000`, `ftol=1e-8`,
+`switchofflinesearchtol=1e-5`, `alphamin=1e-4`, and `nbatches=1` in the HB
+algorithm identity. Each case starts independently from `x0=zeros`, runs in
+declaration order, and never inherits another case's operating point.
+
+SCNSim does not treat an upstream maximum-iteration warning as success. After
+the backend returns a candidate state `x`, it recomputes the final residual
+`F` and accepts that case only when
+
+$$
+\lVert F\rVert_\infty \le 10^{-8}
+\quad\text{or}\quad
+\left(\lVert x\rVert_2>0\ \text{and}\
+\frac{\lVert F\rVert_2}{\lVert x\rVert_2}<10^{-8}\right).
+$$
+
+Otherwise that declared case receives an `HBCaseFailure`. These fixed controls
+and this check are product behavior, not a user-selectable convergence Gate.
+`max_intermodulation_order` maps to both backend pump and modulation lattice
+crops, and a request containing any `mode=()` drive enables DC terms for every
+case so their common basis remains exact. The complete adapter and artifact
+mechanics are fixed in
+[HB Realization and Outcomes](implementation/hb-realization-and-outcomes.qmd).
 
 ### Required lineage and receipt evidence
 
@@ -1160,7 +1209,11 @@ and optional parallel `Cj`, the two shared-parameter
 SQUID junctions and finite loop, and every coupled branch orientation with
 bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
 surface and its fail-closed rules are defined in
-[V1 Component Authoring](component-authoring.qmd).
+[V1 Component Authoring](component-authoring.qmd). The exact recursively sealed
+graph and deterministic lowering are fixed in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd),
+while distributed-line parsing and expansion are fixed in
+[RLGC, Q2D, and Pi Expansion](implementation/rlgc-q2d-and-pi-expansion.qmd).
 
 A logical Port record includes its identity, role, reference impedance,
 node/coordinate attachment, and one-Port-per-node evidence. Direct records
@@ -1186,6 +1239,9 @@ eliminated complement, final selected-view channel order, and exact
 full-row-rank `A_k`, injection `B_k`, induced reference `R_k`, principal root
 `D_k`, wave map `Q_k`, selected/omitted projectors, omitted matched loads,
 selected source boundary, and public-network de-embedding evidence.
+The canonical step order, recomputation boundary, and N-port realization are
+fixed in
+[View Lineage and Selected Networks](implementation/view-lineage-and-selected-networks.qmd).
 
 Every HB Result additionally records the request-global pump-axis and drive
 schemas; operating-point and modulation limits; optional intermodulation crop;
@@ -1227,6 +1283,14 @@ JosephsonCircuits is only the HB backend. Its official
 [flux-pumped JPA example](https://josephsoncircuits.org/stable/#Flux-pumped-Josephson-parametric-amplifier-(JPA))
 describes flux-pump and three-wave-mixing support as relatively untested;
 SCNSim records that backend limitation instead of enlarging its guarantee.
+
+RLGC acceptance is strict on the canonical Float64 matrices. Reciprocity uses
+exact symmetry; Maxwell C/G signs and row sums must already have their required
+signs; C/L must pass unpivoted symmetric Cholesky; and the minimum eigenvalue of
+G/R must be nonnegative. SCNSim does not symmetrize, clip, project, add a
+grounding correction, or retain a corrected matrix beside the raw source.
+Failure names the exact matrix invariant rather than manufacturing a usable
+line model.
 
 ### Operation support
 
@@ -1378,7 +1442,7 @@ The V1 catalog is intentionally small:
 | Spec | Declared operation | Public result |
 |---|---|---|
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
-| `HybridizedPoleSpec` | Complex root of the determinant of one ordered retained block | pole/root bundle with branch evidence |
+| `HybridizedPoleSpec` | Complex root of the determinant of the terminal View's complete ordered retained block (at least two coordinates) | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
 | `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
@@ -1414,6 +1478,12 @@ machine-resolved Newton procedure, not a globally unique spectral root. A
 locally repeated/non-simple pole or zero, or a coupling input without its
 required local slope/residue evidence, fails closed under that quantity's own
 contract.
+`HybridizedPoleSpec.coordinates` must equal the terminal View's retained
+coordinate sequence exactly; it cannot introduce a hidden second retain
+boundary. A real hybrid/zero anchor initializes a real angular frequency, while
+a complex anchor preserves both declared components under the $2\pi$
+conversion. An anchor is a Newton-basin initializer, never a nearest-root
+instruction.
 `TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
 generic cofactor/minor object is not part of the V1 scaffold. The Spec also
 requires its selected transfer denominator to
@@ -1425,11 +1495,19 @@ angular-frequency Quantity, `.frequency` is `real(Omega) / (2 * pi)`, and the
 positive passive linewidth is `-2 * imag(Omega) / (2 * pi)`. The Result records
 the convention instead of inferring a sign from a plotted trace.
 
-`QuantitySum(a, b, ...)` is the only V1 scalar composition. Every term must
-have the same dimensionality. SCNSim exposes no general expression tree or
-Python callable objective. A consumer may still request `OperatorSpec` and use
+`QuantitySum(a, b, ...)` is the only V1 scalar composition and is legal only
+inside a `CostObjective`; it is not a standalone `run.evaluate()` request.
+Every term must have the same dimensionality. SCNSim exposes no general
+expression tree or Python callable objective. A consumer may still request `OperatorSpec` and use
 its labeled Quantity matrix for ordinary Python/NumPy calculation; a full
 operator or matrix cannot itself become one scalar cost.
+
+The fixed local numerical procedures, analytic derivatives, branch evidence,
+principal-square-root convention, continuation, artifact units, and typed
+failure mapping for this catalog are defined in
+[Direct Poles, Zeros, Couplings, and Operators](implementation/direct-poles-zeros-and-operators.qmd).
+That page implements this catalog; it does not add a second public selector or
+global root-search promise.
 
 The reusable definitions remain canonical in SCQ_Design:
 [anchored diagonal roots and hybridized poles](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#anchored-bare-diagonal-roots-and-hybridized-poles),
@@ -1645,7 +1723,7 @@ mirror, or apply another physical box transform. The signed Int64 seed is
 reinterpreted as UInt64 with the same bits.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -1858,8 +1936,10 @@ probe_loads = direct.y.view.probe_loads
 
 Each `AnalysisResult` carries its exact Result/Ref identity for serialization
 and audit; derived Results preserve their explicit source identities instead of
-inventing an operation receipt. Every matrix view also carries the ordered coordinate IDs and its per-probe
-`raw`/`compensated` load-state mapping.
+inventing an operation receipt. Every matrix view also carries the ordered
+coordinate IDs, exact flattened input/output `(coordinate, mode)` channel
+labels, and its per-probe `raw`/`compensated` load-state mapping. Direct uses
+the empty mode tuple; HB uses coordinate-major/mode-minor channel order.
 Passing typed Results is the normal downstream UX; raw receipt paths remain an
 audit surface.
 
@@ -1902,7 +1982,8 @@ independently records effective all-zero-mode drive. A case whose declared
 drives sum to zero remains addressable by its declared ID while reporting the
 corresponding Off states.
 
-A successful outcome exposes S/Y/Z, traces, `BiasState`, and `PumpState`
+A successful outcome exposes S/Y/Z, traces, normalized node-flux `states`,
+`BiasState`, and `PumpState`
 directly, and its `failure` property is `None`. A failed outcome exposes
 `succeeded=False` and `failure: HBCaseFailure`, whose stable `kind`, `stage`,
 `message`, and evidence identity are receipt-backed. It also preserves case
@@ -1948,9 +2029,12 @@ and normalization. `case.s.reconciliation` records the exact conversion and
 residual evidence when topology, load, boundary, reference plane, reference
 matrix, frequency, and normalization are comparable.
 
-Canonical HB matrix storage is port-major and mode-minor. For `M_in` ordered
-input modes and `M_out` ordered output modes, lift the Port-space map rather
-than applying it directly to the mode-by-Port matrix:
+Canonical selected HB matrix storage is the flattened three-dimensional stack
+`[F, N_out * M_out, N_in * M_in]`. Each channel label is an exact
+`(coordinate, mode)` pair in coordinate-major/mode-minor order; there is no
+implicit five-dimensional reshape. Native evidence uses original logical-Port
+major/mode-minor labels. Lift the Port-space map rather than applying it
+directly to the mode-by-Port matrix:
 
 $$
 \mathcal Q_{k,\mathrm{in}}=Q_k\otimes I_{M_{\mathrm{in}}},
@@ -1970,8 +2054,11 @@ $$
 A plain subset of original Ports is therefore comparable by its principal
 submatrix when every omitted Port retains its native matched load. A PTC or
 other unequal boundary is not comparable merely because channel names match.
-In that case the reconciliation surface reports `comparable=False`, its exact
-reason, and the last comparable ancestor; it is neither `None` nor a fabricated
+In that case the reconciliation surface reports `comparable=False`, one exact
+reason discriminator (`topology`, `load_or_ptc`, `reference_plane`,
+`reference_matrix`, `signed_frequency_grid`, `channel_basis`, or
+`normalization`), and the SHA-256 identity of the longest canonical Ref-lineage
+prefix that remained comparable; it is neither `None` nor a fabricated
 residual.
 
 Batch display supports both declared traces and complete-matrix inspection:
@@ -2140,7 +2227,7 @@ reserves ordinal/staging only; a blocked bootstrap lets Python finalize one
 truthful immutable `allocated` or `launched` attempt record before numerical
 execution begins.
 
-The first slice machine-maps `PlanSealedError`,
+The current public scaffold machine-maps `PlanSealedError`,
 `WorkspacePlanReplacedError`,
 `WorkspaceVersioningDowngradeForbidden`,
 `UnsupportedRuntimePlatformError`, `PortRealizabilityError`,
@@ -2149,7 +2236,7 @@ The first slice machine-maps `PlanSealedError`,
 `CompilerInvariantError`,
 `UnsupportedSingularCapacitanceForDiagonalRootV1`,
 `EliminatedBlockSolveFailure`, `RootSlopeUnresolved`,
-`NumericalResolutionUnresolved`, `RuntimePreparationError`,
+`NumericalResolutionUnresolved`, `HBCaseFailure`, `RuntimePreparationError`,
 `BackendProtocolError`, `ResultUnavailableError`, `EvidenceIntegrityError`, and
 `ScaffoldUnavailableError`. The last is reserved for explicitly deferred
 surfaces; it cannot represent an attempted numerical failure.
@@ -2179,8 +2266,9 @@ SCNSim fails closed for:
   one node; a Port bound to ground or directly to a pin; or a Port that
   changes its promoted node identity after seal;
 - a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
-  conductor/reference identity, matrix shape/order/units/reciprocity/passivity,
-  invalid AEDT Q2D primary blocks or conductor map, or
+  conductor/reference identity, matrix shape/order/units, inexact symmetry,
+  invalid Maxwell sign/row sum, failed C/L Cholesky, negative G/R minimum
+  eigenvalue, invalid AEDT Q2D primary blocks or conductor map, or
   non-positive/non-integer section count;
 - a Direct/HB general-line mismatch, including nonzero off-diagonal R in HB;
 - an invalid Composite public/hidden identity, wired `CoordinateRef`, invalid
@@ -2267,6 +2355,9 @@ SCNSim fails closed for:
   resistor before selected-network construction;
 - a missing or inconsistent per-case SCNSim-to-JosephsonCircuits source
   coefficient/conjugate-mode map;
+- a returned HB case whose independently recomputed final residual satisfies
+  neither fixed V1 condition, recorded as that case's `HBCaseFailure` rather
+  than request success data;
 - a selected matrix whose per-probe raw/compensated load-state labels do not
   match its lineage and stamps;
 - an attempted reconciliation across unequal topology, PTC/load state,
@@ -2287,9 +2378,9 @@ SCNSim does not invent conditioning thresholds, optimization Gates, search
 envelopes, targets, weights, or acceptance conditions from backend defaults or
 tests.
 
-Diagram failure and an individual numerical-case failure stay on their own
-evidence surfaces. They cannot silently become successful numerical evidence
-or overwrite unrelated success receipts.
+Diagram failure and an individual `HBCaseFailure` stay on their own evidence
+surfaces. They cannot silently become successful numerical evidence or
+overwrite unrelated success receipts.
 
 ## Known V1 limits
 
@@ -2312,6 +2403,9 @@ or overwrite unrelated success receipts.
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its
   upstream relatively-untested limitation.
+- HB V1 uses one fixed, versioned numerical policy and independent zero-state
+  initialization per case. It exposes no `HBNumericsSpec`, warm-start policy,
+  multithreaded batch mode, or callback hook.
 - HB reduction acts on the small-signal sideband operator after the original
   nonlinear balance; nonlinear model-order reduction is not included.
 - Driven PTC is a compensated small-signal view around a static/nonlinear

@@ -151,4 +151,4 @@ detect every possible Newton-basin jump between certified endpoints. A global
 branch proof would require a later enclosure-based algorithm and a new runtime
 algorithm identity; complete-QEP nearest-root matching is not a substitute.
 
-[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)
+[Next: Direct poles, zeros, couplings, and operators](direct-poles-zeros-and-operators.qmd)

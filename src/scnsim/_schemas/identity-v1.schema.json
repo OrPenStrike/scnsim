@@ -13,7 +13,10 @@
     { "$ref": "#/$defs/outcome" },
     { "$ref": "#/$defs/generationLedger" },
     { "$ref": "#/$defs/artifactManifest" },
-    { "$ref": "#/$defs/progress" }
+    { "$ref": "#/$defs/progress" },
+    { "$ref": "#/$defs/bootstrapReady" },
+    { "$ref": "#/$defs/launchAuthorization" },
+    { "$ref": "#/$defs/inventoryResult" }
   ],
   "$defs": {
     "sha256": {
@@ -44,6 +47,42 @@
       "minLength": 1,
       "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f])[^/]+(?:/[^/]+)*$"
     },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\\\u0000-\\u001f\\u007f]+$"
+    },
+    "componentPath": {
+      "description": "Nonempty root-to-child component ID segments; never a slash-joined path.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/identifier" }
+    },
+    "modeTuple": {
+      "type": "array",
+      "items": { "type": "integer" }
+    },
+    "hbChannelLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate", "mode"],
+      "properties": {
+        "coordinate": { "$ref": "#/$defs/identifier" },
+        "mode": { "$ref": "#/$defs/modeTuple" }
+      }
+    },
+    "attemptOrdinalText": {
+      "type": "string",
+      "pattern": "^(?:(?!000000$)[0-9]{6}|[1-9][0-9]{6,})$"
+    },
+    "attemptDirectory": {
+      "type": "string",
+      "pattern": "^requests/[0-9a-f]{64}/attempts/(?:(?!000000$)[0-9]{6}|[1-9][0-9]{6,})$"
+    },
+    "stagingDirectory": {
+      "type": "string",
+      "pattern": "^requests/[0-9a-f]{64}/attempts/\\.staging-(?:(?!000000-)[0-9]{6}|[1-9][0-9]{6,})-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
     "siUnit": {
       "enum": [
         "farad",
@@ -52,6 +91,15 @@
         "siemens",
         "hertz",
         "radian / second",
+        "ampere",
+        "volt",
+        "meter",
+        "weber",
+        "ohm / meter",
+        "henry / meter",
+        "siemens / meter",
+        "farad / meter",
+        "siemens / second",
         "dimensionless"
       ]
     },
@@ -62,6 +110,15 @@
         "resistance",
         "conductance",
         "inverse_time",
+        "current",
+        "voltage",
+        "length",
+        "magnetic_flux",
+        "resistance_per_length",
+        "inductance_per_length",
+        "conductance_per_length",
+        "capacitance_per_length",
+        "conductance_per_time",
         "dimensionless"
       ]
     },
@@ -81,6 +138,15 @@
         { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
         { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
         { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ampere" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "current" } } } },
+        { "if": { "properties": { "si_unit": { "const": "volt" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "voltage" } } } },
+        { "if": { "properties": { "si_unit": { "const": "meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "weber" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "magnetic_flux" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ohm / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "farad / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens / second" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_time" } } } },
         { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
       ]
     },
@@ -101,67 +167,25 @@
         { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
         { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
         { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ampere" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "current" } } } },
+        { "if": { "properties": { "si_unit": { "const": "volt" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "voltage" } } } },
+        { "if": { "properties": { "si_unit": { "const": "meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "weber" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "magnetic_flux" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ohm / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "farad / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens / second" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_time" } } } },
         { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
-      ]
-    },
-    "typedValue": {
-      "oneOf": [
-        { "type": "null" },
-        { "type": "boolean" },
-        { "type": "integer" },
-        { "type": "string" },
-        { "$ref": "#/$defs/quantity" },
-        { "$ref": "#/$defs/complexQuantity" },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "bits"],
-          "properties": {
-            "type": { "const": "f64" },
-            "bits": { "$ref": "#/$defs/f64" }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "items"],
-          "properties": {
-            "type": { "const": "list" },
-            "items": {
-              "type": "array",
-              "items": { "$ref": "#/$defs/typedValue" }
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "entries"],
-          "properties": {
-            "type": { "const": "map" },
-            "entries": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["key", "value"],
-                "properties": {
-                  "key": { "type": "string" },
-                  "value": { "$ref": "#/$defs/typedValue" }
-                }
-              }
-            }
-          }
-        }
       ]
     },
     "endpoint": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["component_id", "pin_id"],
+      "required": ["component_path", "pin_id"],
       "properties": {
-        "component_id": { "type": "string", "minLength": 1 },
-        "pin_id": { "type": "string", "minLength": 1 }
+        "component_path": { "$ref": "#/$defs/componentPath" },
+        "pin_id": { "$ref": "#/$defs/identifier" }
       }
     },
     "axis": {
@@ -170,16 +194,25 @@
       "required": ["id", "kind"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "enum": ["frequency", "coordinate_input", "coordinate_output", "candidate", "objective"] },
+        "kind": {
+          "enum": [
+            "frequency", "coordinate_input", "coordinate_output", "pump_axis",
+            "mode_input", "mode_output", "candidate", "objective", "matrix_row",
+            "matrix_column", "row_coordinate", "column_coordinate", "pump_mode",
+            "node_coordinate", "output_channel", "input_channel", "coordinate"
+          ]
+        },
         "values": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
-        "artifact_id": { "type": "string", "minLength": 1 }
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "request_field": { "const": "spec.frequencies" }
       },
       "oneOf": [
-        { "required": ["values"], "not": { "required": ["artifact_id"] } },
-        { "required": ["artifact_id"], "not": { "required": ["values"] } }
+        { "required": ["values"], "not": { "anyOf": [{ "required": ["artifact_id"] }, { "required": ["request_field"] }] } },
+        { "required": ["artifact_id"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["request_field"] }] } },
+        { "required": ["request_field"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["artifact_id"] }] } }
       ]
     },
     "fileArtifact": {
@@ -194,14 +227,59 @@
         "byte_length": { "type": "integer", "minimum": 0 }
       }
     },
+    "zarrGroupMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zarr_format"],
+      "properties": {
+        "zarr_format": { "const": 2 }
+      }
+    },
+    "zarrArrayMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "zarr_format", "shape", "chunks", "dtype", "compressor", "fill_value",
+        "order", "filters", "dimension_separator"
+      ],
+      "properties": {
+        "zarr_format": { "const": 2 },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "dtype": { "const": "<f8" },
+        "compressor": { "type": "null" },
+        "fill_value": { "type": "null" },
+        "order": { "const": "C" },
+        "filters": { "type": "null" },
+        "dimension_separator": { "const": "." }
+      }
+    },
+    "zarrDataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "metadata"],
+      "properties": {
+        "path": { "enum": ["values", "real", "imag"] },
+        "metadata": { "$ref": "#/$defs/zarrArrayMetadata" }
+      }
+    },
     "zarrArtifact": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "id", "path", "sha256", "media_type", "file_manifest",
-        "dtype", "endianness", "shape", "chunks",
-        "order", "compressor", "filters", "fill_value", "zarr_format",
-        "dimension_separator", "complex_storage", "axes", "unit"
+        "dtype", "shape", "chunks", "complex_storage", "group_metadata",
+        "datasets", "axes", "unit", "dimensionality", "chunk_policy"
       ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
@@ -210,36 +288,52 @@
         "media_type": { "const": "application/vnd+zarr-v2" },
         "file_manifest": { "$ref": "#/$defs/relativePath" },
         "dtype": { "enum": ["float64", "complex128"] },
-        "endianness": { "const": "little" },
         "shape": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "integer", "minimum": 0 }
+          "maxItems": 5,
+          "items": { "type": "integer", "minimum": 1 }
         },
         "chunks": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 5,
           "items": { "type": "integer", "minimum": 1 }
         },
-        "order": { "const": "C" },
-        "compressor": { "type": "null" },
-        "filters": { "type": "null" },
-        "fill_value": { "type": "null" },
-        "zarr_format": { "const": 2 },
-        "dimension_separator": { "const": "." },
         "complex_storage": { "enum": ["real", "paired_float64_real_imag"] },
-        "values_path": { "const": "values" },
-        "real_path": { "const": "real" },
-        "imag_path": { "const": "imag" },
+        "chunk_policy": {
+          "enum": [
+            "frequency_capped_1024_v1",
+            "frequency_slab_full_matrix_v1",
+            "single_complete_array_v1"
+          ]
+        },
+        "group_metadata": { "$ref": "#/$defs/zarrGroupMetadata" },
+        "datasets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/zarrDataset" }
+        },
         "axes": {
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/axis" }
         },
-        "unit": { "type": "string", "minLength": 1 },
+        "unit": { "$ref": "#/$defs/siUnit" },
+        "dimensionality": { "$ref": "#/$defs/dimensionality" },
         "coordinate_ids": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "output_channels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hbChannelLabel" }
+        },
+        "input_channels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hbChannelLabel" }
         },
         "probe_load_state": {
           "type": "array",
@@ -258,22 +352,48 @@
         {
           "if": { "properties": { "dtype": { "const": "complex128" } }, "required": ["dtype"] },
           "then": {
-            "required": ["real_path", "imag_path"],
-            "properties": { "complex_storage": { "const": "paired_float64_real_imag" } },
-            "not": { "required": ["values_path"] }
+            "properties": {
+              "complex_storage": { "const": "paired_float64_real_imag" },
+              "datasets": {
+                "minItems": 2,
+                "maxItems": 2,
+                "prefixItems": [
+                  { "properties": { "path": { "const": "real" } }, "required": ["path"] },
+                  { "properties": { "path": { "const": "imag" } }, "required": ["path"] }
+                ],
+                "items": false
+              }
+            }
           },
           "else": {
-            "required": ["values_path"],
-            "properties": { "complex_storage": { "const": "real" } },
-            "not": { "anyOf": [{ "required": ["real_path"] }, { "required": ["imag_path"] }] }
+            "properties": {
+              "complex_storage": { "const": "real" },
+              "datasets": {
+                "minItems": 1,
+                "maxItems": 1,
+                "prefixItems": [
+                  { "properties": { "path": { "const": "values" } }, "required": ["path"] }
+                ],
+                "items": false
+              }
+            }
           }
-        }
-      ]
-    },
-    "artifact": {
-      "oneOf": [
-        { "$ref": "#/$defs/fileArtifact" },
-        { "$ref": "#/$defs/zarrArtifact" }
+        },
+        { "if": { "properties": { "unit": { "const": "farad" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance" } } } },
+        { "if": { "properties": { "unit": { "const": "henry" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance" } } } },
+        { "if": { "properties": { "unit": { "const": "ohm" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
+        { "if": { "properties": { "unit": { "const": "siemens" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
+        { "if": { "properties": { "unit": { "enum": ["hertz", "radian / second"] } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "unit": { "const": "ampere" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "current" } } } },
+        { "if": { "properties": { "unit": { "const": "volt" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "voltage" } } } },
+        { "if": { "properties": { "unit": { "const": "meter" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "length" } } } },
+        { "if": { "properties": { "unit": { "const": "weber" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "magnetic_flux" } } } },
+        { "if": { "properties": { "unit": { "const": "ohm / meter" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance_per_length" } } } },
+        { "if": { "properties": { "unit": { "const": "henry / meter" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance_per_length" } } } },
+        { "if": { "properties": { "unit": { "const": "siemens / meter" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_length" } } } },
+        { "if": { "properties": { "unit": { "const": "farad / meter" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance_per_length" } } } },
+        { "if": { "properties": { "unit": { "const": "siemens / second" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_time" } } } },
+        { "if": { "properties": { "unit": { "const": "dimensionless" } }, "required": ["unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
       ]
     },
     "directFrequencyArtifact": {
@@ -285,10 +405,30 @@
             "path": { "const": "artifacts/frequencies.zarr" },
             "file_manifest": { "const": "artifacts/frequencies.manifest.json" },
             "dtype": { "const": "float64" },
-            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
-            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 1024 } },
-            "axes": { "type": "array", "minItems": 1, "maxItems": 1 },
-            "unit": { "const": "hertz" }
+            "chunk_policy": { "const": "frequency_capped_1024_v1" },
+            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false },
+            "datasets": {
+              "minItems": 1, "maxItems": 1,
+              "prefixItems": [{
+                "properties": {
+                  "metadata": {
+                    "properties": {
+                      "shape": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1 }], "items": false },
+                      "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false }
+                    }
+                  }
+                }
+              }],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 1, "maxItems": 1,
+              "prefixItems": [{ "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "artifact_id": { "const": "frequencies" } }, "required": ["id", "kind", "artifact_id"] }],
+              "items": false
+            },
+            "unit": { "const": "hertz" },
+            "dimensionality": { "const": "inverse_time" }
           }
         }
       ]
@@ -300,10 +440,70 @@
           "required": ["coordinate_ids", "probe_load_state"],
           "properties": {
             "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "const": 1 }, { "const": 1 }], "items": false },
-            "chunks": { "type": "array", "minItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "const": 1 }, { "const": 1 }], "items": false },
-            "axes": { "type": "array", "minItems": 3, "maxItems": 3 },
-            "coordinate_ids": { "type": "array", "minItems": 1, "maxItems": 1 }
+            "chunk_policy": { "const": "frequency_slab_full_matrix_v1" },
+            "shape": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[F,N,N]; the final two dimensions equal coordinate_ids length." },
+            "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024),N,N]; whole matrix per frequency slab." },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 3, "maxItems": 3,
+              "prefixItems": [
+                { "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "artifact_id": { "const": "frequencies" } }, "required": ["id", "kind", "artifact_id"] },
+                { "properties": { "kind": { "const": "coordinate_output" } }, "required": ["kind", "values"] },
+                { "properties": { "kind": { "const": "coordinate_input" } }, "required": ["kind", "values"] }
+              ],
+              "items": false
+            },
+            "coordinate_ids": { "type": "array", "minItems": 1, "uniqueItems": true }
+          }
+        }
+      ]
+    },
+    "hbMatrixArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "required": ["coordinate_ids", "probe_load_state", "output_channels", "input_channels"],
+          "properties": {
+            "dtype": { "const": "complex128" },
+            "chunk_policy": { "const": "frequency_slab_full_matrix_v1" },
+            "shape": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[F,N_out*M_out,N_in*M_in], with coordinate-major/mode-minor channel labels." },
+            "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024),N_out*M_out,N_in*M_in]; whole channel matrix per slab." },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 }, "description": "[F, N_out*M_out, N_in*M_in]" },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024), N_out*M_out, N_in*M_in]" }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 }, "description": "[F, N_out*M_out, N_in*M_in]" },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024), N_out*M_out, N_in*M_in]" }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 3, "maxItems": 3,
+              "prefixItems": [
+                { "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "request_field": { "const": "spec.frequencies" } }, "required": ["id", "kind", "request_field"] },
+                { "properties": { "kind": { "const": "output_channel" } }, "required": ["kind", "values"] },
+                { "properties": { "kind": { "const": "input_channel" } }, "required": ["kind", "values"] }
+              ],
+              "items": false
+            }
           }
         }
       ]
@@ -311,19 +511,19 @@
     "directSArtifact": {
       "allOf": [
         { "$ref": "#/$defs/directMatrixArtifact" },
-        { "properties": { "id": { "const": "s" }, "path": { "const": "artifacts/s.zarr" }, "file_manifest": { "const": "artifacts/s.manifest.json" }, "unit": { "const": "dimensionless" } } }
+        { "properties": { "id": { "const": "s" }, "path": { "const": "artifacts/s.zarr" }, "file_manifest": { "const": "artifacts/s.manifest.json" }, "unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }
       ]
     },
     "directYArtifact": {
       "allOf": [
         { "$ref": "#/$defs/directMatrixArtifact" },
-        { "properties": { "id": { "const": "y" }, "path": { "const": "artifacts/y.zarr" }, "file_manifest": { "const": "artifacts/y.manifest.json" }, "unit": { "const": "siemens" } } }
+        { "properties": { "id": { "const": "y" }, "path": { "const": "artifacts/y.zarr" }, "file_manifest": { "const": "artifacts/y.manifest.json" }, "unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }
       ]
     },
     "directZArtifact": {
       "allOf": [
         { "$ref": "#/$defs/directMatrixArtifact" },
-        { "properties": { "id": { "const": "z" }, "path": { "const": "artifacts/z.zarr" }, "file_manifest": { "const": "artifacts/z.manifest.json" }, "unit": { "const": "ohm" } } }
+        { "properties": { "id": { "const": "z" }, "path": { "const": "artifacts/z.zarr" }, "file_manifest": { "const": "artifacts/z.manifest.json" }, "unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }
       ]
     },
     "artifactLink": {
@@ -338,20 +538,48 @@
     "artifactManifest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema", "schema_version", "artifact_id", "files"],
+      "required": [
+        "schema", "schema_version", "artifact_id", "artifact_path",
+        "zarr_format", "group_metadata_path", "datasets", "files"
+      ],
       "properties": {
         "schema": { "const": "scnsim.artifact_manifest" },
         "schema_version": { "const": 1 },
         "artifact_id": { "type": "string", "minLength": 1 },
+        "artifact_path": { "$ref": "#/$defs/relativePath" },
+        "zarr_format": { "const": 2 },
+        "group_metadata_path": { "const": ".zgroup" },
+        "datasets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "metadata_path", "chunk_paths"],
+            "properties": {
+              "path": { "enum": ["values", "real", "imag"] },
+              "metadata_path": { "pattern": "^(?:values|real|imag)/\\.zarray$" },
+              "chunk_paths": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "pattern": "^(?:values|real|imag)/[0-9]+(?:\\.[0-9]+){0,4}$" }
+              }
+            }
+          }
+        },
         "files": {
           "type": "array",
           "minItems": 1,
+          "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["path", "mode", "byte_length", "sha256"],
             "properties": {
-              "path": { "$ref": "#/$defs/relativePath" },
+              "path": { "type": "string", "pattern": "^(?:\\.zgroup|(?:values|real|imag)/(?:\\.zarray|[0-9]+(?:\\.[0-9]+){0,4}))$" },
               "mode": { "const": "regular" },
               "byte_length": { "type": "integer", "minimum": 0 },
               "sha256": { "$ref": "#/$defs/sha256" }
@@ -376,7 +604,13 @@
           "enum": [
             "scnsim.direct_response.v1",
             "scnsim.diagonal_root.newton32.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1"
+            "scnsim.hybridized_pole.newton32.v1",
+            "scnsim.transfer_zero.newton32.v1",
+            "scnsim.residue_normalized_coupling.v1",
+            "scnsim.response_element.v1",
+            "scnsim.direct_operator.v1",
+            "scnsim.hb_response.josephsoncircuits.v1",
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -577,170 +811,765 @@
         { "$ref": "#/$defs/versionedWorkspace" }
       ]
     },
+    "parameterRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_path", "parameter_id"],
+      "properties": {
+        "component_path": { "$ref": "#/$defs/componentPath" },
+        "parameter_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "inductiveBranchRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_path", "branch_id"],
+      "properties": {
+        "component_path": { "$ref": "#/$defs/componentPath" },
+        "branch_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "parameterSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["si_unit", "dimensionality"],
+      "properties": {
+        "si_unit": { "$ref": "#/$defs/siUnit" },
+        "dimensionality": { "$ref": "#/$defs/dimensionality" }
+      },
+      "allOf": [
+        { "if": { "properties": { "si_unit": { "const": "farad" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
+        { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
+        { "if": { "properties": { "si_unit": { "const": "ampere" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "current" } } } },
+        { "if": { "properties": { "si_unit": { "const": "volt" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "voltage" } } } },
+        { "if": { "properties": { "si_unit": { "const": "meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "weber" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "magnetic_flux" } } } },
+        { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
+      ]
+    },
+    "parameterDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "spec", "baseline"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "spec": { "$ref": "#/$defs/parameterSpec" },
+        "baseline": { "$ref": "#/$defs/quantity" }
+      }
+    },
+    "constantBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "const": "constant" },
+        "value": { "$ref": "#/$defs/quantity" }
+      }
+    },
+    "identityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "input"],
+      "properties": {
+        "kind": { "const": "identity" },
+        "input": { "$ref": "#/$defs/parameterRef" }
+      }
+    },
+    "affineBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "input", "slope", "intercept", "support"],
+      "properties": {
+        "kind": { "const": "affine" },
+        "input": { "$ref": "#/$defs/parameterRef" },
+        "slope": { "$ref": "#/$defs/quantity" },
+        "intercept": { "$ref": "#/$defs/quantity" },
+        "support": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "$ref": "#/$defs/quantity" },
+            { "$ref": "#/$defs/quantity" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "parameterBinding": {
+      "oneOf": [
+        { "$ref": "#/$defs/constantBinding" },
+        { "$ref": "#/$defs/identityBinding" },
+        { "$ref": "#/$defs/affineBinding" }
+      ]
+    },
+    "boundParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "binding"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "binding": { "$ref": "#/$defs/parameterBinding" }
+      }
+    },
+    "quantityMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "shape", "values_f64", "si_unit", "dimensionality"],
+      "properties": {
+        "type": { "const": "quantity_matrix_f64" },
+        "shape": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "type": "integer", "minimum": 1 },
+            { "type": "integer", "minimum": 1 }
+          ],
+          "items": false
+        },
+        "values_f64": {
+          "description": "Row-major finite coherent-SI values; cardinality is checked semantically against shape.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/f64" }
+        },
+        "si_unit": {
+          "enum": ["ohm / meter", "henry / meter", "siemens / meter", "farad / meter"]
+        },
+        "dimensionality": {
+          "enum": ["resistance_per_length", "inductance_per_length", "conductance_per_length", "capacitance_per_length"]
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "si_unit": { "const": "ohm / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "henry / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "siemens / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance_per_length" } } } },
+        { "if": { "properties": { "si_unit": { "const": "farad / meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance_per_length" } } } }
+      ]
+    },
+    "rlgcSource": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_kind"],
+          "properties": {
+            "source_kind": { "const": "manual" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source_kind", "profile_id", "profile_boundary", "content_sha256",
+            "problem_type", "native_conductor_order", "conductor_map",
+            "header_records", "source_unit_records"
+          ],
+          "properties": {
+            "source_kind": { "const": "aedt_q2d_csv" },
+            "profile_id": { "const": "aedt_q2d_xy_cross_section_positive_z" },
+            "profile_boundary": { "const": "caller_asserted" },
+            "content_sha256": { "$ref": "#/$defs/sha256" },
+            "problem_type": { "const": "CG, RL" },
+            "native_conductor_order": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/identifier" }
+            },
+            "conductor_map": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["native_label", "public_label"],
+                "properties": {
+                  "native_label": { "$ref": "#/$defs/identifier" },
+                  "public_label": { "$ref": "#/$defs/identifier" }
+                }
+              }
+            },
+            "header_records": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "prefixItems": [
+                { "type": "string", "pattern": "^.+:LastAdaptive$" },
+                { "const": "Problem Type:  CG, RL" },
+                { "const": "C Units:pF/meter, G Units:mho/meter, R Units:ohm/meter, L Units:nH/meter" },
+                { "const": "Reduce Matrix:  Original" },
+                { "type": "string", "pattern": "^Frequency:  (?=[0-9.]*[1-9])(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?GHz$" }
+              ],
+              "items": false
+            },
+            "source_unit_records": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "uniqueItems": true,
+              "prefixItems": [
+                { "type": "object", "additionalProperties": false, "required": ["matrix", "source_unit"], "properties": { "matrix": { "const": "C" }, "source_unit": { "const": "pF/meter" } } },
+                { "type": "object", "additionalProperties": false, "required": ["matrix", "source_unit"], "properties": { "matrix": { "const": "G" }, "source_unit": { "const": "mho/meter" } } },
+                { "type": "object", "additionalProperties": false, "required": ["matrix", "source_unit"], "properties": { "matrix": { "const": "L" }, "source_unit": { "const": "nH/meter" } } },
+                { "type": "object", "additionalProperties": false, "required": ["matrix", "source_unit"], "properties": { "matrix": { "const": "R" }, "source_unit": { "const": "ohm/meter" } } },
+                { "type": "object", "additionalProperties": false, "required": ["matrix", "source_unit"], "properties": { "matrix": { "const": "frequency" }, "source_unit": { "const": "GHz" } } }
+              ],
+              "items": false
+            }
+          }
+        }
+      ]
+    },
+    "rlgc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "conductors", "reference_conductor", "orientation",
+        "resistance_per_length", "inductance_per_length",
+        "conductance_per_length", "capacitance_per_length",
+        "extraction_frequency", "source"
+      ],
+      "properties": {
+        "type": { "const": "rlgc" },
+        "conductors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "reference_conductor": { "$ref": "#/$defs/identifier" },
+        "orientation": { "const": "extractor_positive_z_is_head_to_tail" },
+        "resistance_per_length": {
+          "allOf": [{ "$ref": "#/$defs/quantityMatrix" }, { "properties": { "si_unit": { "const": "ohm / meter" }, "dimensionality": { "const": "resistance_per_length" } } }]
+        },
+        "inductance_per_length": {
+          "allOf": [{ "$ref": "#/$defs/quantityMatrix" }, { "properties": { "si_unit": { "const": "henry / meter" }, "dimensionality": { "const": "inductance_per_length" } } }]
+        },
+        "conductance_per_length": {
+          "allOf": [{ "$ref": "#/$defs/quantityMatrix" }, { "properties": { "si_unit": { "const": "siemens / meter" }, "dimensionality": { "const": "conductance_per_length" } } }]
+        },
+        "capacitance_per_length": {
+          "allOf": [{ "$ref": "#/$defs/quantityMatrix" }, { "properties": { "si_unit": { "const": "farad / meter" }, "dimensionality": { "const": "capacitance_per_length" } } }]
+        },
+        "extraction_frequency": {
+          "oneOf": [
+            { "type": "null" },
+            { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+          ]
+        },
+        "source": { "$ref": "#/$defs/rlgcSource" }
+      }
+    },
+    "inductiveBranchDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "positive_endpoint", "negative_endpoint", "inductance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "positive_endpoint": { "$ref": "#/$defs/endpoint" },
+        "negative_endpoint": { "$ref": "#/$defs/endpoint" },
+        "inductance": { "$ref": "#/$defs/parameterBinding" }
+      }
+    },
+    "primitiveRealization": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "resistance"],
+          "properties": { "kind": { "const": "resistor" }, "resistance": { "$ref": "#/$defs/parameterBinding" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "capacitance"],
+          "properties": { "kind": { "const": "capacitor" }, "capacitance": { "$ref": "#/$defs/parameterBinding" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "inductance"],
+          "properties": { "kind": { "const": "inductor" }, "inductance": { "$ref": "#/$defs/parameterBinding" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "josephson_inductance", "junction_capacitance"],
+          "properties": {
+            "kind": { "const": "josephson_junction" },
+            "josephson_inductance": { "$ref": "#/$defs/parameterBinding" },
+            "junction_capacitance": { "$ref": "#/$defs/parameterBinding" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "kind", "josephson_inductance", "junction_capacitance", "loop_inductance",
+            "junction_branch_ids", "loop_branch_id"
+          ],
+          "properties": {
+            "kind": { "const": "symmetric_squid" },
+            "josephson_inductance": { "$ref": "#/$defs/parameterBinding" },
+            "junction_capacitance": { "$ref": "#/$defs/parameterBinding" },
+            "loop_inductance": { "$ref": "#/$defs/parameterBinding" },
+            "junction_branch_ids": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [{ "$ref": "#/$defs/identifier" }, { "$ref": "#/$defs/identifier" }],
+              "items": false
+            },
+            "loop_branch_id": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "kind", "terminal_1_to_reference_capacitance",
+            "terminal_2_to_reference_capacitance", "terminal_mutual_capacitance"
+          ],
+          "properties": {
+            "kind": { "const": "interdigitated_capacitor" },
+            "terminal_1_to_reference_capacitance": { "$ref": "#/$defs/parameterBinding" },
+            "terminal_2_to_reference_capacitance": { "$ref": "#/$defs/parameterBinding" },
+            "terminal_mutual_capacitance": { "$ref": "#/$defs/parameterBinding" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "length", "rlgc", "n_sections", "pin_conductors"],
+          "properties": {
+            "kind": { "const": "transmission_line" },
+            "length": { "$ref": "#/$defs/parameterBinding" },
+            "rlgc": { "$ref": "#/$defs/rlgc" },
+            "n_sections": { "type": "integer", "minimum": 1 },
+            "pin_conductors": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/identifier" }
+            }
+          }
+        }
+      ]
+    },
+    "privateNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "endpoints"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "endpoints": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/endpoint" } }
+      }
+    },
+    "publicNodeMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_id", "private_node_id"],
+      "properties": {
+        "public_id": { "$ref": "#/$defs/identifier" },
+        "private_node_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "parameterConsumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "binding"],
+      "properties": {
+        "target": { "$ref": "#/$defs/parameterRef" },
+        "binding": { "$ref": "#/$defs/parameterBinding" }
+      }
+    },
+    "publicParameterMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameter", "consumers"],
+      "properties": {
+        "parameter": { "$ref": "#/$defs/parameterRef" },
+        "consumers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/parameterConsumer" }
+        }
+      }
+    },
+    "publicInductiveBranchMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_id", "target"],
+      "properties": {
+        "public_id": { "$ref": "#/$defs/identifier" },
+        "target": { "$ref": "#/$defs/inductiveBranchRef" }
+      }
+    },
+    "compositeRealization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind", "public_parameters", "children", "private_nodes", "grounded_endpoints",
+        "couplings", "public_pin_map", "public_coordinate_map",
+        "public_parameter_maps", "public_inductive_branch_map"
+      ],
+      "properties": {
+        "kind": { "const": "composite" },
+        "public_parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameterDeclaration" }
+        },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/componentSnapshot" }
+        },
+        "private_nodes": { "type": "array", "items": { "$ref": "#/$defs/privateNode" } },
+        "grounded_endpoints": { "type": "array", "items": { "$ref": "#/$defs/endpoint" } },
+        "couplings": { "type": "array", "items": { "$ref": "#/$defs/mutualCoupling" } },
+        "public_pin_map": { "type": "array", "items": { "$ref": "#/$defs/publicNodeMap" } },
+        "public_coordinate_map": { "type": "array", "items": { "$ref": "#/$defs/publicNodeMap" } },
+        "public_parameter_maps": { "type": "array", "items": { "$ref": "#/$defs/publicParameterMap" } },
+        "public_inductive_branch_map": { "type": "array", "items": { "$ref": "#/$defs/publicInductiveBranchMap" } }
+      }
+    },
+    "componentSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_path", "catalog_id", "factory", "pin_order", "parameter_bindings",
+        "inductive_branches", "realization"
+      ],
+      "properties": {
+        "component_path": { "$ref": "#/$defs/componentPath" },
+        "catalog_id": { "type": "string", "minLength": 1 },
+        "factory": { "$ref": "#/$defs/identifier" },
+        "pin_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "parameter_bindings": { "type": "array", "items": { "$ref": "#/$defs/boundParameter" } },
+        "inductive_branches": { "type": "array", "items": { "$ref": "#/$defs/inductiveBranchDeclaration" } },
+        "realization": {
+          "oneOf": [
+            { "$ref": "#/$defs/primitiveRealization" },
+            { "$ref": "#/$defs/compositeRealization" }
+          ]
+        }
+      }
+    },
+    "mutualCoupling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "branch_a", "branch_b", "coupling_coefficient", "derived_mutual_inductance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "branch_a": { "$ref": "#/$defs/inductiveBranchRef" },
+        "branch_b": { "$ref": "#/$defs/inductiveBranchRef" },
+        "coupling_coefficient": {
+          "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }]
+        },
+        "derived_mutual_inductance": {
+          "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "henry" }, "dimensionality": { "const": "inductance" } } }]
+        }
+      }
+    },
+    "planNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "visibility", "endpoints"],
+      "properties": {
+        "node_id": { "type": "string", "minLength": 1 },
+        "visibility": { "enum": ["public", "internal", "port_promoted"] },
+        "endpoints": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/endpoint" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "visibility": { "const": "internal" } }, "required": ["visibility"] },
+          "then": { "properties": { "node_id": { "pattern": "^internal-[0-9a-f]{64}$" } } },
+          "else": { "properties": { "node_id": { "pattern": "^(?!internal-[0-9a-f]{64}$).+$" } } }
+        }
+      ]
+    },
+    "logicalPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port_id", "node_id", "role", "reference_impedance", "orientation"],
+      "properties": {
+        "port_id": { "$ref": "#/$defs/identifier" },
+        "node_id": { "$ref": "#/$defs/identifier" },
+        "role": { "enum": ["terminated", "nonloading_probe"] },
+        "reference_impedance": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+        "orientation": { "const": "node_to_reference" }
+      }
+    },
     "plan": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "schema",
-        "schema_version",
-        "plan_id",
-        "ground_id",
-        "catalog_sources",
-        "components",
-        "nodes",
-        "grounded_endpoints",
-        "ports",
-        "couplings"
+        "schema", "schema_version", "plan_id", "ground_id", "catalog_sources",
+        "components", "nodes", "grounded_endpoints", "ports", "couplings"
       ],
       "properties": {
         "schema": { "const": "scnsim.plan" },
         "schema_version": { "const": 1 },
-        "plan_id": { "type": "string", "minLength": 1 },
+        "plan_id": { "$ref": "#/$defs/identifier" },
         "ground_id": { "const": "ground" },
-        "catalog_sources": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 1,
+        "catalog_sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/catalogSource" } },
+        "components": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/componentSnapshot" } },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/planNode" } },
+        "grounded_endpoints": { "type": "array", "items": { "$ref": "#/$defs/endpoint" } },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/logicalPort" } },
+        "couplings": { "type": "array", "items": { "$ref": "#/$defs/mutualCoupling" } }
+      }
+    },
+    "evidenceMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows", "columns", "sha256"],
+      "properties": {
+        "rows": { "type": "integer", "minimum": 0 },
+        "columns": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "originalLineageStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable"],
+      "properties": {
+        "type": { "const": "original" },
+        "compiled_graph_sha256": { "$ref": "#/$defs/sha256" },
+        "coordinate_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "port_order": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+        "port_realizable": { "type": "boolean" }
+      }
+    },
+    "ptcLineageStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "selected_ports", "load_mask_sha256", "loads", "reconstruction_residual_f64", "output_coordinate_order", "evidence_sha256"],
+      "properties": {
+        "type": { "const": "ptc" },
+        "selected_ports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "load_mask_sha256": { "$ref": "#/$defs/sha256" },
+        "loads": {
+          "type": "array", "minItems": 1,
           "items": {
-            "allOf": [
-              { "$ref": "#/$defs/catalogSource" },
-              { "properties": { "catalog_kind": { "const": "builtin" } } }
-            ]
-          }
-        },
-        "components": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["component_id", "catalog_id", "factory", "parameters", "pin_order"],
+            "type": "object", "additionalProperties": false,
+            "required": ["port_id", "reference_impedance", "before", "after"],
             "properties": {
-              "component_id": { "type": "string", "minLength": 1 },
-              "catalog_id": { "const": "scnsim.components" },
-              "factory": { "enum": ["resistor", "capacitor", "inductor"] },
-              "parameters": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["id", "baseline"],
-                  "properties": {
-                    "id": { "type": "string", "minLength": 1 },
-                    "baseline": { "$ref": "#/$defs/quantity" }
-                  }
-                }
-              },
-              "pin_order": {
-                "type": "array",
-                "items": { "type": "string", "minLength": 1 }
-              }
-            },
-            "allOf": [
-              { "properties": { "pin_order": { "const": ["terminal_1", "terminal_2"] } } },
-              {
-                "if": { "properties": { "factory": { "const": "resistor" } }, "required": ["factory"] },
-                "then": {
-                  "properties": {
-                    "parameters": {
-                      "minItems": 1,
-                      "maxItems": 1,
-                      "prefixItems": [{
-                        "properties": {
-                          "id": { "const": "resistance" },
-                          "baseline": { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }
-                        }
-                      }],
-                      "items": false
-                    }
-                  }
-                }
-              },
-              {
-                "if": { "properties": { "factory": { "const": "capacitor" } }, "required": ["factory"] },
-                "then": {
-                  "properties": {
-                    "parameters": {
-                      "minItems": 1,
-                      "maxItems": 1,
-                      "prefixItems": [{
-                        "properties": {
-                          "id": { "const": "capacitance" },
-                          "baseline": { "properties": { "si_unit": { "const": "farad" }, "dimensionality": { "const": "capacitance" } } }
-                        }
-                      }],
-                      "items": false
-                    }
-                  }
-                }
-              },
-              {
-                "if": { "properties": { "factory": { "const": "inductor" } }, "required": ["factory"] },
-                "then": {
-                  "properties": {
-                    "parameters": {
-                      "minItems": 1,
-                      "maxItems": 1,
-                      "prefixItems": [{
-                        "properties": {
-                          "id": { "const": "inductance" },
-                          "baseline": { "properties": { "si_unit": { "const": "henry" }, "dimensionality": { "const": "inductance" } } }
-                        }
-                      }],
-                      "items": false
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        },
-        "nodes": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["node_id", "visibility", "endpoints"],
-            "properties": {
-              "node_id": { "type": "string", "minLength": 1 },
-              "visibility": { "enum": ["public", "internal", "port_promoted"] },
-              "endpoints": {
-                "type": "array",
-                "minItems": 1,
-                "items": { "$ref": "#/$defs/endpoint" }
-              }
-            },
-            "allOf": [
-              {
-                "if": { "properties": { "visibility": { "const": "internal" } }, "required": ["visibility"] },
-                "then": { "properties": { "node_id": { "pattern": "^internal-[0-9a-f]{64}$" } } },
-                "else": { "properties": { "node_id": { "pattern": "^(?!internal-[0-9a-f]{64}$).+$" } } }
-              }
-            ]
-          }
-        },
-        "grounded_endpoints": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/endpoint" }
-        },
-        "ports": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["port_id", "node_id", "role", "reference_impedance"],
-            "properties": {
-              "port_id": { "type": "string", "minLength": 1 },
-              "node_id": { "type": "string", "minLength": 1 },
-              "role": { "enum": ["terminated", "nonloading_probe"] },
-              "reference_impedance": { "$ref": "#/$defs/quantity" }
+              "port_id": { "$ref": "#/$defs/identifier" },
+              "reference_impedance": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+              "before": { "const": "raw" },
+              "after": { "const": "compensated" }
             }
           }
         },
-        "couplings": {
-          "description": "Empty in the Lessons 1--5 schema; later slices require a schema-version extension.",
-          "type": "array",
-          "maxItems": 0
-        }
+        "reconstruction_residual_f64": { "$ref": "#/$defs/f64" },
+        "output_coordinate_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "transformPairLineageStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "input_coordinates", "weights_f64", "differential_id", "common_id",
+        "included_external_cut_branches", "excluded_direct_mutual_branches",
+        "reference_matrix", "principal_root", "reconstruction_residual_f64",
+        "output_coordinate_order", "evidence_sha256"
+      ],
+      "properties": {
+        "type": { "const": "transform_pair" },
+        "input_coordinates": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/identifier" }, { "$ref": "#/$defs/identifier" }], "items": false
+        },
+        "weights_f64": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/f64" }, { "$ref": "#/$defs/f64" }], "items": false
+        },
+        "differential_id": { "$ref": "#/$defs/identifier" },
+        "common_id": { "$ref": "#/$defs/identifier" },
+        "included_external_cut_branches": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/inductiveBranchRef" } },
+        "excluded_direct_mutual_branches": { "type": "array", "items": { "$ref": "#/$defs/inductiveBranchRef" } },
+        "reference_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "principal_root": { "$ref": "#/$defs/evidenceMatrix" },
+        "reconstruction_residual_f64": { "$ref": "#/$defs/f64" },
+        "output_coordinate_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "retainLineageStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "retained_coordinates", "eliminated_coordinates", "output_coordinate_order",
+        "a_matrix", "b_matrix", "r_matrix", "d_matrix", "q_matrix",
+        "selected_projector", "omitted_projector", "omitted_matched_loads",
+        "source_boundary_sha256", "deembedding_evidence_sha256"
+      ],
+      "properties": {
+        "type": { "const": "retain" },
+        "retained_coordinates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "eliminated_coordinates": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+        "output_coordinate_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "a_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "b_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "r_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "d_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "q_matrix": { "$ref": "#/$defs/evidenceMatrix" },
+        "selected_projector": { "$ref": "#/$defs/evidenceMatrix" },
+        "omitted_projector": { "$ref": "#/$defs/evidenceMatrix" },
+        "omitted_matched_loads": { "$ref": "#/$defs/evidenceMatrix" },
+        "source_boundary_sha256": { "$ref": "#/$defs/sha256" },
+        "deembedding_evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sParameterTrace": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "input_port", "input_mode", "output_port", "output_mode"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "input_port": { "$ref": "#/$defs/identifier" },
+        "input_mode": { "$ref": "#/$defs/modeTuple" },
+        "output_port": { "$ref": "#/$defs/identifier" },
+        "output_mode": { "$ref": "#/$defs/modeTuple" }
+      }
+    },
+    "frequencyGrid": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/quantity" },
+          { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }
+        ]
+      }
+    },
+    "frequencyAnchor": {
+      "oneOf": [
+        { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+      ]
+    },
+    "hybridizedPoleSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "coordinates", "anchor"],
+      "properties": {
+        "type": { "const": "hybridized_pole" },
+        "coordinates": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/identifier" } },
+        "anchor": { "$ref": "#/$defs/frequencyAnchor" }
+      }
+    },
+    "transferZeroSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "anchor", "family", "input_coordinate", "output_coordinate"],
+      "properties": {
+        "type": { "const": "transfer_zero" },
+        "anchor": { "$ref": "#/$defs/frequencyAnchor" },
+        "family": { "enum": ["S", "Y", "Z"] },
+        "input_coordinate": { "$ref": "#/$defs/identifier" },
+        "output_coordinate": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "rootBranchSpec": {
+      "oneOf": [{ "$ref": "#/$defs/diagonalRootSpec" }, { "$ref": "#/$defs/hybridizedPoleSpec" }]
+    },
+    "residueNormalizedCouplingSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "branch_a", "branch_b", "frequency"],
+      "properties": {
+        "type": { "const": "residue_normalized_coupling" },
+        "branch_a": { "$ref": "#/$defs/rootBranchSpec" },
+        "branch_b": { "$ref": "#/$defs/rootBranchSpec" },
+        "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+      }
+    },
+    "responseElementSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "family", "input_coordinate", "output_coordinate", "frequency"],
+      "properties": {
+        "type": { "const": "response_element" },
+        "family": { "enum": ["S", "Y", "Z"] },
+        "input_coordinate": { "$ref": "#/$defs/identifier" },
+        "output_coordinate": { "$ref": "#/$defs/identifier" },
+        "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+      }
+    },
+    "operatorSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "frequencies"],
+      "properties": { "type": { "const": "operator" }, "frequencies": { "$ref": "#/$defs/frequencyGrid" } }
+    },
+    "directEvaluationSpec": {
+      "oneOf": [
+        { "$ref": "#/$defs/diagonalRootSpec" },
+        { "$ref": "#/$defs/hybridizedPoleSpec" },
+        { "$ref": "#/$defs/transferZeroSpec" },
+        { "$ref": "#/$defs/residueNormalizedCouplingSpec" },
+        { "$ref": "#/$defs/responseElementSpec" },
+        { "$ref": "#/$defs/operatorSpec" }
+      ]
+    },
+    "quantitySum": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "terms"],
+      "properties": {
+        "type": { "const": "quantity_sum" },
+        "terms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/quantitySelector" } }
+      }
+    },
+    "scalarExpression": {
+      "oneOf": [{ "$ref": "#/$defs/quantitySelector" }, { "$ref": "#/$defs/quantitySum" }]
+    },
+    "pumpAxis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "frequency"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+      }
+    },
+    "currentDrive": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "port_id", "mode", "orientation"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "port_id": { "$ref": "#/$defs/identifier" },
+        "mode": { "$ref": "#/$defs/modeTuple" },
+        "orientation": { "const": "port_node_to_reference" }
+      }
+    },
+    "hbCurrentBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["drive_id", "coefficient", "coefficient_convention"],
+      "properties": {
+        "drive_id": { "$ref": "#/$defs/identifier" },
+        "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
+        "coefficient_convention": { "const": "exp_minus_i_m_dot_omega_t_fourier_coefficient" }
+      }
+    },
+    "hbCaseSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "currents"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "currents": { "type": "array", "items": { "$ref": "#/$defs/hbCurrentBinding" } }
+      }
+    },
+    "hbTruncation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pump_harmonics", "modulation_harmonics", "max_intermodulation_order", "three_wave_mixing", "four_wave_mixing"],
+      "properties": {
+        "pump_harmonics": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "modulation_harmonics": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "max_intermodulation_order": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+        "three_wave_mixing": { "type": "boolean" },
+        "four_wave_mixing": { "type": "boolean" }
+      }
+    },
+    "hbSolveSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "pump_axes", "drives", "frequencies", "cases", "truncation", "traces", "allow_driven_ptc"],
+      "properties": {
+        "type": { "const": "hb_solve" },
+        "pump_axes": { "type": "array", "items": { "$ref": "#/$defs/pumpAxis" } },
+        "drives": { "type": "array", "items": { "$ref": "#/$defs/currentDrive" } },
+        "frequencies": { "$ref": "#/$defs/frequencyGrid" },
+        "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbCaseSpec" } },
+        "truncation": { "$ref": "#/$defs/hbTruncation" },
+        "traces": { "type": "array", "items": { "$ref": "#/$defs/sParameterTrace" } },
+        "allow_driven_ptc": { "type": "boolean" }
       }
     },
     "request": {
@@ -760,12 +1589,13 @@
         "schema": { "const": "scnsim.request" },
         "schema_version": { "const": 1 },
         "plan_sha256": { "$ref": "#/$defs/sha256" },
-        "operation": { "enum": ["solve_direct", "evaluate_diagonal_root", "optimize_direct"] },
+        "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] },
         "ref_lineage": { "$ref": "#/$defs/refLineage" },
         "spec": {
           "oneOf": [
             { "$ref": "#/$defs/directSolveSpec" },
-            { "$ref": "#/$defs/diagonalRootSpec" },
+            { "$ref": "#/$defs/hbSolveSpec" },
+            { "$ref": "#/$defs/directEvaluationSpec" },
             { "$ref": "#/$defs/optimizationSpec" }
           ]
         },
@@ -780,86 +1610,61 @@
           },
           "then": {
             "properties": {
-              "ref_lineage": { "$ref": "#/$defs/originalRef" },
               "spec": { "$ref": "#/$defs/directSolveSpec" },
-              "runtime_semantic": {
-                "allOf": [
-                  { "$ref": "#/$defs/runtimeSemantic" },
-                  { "properties": { "algorithm_id": { "const": "scnsim.direct_response.v1" } } }
-                ]
-              }
+              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.direct_response.v1" } } }
             }
-          },
-          "else": {
-            "if": {
-              "properties": { "operation": { "const": "evaluate_diagonal_root" } },
-              "required": ["operation"]
-            },
-            "then": {
-              "properties": {
-                "ref_lineage": { "$ref": "#/$defs/retainedRef" },
-                "spec": { "$ref": "#/$defs/diagonalRootSpec" },
-                "runtime_semantic": {
-                  "allOf": [
-                    { "$ref": "#/$defs/runtimeSemantic" },
-                    { "properties": { "algorithm_id": { "const": "scnsim.diagonal_root.newton32.v1" } } }
-                  ]
-                }
-              }
-            },
-            "else": {
-              "properties": {
-                "ref_lineage": { "$ref": "#/$defs/retainedRef" },
-                "spec": { "$ref": "#/$defs/optimizationSpec" },
-                "runtime_semantic": {
-                  "allOf": [
-                    { "$ref": "#/$defs/runtimeSemantic" },
-                    { "properties": { "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v1" } } }
-                  ]
-                }
-              }
+          }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "solve_hb" } }, "required": ["operation"] },
+          "then": {
+            "properties": {
+              "spec": { "$ref": "#/$defs/hbSolveSpec" },
+              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.hb_response.josephsoncircuits.v1" } } }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "evaluate_direct" } }, "required": ["operation"] },
+          "then": { "properties": { "spec": { "$ref": "#/$defs/directEvaluationSpec" } } }
+        },
+        {
+          "if": { "properties": { "operation": { "const": "optimize_direct" } }, "required": ["operation"] },
+          "then": {
+            "properties": {
+              "spec": { "$ref": "#/$defs/optimizationSpec" },
+              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2" } } }
             }
           }
         }
       ]
     },
-    "originalRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type"],
-      "properties": { "type": { "const": "original" } }
-    },
-    "retainedRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "coordinates"],
-      "properties": {
-        "type": { "const": "retain" },
-        "coordinates": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
     "refLineage": {
-      "oneOf": [
-        { "$ref": "#/$defs/originalRef" },
-        { "$ref": "#/$defs/retainedRef" }
-      ]
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "original", "ptc", "transforms", "retain",
+        "terminal_coordinates", "port_realizable", "lineage_sha256"
+      ],
+      "properties": {
+        "type": { "const": "network_view_lineage" },
+        "original": { "$ref": "#/$defs/originalLineageStep" },
+        "ptc": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ptcLineageStep" }] },
+        "transforms": { "type": "array", "items": { "$ref": "#/$defs/transformPairLineageStep" } },
+        "retain": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/retainLineageStep" }] },
+        "terminal_coordinates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
+        "port_realizable": { "type": "boolean" },
+        "lineage_sha256": { "$ref": "#/$defs/sha256" }
+      }
     },
     "directSolveSpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "frequencies"],
+      "required": ["type", "frequencies", "traces"],
       "properties": {
         "type": { "const": "direct_solve" },
-        "frequencies": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/quantity" }
-        }
+        "frequencies": { "$ref": "#/$defs/frequencyGrid" },
+        "traces": { "type": "array", "items": { "$ref": "#/$defs/sParameterTrace" } }
       }
     },
     "diagonalRootSpec": {
@@ -868,28 +1673,58 @@
       "required": ["type", "coordinate", "root_hint"],
       "properties": {
         "type": { "const": "diagonal_root" },
-        "coordinate": { "type": "string", "minLength": 1 },
-        "root_hint": { "$ref": "#/$defs/quantity" }
-      }
-    },
-    "parameterRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["component_id", "parameter_id"],
-      "properties": {
-        "component_id": { "type": "string", "minLength": 1 },
-        "parameter_id": { "type": "string", "minLength": 1 }
+        "coordinate": { "$ref": "#/$defs/identifier" },
+        "root_hint": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
       }
     },
     "quantitySelector": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "spec", "projection"],
-      "properties": {
-        "type": { "const": "diagonal_root_projection" },
-        "spec": { "$ref": "#/$defs/diagonalRootSpec" },
-        "projection": { "enum": ["frequency", "linewidth"] }
-      }
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection"],
+          "properties": {
+            "type": { "const": "diagonal_root_projection" },
+            "spec": { "$ref": "#/$defs/diagonalRootSpec" },
+            "projection": { "enum": ["frequency", "linewidth"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection"],
+          "properties": {
+            "type": { "const": "hybridized_pole_projection" },
+            "spec": { "$ref": "#/$defs/hybridizedPoleSpec" },
+            "projection": { "enum": ["frequency", "linewidth"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection"],
+          "properties": {
+            "type": { "const": "transfer_zero_projection" },
+            "spec": { "$ref": "#/$defs/transferZeroSpec" },
+            "projection": { "const": "frequency" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection"],
+          "properties": {
+            "type": { "const": "residue_coupling_projection" },
+            "spec": { "$ref": "#/$defs/residueNormalizedCouplingSpec" },
+            "projection": { "const": "magnitude" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection"],
+          "properties": {
+            "type": { "const": "response_element_projection" },
+            "spec": { "$ref": "#/$defs/responseElementSpec" },
+            "projection": { "enum": ["magnitude", "real", "imag"] }
+          }
+        }
+      ]
     },
     "optimizationVariable": {
       "type": "object",
@@ -908,7 +1743,7 @@
       "required": ["id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "quantity": { "$ref": "#/$defs/quantitySelector" },
+        "quantity": { "$ref": "#/$defs/scalarExpression" },
         "target": { "$ref": "#/$defs/quantity" },
         "weight_f64": { "$ref": "#/$defs/f64" },
         "resolved_scale": { "$ref": "#/$defs/quantity" },
@@ -969,7 +1804,7 @@
     "parameterSet": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "bindings"],
+      "required": ["type", "bindings", "allow_extrapolation"],
       "properties": {
         "type": { "const": "parameter_set" },
         "bindings": {
@@ -983,6 +1818,10 @@
               "value": { "$ref": "#/$defs/quantity" }
             }
           }
+        },
+        "allow_extrapolation": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameterRef" }
         }
       }
     },
@@ -994,6 +1833,9 @@
         "schema_version",
         "request_sha256",
         "ordinal",
+        "ordinal_text",
+        "directory",
+        "staging_directory",
         "attempt_state",
         "started_at_utc",
         "julia_executable_sha256",
@@ -1006,6 +1848,9 @@
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "ordinal": { "type": "integer", "minimum": 1 },
+        "ordinal_text": { "$ref": "#/$defs/attemptOrdinalText" },
+        "directory": { "$ref": "#/$defs/attemptDirectory" },
+        "staging_directory": { "$ref": "#/$defs/stagingDirectory" },
         "attempt_state": { "enum": ["allocated", "launched"] },
         "started_at_utc": { "$ref": "#/$defs/utcTimestamp" },
         "julia_executable_sha256": { "$ref": "#/$defs/sha256" },
@@ -1038,6 +1883,37 @@
         }
       ]
     },
+    "bootstrapReady": {
+      "description": "Blocked-child protocol frame; never request or outcome authority.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "request_sha256", "attempt_ordinal",
+        "julia_version", "julia_threads", "blas_threads", "blas_vendor"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.bootstrap_ready" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_ordinal": { "type": "integer", "minimum": 1 },
+        "julia_version": { "type": "string", "minLength": 1 },
+        "julia_threads": { "type": "integer", "minimum": 1 },
+        "blas_threads": { "type": "integer", "minimum": 1 },
+        "blas_vendor": { "type": "string", "minLength": 1 }
+      }
+    },
+    "launchAuthorization": {
+      "description": "Python frame authorizing the blocked child only after attempt.json is sealed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version", "request_sha256", "attempt_sha256"],
+      "properties": {
+        "schema": { "const": "scnsim.launch_authorization" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
     "directResponseResult": {
       "type": "object",
       "additionalProperties": false,
@@ -1045,6 +1921,8 @@
         "schema",
         "schema_version",
         "result_kind",
+        "request_sha256",
+        "attempt_sha256",
         "scalar_catalog",
         "array_catalog"
       ],
@@ -1052,6 +1930,8 @@
         "schema": { "const": "scnsim.result" },
         "schema_version": { "const": 1 },
         "result_kind": { "const": "direct_response" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
         "scalar_catalog": {
           "type": "object",
           "maxProperties": 0
@@ -1076,6 +1956,8 @@
         "schema",
         "schema_version",
         "result_kind",
+        "request_sha256",
+        "attempt_sha256",
         "scalar_catalog",
         "array_catalog"
       ],
@@ -1083,20 +1965,616 @@
         "schema": { "const": "scnsim.result" },
         "schema_version": { "const": 1 },
         "result_kind": { "const": "diagonal_root" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
         "scalar_catalog": {
           "type": "object",
           "additionalProperties": false,
           "required": ["root", "frequency", "linewidth", "slope"],
           "properties": {
-            "root": { "$ref": "#/$defs/complexQuantity" },
-            "frequency": { "$ref": "#/$defs/quantity" },
-            "linewidth": { "$ref": "#/$defs/quantity" },
-            "slope": { "$ref": "#/$defs/complexQuantity" }
+            "root": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "linewidth": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] }
           }
         },
         "array_catalog": {
           "type": "object",
           "maxProperties": 0
+        }
+      }
+    },
+    "hybridizedPoleResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "hybridized_pole" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "scalar_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["root", "frequency", "linewidth", "slope", "evidence_sha256"],
+          "properties": {
+            "root": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "linewidth": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
+            "evidence_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "array_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["null_vector"],
+          "properties": { "null_vector": { "$ref": "#/$defs/nullVectorArtifact" } }
+        }
+      }
+    },
+    "nullVectorArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "required": ["coordinate_ids"],
+          "properties": {
+            "id": { "const": "null_vector" },
+            "path": { "const": "artifacts/null_vector.zarr" },
+            "file_manifest": { "const": "artifacts/null_vector.manifest.json" },
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 2 }], "items": false },
+            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1 }], "items": false },
+            "chunk_policy": { "const": "single_complete_array_v1" },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 1, "maxItems": 1,
+              "prefixItems": [{
+                "properties": { "id": { "const": "retained_coordinate" }, "kind": { "const": "coordinate" } },
+                "required": ["id", "kind", "values"]
+              }],
+              "items": false
+            },
+            "coordinate_ids": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/identifier" } },
+            "unit": { "const": "dimensionless" },
+            "dimensionality": { "const": "dimensionless" }
+          }
+        }
+      ]
+    },
+    "transferZeroResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "transfer_zero" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "scalar_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"],
+          "properties": {
+            "zero": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "numerator_slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
+            "denominator": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
+            "evidence_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "array_catalog": { "type": "object", "maxProperties": 0 }
+      }
+    },
+    "residueNormalizedCouplingResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "residue_normalized_coupling" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "scalar_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"],
+          "properties": {
+            "coupling": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
+            "branch_a_residue": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+            "branch_b_residue": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+            "evidence_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "array_catalog": { "type": "object", "maxProperties": 0 }
+      }
+    },
+    "responseElementResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "response_element" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "scalar_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["family", "value", "magnitude", "real", "imag", "evidence_sha256"],
+          "properties": {
+            "family": { "enum": ["S", "Y", "Z"] },
+            "value": { "$ref": "#/$defs/complexQuantity" },
+            "magnitude": { "$ref": "#/$defs/quantity" },
+            "real": { "$ref": "#/$defs/quantity" },
+            "imag": { "$ref": "#/$defs/quantity" },
+            "evidence_sha256": { "$ref": "#/$defs/sha256" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "family": { "const": "S" } }, "required": ["family"] },
+              "then": { "properties": {
+                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
+                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
+                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
+                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] }
+              } }
+            },
+            {
+              "if": { "properties": { "family": { "const": "Y" } }, "required": ["family"] },
+              "then": { "properties": {
+                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
+                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
+                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
+                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] }
+              } }
+            },
+            {
+              "if": { "properties": { "family": { "const": "Z" } }, "required": ["family"] },
+              "then": { "properties": {
+                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
+                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] }
+              } }
+            }
+          ]
+        },
+        "array_catalog": { "type": "object", "maxProperties": 0 }
+      }
+    },
+    "operatorArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "required": ["coordinate_ids", "probe_load_state"],
+          "properties": {
+            "id": { "const": "operator" },
+            "path": { "const": "artifacts/operator.zarr" },
+            "file_manifest": { "const": "artifacts/operator.manifest.json" },
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunk_policy": { "const": "frequency_slab_full_matrix_v1" },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 3, "maxItems": 3,
+              "prefixItems": [
+                { "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "artifact_id": { "const": "frequencies" } }, "required": ["id", "kind", "artifact_id"] },
+                { "properties": { "kind": { "const": "row_coordinate" } }, "required": ["kind", "values"] },
+                { "properties": { "kind": { "const": "column_coordinate" } }, "required": ["kind", "values"] }
+              ],
+              "items": false
+            },
+            "unit": { "const": "siemens / second" },
+            "dimensionality": { "const": "conductance_per_time" },
+            "coordinate_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }
+          }
+        }
+      ]
+    },
+    "operatorResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "operator" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "scalar_catalog": { "type": "object", "maxProperties": 0 },
+        "array_catalog": {
+          "type": "object", "additionalProperties": false,
+          "required": ["frequencies", "operator"],
+          "properties": {
+            "frequencies": { "$ref": "#/$defs/directFrequencyArtifact" },
+            "operator": { "$ref": "#/$defs/operatorArtifact" }
+          }
+        }
+      }
+    },
+    "hbOperatingPointMode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "signed_frequency", "order"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/modeTuple" },
+        "signed_frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+        "order": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "hbResponseMode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "signed_frequency_grid", "order"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/modeTuple" },
+        "signed_frequency_grid": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/quantity" },
+              { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }
+            ]
+          }
+        },
+        "order": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "hbLattice": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "pump_axes", "operating_point_modes", "input_modes", "output_modes",
+        "matrix_order", "tuple_frequency_collision_check_sha256"
+      ],
+      "properties": {
+        "pump_axes": { "type": "array", "items": { "$ref": "#/$defs/pumpAxis" } },
+        "operating_point_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbOperatingPointMode" } },
+        "input_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
+        "output_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
+        "matrix_order": { "const": "port_major_mode_minor" },
+        "tuple_frequency_collision_check_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hbEffectiveSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["drive_id", "mode", "coefficient", "injection_map_sha256"],
+      "properties": {
+        "drive_id": { "$ref": "#/$defs/identifier" },
+        "mode": { "$ref": "#/$defs/modeTuple" },
+        "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
+        "injection_map_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hbReconciliation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256"],
+      "properties": {
+        "comparable": { "type": "boolean" },
+        "reason": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["topology", "load_or_ptc", "reference_plane", "reference_matrix", "signed_frequency_grid", "channel_basis", "normalization"] }
+          ]
+        },
+        "last_comparable_ancestor": { "$ref": "#/$defs/sha256" },
+        "normalization": { "const": "backend_photon_flux_to_scnsim_power_wave" },
+        "residual_f64": { "$ref": "#/$defs/f64" },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "comparable": { "const": true } }, "required": ["comparable"] },
+          "then": { "required": ["residual_f64"], "properties": { "reason": { "type": "null" } } },
+          "else": { "not": { "required": ["residual_f64"] }, "properties": { "reason": { "type": "string" } } }
+        }
+      ]
+    },
+    "hbCaseMatrixArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbMatrixArtifact" },
+        {
+          "properties": {
+            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z)\\.zarr$" },
+            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z)\\.manifest\\.json$" }
+          }
+        }
+      ]
+    },
+    "hbCaseSArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
+        { "properties": {
+          "id": { "const": "s" },
+          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/s\\.zarr$" },
+          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/s\\.manifest\\.json$" },
+          "unit": { "const": "dimensionless" },
+          "dimensionality": { "const": "dimensionless" }
+        } }
+      ]
+    },
+    "hbCaseYArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
+        { "properties": {
+          "id": { "const": "y" },
+          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/y\\.zarr$" },
+          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/y\\.manifest\\.json$" },
+          "unit": { "const": "siemens" },
+          "dimensionality": { "const": "conductance" }
+        } }
+      ]
+    },
+    "hbCaseZArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
+        { "properties": {
+          "id": { "const": "z" },
+          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/z\\.zarr$" },
+          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/z\\.manifest\\.json$" },
+          "unit": { "const": "ohm" },
+          "dimensionality": { "const": "resistance" }
+        } }
+      ]
+    },
+    "hbBackendNativeSArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
+        { "properties": {
+          "id": { "const": "backend_native_s" },
+          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_s\\.zarr$" },
+          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_s\\.manifest\\.json$" },
+          "unit": { "const": "dimensionless" },
+          "dimensionality": { "const": "dimensionless" }
+        } }
+      ]
+    },
+    "hbBackendNativeZArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
+        { "properties": {
+          "id": { "const": "backend_native_z" },
+          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_z\\.zarr$" },
+          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_z\\.manifest\\.json$" },
+          "unit": { "const": "ohm" },
+          "dimensionality": { "const": "resistance" }
+        } }
+      ]
+    },
+    "hbStateArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "properties": {
+            "id": { "const": "states" },
+            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.zarr$" },
+            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.manifest\\.json$" },
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunk_policy": { "const": "single_complete_array_v1" },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
+                  }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
+                  }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
+                { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] }
+              ],
+              "items": false
+            },
+            "unit": { "const": "weber" },
+            "dimensionality": { "const": "magnetic_flux" }
+          }
+        }
+      ]
+    },
+    "hbEffectiveSourceArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "properties": {
+            "id": { "const": "effective_source_vectors" },
+            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.zarr$" },
+            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.manifest\\.json$" },
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "chunk_policy": { "const": "single_complete_array_v1" },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
+                  }
+                } } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
+                  }
+                } } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
+                { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] }
+              ],
+              "items": false
+            },
+            "unit": { "const": "ampere" },
+            "dimensionality": { "const": "current" }
+          }
+        }
+      ]
+    },
+    "hbTraceArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "properties": {
+            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.zarr$" },
+            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.manifest\\.json$" },
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1 }], "items": false },
+            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false },
+            "chunk_policy": { "const": "frequency_capped_1024_v1" },
+            "datasets": {
+              "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false }
+                  }
+                } } },
+                { "properties": { "metadata": { "properties": {
+                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
+                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false }
+                  }
+                } } }
+              ],
+              "items": false
+            },
+            "axes": {
+              "type": "array", "minItems": 1, "maxItems": 1,
+              "prefixItems": [{ "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "request_field": { "const": "spec.frequencies" } }, "required": ["id", "kind", "request_field"] }],
+              "items": false
+            },
+            "unit": { "const": "dimensionless" },
+            "dimensionality": { "const": "dimensionless" }
+          }
+        }
+      ]
+    },
+    "hbCaseArtifacts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["states", "effective_source_vectors", "s", "y", "z", "backend_native_s", "backend_native_z"],
+      "properties": {
+        "states": { "$ref": "#/$defs/hbStateArtifact" },
+        "effective_source_vectors": { "$ref": "#/$defs/hbEffectiveSourceArtifact" },
+        "s": { "$ref": "#/$defs/hbCaseSArtifact" },
+        "y": { "$ref": "#/$defs/hbCaseYArtifact" },
+        "z": { "$ref": "#/$defs/hbCaseZArtifact" },
+        "backend_native_s": { "$ref": "#/$defs/hbBackendNativeSArtifact" },
+        "backend_native_z": { "$ref": "#/$defs/hbBackendNativeZArtifact" }
+      }
+    },
+    "hbCaseFailure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "stage", "message", "evidence_sha256"],
+      "properties": {
+        "kind": { "const": "hb_case_failure" },
+        "stage": { "enum": ["operating_point", "linearization", "response_formation"] },
+        "message": { "type": "string", "minLength": 1 },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hbCaseOutcome": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "case_ordinal", "case_id", "status", "bias_state", "pump_state",
+            "effective_sources", "artifacts", "traces", "reconciliation",
+            "backend_normalization_evidence_sha256"
+          ],
+          "properties": {
+            "case_ordinal": { "type": "integer", "minimum": 1 },
+            "case_id": { "$ref": "#/$defs/identifier" },
+            "status": { "const": "success" },
+            "bias_state": { "enum": ["off", "on"] },
+            "pump_state": { "enum": ["off", "on"] },
+            "effective_sources": { "type": "array", "items": { "$ref": "#/$defs/hbEffectiveSource" } },
+            "artifacts": { "$ref": "#/$defs/hbCaseArtifacts" },
+            "traces": { "type": "array", "items": { "$ref": "#/$defs/hbTraceArtifact" } },
+            "reconciliation": { "$ref": "#/$defs/hbReconciliation" },
+            "backend_normalization_evidence_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["case_ordinal", "case_id", "status", "effective_sources", "failure"],
+          "properties": {
+            "case_ordinal": { "type": "integer", "minimum": 1 },
+            "case_id": { "$ref": "#/$defs/identifier" },
+            "status": { "const": "failure" },
+            "effective_sources": { "type": "array", "items": { "$ref": "#/$defs/hbEffectiveSource" } },
+            "failure": { "$ref": "#/$defs/hbCaseFailure" }
+          }
+        }
+      ]
+    },
+    "hbBatchResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "lattice", "truncation", "cases"],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "hb_batch" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "lattice": { "$ref": "#/$defs/hbLattice" },
+        "truncation": { "$ref": "#/$defs/hbTruncation" },
+        "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbCaseOutcome" } }
+      }
+    },
+    "inventoryResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests"],
+      "properties": {
+        "schema": { "const": "scnsim.inventory" },
+        "schema_version": { "const": 1 },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "plan_sha256": { "$ref": "#/$defs/sha256" },
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["request_sha256", "operation", "status", "attempts"],
+            "properties": {
+              "request_sha256": { "$ref": "#/$defs/sha256" },
+              "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] },
+              "status": { "enum": ["succeeded", "failed", "interrupted"] },
+              "attempts": { "type": "array", "items": { "$ref": "#/$defs/attemptOrdinalText" } }
+            }
+          }
         }
       }
     },
@@ -1114,13 +2592,15 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "schema", "schema_version", "result_kind", "baseline", "best",
-        "completed_generations", "unused_evaluations", "ledger_artifacts"
+        "schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256",
+        "baseline", "best", "completed_generations", "unused_evaluations", "ledger_artifacts"
       ],
       "properties": {
         "schema": { "const": "scnsim.result" },
         "schema_version": { "const": 1 },
         "result_kind": { "const": "optimization" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
         "baseline": { "$ref": "#/$defs/baselineOutcome" },
         "best": { "$ref": "#/$defs/optimizationBest" },
         "completed_generations": { "type": "integer", "minimum": 1 },
@@ -1136,7 +2616,13 @@
       "oneOf": [
         { "$ref": "#/$defs/directResponseResult" },
         { "$ref": "#/$defs/diagonalRootResult" },
-        { "$ref": "#/$defs/optimizationResult" }
+        { "$ref": "#/$defs/hybridizedPoleResult" },
+        { "$ref": "#/$defs/transferZeroResult" },
+        { "$ref": "#/$defs/residueNormalizedCouplingResult" },
+        { "$ref": "#/$defs/responseElementResult" },
+        { "$ref": "#/$defs/operatorResult" },
+        { "$ref": "#/$defs/optimizationResult" },
+        { "$ref": "#/$defs/hbBatchResult" }
       ]
     },
     "failure": {
@@ -1161,6 +2647,7 @@
             "eliminated_block_solve_failure",
             "root_slope_unresolved",
             "numerical_resolution_unresolved",
+            "hb_case_failure",
             "runtime_preparation",
             "backend_protocol",
             "result_unavailable",
@@ -1186,7 +2673,7 @@
           "then": { "properties": { "category": { "const": "validation" } } }
         },
         {
-          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
+          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "hb_case_failure", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
           "then": { "properties": { "category": { "const": "execution" } } }
         },
         {
@@ -1198,7 +2685,7 @@
     "failureEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "operation", "context"],
+      "required": ["type", "operation", "context_kind"],
       "properties": {
         "type": { "const": "failure_evidence" },
         "operation": {
@@ -1208,14 +2695,38 @@
             "runtime_prepare",
             "compile_preflight",
             "solve_direct",
-            "evaluate_diagonal_root",
+            "solve_hb",
+            "evaluate_direct",
             "optimize_direct",
             "backend_protocol",
             "resolve",
             "scaffold"
           ]
         },
-        "context": { "$ref": "#/$defs/typedValue" }
+        "context_kind": {
+          "enum": [
+            "authoring", "workspace", "runtime", "compile", "direct_response",
+            "direct_quantity", "optimization_candidate", "hb_case", "protocol",
+            "artifact", "resolution", "scaffold"
+          ]
+        },
+        "plan_sha256": { "$ref": "#/$defs/sha256" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "component_path": { "$ref": "#/$defs/componentPath" },
+        "parameter": { "$ref": "#/$defs/parameterRef" },
+        "coordinate_id": { "$ref": "#/$defs/identifier" },
+        "port_id": { "$ref": "#/$defs/identifier" },
+        "case_id": { "$ref": "#/$defs/identifier" },
+        "candidate_ordinal": { "type": "integer", "minimum": 0 },
+        "artifact_id": { "$ref": "#/$defs/identifier" },
+        "artifact_path": { "$ref": "#/$defs/relativePath" },
+        "expected_sha256": { "$ref": "#/$defs/sha256" },
+        "actual_sha256": { "$ref": "#/$defs/sha256" },
+        "backend_exit_code": { "type": "integer" },
+        "residual_f64": { "$ref": "#/$defs/f64" },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "candidateSuccess": {
@@ -1357,15 +2868,37 @@
           ]
         },
         "completed_generation": { "type": "integer", "minimum": 1 },
-        "state_sha256": { "$ref": "#/$defs/sha256" }
-      }
+        "state_sha256": { "$ref": "#/$defs/sha256" },
+        "next_raw_optimizer_population_sha256": { "$ref": "#/$defs/sha256" },
+        "next_transformed_optimizer_population_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "boundary": { "const": "post_update_post_next_sample_pre_next_update" } },
+            "required": ["boundary"]
+          },
+          "then": {
+            "required": ["next_raw_optimizer_population_sha256", "next_transformed_optimizer_population_sha256"]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["next_raw_optimizer_population_sha256"] },
+                { "required": ["next_transformed_optimizer_population_sha256"] }
+              ]
+            }
+          }
+        }
+      ]
     },
     "generationLedger": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "schema", "schema_version", "request_sha256", "attempt_sha256",
-        "generation", "previous_ledger_sha256", "population_size",
+        "algorithm_id", "generation", "previous_ledger_sha256", "population_size",
+        "raw_optimizer_population_sha256", "transformed_optimizer_population_sha256",
         "continuation_certificate", "candidates"
       ],
       "properties": {
@@ -1373,6 +2906,7 @@
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2" },
         "generation": { "type": "integer", "minimum": 1 },
         "previous_ledger_sha256": {
           "oneOf": [
@@ -1381,12 +2915,45 @@
           ]
         },
         "population_size": { "type": "integer", "minimum": 2 },
+        "raw_optimizer_population_sha256": { "$ref": "#/$defs/sha256" },
+        "transformed_optimizer_population_sha256": { "$ref": "#/$defs/sha256" },
         "continuation_certificate": { "$ref": "#/$defs/cmaContinuationCertificate" },
         "candidates": {
           "type": "array",
           "minItems": 2,
           "items": { "$ref": "#/$defs/populationOutcome" }
         }
+      }
+    },
+    "sourceUnitEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["identity", "source_unit", "canonical_si_unit", "canonical_dimensionality"],
+      "properties": {
+        "identity": { "type": "string", "minLength": 1 },
+        "source_unit": { "type": "string", "minLength": 1 },
+        "canonical_si_unit": { "$ref": "#/$defs/siUnit" },
+        "canonical_dimensionality": { "$ref": "#/$defs/dimensionality" }
+      }
+    },
+    "receiptEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runtime_semantic_sha256", "source_units", "provenance_sha256", "evidence_sha256"],
+      "properties": {
+        "runtime_semantic_sha256": { "$ref": "#/$defs/sha256" },
+        "source_units": { "type": "array", "items": { "$ref": "#/$defs/sourceUnitEvidence" } },
+        "provenance_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "interruptionEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "termination", "interrupted_at_utc"],
+      "properties": {
+        "kind": { "const": "keyboard_interrupt" },
+        "termination": { "enum": ["terminated", "killed_after_grace"] },
+        "interrupted_at_utc": { "$ref": "#/$defs/utcTimestamp" },
+        "outcome_sha256": { "$ref": "#/$defs/sha256" },
+        "log_artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifactLink" } }
       }
     },
     "receipt": {
@@ -1414,9 +2981,9 @@
           "type": "array",
           "items": { "$ref": "#/$defs/artifactLink" }
         },
-        "evidence": { "$ref": "#/$defs/typedValue" },
+        "evidence": { "$ref": "#/$defs/receiptEvidence" },
         "failure": { "$ref": "#/$defs/failure" },
-        "interruption": { "$ref": "#/$defs/typedValue" },
+        "interruption": { "$ref": "#/$defs/interruptionEvidence" },
         "sealed_at_utc": { "$ref": "#/$defs/utcTimestamp" }
       },
       "allOf": [
@@ -1491,7 +3058,7 @@
         "status": { "enum": ["success", "failure", "interrupted"] },
         "result_sha256": { "$ref": "#/$defs/sha256" },
         "failure": { "$ref": "#/$defs/failure" },
-        "interruption": { "$ref": "#/$defs/typedValue" },
+        "interruption": { "$ref": "#/$defs/interruptionEvidence" },
         "artifacts": {
           "type": "array",
           "items": { "$ref": "#/$defs/artifactLink" }

@@ -10,26 +10,58 @@ toc-depth: 2
 
 Every `solve()`, `evaluate()`, or `optimize()` request that is not already a
 verified success launches one external Julia process after runtime preparation
-has succeeded and an attempt has been allocated. Python passes the
-canonical request file and the same-request staging directory
-`attempts/.staging-<ordinal>-<uuid>/`. Julia runs with the committed project,
-no user startup file, and the recorded thread count.
+has succeeded and an attempt has been allocated. The positive attempt ordinal
+is decimal text padded to at least six digits; Python passes the canonical
+request file and the same-request staging directory
+`attempts/.staging-<ordinal-text>-<uuidv4>/`, where the suffix is lowercase
+canonical UUIDv4 text.
 
 This boundary keeps Julia compilation, factorization reuse, root continuation,
 candidate evaluation, and CMA-ES inside one process. SCNSim does not embed
 libjulia through JuliaCall and does not keep a daemon whose mutable state could
 outlive request identity.
 
-Python launches an argv vector without a shell, passes the package resource
-project explicitly, disables startup/history files, and fixes Julia and BLAS to
-one thread. It creates a new process group so interruption cannot leave a child
-backend running.
+Python launches exactly this argv vector, with every shown item a separate
+argument and every resource/request/staging path absolute:
+
+```text
+[
+  julia_executable,
+  "--startup-file=no",
+  "--history-file=no",
+  "--threads=1",
+  "--project=<absolute _julia project dir>",
+  <absolute bin/scnsim_request.jl>,
+  "--request",
+  <absolute request.json>,
+  "--staging",
+  <absolute staging dir>,
+]
+```
+
+It invokes that vector with `shell=False`; no command string, caller shell,
+caller working directory, startup file, history file, or user project can
+change the launch. A sealed child environment fixes BLAS to one thread. Python
+also creates a new process group so interruption cannot leave a child backend
+running.
 
 Attempt allocation is the transport boundary. It reserves the ordinal and
 staging directory but does not yet publish or hash `attempt.json`. Python starts
-Julia in a blocked bootstrap that may report actual thread and BLAS evidence
-but cannot execute the request or emit authoritative progress/outcome until
-Python supplies the finalized attempt hash.
+Julia in a blocked bootstrap that cannot execute the request or emit
+authoritative progress/outcome. Before any other stdout record, Julia writes
+exactly one canonical UTF-8 JSONL line with no fields beyond this template and
+a terminating newline:
+
+```text
+{"attempt_ordinal":<positive integer>,"blas_threads":1,"blas_vendor":<canonical string>,"julia_threads":1,"julia_version":"1.12.6","request_sha256":<canonical SHA-256 string>,"schema":"scnsim.bootstrap_ready","schema_version":1}\n
+```
+
+The record does not contain `attempt_sha256`, because that file is not yet
+sealed. Python requires its request hash and numeric ordinal to match the
+launch, its Julia version to match the prepared exact patch, both thread counts
+to equal one, and its BLAS evidence to pass the declared schema. A missing,
+duplicate, malformed, noncanonical, or mismatched record is a bootstrap
+protocol failure.
 
 If process creation or that bootstrap fails, Python seals one immutable
 `attempt_state="allocated"` record, writes a `BackendProtocolError` failure
@@ -38,20 +70,37 @@ the prepared executable hash and Python-observed host evidence, but omits all
 child-observed Julia/BLAS fields; `started_at_utc` is the allocation timestamp
 in both states. If the bootstrap succeeds, Python instead
 seals one immutable `attempt_state="launched"` record with those observed
-fields, sends its hash to the blocked child, and only then authorizes request
-execution. The in-memory bootstrap framing is internal process control, not a
-second request authority or durable artifact. No Julia `outcome.json` exists on
-the allocated-failure path.
+fields. Python then writes exactly one canonical UTF-8 JSONL line, with no
+fields beyond this template, to the child's stdin and closes the pipe:
+
+```text
+{"attempt_sha256":<canonical SHA-256 string>,"request_sha256":<canonical SHA-256 string>,"schema":"scnsim.launch_authorization","schema_version":1}\n
+```
+
+Julia requires that one complete line followed by EOF, recomputes the request
+hash, and compares both hashes with the launch and the finalized attempt.
+Premature EOF, trailing bytes or a second line, invalid framing, or any hash,
+ordinal, Julia-version, thread, or BLAS-evidence mismatch is
+`BackendProtocolError`; execution begins only after every comparison passes.
+Failure before a valid ready record seals the allocated attempt path. Failure
+after the launched attempt has been sealed, including invalid authorization,
+seals a launched protocol-failure receipt without numerical work. The in-memory
+bootstrap frames are internal process control, not a second request authority
+or durable artifact. No Julia `outcome.json` exists on either pre-execution
+failure path.
 
 ## Use files for authority and JSONL for progress
 
-The request file is the only command authority. A stdout line is progress only
-when it validates as `schema="scnsim.progress"`, `schema_version=1`, binds the
-exact request/attempt hashes, and declares one completed optimization
-generation plus evaluation-budget counts. Every other stdout line and all
+The request file is the only command authority. The single pre-authorization
+`scnsim.bootstrap_ready` line is control framing, not progress. After launch
+authorization, a stdout line is progress only when it validates as
+`schema="scnsim.progress"`, `schema_version=1`, binds the exact request/attempt
+hashes, and declares one completed optimization generation plus
+evaluation-budget counts. Every other post-authorization stdout line and all
 stderr are logs. Python may consume valid progress for internal presentation or
 diagnostics, but V1 exposes no public progress toggle or callback. Malformed
-progress cannot alter the request or final outcome.
+progress cannot alter the request or final outcome. A second
+`scnsim.bootstrap_ready` record is always a protocol failure rather than a log.
 
 Julia writes the schema-validated `outcome.json` envelope and referenced
 artifacts into staging. The envelope binds request, attempt, semantic runtime,
