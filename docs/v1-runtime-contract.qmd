@@ -111,7 +111,7 @@ exact public handoff with its Git provenance.
 | `CircuitPlan` | Components, parameters, electric nodes, canonical ground, logical Ports, and catalog identities | Execution state or results |
 | `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
-| typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
+| typed `AnalysisResult` | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
 
 ### Two users, one reusable model
 
@@ -319,6 +319,13 @@ of that same result and never launch another solve.
 abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 `HBSolveSpec` directly.
 
+The first executable candidate deliberately supports the smallest complete
+subset: `DirectSolveSpec` on `run.original` for exactly one logical Port and no
+named traces. Other valid V1 views, N-port responses, and trace declarations
+remain public contract but raise `ScaffoldUnavailableError` until their named
+implementation slice. This limitation never permits returning an incomplete
+one-Port S/Y/Z Result.
+
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
 quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
 example, runs the required-hint deterministic Newton procedure on one physically
@@ -458,7 +465,10 @@ resolution; candidate-specific continuations remain in candidate receipts.
 ### Resolve without execution
 
 `resolve()` accepts the same Ref, spec, and optional ParameterSet as the
-corresponding operation:
+corresponding operation. Because `optimize(ref, spec)` always starts from the
+sealed Plan baseline, its matching `resolve(ref, optimization_spec)` and
+`explain(ref, optimization_spec)` forms do not accept an external
+`ParameterSet`:
 
 ```python
 direct = run.resolve(feedline, direct_spec)
@@ -1255,6 +1265,52 @@ does not acquire a fake case layer. S display accepts
 `magnitude="linear" | "db"`; dimensionful Y/Z matrices remain linear Quantity
 surfaces.
 
+For the canonical $e^{-i\omega t}$ convention, the Direct circuit admittance is
+
+$$
+Y_{\mathrm{circ}}(\omega)
+=\frac{D(\omega)}{-i\omega}
+=G-i\omega C+\frac{i}{\omega}K.
+$$
+
+`DirectSolveSpec.frequencies` is one SCNSim-registry frequency Quantity whose
+magnitude is a non-empty, one-dimensional, finite, strictly increasing,
+duplicate-free grid with every $f>0$. The first slice rejects scalar, ragged,
+unordered, repeated, zero, and negative grids before starting an attempt.
+
+At each grid point the angular frequency used in $D(\omega)$ and
+$Y_{\mathrm{circ}}(\omega)$ is $\omega=2\pi f$ after coherent-SI conversion.
+
+At every requested point SCNSim must form finite selected-network Y, Z, and S.
+A failed Schur complement, source-boundary solve, Y-to-Z solve, or Y-to-S solve
+fails the whole request as `DirectResponseFormationError` with the exact stage
+and frequency evidence. It publishes no partial grid, pseudoinverse, infinity,
+or stale family. For every required $AX=B$, including multiple right-hand
+sides, SCNSim computes the normalized backward residual
+
+$$
+\eta(A,X,B)=
+\frac{\lVert AX-B\rVert_\infty}
+{\lVert\lvert A\rvert\lvert X\rvert+\lvert B\rvert\rVert_\infty},
+$$
+
+where absolute values are entrywise complex magnitudes and the matrix infinity
+norm is the maximum absolute row sum. Exact `0/0` is zero; a zero denominator
+with nonzero numerator is infinity. All operands and the resulting residual
+must be finite, and
+
+$$
+\eta(A,X,B)\le\tau(n),\qquad
+\tau(n)=256(n+1)\,\epsilon_{\mathrm{Float64}}.
+$$
+
+Here $n$ is the order of the square $A$ being checked. An empty complement that
+requires no solve is a no-op rather than a zero-dimensional factorization.
+Condition estimates remain receipt evidence and do not add a second threshold.
+The exact-open one-Port identity $Y=0,\ S=+1$ remains an internal algebra probe;
+because finite Z does not exist, it cannot become a successful complete public
+`DirectSolveResult`.
+
 ### Typed Direct quantity catalog
 
 `run.evaluate()` evaluates one declared Direct physical quantity or
@@ -1551,10 +1607,49 @@ optimization, candidate, or Result identity and cannot become a scientific
 Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
 observer, public JobRef, or persistent daemon.
 
-`CMAESSpec` requires a deterministic `seed` and finite `max_evaluations` work
-budget; optional `population_size` is an algorithm control. These values bound
-execution and reproducibility but do not decide whether the resulting circuit
-meets a Design Target.
+`CMAESSpec` has the fixed public surface
+
+```python
+CMAESSpec(
+    seed=0,
+    max_evaluations=200,
+    population_size=None,
+    initial_sigma=0.25,
+)
+```
+
+For $n$ active variables, `population_size=None` resolves to
+$\lambda=4+\lfloor3\ln n\rfloor$. The sealed baseline must lie inside every
+bound, maps to the initial unit-box mean $m_0$, is evaluated first, consumes one
+evaluation, and remains winner-eligible. Baseline evaluation failure fails the
+request. The initial covariance is $I$ and `initial_sigma` is a positive finite
+unit-coordinate scale. `seed` accepts a signed 64-bit integer; an explicit population size
+is an integer of at least two, and the evaluation budget must be large enough
+for the required complete generation.
+
+The runtime uses the box transform supplied by the Manifest-pinned
+CMAEvolutionStrategy version and disables package ftol, xtol, stagnation,
+target, time, and noise stop rules. With budget $B$, it runs exactly
+$g=\lfloor(B-1)/\lambda\rfloor$ complete generations and requires $g\ge1$;
+unused remainder is evidence. Candidate failures and cache hits still consume
+their declared population ordinal. The winner is the lowest finite cost among
+the baseline and completed candidates; an exact cost tie selects the earliest
+evaluation ordinal in baseline, generation, then population-column order.
+These execution controls bound reproducibility but do not decide whether the
+result meets a Design Target.
+
+For every successful candidate, the ledger stores each objective's evaluated
+Quantity, signed normalized residual, and weighted component cost in request
+objective order. The request-owned target, resolved scale/source, and weight
+must reproduce each component and their total. A candidate-dependent invalid
+primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,
+local-slope, and Newton/continuation failures retain their corresponding typed
+root errors and tagged positive-infinity penalty. If any of those occurs while
+evaluating the mandatory baseline, the request fails instead of creating an
+optimization Result. Invalid variables, bounds, objectives, selectors, or
+controls fail preflight as `InvalidOptimizationSpec`; a compiler invariant,
+runtime failure, or process protocol failure aborts the request rather than
+becoming a candidate outcome.
 
 Julia package precompilation may reduce load and first-execution latency but
 does not promise every specialization is already compiled. SCNSim adds no
@@ -1623,17 +1718,35 @@ SCNSim keeps these operations separate:
 | Objective residual normalization | Make declared metric errors comparable | Only Human/Design-Target-declared objective terms |
 | Linear-algebra conditioning | Improve numerical solution of the same operator | Internal representation only; never physics |
 
-Bounded variables are converted to canonical SI and then mapped to
-dimensionless unit-interval coordinates:
+Every active `ParameterRef` appears exactly once. Its lower and upper bounds are
+finite, have the parameter's dimensionality, satisfy $x_{i,\min}<x_{i,\max}$,
+and contain the sealed baseline in the closed interval. Linear variables are
+converted to one coherent SI unit and mapped to dimensionless unit-interval
+coordinates:
 
 $$
 z_i = \frac{x_i-x_{i,\min}}{x_{i,\max}-x_{i,\min}} \in [0,1].
 $$
 
-Finite physical bounds therefore default to unit-interval optimizer
-coordinates. A logarithmic transform is used only when `OptimizationSpec`
-explicitly declares it. The ledger records both dimensionless optimizer
-coordinates and physical Quantity values.
+The default is this linear map. When a variable explicitly declares
+`transform="log"`, its lower bound, upper bound, and baseline must all be
+strictly positive. Using their positive coherent-SI magnitudes $\widehat x$,
+SCNSim instead uses the dimensionless ratio map
+
+$$
+z_i=
+\frac{\ln(\widehat x_i/\widehat x_{i,\min})}
+{\ln(\widehat x_{i,\max}/\widehat x_{i,\min})},
+\qquad
+\widehat x_i=
+\widehat x_{i,\min}
+\left(\frac{\widehat x_{i,\max}}{\widehat x_{i,\min}}\right)^{z_i}.
+$$
+
+Taking a logarithm of a dimensionful Quantity directly is never permitted.
+Invalid order, dimensionality, positivity, duplicate variables, or an
+out-of-bounds baseline fails before an attempt. The ledger records both
+dimensionless optimizer coordinates and physical Quantity values.
 
 Objective targets and weights remain consumer/Human declarations. The product
 rule above deterministically expands an omitted residual scale; unit conversion
@@ -1663,6 +1776,19 @@ implementation scope.
 
 ## Results, display, and reports
 
+`Result` means an immutable, already-materialized value whose inspection cannot
+execute work. `AnalysisResult(Result)` is the receipt-backed terminal subset
+returned by `solve()`, `evaluate()`, and `optimize()`. Every Analysis Result
+exposes an immutable `ResultIdentity` containing its Plan, request, attempt, and
+Result SHA-256 values. `DiagonalRootResult` is the concrete result of
+`DiagonalRootSpec`; `resolve()` overloads preserve the corresponding concrete
+type.
+
+`ExplanationResult`, `CircuitDiagramResult`, and `ReportResult` are derived
+Results. They do not fabricate request or receipt identity. `ReportSpec.inputs`
+accepts explicit `AnalysisResult` objects, including inputs from different
+Plans, and preserves each source identity independently.
+
 ### Typed Quantity results
 
 Result scalar and array physical values use the SCNSim Pint registry. Consumers
@@ -1676,18 +1802,19 @@ root_frequency = evaluated.frequency.to(u.GHz)
 probe_loads = direct.y.view.probe_loads
 ```
 
-Each Result carries its exact result/ref identity for serialization and audit.
-Every matrix view also carries the ordered coordinate IDs and its per-probe
+Each `AnalysisResult` carries its exact Result/Ref identity for serialization
+and audit; derived Results preserve their explicit source identities instead of
+inventing an operation receipt. Every matrix view also carries the ordered coordinate IDs and its per-probe
 `raw`/`compensated` load-state mapping.
 Passing typed Results is the normal downstream UX; raw receipt paths remain an
 audit surface.
 
 ### Display is explicit
 
-`result.show()` immediately presents a readable summary in the active
-environment. Notebook presentation is inline; interactive script presentation
-uses the supported renderer; a headless environment fails with a clear export
-instruction rather than claiming it displayed output.
+`result.show()` returns the actual Figure, Drawing, or HTML presentation object.
+Notebook and interactive frontends may display that object. Headless use simply
+returns it and never claims that a window opened. Presentation cannot execute,
+interpolate, or alter result identity.
 
 `plot()` is not a universal Result method. Only a Result subtype with a natural
 figure contract exposes it. Plot methods return the supported figure object so
@@ -1850,15 +1977,28 @@ direct_report = run.build_report(
 )
 
 report = run.build_report(
-    ReportSpec(inputs=(direct, unbiased, dc_only, dc_pump_a_low))
+    ReportSpec(inputs=(direct, hb))
 )
 ```
 
 Report assembly records the exact chosen inputs and may combine a Direct
-response with a typed quantity, contain one HB case, contain several operating
-cases, or present one exact optimization result and its candidate/failure
-evidence. Report assembly never changes which candidate is best or turns a
-Design Target into a pass/fail Gate.
+response with a typed quantity, include one complete HB batch and its declared
+successful/failed case outcomes, or present one exact optimization result and
+its candidate/failure evidence. An individual HB case is derived within its
+batch and is not a separate `AnalysisResult`; using the batch preserves the one
+terminal receipt. Report assembly never changes which candidate is best or
+turns a Design Target into a pass/fail Gate.
+
+`ReportResult.save(path)` accepts only a new `.html` path whose parent already
+exists. It refuses overwrite, writes atomically, and returns a `Path`. The
+single self-contained HTML embeds plots, summary tables, and every
+source identity, but not complete large raw arrays, workspace links,
+timestamps, or inferred PASS/FAIL claims.
+
+An invalid suffix raises `ValueError`, a missing parent raises
+`FileNotFoundError`, and an existing target raises `FileExistsError`; other
+filesystem failures remain their ordinary `OSError` subtype. Report export is
+derived presentation and never creates an analysis attempt or receipt.
 
 ## Authoring and compiled schematics
 
@@ -1929,6 +2069,32 @@ node `"0"`. Simulation identity canonicalizes the union of grounded endpoints;
 diagram identity additionally preserves the endpoint-derived local grouping.
 
 ## Failure and evidence contract
+
+SCNSim-specific failures derive from `SCNSimError` through exactly five categories:
+`SCNSimValidationError`, `SCNSimStateError`, `SCNSimCapabilityError`,
+`SCNSimExecutionError`, and `SCNSimEvidenceError`. Every typed failure exposes
+a stable machine `kind`, an exact `stage`, and immutable evidence. A started
+operation seals its typed failure receipt before raising; preflight validation
+creates no attempt. `resolve()` reconstructs the typed failure boundary but,
+without a verified success, raises `ResultUnavailableError` and never retries.
+
+The first slice machine-maps `PlanSealedError`,
+`WorkspacePlanReplacedError`,
+`WorkspaceVersioningDowngradeForbidden`,
+`UnsupportedRuntimePlatformError`, `PortRealizabilityError`,
+`InvalidDiagonalRootHint`, `InvalidOptimizationSpec`,
+`DirectResponseFormationError`, `InvalidCandidatePhysicalParameter`,
+`CompilerInvariantError`,
+`UnsupportedSingularCapacitanceForDiagonalRootV1`,
+`EliminatedBlockSolveFailure`, `RootSlopeUnresolved`,
+`NumericalResolutionUnresolved`, `RuntimePreparationError`,
+`BackendProtocolError`, `ResultUnavailableError`, `EvidenceIntegrityError`, and
+`ScaffoldUnavailableError`. The last is reserved for explicitly deferred
+surfaces; it cannot represent an attempted numerical failure.
+
+Ordinary Python call-signature and filesystem errors retain their standard
+exception types where the Contract says so; they are not backend failure
+receipts disguised as SCNSim numerical errors.
 
 SCNSim fails closed for:
 

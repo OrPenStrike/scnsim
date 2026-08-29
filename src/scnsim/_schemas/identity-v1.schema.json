@@ -1,0 +1,1307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:scnsim:schema:identity-v1",
+  "title": "SCNSim V1 identity documents",
+  "description": "Canonical envelope schemas for the CONVERGING SCNSim V1 workspace protocol.",
+  "oneOf": [
+    { "$ref": "#/$defs/workspace" },
+    { "$ref": "#/$defs/plan" },
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/attempt" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/receipt" },
+    { "$ref": "#/$defs/outcome" },
+    { "$ref": "#/$defs/generationLedger" },
+    { "$ref": "#/$defs/artifactManifest" },
+    { "$ref": "#/$defs/progress" }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitObjectId": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "workspaceInstanceId": {
+      "description": "Evidence-only UUID for one concrete workspace binding.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "f64": {
+      "description": "Finite IEEE-754 binary64 encoded as 16 lowercase big-endian hexadecimal digits.",
+      "type": "string",
+      "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f])[^/]+(?:/[^/]+)*$"
+    },
+    "quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "si_value_f64", "si_unit", "dimensionality"],
+      "properties": {
+        "type": { "const": "quantity_f64" },
+        "si_value_f64": { "$ref": "#/$defs/f64" },
+        "si_unit": { "type": "string", "minLength": 1 },
+        "dimensionality": { "type": "string", "minLength": 1 }
+      }
+    },
+    "complexQuantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "real_si_f64", "imag_si_f64", "si_unit", "dimensionality"],
+      "properties": {
+        "type": { "const": "complex_quantity_f64" },
+        "real_si_f64": { "$ref": "#/$defs/f64" },
+        "imag_si_f64": { "$ref": "#/$defs/f64" },
+        "si_unit": { "type": "string", "minLength": 1 },
+        "dimensionality": { "type": "string", "minLength": 1 }
+      }
+    },
+    "typedValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "integer" },
+        { "type": "string" },
+        { "$ref": "#/$defs/quantity" },
+        { "$ref": "#/$defs/complexQuantity" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "bits"],
+          "properties": {
+            "type": { "const": "f64" },
+            "bits": { "$ref": "#/$defs/f64" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "items"],
+          "properties": {
+            "type": { "const": "list" },
+            "items": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/typedValue" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "entries"],
+          "properties": {
+            "type": { "const": "map" },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "value"],
+                "properties": {
+                  "key": { "type": "string" },
+                  "value": { "$ref": "#/$defs/typedValue" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id", "pin_id"],
+      "properties": {
+        "component_id": { "type": "string", "minLength": 1 },
+        "pin_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "axis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["frequency", "coordinate_input", "coordinate_output", "candidate", "objective"] },
+        "values": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "artifact_id": { "type": "string", "minLength": 1 }
+      },
+      "oneOf": [
+        { "required": ["values"], "not": { "required": ["artifact_id"] } },
+        { "required": ["artifact_id"], "not": { "required": ["values"] } }
+      ]
+    },
+    "fileArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "sha256", "media_type", "byte_length"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "media_type": { "type": "string", "minLength": 1 },
+        "byte_length": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "zarrArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "path", "sha256", "media_type", "file_manifest",
+        "dtype", "endianness", "shape", "chunks",
+        "order", "compressor", "complex_storage", "axes", "unit"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "media_type": { "const": "application/vnd+zarr-v2" },
+        "file_manifest": { "$ref": "#/$defs/relativePath" },
+        "dtype": { "enum": ["float64", "complex128"] },
+        "endianness": { "const": "little" },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "chunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "order": { "const": "C" },
+        "compressor": { "type": "null" },
+        "complex_storage": { "enum": ["real", "paired_float64_real_imag"] },
+        "axes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/axis" }
+        },
+        "unit": { "type": "string", "minLength": 1 },
+        "coordinate_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "probe_load_state": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["port_id", "state"],
+            "properties": {
+              "port_id": { "type": "string", "minLength": 1 },
+              "state": { "enum": ["raw", "compensated"] }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "dtype": { "const": "complex128" } }, "required": ["dtype"] },
+          "then": { "properties": { "complex_storage": { "const": "paired_float64_real_imag" } } },
+          "else": { "properties": { "complex_storage": { "const": "real" } } }
+        }
+      ]
+    },
+    "artifact": {
+      "oneOf": [
+        { "$ref": "#/$defs/fileArtifact" },
+        { "$ref": "#/$defs/zarrArtifact" }
+      ]
+    },
+    "directFrequencyArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "properties": {
+            "dtype": { "const": "float64" },
+            "shape": { "type": "array", "minItems": 1, "maxItems": 1 },
+            "chunks": { "type": "array", "minItems": 1, "maxItems": 1 },
+            "axes": { "type": "array", "minItems": 1, "maxItems": 1 }
+          }
+        }
+      ]
+    },
+    "directMatrixArtifact": {
+      "allOf": [
+        { "$ref": "#/$defs/zarrArtifact" },
+        {
+          "required": ["coordinate_ids", "probe_load_state"],
+          "properties": {
+            "dtype": { "const": "complex128" },
+            "shape": { "type": "array", "minItems": 3, "maxItems": 3 },
+            "chunks": { "type": "array", "minItems": 3, "maxItems": 3 },
+            "axes": { "type": "array", "minItems": 3, "maxItems": 3 },
+            "coordinate_ids": { "type": "array", "minItems": 1 }
+          }
+        }
+      ]
+    },
+    "artifactLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifactManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version", "artifact_id", "files"],
+      "properties": {
+        "schema": { "const": "scnsim.artifact_manifest" },
+        "schema_version": { "const": 1 },
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "mode", "byte_length", "sha256"],
+            "properties": {
+              "path": { "$ref": "#/$defs/relativePath" },
+              "mode": { "const": "regular" },
+              "byte_length": { "type": "integer", "minimum": 0 },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "runtimeSemantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm_id",
+        "python_source_sha256",
+        "julia_source_sha256",
+        "julia_version",
+        "project_sha256",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "algorithm_id": { "type": "string", "minLength": 1 },
+        "python_source_sha256": { "$ref": "#/$defs/sha256" },
+        "julia_source_sha256": { "$ref": "#/$defs/sha256" },
+        "julia_version": { "type": "string", "minLength": 1 },
+        "project_sha256": { "$ref": "#/$defs/sha256" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "catalogSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalog_id",
+        "module",
+        "qualified_class",
+        "source_kind",
+        "source_sha256"
+      ],
+      "properties": {
+        "catalog_id": { "type": "string", "minLength": 1 },
+        "module": { "type": "string", "minLength": 1 },
+        "qualified_class": { "type": "string", "minLength": 1 },
+        "source_kind": { "enum": ["wheel_record", "editable_git", "module_source", "notebook_source"] },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "distribution": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "git_commit": { "$ref": "#/$defs/gitObjectId" },
+        "dirty_overlay_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source_kind": { "const": "wheel_record" } },
+            "required": ["source_kind"]
+          },
+          "then": {
+            "required": ["distribution", "version"],
+            "not": {
+              "anyOf": [
+                { "required": ["git_commit"] },
+                { "required": ["dirty_overlay_sha256"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "source_kind": { "const": "editable_git" } },
+            "required": ["source_kind"]
+          },
+          "then": {
+            "required": ["git_commit", "dirty_overlay_sha256"],
+            "not": {
+              "anyOf": [
+                { "required": ["distribution"] },
+                { "required": ["version"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "source_kind": { "const": "module_source" } },
+            "required": ["source_kind"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["distribution"] },
+                { "required": ["version"] },
+                { "required": ["git_commit"] },
+                { "required": ["dirty_overlay_sha256"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "source_kind": { "const": "notebook_source" } },
+            "required": ["source_kind"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["distribution"] },
+                { "required": ["version"] },
+                { "required": ["git_commit"] },
+                { "required": ["dirty_overlay_sha256"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "planWorkspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "kind",
+        "workspace_instance_id",
+        "plan_sha256"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.workspace" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "plan_workspace" },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "plan_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "replaceableWorkspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "kind",
+        "workspace_instance_id",
+        "active_leaf"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.workspace" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "replaceable_workspace" },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "active_leaf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["directory", "workspace_instance_id", "plan_sha256"],
+          "properties": {
+            "directory": { "type": "string", "pattern": "^leaves/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+            "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+            "plan_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "versionedWorkspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "kind",
+        "workspace_instance_id",
+        "next_iteration",
+        "iterations"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.workspace" },
+        "schema_version": { "const": 1 },
+        "kind": { "const": "versioned_workspace" },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "next_iteration": { "type": "integer", "minimum": 1 },
+        "iterations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ordinal", "directory", "workspace_instance_id", "plan_sha256"],
+            "properties": {
+              "ordinal": { "type": "integer", "minimum": 1 },
+              "directory": { "type": "string", "pattern": "^iteration[0-9]{2,}$" },
+              "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+              "plan_sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "workspace": {
+      "oneOf": [
+        { "$ref": "#/$defs/planWorkspace" },
+        { "$ref": "#/$defs/replaceableWorkspace" },
+        { "$ref": "#/$defs/versionedWorkspace" }
+      ]
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "plan_id",
+        "ground_id",
+        "catalog_sources",
+        "components",
+        "nodes",
+        "grounded_endpoints",
+        "ports",
+        "couplings"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.plan" },
+        "schema_version": { "const": 1 },
+        "plan_id": { "type": "string", "minLength": 1 },
+        "ground_id": { "const": "ground" },
+        "catalog_sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/catalogSource" }
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["component_id", "catalog_id", "factory", "parameters", "pin_order"],
+            "properties": {
+              "component_id": { "type": "string", "minLength": 1 },
+              "catalog_id": { "type": "string", "minLength": 1 },
+              "factory": { "enum": ["resistor", "capacitor", "inductor"] },
+              "parameters": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "baseline"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1 },
+                    "baseline": { "$ref": "#/$defs/quantity" }
+                  }
+                }
+              },
+              "pin_order": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["node_id", "visibility", "endpoints"],
+            "properties": {
+              "node_id": { "type": "string", "minLength": 1 },
+              "visibility": { "enum": ["public", "internal", "port_promoted"] },
+              "endpoints": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/endpoint" }
+              }
+            }
+          }
+        },
+        "grounded_endpoints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/endpoint" }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["port_id", "node_id", "role", "reference_impedance"],
+            "properties": {
+              "port_id": { "type": "string", "minLength": 1 },
+              "node_id": { "type": "string", "minLength": 1 },
+              "role": { "enum": ["terminated", "nonloading_probe"] },
+              "reference_impedance": { "$ref": "#/$defs/quantity" }
+            }
+          }
+        },
+        "couplings": {
+          "description": "Empty in the Lessons 1--5 schema; later slices require a schema-version extension.",
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "plan_sha256",
+        "operation",
+        "ref_lineage",
+        "spec",
+        "parameters",
+        "runtime_semantic"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.request" },
+        "schema_version": { "const": 1 },
+        "plan_sha256": { "$ref": "#/$defs/sha256" },
+        "operation": { "enum": ["solve_direct", "evaluate_diagonal_root", "optimize_direct"] },
+        "ref_lineage": { "$ref": "#/$defs/refLineage" },
+        "spec": {
+          "oneOf": [
+            { "$ref": "#/$defs/directSolveSpec" },
+            { "$ref": "#/$defs/diagonalRootSpec" },
+            { "$ref": "#/$defs/optimizationSpec" }
+          ]
+        },
+        "parameters": { "$ref": "#/$defs/parameterSet" },
+        "runtime_semantic": { "$ref": "#/$defs/runtimeSemantic" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "operation": { "const": "solve_direct" } },
+            "required": ["operation"]
+          },
+          "then": {
+            "properties": {
+              "ref_lineage": { "$ref": "#/$defs/originalRef" },
+              "spec": { "$ref": "#/$defs/directSolveSpec" }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": { "operation": { "const": "evaluate_diagonal_root" } },
+              "required": ["operation"]
+            },
+            "then": {
+              "properties": {
+                "ref_lineage": { "$ref": "#/$defs/retainedRef" },
+                "spec": { "$ref": "#/$defs/diagonalRootSpec" }
+              }
+            },
+            "else": {
+              "properties": {
+                "ref_lineage": { "$ref": "#/$defs/retainedRef" },
+                "spec": { "$ref": "#/$defs/optimizationSpec" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "originalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "original" } }
+    },
+    "retainedRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinates"],
+      "properties": {
+        "type": { "const": "retain" },
+        "coordinates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "refLineage": {
+      "oneOf": [
+        { "$ref": "#/$defs/originalRef" },
+        { "$ref": "#/$defs/retainedRef" }
+      ]
+    },
+    "directSolveSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "frequencies"],
+      "properties": {
+        "type": { "const": "direct_solve" },
+        "frequencies": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/quantity" }
+        }
+      }
+    },
+    "diagonalRootSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "coordinate", "root_hint"],
+      "properties": {
+        "type": { "const": "diagonal_root" },
+        "coordinate": { "type": "string", "minLength": 1 },
+        "root_hint": { "$ref": "#/$defs/quantity" }
+      }
+    },
+    "parameterRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id", "parameter_id"],
+      "properties": {
+        "component_id": { "type": "string", "minLength": 1 },
+        "parameter_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "quantitySelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "spec", "projection"],
+      "properties": {
+        "type": { "const": "diagonal_root_projection" },
+        "spec": { "$ref": "#/$defs/diagonalRootSpec" },
+        "projection": { "enum": ["frequency", "linewidth"] }
+      }
+    },
+    "optimizationVariable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameter", "lower", "upper", "transform"],
+      "properties": {
+        "parameter": { "$ref": "#/$defs/parameterRef" },
+        "lower": { "$ref": "#/$defs/quantity" },
+        "upper": { "$ref": "#/$defs/quantity" },
+        "transform": { "enum": ["linear", "log"] }
+      }
+    },
+    "costObjective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "quantity": { "$ref": "#/$defs/quantitySelector" },
+        "target": { "$ref": "#/$defs/quantity" },
+        "weight_f64": { "$ref": "#/$defs/f64" },
+        "resolved_scale": { "$ref": "#/$defs/quantity" },
+        "scale_source": {
+          "enum": ["relative_target", "dimensionless_unity", "explicit"]
+        }
+      }
+    },
+    "cmaesControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "seed", "max_evaluations", "population_size",
+        "resolved_population_size", "initial_sigma_f64", "box_transform_id",
+        "complete_generations", "unused_evaluations", "hidden_stops"
+      ],
+      "properties": {
+        "type": { "const": "cma_es" },
+        "seed": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "max_evaluations": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+        "population_size": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 2, "maximum": 9223372036854775807 }
+          ]
+        },
+        "resolved_population_size": { "type": "integer", "minimum": 2, "maximum": 9223372036854775807 },
+        "initial_sigma_f64": { "$ref": "#/$defs/f64" },
+        "box_transform_id": { "type": "string", "minLength": 1 },
+        "complete_generations": { "type": "integer", "minimum": 1 },
+        "unused_evaluations": { "type": "integer", "minimum": 0 },
+        "hidden_stops": { "const": "disabled" }
+      }
+    },
+    "optimizationSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "variables", "objectives", "optimizer"],
+      "properties": {
+        "type": { "const": "optimization" },
+        "variables": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/optimizationVariable" }
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/costObjective" }
+        },
+        "optimizer": { "$ref": "#/$defs/cmaesControls" }
+      }
+    },
+    "parameterSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "bindings"],
+      "properties": {
+        "type": { "const": "parameter_set" },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["parameter", "value"],
+            "properties": {
+              "parameter": { "$ref": "#/$defs/parameterRef" },
+              "value": { "$ref": "#/$defs/quantity" }
+            }
+          }
+        }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "request_sha256",
+        "ordinal",
+        "attempt_state",
+        "started_at_utc",
+        "julia_executable_sha256",
+        "os",
+        "architecture",
+        "cpu",
+        "julia_threads",
+        "blas_threads",
+        "blas_vendor"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.attempt" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "attempt_state": { "const": "launched" },
+        "started_at_utc": { "$ref": "#/$defs/utcTimestamp" },
+        "julia_executable_sha256": { "$ref": "#/$defs/sha256" },
+        "os": { "type": "string", "minLength": 1 },
+        "architecture": { "type": "string", "minLength": 1 },
+        "cpu": { "type": "string", "minLength": 1 },
+        "julia_threads": { "type": "integer", "minimum": 1 },
+        "blas_threads": { "type": "integer", "minimum": 1 },
+        "blas_vendor": { "type": "string", "minLength": 1 },
+        "resume_ledger_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "directResponseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "result_kind",
+        "scalar_catalog",
+        "array_catalog"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "direct_response" },
+        "scalar_catalog": {
+          "type": "object",
+          "maxProperties": 0
+        },
+        "array_catalog": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frequencies", "s", "y", "z"],
+          "properties": {
+            "frequencies": { "$ref": "#/$defs/directFrequencyArtifact" },
+            "s": { "$ref": "#/$defs/directMatrixArtifact" },
+            "y": { "$ref": "#/$defs/directMatrixArtifact" },
+            "z": { "$ref": "#/$defs/directMatrixArtifact" }
+          }
+        }
+      }
+    },
+    "diagonalRootResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "result_kind",
+        "scalar_catalog",
+        "array_catalog"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "diagonal_root" },
+        "scalar_catalog": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root", "frequency", "linewidth", "slope"],
+          "properties": {
+            "root": { "$ref": "#/$defs/complexQuantity" },
+            "frequency": { "$ref": "#/$defs/quantity" },
+            "linewidth": { "$ref": "#/$defs/quantity" },
+            "slope": { "$ref": "#/$defs/complexQuantity" }
+          }
+        },
+        "array_catalog": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      }
+    },
+    "optimizationBest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluation_ordinal", "cost_f64", "parameters"],
+      "properties": {
+        "evaluation_ordinal": { "type": "integer", "minimum": 0 },
+        "cost_f64": { "$ref": "#/$defs/f64" },
+        "parameters": { "$ref": "#/$defs/parameterSet" }
+      }
+    },
+    "optimizationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "result_kind", "baseline", "best",
+        "completed_generations", "unused_evaluations", "ledger_artifacts"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.result" },
+        "schema_version": { "const": 1 },
+        "result_kind": { "const": "optimization" },
+        "baseline": { "$ref": "#/$defs/baselineOutcome" },
+        "best": { "$ref": "#/$defs/optimizationBest" },
+        "completed_generations": { "type": "integer", "minimum": 1 },
+        "unused_evaluations": { "type": "integer", "minimum": 0 },
+        "ledger_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileArtifact" }
+        }
+      }
+    },
+    "result": {
+      "oneOf": [
+        { "$ref": "#/$defs/directResponseResult" },
+        { "$ref": "#/$defs/diagonalRootResult" },
+        { "$ref": "#/$defs/optimizationResult" }
+      ]
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "kind", "stage", "message", "evidence"],
+      "properties": {
+        "category": { "enum": ["validation", "state", "capability", "execution", "evidence"] },
+        "kind": {
+          "enum": [
+            "plan_sealed",
+            "workspace_plan_replaced",
+            "workspace_versioning_downgrade_forbidden",
+            "unsupported_runtime_platform",
+            "port_realizability",
+            "invalid_diagonal_root_hint",
+            "invalid_optimization_spec",
+            "direct_response_formation",
+            "invalid_candidate_physical_parameter",
+            "compiler_invariant",
+            "unsupported_singular_capacitance_for_diagonal_root_v1",
+            "eliminated_block_solve_failure",
+            "root_slope_unresolved",
+            "numerical_resolution_unresolved",
+            "runtime_preparation",
+            "backend_protocol",
+            "result_unavailable",
+            "evidence_integrity",
+            "scaffold_unavailable"
+          ]
+        },
+        "stage": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/failureEvidence" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["plan_sealed", "workspace_plan_replaced", "workspace_versioning_downgrade_forbidden"] } }, "required": ["kind"] },
+          "then": { "properties": { "category": { "const": "state" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["unsupported_runtime_platform", "unsupported_singular_capacitance_for_diagonal_root_v1", "scaffold_unavailable"] } }, "required": ["kind"] },
+          "then": { "properties": { "category": { "const": "capability" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["port_realizability", "invalid_diagonal_root_hint", "invalid_optimization_spec"] } }, "required": ["kind"] },
+          "then": { "properties": { "category": { "const": "validation" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
+          "then": { "properties": { "category": { "const": "execution" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["result_unavailable", "evidence_integrity"] } }, "required": ["kind"] },
+          "then": { "properties": { "category": { "const": "evidence" } } }
+        }
+      ]
+    },
+    "failureEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "operation", "context"],
+      "properties": {
+        "type": { "const": "failure_evidence" },
+        "operation": {
+          "enum": [
+            "plan_authoring",
+            "workspace_bind",
+            "runtime_prepare",
+            "compile_preflight",
+            "solve_direct",
+            "evaluate_diagonal_root",
+            "optimize_direct",
+            "backend_protocol",
+            "resolve",
+            "scaffold"
+          ]
+        },
+        "context": { "$ref": "#/$defs/typedValue" }
+      }
+    },
+    "candidateSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "cost_f64", "objective_components"],
+      "properties": {
+        "status": { "const": "success" },
+        "cost_f64": { "$ref": "#/$defs/f64" },
+        "objective_components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "objective_id", "value", "normalized_residual_f64",
+              "weighted_cost_f64"
+            ],
+            "properties": {
+              "objective_id": { "type": "string", "minLength": 1 },
+              "value": { "$ref": "#/$defs/quantity" },
+              "normalized_residual_f64": { "$ref": "#/$defs/f64" },
+              "weighted_cost_f64": { "$ref": "#/$defs/f64" }
+            }
+          }
+        }
+      }
+    },
+    "candidateFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "penalty", "failure"],
+      "properties": {
+        "status": { "const": "failure" },
+        "penalty": { "const": "positive_infinity" },
+        "failure": {
+          "allOf": [
+            { "$ref": "#/$defs/failure" },
+            {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "invalid_candidate_physical_parameter",
+                    "eliminated_block_solve_failure",
+                    "root_slope_unresolved",
+                    "numerical_resolution_unresolved"
+                  ]
+                }
+              },
+              "required": ["kind"]
+            }
+          ]
+        }
+      }
+    },
+    "candidateOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evaluation_ordinal", "origin", "generation", "population_column",
+        "parameters", "cache_hit", "outcome"
+      ],
+      "properties": {
+        "evaluation_ordinal": { "type": "integer", "minimum": 0 },
+        "origin": { "enum": ["baseline", "population"] },
+        "generation": { "type": "integer", "minimum": 0 },
+        "population_column": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1 }
+          ]
+        },
+        "parameters": { "$ref": "#/$defs/parameterSet" },
+        "cache_hit": { "type": "boolean" },
+        "outcome": {
+          "oneOf": [
+            { "$ref": "#/$defs/candidateSuccess" },
+            { "$ref": "#/$defs/candidateFailure" }
+          ]
+        }
+      }
+    },
+    "baselineOutcome": {
+      "allOf": [
+        { "$ref": "#/$defs/candidateOutcome" },
+        {
+          "properties": {
+            "evaluation_ordinal": { "const": 0 },
+            "origin": { "const": "baseline" },
+            "generation": { "const": 0 },
+            "population_column": { "type": "null" },
+            "cache_hit": { "const": false },
+            "outcome": { "$ref": "#/$defs/candidateSuccess" }
+          }
+        }
+      ]
+    },
+    "populationOutcome": {
+      "allOf": [
+        { "$ref": "#/$defs/candidateOutcome" },
+        {
+          "properties": {
+            "evaluation_ordinal": { "type": "integer", "minimum": 1 },
+            "origin": { "const": "population" },
+            "generation": { "type": "integer", "minimum": 1 },
+            "population_column": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "generationLedger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "request_sha256", "attempt_sha256",
+        "generation", "previous_ledger_sha256", "population_size",
+        "candidates", "optimizer_state"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_ledger" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "previous_ledger_sha256": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/sha256" }
+          ]
+        },
+        "population_size": { "type": "integer", "minimum": 2 },
+        "candidates": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/populationOutcome" }
+        },
+        "optimizer_state": { "$ref": "#/$defs/fileArtifact" }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "schema_version",
+        "request_sha256",
+        "attempt_sha256",
+        "outcome",
+        "artifacts",
+        "evidence",
+        "sealed_at_utc"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.receipt" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "outcome": { "enum": ["success", "failure", "interrupted"] },
+        "result_sha256": { "$ref": "#/$defs/sha256" },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactLink" }
+        },
+        "evidence": { "$ref": "#/$defs/typedValue" },
+        "failure": { "$ref": "#/$defs/failure" },
+        "interruption": { "$ref": "#/$defs/typedValue" },
+        "sealed_at_utc": { "$ref": "#/$defs/utcTimestamp" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "success" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "required": ["result_sha256"],
+            "not": {
+              "anyOf": [
+                { "required": ["failure"] },
+                { "required": ["interruption"] }
+              ]
+            }
+          },
+          "else": {
+            "if": {
+              "properties": { "outcome": { "const": "failure" } },
+              "required": ["outcome"]
+            },
+            "then": {
+              "required": ["failure"],
+              "not": {
+                "anyOf": [
+                  { "required": ["result_sha256"] },
+                  { "required": ["interruption"] }
+                ]
+              }
+            },
+            "else": {
+              "required": ["interruption"],
+              "not": {
+                "anyOf": [
+                  { "required": ["result_sha256"] },
+                  { "required": ["failure"] }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "request_sha256", "attempt_sha256",
+        "runtime_semantic", "status", "artifacts"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.outcome" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_semantic": { "$ref": "#/$defs/runtimeSemantic" },
+        "status": { "enum": ["success", "failure", "interrupted"] },
+        "result_sha256": { "$ref": "#/$defs/sha256" },
+        "failure": { "$ref": "#/$defs/failure" },
+        "interruption": { "$ref": "#/$defs/typedValue" },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactLink" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "success" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["result_sha256"],
+            "not": {
+              "anyOf": [
+                { "required": ["failure"] },
+                { "required": ["interruption"] }
+              ]
+            }
+          },
+          "else": {
+            "if": {
+              "properties": { "status": { "const": "failure" } },
+              "required": ["status"]
+            },
+            "then": {
+              "required": ["failure"],
+              "not": {
+                "anyOf": [
+                  { "required": ["result_sha256"] },
+                  { "required": ["interruption"] }
+                ]
+              }
+            },
+            "else": {
+              "required": ["interruption"],
+              "not": {
+                "anyOf": [
+                  { "required": ["result_sha256"] },
+                  { "required": ["failure"] }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema", "schema_version", "request_sha256", "attempt_sha256",
+        "event", "completed_generation", "completed_evaluations",
+        "max_evaluations"
+      ],
+      "properties": {
+        "schema": { "const": "scnsim.progress" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "event": { "const": "optimization_generation_complete" },
+        "completed_generation": { "type": "integer", "minimum": 1 },
+        "completed_evaluations": { "type": "integer", "minimum": 1 },
+        "max_evaluations": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -26,6 +26,22 @@ and not workspace evidence.
 
 ## Ship one internal Julia environment
 
+SCNSim will commit these package resources:
+
+```text
+src/scnsim/_julia/
+  Project.toml
+  Manifest.toml
+  runtime.json
+  src/SCNSimBackend.jl
+  bin/scnsim_request.jl
+```
+
+`runtime.json` binds Julia `1.12.6` and the versioned algorithm IDs. The first
+slice Manifest contains JSON3, CMAEvolutionStrategy, and required standard
+libraries only; JosephsonCircuits enters with HB. Python locates all resources
+through `importlib.resources`, never caller cwd or a user Julia project.
+
 SCNSim will commit one internal `Project.toml` and `Manifest.toml`. The package
 launches the JuliaPkg-resolved executable with `--project` pointing to that
 internal project and instantiates it when needed. A committed Manifest fixes
@@ -52,10 +68,14 @@ work.
 
 The attempt separately records the actual executable hash, host OS and
 architecture, CPU description, Julia threads, BLAS threads, and BLAS vendor.
-Those execution resources do not rename the request. The Primitive Direct E2E
+Those execution resources do not rename the request. The Lessons 1--5
 launcher fixes Julia and BLAS to one thread to reduce avoidable variation, but
 still records the observed values. See
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
+
+The first candidate supports Linux and macOS. Windows raises
+`UnsupportedRuntimePlatformError` before workspace mutation, Julia selection,
+or download.
 
 ## Fail without a hidden fallback
 

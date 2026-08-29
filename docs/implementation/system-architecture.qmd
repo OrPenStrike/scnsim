@@ -39,9 +39,11 @@ preflight, but neither launches a solver nor writes the evidence workspace.
 ## Keep dependencies narrow
 
 The first executable candidate is expected to add Pint, NumPy, JuliaPkg, Zarr,
-Matplotlib, and Schemdraw to Python. The internal Julia project is expected to
-use JosephsonCircuits, JSON3, and CMAEvolutionStrategy. These are design inputs,
-not current package metadata; the docs-only checkpoint changes no lockfile.
+Matplotlib, and Schemdraw to Python. Its internal Julia project uses JSON3,
+CMAEvolutionStrategy, and Julia standard libraries. JosephsonCircuits is added
+only with the HB slice, so the first candidate does not pay for or imply an
+unused backend. These are design inputs, not current package metadata; the
+contract checkpoint changes no lockfile.
 
 V1 deliberately does not add Pydantic, a database, a web service, a distributed
 runner, JuliaCall, or a persistent daemon. Canonical files, one child process,

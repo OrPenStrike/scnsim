@@ -21,8 +21,13 @@ Because this Plan has one logical Port, the original view already means its
 complete one-Port response. `DirectSolveSpec` requests S/Y/Z on an explicit
 frequency grid; it does not require a named trace.
 
-The workspace stores exact request receipts and artifacts. It is not a
-mutable “latest result” directory, and independent requests may coexist in it.
+The workspace stores exact request receipts and artifacts. It is not a mutable
+“latest result” directory. Requests for the same sealed Plan may coexist; only
+binding a different Plan activates the default topology replacement policy.
+
+The first executable candidate supports this original one-Port, no-trace Direct
+request. N-port views and named traces remain later lessons and currently fail
+closed.
 
 ::: {.callout-tip title="Iterate the topology in the same kernel" appearance="simple"}
 In an authoring Notebook, keep the builder in an earlier editable cell. Redefine

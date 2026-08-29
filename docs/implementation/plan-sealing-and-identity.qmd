@@ -56,7 +56,8 @@ source proof becomes mandatory when a factory creates a component. The four
 portable provenance forms are fixed in
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
 
-The six document envelopes, canonical binary64 encoding, and exact hash ranges
+The workspace/Plan/request/attempt/outcome/Result/receipt envelopes, optimization
+ledgers, canonical binary64 encoding, and exact hash ranges
 are fixed in [Canonical Identities and Schemas](canonical-identities-and-schemas.qmd).
 Hashing the containing workspace directory is not an identity protocol.
 

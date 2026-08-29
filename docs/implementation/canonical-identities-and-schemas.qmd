@@ -5,8 +5,12 @@ toc-depth: 2
 ---
 
 **Status:** `CONVERGING` implementation design. The
-[machine-readable V1 schema bundle](schemas/identity-v1.schema.json) is the
+[machine-readable V1 schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json) is the
 field-and-type authority for this page.
+
+The bundle is shipped once as `scnsim/_schemas/identity-v1.schema.json` and
+located through `importlib.resources`; the documentation site publishes that
+same package-resource byte stream rather than maintaining a copy.
 
 ## Encode one canonical byte stream
 
@@ -41,22 +45,30 @@ to log the later caller's equivalent spelling.
 
 | File | Required identity content | Mutability |
 |---|---|---|
-| `workspace.json` | evidence-only workspace-instance ID plus one Plan binding, or a versioned Plan-to-iteration index | mutable only under the workspace lock |
+| `workspace.json` | one leaf binding, a replaceable root's active-leaf pointer, or a versioned Plan-to-iteration index, all with evidence-only instance IDs | mutable only at a root under the workspace lock; immutable in a leaf |
 | `plan.json` | primitive authored topology, ordered identities, baselines, and catalog sources | immutable |
 | `request.json` | Plan hash, operation, Ref lineage, Spec, ParameterSet, and semantic runtime | immutable |
-| `attempt.json` | request hash, ordinal, launch time, executable and machine-resource evidence | immutable launch record |
-| `result.json` | typed Direct scalar and array catalogs | immutable |
+| `attempt.json` | request hash, ordinal, launch time, executable, resume-ledger, and machine-resource evidence | immutable launch record |
+| `outcome.json` | Julia-staged request/attempt/runtime binding, terminal status, typed result/failure, and artifact inventory | immutable staging authority |
+| `result.json` | typed Direct response, diagonal-root, or optimization result | immutable |
 | `receipt.json` | request, attempt, Result/artifact hashes, source-unit/provenance evidence, and terminal outcome | written last; immutable |
+| generation ledger | one complete CMA-ES generation, optimizer state, candidate outcomes, and previous-ledger hash | immutable artifact |
+| artifact manifest | one Zarr artifact ID plus its complete ordered regular-file inventory | immutable artifact |
+| progress record | non-authoritative completed-generation status bound to one request and attempt | transient JSONL only |
 
-The Primitive Direct E2E schema admits only primitive R/L/C Plans, Direct
-response requests, and `DiagonalRootSpec` quantity requests. Composite graphs,
-couplings, optimization, and HB require an explicit schema-version extension in
-their implementation slices; an unknown discriminator never falls through to a
+The Lessons 1–5 schema admits only primitive R/L/C Plans, original one-Port
+Direct responses, one-coordinate `DiagonalRootSpec` quantities, and primitive
+optimization whose selectors are diagonal-root frequency or linewidth.
+Composite graphs, couplings, named traces, N-port Direct, other quantity
+families, and HB require an explicit schema-version extension in their
+implementation slices; an unknown discriminator never falls through to a
 generic map.
 
 JSON Schema enforces each envelope's shape. Cross-document semantic validation
 then verifies the complete chain before reuse or `resolve()`:
 
+- a replaceable root points to `leaves/<leaf-instance-id>` and repeats that
+  leaf's instance ID and Plan hash;
 - a leaf `workspace.json` names the SHA-256 of its exact `plan.json` bytes;
 - every versioned index entry names a child directory whose leaf workspace and
   Plan hashes match that entry;
@@ -66,11 +78,24 @@ then verifies the complete chain before reuse or `resolve()`:
   the enclosing request hash;
 - `receipt.json` names the exact request and attempt hashes, and a success names
   the exact `result.json` hash;
+- a completed non-interrupted attempt has staged `outcome.json` naming that
+  same request, attempt, and semantic runtime, and its
+  status/result/failure/artifact inventory matches the sealed receipt;
 - the Result discriminator matches the request operation
   (`solve_direct` to `direct_response`, or `evaluate_diagonal_root` to
-  `direct_quantity`); and
+  `diagonal_root`, or `optimize_direct` to `optimization`);
 - the receipt artifact list exactly matches the Result catalogs and manifest
   hashes before any artifact is opened.
+
+Artifact IDs are unique within every inventory and bind one-to-one across
+outcome, Result, and receipt. A request directory may contain at most one
+verified success receipt; any competing success is corruption rather than a
+winner selected by timestamp.
+
+Every Zarr catalog entry names an artifact manifest with the same artifact ID;
+the entry's SHA-256 is the hash of those exact canonical manifest bytes. The
+manifest file is stored outside the Zarr directory, so it never inventories or
+hashes itself.
 
 Validation also enforces ordered/unique identities, matching retained/spec
 coordinates, physical dimensionality, artifact IDs, and the versioned-index
@@ -82,15 +107,41 @@ relative Zarr path, SHA-256, media type, dtype, shape, axes, and unit;
 `scalar_catalog` stores the exact fields required by its Result discriminator.
 A regular-file artifact hashes its raw bytes. A directory-backed Zarr artifact
 hashes a canonical JSON manifest of every contained regular file: NFC-normalized
-POSIX-relative path, file mode, byte length, and raw-byte SHA-256, sorted by
+POSIX-relative path, constant `regular` mode, byte length, and raw-byte SHA-256, sorted by
 path. The directory's own name and empty directories are excluded; symlinks and
 normalization collisions fail closed. Python and Julia therefore verify the
 same metadata-and-chunk byte set rather than a filesystem-dependent directory
 encoding.
-A Direct response requires frequency, S, Y, and Z arrays. A Direct quantity
-requires root, frequency, linewidth, and slope scalars. A success receipt
-requires the Result hash. Failure and interruption receipts instead require a
-typed failure and cannot advertise a Result.
+A Direct response requires frequency, S, Y, and Z arrays with ordered
+coordinate IDs, axis references, units, and probe-load state. Complex arrays
+use paired little-endian Float64 real/imag Zarr V2 arrays, C order,
+uncompressed chunks, and a canonical sorted file manifest. A Direct quantity
+requires root, frequency, linewidth, and slope scalars. An optimization result
+requires the successful baseline outcome, a winner, completed-generation count,
+unused budget, and the complete hash-linked ledger inventory. Each successful
+ledger objective component carries its evaluated Quantity, signed normalized
+residual, and weighted cost so the request-owned target, resolved scale/source,
+and weight reproduce the total. Semantic validation requires exactly one
+component for every request objective, in request order, with matching unique
+objective IDs. A success receipt requires the Result hash.
+Failure receipts require a closed typed failure; interruption receipts require
+explicit interruption evidence. Neither may advertise a Result.
+Every failure evidence envelope also names the owning operation and carries its
+stage-specific canonical context; category/kind/operation mismatches fail
+semantic validation.
+
+`ParameterRef` identity is always the ordered pair `(component_id,
+parameter_id)`. A request carries the complete resolved binding for every Plan
+parameter: explicit values override the sealed baseline, and omitted values are
+expanded from that baseline before hashing. Bindings sort by this pair and must
+be unique.
+
+For a Direct grid of length $F$ and selected coordinate count $N$, frequency
+has shape `[F]`; S, Y, and Z each have shape `[F, N, N]` with axes ordered as
+frequency, output coordinate, input coordinate. All three matrix artifacts use
+the same ordered coordinate IDs and load-state mapping. Cross-document
+validation checks those lengths, axis references, and the dimensionless/S/ohm
+units before constructing a Result.
 
 ## Keep evidence out of semantic identity
 
@@ -99,8 +150,8 @@ presentation theme, schematic ground grouping, progress display, attempt
 ordinal, host, executable path, CPU, and thread counts. Those facts remain
 auditable in the workspace and attempt evidence.
 
-Each concrete leaf and versioned parent receives a canonical UUIDv4
-`workspace_instance_id`. A Run binds the leaf ID as well as its Plan hash. A
+Each replaceable root, concrete leaf, and versioned parent receives a canonical
+UUIDv4 `workspace_instance_id`. A Run binds the leaf ID as well as its Plan hash. A
 replacement creates a new leaf ID, so an old Run remains stale even if later
 iterations produce the same Plan hash again; the UUID is evidence only and
 never enters Plan or request identity.
@@ -109,5 +160,10 @@ The workspace is an evidence location, not a request namespace. Relocating an
 intact workspace does not rename its requests. Conversely, copying one
 `request.json` without its verified receipt and artifacts cannot materialize a
 Result.
+
+This hash chain detects stale, partial, mismatched, and accidentally corrupted
+evidence under the ordinary local-workspace trust model. It is not a signature
+scheme and does not claim resistance to an adversary able to rewrite every file
+and recompute every hash. V1 adds no signing or external attestation service.
 
 [Next: Catalog and runtime identity](catalog-and-runtime-identity.qmd)

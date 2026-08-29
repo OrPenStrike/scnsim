@@ -16,14 +16,17 @@ from typing import Literal
 
 from ._scaffold import unavailable
 from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
+from .results import AnalysisResult
 
 
 class DirectSolveSpec:
     """Request a linear frequency-domain response on one selected view.
 
     Use this when the desired output is the Direct S/Y/Z matrix over a
-    frequency grid for a Port-realizable selected view, optionally with named
-    scalar traces.  It is a *solve* request, not a root finder and not the full
+    nonempty, finite, strictly increasing positive frequency grid for a
+    Port-realizable selected view.  The first executable slice accepts only the
+    original one-Port view and no named traces.  It is a
+    *solve* request, not a root finder and not the full
     dynamic operator.  For those tasks use
     ``DiagonalRootSpec``/``HybridizedPoleSpec`` or ``OperatorSpec``.
     """
@@ -213,7 +216,9 @@ class OptimizationVariable:
 
     SCNSim canonicalizes the bound Quantities and maps them to dimensionless
     optimizer coordinates.  ``transform='log'`` is explicit; no unit name or
-    small SI magnitude silently changes the search coordinates.
+    small SI magnitude silently changes the search coordinates. Log bounds and
+    the sealed baseline must be strictly positive; every transform requires
+    finite ordered same-dimensional bounds containing that baseline.
     """
 
     def __init__(
@@ -281,17 +286,23 @@ class CostObjective:
 class CMAESSpec:
     """Declare deterministic CMA-ES execution controls, not design success.
 
-    ``max_evaluations`` is a finite work budget.  It does not decide whether a
-    circuit meets a Design Target; only a Human-owned accepted Gate may do so.
-    The minimal scaffold intentionally omits speculative convergence knobs.
+    ``max_evaluations`` is a finite work budget. ``initial_sigma`` is expressed
+    in the dimensionless unit-coordinate box. These controls do not decide
+    whether a circuit meets a Design Target; only a Human-owned accepted Gate
+    may do so. ``population_size=None`` uses ``4 + floor(3 ln(n))`` for ``n``
+    active variables. The sealed baseline consumes the first evaluation and
+    may win; only complete generations are retained. ``seed`` is restricted to
+    the portable signed 64-bit range. Hidden package stopping criteria are not
+    part of V1.
     """
 
     def __init__(
         self,
         *,
-        seed: int,
-        max_evaluations: int,
+        seed: int = 0,
+        max_evaluations: int = 200,
         population_size: int | None = None,
+        initial_sigma: float = 0.25,
     ) -> None:
         unavailable("CMAESSpec construction")
 
@@ -448,10 +459,12 @@ class ReportSpec:
 
     Report assembly never searches for "latest" evidence and does not solve,
     interpolate, or create a Design Target.  Each input keeps its exact result
-    identity and may be a Direct result, one HB case, or an optimization result.
+    identity and may be a Direct result, an HB batch, a typed quantity, or an
+    optimization result.
+    Report assembly itself is a pure derived operation with no request receipt.
     """
 
-    def __init__(self, *, inputs: Sequence[object]) -> None:
+    def __init__(self, *, inputs: Sequence[AnalysisResult]) -> None:
         unavailable("ReportSpec construction")
 
 

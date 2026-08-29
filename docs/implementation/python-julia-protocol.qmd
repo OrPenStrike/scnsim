@@ -18,28 +18,46 @@ candidate evaluation, and CMA-ES inside one process. SCNSim does not embed
 libjulia through JuliaCall and does not keep a daemon whose mutable state could
 outlive request identity.
 
+Python launches an argv vector without a shell, passes the package resource
+project explicitly, disables startup/history files, and fixes Julia and BLAS to
+one thread. It creates a new process group so interruption cannot leave a child
+backend running.
+
 ## Use files for authority and JSONL for progress
 
-The request file is the only command authority. Julia stdout may emit
-schema-tagged JSONL progress records; stderr and non-progress stdout are logs.
-Optimization progress contains completed generation and declared work-budget
-information only. Python may consume those records for internal presentation
-or diagnostics, but V1 exposes no public progress toggle or callback. Malformed
+The request file is the only command authority. A stdout line is progress only
+when it validates as `schema="scnsim.progress"`, `schema_version=1`, binds the
+exact request/attempt hashes, and declares one completed optimization
+generation plus evaluation-budget counts. Every other stdout line and all
+stderr are logs. Python may consume valid progress for internal presentation or
+diagnostics, but V1 exposes no public progress toggle or callback. Malformed
 progress cannot alter the request or final outcome.
 
-Julia writes an outcome envelope and referenced artifacts into staging. It
+Julia writes the schema-validated `outcome.json` envelope and referenced
+artifacts into staging. The envelope binds request, attempt, semantic runtime,
+terminal status, typed result or failure, and the exact artifact inventory. It
 does not write the final SCNSim receipt. Python waits for process completion,
 validates schemas, relative paths, hashes, dimensions, and expected artifact
 inventory, then seals the receipt last.
 
+A completed success or typed-failure attempt requires both process exit status
+zero and one valid matching outcome. Exit zero without that envelope, or any
+nonzero exit even if staging resembles an outcome, is `BackendProtocolError`.
+
 ## Make interruption an attempt outcome
 
-On `KeyboardInterrupt`, Python sends process termination, escalates only if the
-child does not exit, validates whatever staging evidence remains, records an
-interrupted attempt, and re-raises the interrupt. A later identical operation
-creates a new attempt. No public timeout, cancel handle, or JobRef is added.
+On `KeyboardInterrupt`, Python terminates the child process group, waits five
+seconds, kills the group if needed, validates whatever staging evidence
+remains, records an interrupted attempt, and re-raises the interrupt. A later
+identical operation creates a new attempt. No public timeout, cancel handle, or
+JobRef is added.
 
-Protocol failure, invalid JSON, an unexpected file, missing outcome, or
+An interrupted receipt does not require Julia to have reached `outcome.json`.
+If an outcome exists it is validated, but no staged Result is promoted after
+the interrupt.
+
+Outside that explicit interrupt path, protocol failure, invalid JSON, an
+unexpected file, missing outcome, or
 runtime-identity mismatch fails the whole attempt. Every declared artifact path
 must be normalized, relative, contain no `..`, traverse no symlink, and resolve
 inside the attempt-staging root. An absolute or escaping path is rejected

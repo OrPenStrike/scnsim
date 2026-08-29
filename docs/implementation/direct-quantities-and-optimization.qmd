@@ -14,10 +14,37 @@ $$
 D(\omega)=K-\omega^2 C-i\omega G.
 $$
 
+The selected circuit admittance under the same convention is
+
+$$
+Y_{\mathrm{circ}}(\omega)=\frac{D(\omega)}{-i\omega}
+=G-i\omega C+\frac{i}{\omega}K.
+$$
+
+For every requested ordinary frequency $f$, evaluation uses
+$\omega=2\pi f$ after coherent-SI conversion.
+
 Port loading and selected-network conversion follow the Runtime Contract.
-Schur reduction, Y/Z conversion, and S conversion use factorizations and linear
-solves. The Result records matrix norm, conditioning, precision, and residual
-evidence without inventing an acceptance threshold.
+Schur reduction, source-boundary formation, Y-to-Z conversion, and Y-to-S
+conversion use factorizations and linear solves. Each solve must satisfy
+$\eta(A,X,B)\le\tau(n)$ for its $AX=B$, where
+
+$$
+\eta(A,X,B)=
+\frac{\lVert AX-B\rVert_\infty}
+{\lVert\lvert A\rvert\lvert X\rvert+\lvert B\rvert\rVert_\infty},
+\qquad
+\tau(n)=256(n+1)\epsilon_{\mathrm{Float64}}.
+$$
+
+Absolute values are entrywise complex magnitudes, the matrix infinity norm is
+the maximum absolute row sum, and $n$ is the square system order. Exact `0/0`
+is zero; zero denominator with nonzero numerator is infinity. Operands and the
+resulting residual must be finite. An empty complement that requires no solve
+is a no-op. Any failed stage fails the whole grid request; no partial family,
+pseudoinverse, or infinity is materialized.
+The Result records matrix norm, conditioning, precision, and residual evidence,
+but condition number creates no additional threshold.
 
 Each quantity Spec compiles to a typed dependency node: response element,
 diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
@@ -34,9 +61,16 @@ factorization, and root nodes. A Direct response and quantity remain distinct
 public requests, but objectives within one optimization candidate share their
 common dependency graph.
 
+The first candidate accepts only an original one-Port Direct view with no named
+traces. Its frequency grid is non-empty, one-dimensional, finite, strictly
+increasing, duplicate-free, and positive. A complete Result always contains
+finite frequency, S, Y, and Z arrays. Exact-open one-Port algebra is checked
+below this Result boundary because its Z is not finite.
+
 Optimization converts finite physical bounds to unit-interval coordinates,
 evaluates declared normalized objectives, and keeps the CMA-ES loop entirely
-inside Julia. Python receives completed-generation progress only. A candidate
+inside Julia. Python's internal process layer receives completed-generation
+JSONL progress; this is not a public operation keyword or callback. A candidate
 whose bound values produce a singular operator, physically invalid mapped
 child value, or non-continuable branch records a typed failure and `Inf` cost;
 it cannot reuse a stale quantity. Invalid request schemas, mapping definitions,
@@ -44,10 +78,70 @@ or compiler invariants fail the request rather than being relabeled as bad
 candidates. `Inf` is Julia optimizer state only: canonical JSON records a
 tagged failed-candidate penalty and never emits a non-finite JSON number.
 
+Each active `ParameterRef` is unique. Bounds have matching dimensionality,
+obey $x_{\min}<x_{\max}$, and contain the sealed baseline. The default linear
+map is $z=(x-x_{\min})/(x_{\max}-x_{\min})$. Explicit `transform="log"`
+additionally requires positive lower, upper, and baseline values and applies
+the dimensionless coherent-SI ratio
+$z=\ln(\widehat x/\widehat x_{\min})/
+\ln(\widehat x_{\max}/\widehat x_{\min})$; its inverse is
+$\widehat x=\widehat x_{\min}
+(\widehat x_{\max}/\widehat x_{\min})^z$. Invalid bounds or baseline fail
+before an attempt.
+
+Failure ownership is exact. Malformed variables, bounds, objectives, selectors,
+or controls raise `InvalidOptimizationSpec` before an attempt. A sealed compiler
+invariant violated during execution fails the request as `CompilerInvariantError`.
+After the successful baseline, a candidate-dependent nonphysical primitive
+value becomes `InvalidCandidatePhysicalParameter`; an eliminated solve,
+unresolved local slope, or exhausted Newton/continuation procedure becomes
+`EliminatedBlockSolveFailure`, `RootSlopeUnresolved`, or
+`NumericalResolutionUnresolved`. Those candidate failures receive the tagged
+positive-infinity penalty and the generation continues. The same numerical
+failure during the mandatory baseline fails the whole request. Runtime or
+transport failures remain request-level `RuntimePreparationError` or
+`BackendProtocolError` rather than candidate outcomes.
+
+## Make the optimizer replayable
+
+`CMAESSpec` defaults to `seed=0`, `max_evaluations=200`,
+`population_size=None`, and `initial_sigma=0.25`. For $n$ variables the default
+population is $4+\lfloor3\ln n\rfloor$. The baseline maps to the initial mean,
+is evaluated once before generation 1, consumes budget, and may win. Initial
+covariance is identity. The Manifest-pinned CMAEvolutionStrategy box transform
+is the only bound transform; hidden tolerance, stagnation, target, time, and
+noise stops are disabled. The seed is a signed 64-bit integer; an explicit
+population is an integer of at least two, and `initial_sigma` is positive and
+finite.
+
+Only complete generations count:
+
+$$
+g=\left\lfloor\frac{B-1}{\lambda}\right\rfloor,\qquad g\ge1.
+$$
+
+Candidate failure and cache reuse still consume population ordinals. Exact
+cost ties resolve by the earliest baseline/generation/population ordinal. The
+first candidate supports any number of primitive R/L/C parameters and
+objectives, but objective selectors are limited to `DiagonalRootSpec.frequency`
+and `.linewidth`; every other family remains fail fast.
+
+The candidate cache is request-local and keyed by the exact canonical resolved
+`ParameterSet` plus the selected View/objective dependency identity. It may
+reuse only a typed outcome from the current verified ledger chain; it never
+imports a nearby candidate or another request. The new population position is
+still recorded as a cache hit with its own evaluation ordinal.
+
 ## Resume only complete generations
 
 Every completed generation seals its population, physical ParameterSets,
 objective components, failures, and optimizer state in an append-only ledger.
+Each successful objective component records its evaluated Quantity, signed
+normalized residual, and weighted cost; the request-owned target, resolved
+scale/source, and weight therefore reproduce both the component and total cost.
+It contains exactly $\lambda$ population outcomes in column order, with their
+global evaluation ordinals; the successful baseline outcome is stored once in
+the optimization Result rather than repeated in every generation.
 An interrupted generation is discarded and deterministically replayed. Resume
 requires exact Plan, request, algorithm, seed, controls, normalization, runtime,
 and completed-ledger identity. No public resume switch changes those rules.
@@ -57,6 +151,10 @@ greatest completed generation and records its exact attempt and ledger hash in
 the new attempt. Equal-generation ledgers must have identical hashes; a
 disagreement is corruption, not a tie to resolve by recency. With no compatible
 ledger, the request starts from its declared seed.
+
+Julia restores the recorded optimizer state and verifies its sealed sample and
+population identities against the completed ledger chain before continuing; a
+mismatch is evidence corruption, not a new population to accept.
 
 The winning `ParameterSet` is ordinary immutable output. Passing it to another
 solve or evaluate call creates a new exact request; reduction lineage and

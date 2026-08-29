@@ -2,7 +2,7 @@ project:
   type: website
   output-dir: _site
   resources:
-    - docs/implementation/schemas/identity-v1.schema.json
+    - src/scnsim/_schemas/identity-v1.schema.json
   render:
     - README.md
     - docs/index.qmd
