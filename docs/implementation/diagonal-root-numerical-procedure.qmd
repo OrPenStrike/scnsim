@@ -16,6 +16,19 @@ $$
 Q(\omega)=K-\omega^2C-i\omega G.
 $$
 
+Here $G$ is the complete effective node conductance for the View. It contains
+the intrinsic primitive conductance and every logical-Port matched load left by
+the PTC mask:
+
+$$
+G=G_{\mathrm{intrinsic}}+B_pD_p^{-1}MD_p^{-1}B_p^T.
+$$
+
+A terminal `retain()` of an unported node changes only the
+zero-external-current partition; it neither promotes that node to a Port nor
+removes an existing Port load. Consequently the loaded linewidth can be set by
+a 50-ohm Port attached elsewhere in the eliminated complement.
+
 The Primitive Direct V1 supports one retained coordinate $r$ and requires the
 complete $C$ to be positive definite. This limitation avoids descriptor and
 infinite-mode handling for `DiagonalRootSpec`; it does not restrict real-grid
@@ -105,8 +118,12 @@ $$
 
 the normalized slope must also satisfy $|f'|/s_{f'}>\tau(n)$. The full
 $Q(\omega)x$ residual is recomputed from C/G/K rather than reconstructed from
-the Schur residual. Condition and slope evidence are recorded, but SCNSim adds
-no separate design-quality threshold.
+the Schur residual. These normalized certificate values and any conditioning
+diagnostics are execution-time checks, not durable Result or receipt fields.
+The public Result retains the physical local `slope`; its verified success
+binds the exact diagonal-root algorithm ID and semantic runtime source digest
+that performed the complete certificate. SCNSim adds no separate
+design-quality threshold.
 
 The normalized nonzero slope is machine-resolution evidence consistent with a
 simple, locally isolated root. It is not a validated complex enclosure or a

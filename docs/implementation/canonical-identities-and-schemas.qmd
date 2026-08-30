@@ -145,6 +145,17 @@ then verifies the complete chain before reuse or `resolve()`:
   Plan hashes match that entry;
 - `requests/<sha256>/` is named by its exact `request.json` hash, whose Plan hash
   matches the leaf Plan;
+- a retained lineage names one exact Public node partition; when that terminal
+  coordinate is not uniquely Port-bound, every wave-only retain
+  `evidenceMatrix` is exactly `0 x 0` and hashes the closed
+  `scnsim.lineage_matrix` v1 envelope with
+  `applicability=not_port_realizable`, its label, empty shape, and empty
+  row-major Float64 list; source-boundary and de-embedding hashes similarly
+  cover closed v1 not-applicable envelopes with no fabricated matrix members;
+- when the coordinate is uniquely Port-bound, those same digests instead bind
+  the actual $A_k$, $B_k$, $R_k$, $D_k$, $Q_k$, original-Port projectors, and
+  omitted matched-load matrix; `port_realizable` must agree with that Plan
+  attachment in either case;
 - a positive attempt ordinal uses `str(ordinal).zfill(6)`: both final
   `attempts/<ordinal-text>/` and staging
   `attempts/.staging-<ordinal-text>-<uuid>/` therefore have at least six

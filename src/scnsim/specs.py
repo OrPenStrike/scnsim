@@ -1,306 +1,368 @@
-"""Public request declarations for Direct, optimization, HB, and reporting.
+"""Immutable public declarations for SCNSim requests.
 
-A Spec describes *what* a :class:`~scnsim.runtime.CircuitRun` should do.  It
-does not execute work, hold a result, or pick a mutable current model.  The
-class docstrings below are deliberately user-facing: ``help(SpecName)`` should
-answer when that Spec is appropriate before a beginner writes a request.
-
-Constructors fail in this scaffold because validation and identity sealing are
-not implemented yet.
+Specs describe an operation; they neither execute it nor own a result.  The
+runtime performs Plan-specific validation when it binds one of these values to
+a sealed Plan.  Keeping these values small and immutable makes the canonical
+request encoder the single identity authority.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from html import escape
+from math import isfinite
 from typing import Literal
 
+import numpy as np
+from pint import Quantity
+
+from . import units
 from ._scaffold import unavailable
 from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
-from .results import AnalysisResult
+from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec
+from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_result
 
 
+Coordinate = str | ElectricNodeRef | CoordinateRef
+
+
+def _coordinate_id(value: Coordinate) -> str:
+    if isinstance(value, str):
+        if not value:
+            raise ValueError("coordinate IDs must not be empty")
+        return value
+    identifier = getattr(value, "id", None)
+    if isinstance(identifier, str) and identifier:
+        return identifier
+    raise TypeError("coordinate must be a nonempty ID or SCNSim coordinate handle")
+
+
+def _parameter_key(value: ParameterRef) -> tuple[str, str]:
+    if not isinstance(value, ParameterRef):
+        raise InvalidOptimizationSpec(
+            "optimization parameters must be ParameterRef values",
+            stage="spec_validation",
+        )
+    component_id = getattr(value, "component_id", None)
+    parameter_id = getattr(value, "id", None)
+    if isinstance(component_id, str) and isinstance(parameter_id, str):
+        return component_id, parameter_id
+    raise InvalidOptimizationSpec(
+        "optimization parameters must be ParameterRef values",
+        stage="spec_validation",
+    )
+
+
+def _require_quantity(value: Quantity, *, name: str) -> Quantity:
+    if not isinstance(value, Quantity) or value._REGISTRY is not units.registry:
+        raise TypeError(f"{name} must use the scnsim.units registry")
+    magnitude = np.asarray(value.magnitude)
+    if magnitude.ndim != 0 or not isfinite(float(magnitude)):
+        raise ValueError(f"{name} must be a finite scalar Quantity")
+    return value
+
+
+def _quantity_pair_text(value: tuple[Quantity, Quantity] | None) -> str:
+    return "—" if value is None else f"{value[0]} to {value[1]}"
+
+
+def _selector_text(value: object) -> str:
+    record = getattr(value, "_canonical_record", None)
+    if callable(record):
+        result = record()
+        if isinstance(result, Mapping):
+            return str(result.get("type", "quantity"))
+    return type(value).__name__
+
+
+def _quantity_magnitudes(quantity: Quantity) -> tuple[float, ...]:
+    """Return a one-dimensional finite magnitude sequence without coercion."""
+
+    magnitude = np.asarray(quantity.magnitude)
+    if magnitude.ndim != 1:
+        raise ValueError("frequency grid must be a one-dimensional Quantity")
+    values = tuple(float(item) for item in magnitude.tolist())
+    if not values or not all(isfinite(item) for item in values):
+        raise ValueError("frequency grid must be nonempty and finite")
+    return values
+
+
+def _validate_frequency_grid(quantity: Quantity) -> None:
+    if not isinstance(quantity, Quantity) or quantity._REGISTRY is not units.registry:
+        raise TypeError("frequencies must use the scnsim.units registry")
+    try:
+        coherent = quantity.to("hertz")
+    except Exception as exc:  # Pint owns its dimensionality diagnostics.
+        raise TypeError("frequencies must be a frequency Quantity") from exc
+    values = _quantity_magnitudes(coherent)
+    if any(value <= 0.0 for value in values):
+        raise ValueError("frequencies must be strictly positive")
+    if any(right <= left for left, right in zip(values, values[1:])):
+        raise ValueError("frequencies must be strictly increasing without duplicates")
+
+
+@dataclass(frozen=True, slots=True)
 class DirectSolveSpec:
-    """Request a linear frequency-domain response on one selected view.
+    """Request a complete Direct S/Y/Z response on one selected view."""
 
-    Use this when the desired output is the Direct S/Y/Z matrix over a
-    nonempty, finite, strictly increasing positive frequency grid for a
-    Port-realizable selected view.  The first executable slice accepts only the
-    original one-Port view and no named traces.  It is a
-    *solve* request, not a root finder and not the full
-    dynamic operator.  For those tasks use
-    ``DiagonalRootSpec``/``HybridizedPoleSpec`` or ``OperatorSpec``.
-    """
+    frequencies: Quantity
+    traces: tuple[SParameterTrace, ...] = ()
 
-    def __init__(
-        self,
-        *,
-        frequencies: object,
-        traces: Sequence[SParameterTrace] = (),
-    ) -> None:
-        unavailable("DirectSolveSpec construction")
+    def __init__(self, *, frequencies: Quantity, traces: Sequence[SParameterTrace] = ()) -> None:
+        _validate_frequency_grid(frequencies)
+        checked = tuple(traces)
+        if any(not isinstance(trace, SParameterTrace) for trace in checked):
+            raise TypeError("traces must contain SParameterTrace values")
+        if len({trace.id for trace in checked}) != len(checked):
+            raise ValueError("trace IDs must be unique")
+        object.__setattr__(self, "frequencies", frequencies)
+        object.__setattr__(self, "traces", checked)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "direct_solve", "frequencies": self.frequencies, "traces": tuple(trace._canonical_record() for trace in self.traces)}
 
 
+@dataclass(frozen=True, slots=True)
+class QuantitySelector:
+    """A non-executing scalar projection of one typed Direct quantity Spec."""
+
+    spec: object
+    projection: str
+    type: str
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": self.type, "spec": self.spec._canonical_record(), "projection": self.projection}
+
+
+@dataclass(frozen=True, slots=True)
 class DiagonalRootSpec:
     """Select one machine-resolved Newton root of a Direct-operator diagonal.
 
-    This is the local or "bare-coordinate" resonance associated with one
-    selected-view coordinate, not necessarily a hybridized pole of the full
-    coupled network.  Required ``root_hint`` initializes the deterministic
-    complex-Newton basin at the sealed baseline ParameterSet; it is not the
-    returned root, an optimization target, a constraint, a search window, or a
-    nearest-root request.  Non-baseline evaluations follow baseline-owned
-    deterministic continuation rather than reapplying the hint.  This is not
-    a proof of global spectral uniqueness or a complete branch enclosure.
-
-    The Spec exposes quantity selectors such as ``frequency`` and ``linewidth``
-    for reuse in an ``OptimizationSpec``; accessing a selector does not run a
-    solver.
+    ``root_hint`` initializes the deterministic baseline Newton basin only. It
+    is neither an answer, target, search window, nearest-root request, nor a
+    proof of global spectral uniqueness.
     """
 
-    def __init__(
-        self,
-        *,
-        coordinate: str | ElectricNodeRef | CoordinateRef,
-        root_hint: object,
-    ) -> None:
-        unavailable("DiagonalRootSpec construction")
+    coordinate: Coordinate
+    root_hint: Quantity
+
+    def __init__(self, *, coordinate: Coordinate, root_hint: Quantity) -> None:
+        _coordinate_id(coordinate)
+        try:
+            units.require_positive_quantity(root_hint, "hertz", name="root_hint")
+        except Exception as exc:
+            raise InvalidDiagonalRootHint(
+                "root_hint must be a finite positive frequency Quantity",
+                stage="spec_validation",
+            ) from exc
+        object.__setattr__(self, "coordinate", coordinate)
+        object.__setattr__(self, "root_hint", root_hint)
 
     @property
-    def frequency(self) -> object:
-        """Selector for ``real(root) / (2 pi)``."""
-
-        unavailable("DiagonalRootSpec.frequency selector")
+    def frequency(self) -> QuantitySelector:
+        return QuantitySelector(self, "frequency", "diagonal_root_projection")
 
     @property
-    def linewidth(self) -> object:
-        """Selector for the positive passive linewidth of the chosen root."""
+    def linewidth(self) -> QuantitySelector:
+        return QuantitySelector(self, "linewidth", "diagonal_root_projection")
 
-        unavailable("DiagonalRootSpec.linewidth selector")
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "diagonal_root", "coordinate": _coordinate_id(self.coordinate), "root_hint": self.root_hint}
 
 
+@dataclass(frozen=True, slots=True)
 class HybridizedPoleSpec:
     """Select an anchored complex pole of a retained coupled block.
 
-    Use this when coupling between several named coordinates is part of the
-    physical mode being measured. SCNSim starts the fixed local numerical
-    procedure at ``anchor`` and records root, null-vector, and nonzero-slope
-    evidence for the ordered block. The anchor is not a nearest-root request or
-    proof of global spectral uniqueness, and a diagonal root is never silently
-    relabeled as a hybridized pole.
+    This full-V1 quantity remains unavailable before the ``dev5`` Direct slice.
+    It cannot be substituted with a diagonal root or a nearest sampled peak.
     """
 
-    def __init__(
-        self,
-        *,
-        coordinates: Sequence[str | ElectricNodeRef | CoordinateRef],
-        anchor: object,
-    ) -> None:
+    def __init__(self, *, coordinates: Sequence[Coordinate], anchor: Quantity) -> None:
         unavailable("HybridizedPoleSpec construction")
 
     @property
-    def frequency(self) -> object:
-        """Selector for the chosen pole's physical frequency."""
-
+    def frequency(self) -> QuantitySelector:
         unavailable("HybridizedPoleSpec.frequency selector")
 
     @property
-    def linewidth(self) -> object:
-        """Selector for the chosen pole's positive passive linewidth."""
-
+    def linewidth(self) -> QuantitySelector:
         unavailable("HybridizedPoleSpec.linewidth selector")
 
 
+@dataclass(frozen=True, slots=True)
 class TransferZeroSpec:
-    """Select an anchored exact zero of one declared transfer function.
+    """Select an anchored exact zero of one declared transfer element.
 
-    V1 identifies the transfer by one ordered S/Y/Z input/output projection on
-    the selected Direct operator.  This is an analytic zero with a finite
-    denominator, never the minimum of a sampled sweep and never an unresolved
-    pole-zero cancellation.  A generic cofactor/minor selector is deliberately
-    not exposed without a typed, reviewable public representation.
+    This is an analytic complex-Newton quantity, not a sampled response
+    minimum. It remains explicitly unavailable before ``dev5``.
     """
 
-    def __init__(
-        self,
-        *,
-        anchor: object,
-        family: Literal["S", "Y", "Z"],
-        input_coordinate: str | ElectricNodeRef | CoordinateRef,
-        output_coordinate: str | ElectricNodeRef | CoordinateRef,
-    ) -> None:
+    def __init__(self, *, anchor: Quantity, family: Literal["S", "Y", "Z"], input_coordinate: Coordinate, output_coordinate: Coordinate) -> None:
         unavailable("TransferZeroSpec construction")
 
     @property
-    def frequency(self) -> object:
-        """Selector for the selected zero's physical frequency."""
-
+    def frequency(self) -> QuantitySelector:
         unavailable("TransferZeroSpec.frequency selector")
 
 
+@dataclass(frozen=True, slots=True)
 class ResidueNormalizedCouplingSpec:
-    """Evaluate local complex coupling between two machine-resolved branches.
+    """Evaluate local coupling using explicit pole/root residue evidence.
 
-    Use this for coupling derived from the two declared branch residues at one
-    explicit evaluation point.  It is not a fitted normal-mode splitting and
-    it fails when either branch lacks the required local nonzero-slope or
-    residue evidence.  It does not require a proof of global spectral
-    uniqueness.
+    This later Direct surface fails rather than fitting a splitting before its
+    ``dev5`` implementation exists.
     """
 
-    def __init__(
-        self,
-        *,
-        branch_a: DiagonalRootSpec | HybridizedPoleSpec,
-        branch_b: DiagonalRootSpec | HybridizedPoleSpec,
-        frequency: object,
-    ) -> None:
+    def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity) -> None:
         unavailable("ResidueNormalizedCouplingSpec construction")
 
     @property
-    def magnitude(self) -> object:
-        """Selector for the magnitude of the evaluated complex coupling."""
-
+    def magnitude(self) -> QuantitySelector:
         unavailable("ResidueNormalizedCouplingSpec.magnitude selector")
 
 
+@dataclass(frozen=True, slots=True)
 class ResponseElementSpec:
-    """Evaluate one ordered S/Y/Z matrix element at one exact frequency.
+    """Evaluate one exact S/Y/Z element on a selected Direct network.
 
-    Use this when an optimization or downstream calculation needs one scalar
-    response rather than a sweep.  Input/output names follow the selected
-    ``NetworkViewRef`` order; the Spec does not guess S21 or interpolate.
+    This later scalar surface never interpolates a sweep and is unavailable
+    until the N-port ``dev5`` slice.
     """
 
-    def __init__(
-        self,
-        *,
-        family: Literal["S", "Y", "Z"],
-        input_coordinate: str | ElectricNodeRef | CoordinateRef,
-        output_coordinate: str | ElectricNodeRef | CoordinateRef,
-        frequency: object,
-    ) -> None:
+    def __init__(self, *, family: Literal["S", "Y", "Z"], input_coordinate: Coordinate, output_coordinate: Coordinate, frequency: Quantity) -> None:
         unavailable("ResponseElementSpec construction")
 
     @property
-    def magnitude(self) -> object:
-        """Selector for the scalar response magnitude."""
-
+    def magnitude(self) -> QuantitySelector:
         unavailable("ResponseElementSpec.magnitude selector")
 
     @property
-    def real(self) -> object:
-        """Selector for the scalar response real part."""
-
+    def real(self) -> QuantitySelector:
         unavailable("ResponseElementSpec.real selector")
 
     @property
-    def imag(self) -> object:
-        """Selector for the scalar response imaginary part."""
-
+    def imag(self) -> QuantitySelector:
         unavailable("ResponseElementSpec.imag selector")
 
 
+@dataclass(frozen=True, slots=True)
 class OperatorSpec:
-    """Materialize the full Direct dynamic operator on a declared grid.
+    """Materialize the full Direct operator on an exact grid in ``dev5``."""
 
-    Use this for labeled matrix inspection or custom Python calculations that
-    are not covered by the small typed quantity catalog.  A full operator is
-    not a scalar and therefore cannot be used directly as an optimization
-    objective.
-    """
-
-    def __init__(self, *, frequencies: object) -> None:
+    def __init__(self, *, frequencies: Quantity) -> None:
         unavailable("OperatorSpec construction")
 
 
+@dataclass(frozen=True, slots=True)
 class OptimizationVariable:
-    """Bind one public component parameter to finite physical search bounds.
+    """Bind one public parameter to immutable physical search bounds."""
 
-    SCNSim canonicalizes the bound Quantities and maps them to dimensionless
-    optimizer coordinates.  ``transform='log'`` is explicit; no unit name or
-    small SI magnitude silently changes the search coordinates. Log bounds and
-    the sealed baseline must be strictly positive; every transform requires
-    finite ordered same-dimensional bounds containing that baseline.
-    """
+    parameter: ParameterRef
+    model_default_bounds: tuple[Quantity, Quantity]
+    consumer_override_bounds: tuple[Quantity, Quantity] | None = None
+    transform: Literal["linear", "log"] = "linear"
 
-    def __init__(
-        self,
-        *,
-        parameter: ParameterRef,
-        bounds: tuple[object, object],
-        transform: Literal["linear", "log"] = "linear",
-    ) -> None:
-        unavailable("OptimizationVariable construction")
-
-    @property
-    def parameter(self) -> ParameterRef:
-        """Exact public parameter activated by this search variable."""
-
-        unavailable("OptimizationVariable.parameter")
+    def __init__(self, *, parameter: ParameterRef, bounds: tuple[Quantity, Quantity], transform: Literal["linear", "log"] = "linear") -> None:
+        if parameter is None or transform not in {"linear", "log"}:
+            raise InvalidOptimizationSpec("invalid optimization variable", stage="spec_validation")
+        if not isinstance(bounds, tuple) or len(bounds) != 2:
+            raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
+        for name, value in zip(("lower bound", "upper bound"), bounds):
+            _require_quantity(value, name=name)
+        object.__setattr__(self, "parameter", parameter)
+        object.__setattr__(self, "model_default_bounds", bounds)
+        object.__setattr__(self, "consumer_override_bounds", None)
+        object.__setattr__(self, "transform", transform)
 
     @property
-    def bounds(self) -> tuple[object, object]:
-        """Resolved finite physical lower/upper bounds used by this variable.
+    def bounds(self) -> tuple[Quantity, Quantity]:
+        """Resolved bounds; the runtime performs Plan/baseline validation."""
 
-        Immutable model-default and consumer-override provenance belongs to
-        the owning ``OptimizationSpec``, not this resolved view.
-        """
+        return self.consumer_override_bounds or self.model_default_bounds
 
-        unavailable("OptimizationVariable.bounds")
+    def _override(self, bounds: tuple[Quantity, Quantity]) -> OptimizationVariable:
+        if not isinstance(bounds, tuple) or len(bounds) != 2:
+            raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
+        for name, value in zip(("lower bound", "upper bound"), bounds):
+            _require_quantity(value, name=name)
+        instance = object.__new__(OptimizationVariable)
+        object.__setattr__(instance, "parameter", self.parameter)
+        object.__setattr__(instance, "model_default_bounds", self.model_default_bounds)
+        object.__setattr__(instance, "consumer_override_bounds", bounds)
+        object.__setattr__(instance, "transform", self.transform)
+        return instance
 
-    @property
-    def transform(self) -> Literal["linear", "log"]:
-        """Explicit mapping used before unit-interval optimizer coordinates."""
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "parameter": self.parameter, "model_default_bounds": self.model_default_bounds,
+            "consumer_override_bounds": self.consumer_override_bounds, "lower": self.bounds[0],
+            "upper": self.bounds[1], "transform": self.transform,
+        }
 
-        unavailable("OptimizationVariable.transform")
 
-
+@dataclass(frozen=True, slots=True)
 class QuantitySum:
-    """The V1 scalar composition: a sum of same-dimensionality selectors.
+    """The V1 scalar composition: a sum of same-dimensionality selectors."""
 
-    It exists only to express a small auditable objective dependency graph.
-    Arbitrary Python callbacks and a general expression language are outside
-    V1.
-    """
+    terms: tuple[object, ...]
 
     def __init__(self, *terms: object) -> None:
-        unavailable("QuantitySum construction")
+        if not terms:
+            raise InvalidOptimizationSpec("QuantitySum requires one or more terms", stage="spec_validation")
+        object.__setattr__(self, "terms", tuple(terms))
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "sum", "terms": tuple(_canonical_value(item) for item in self.terms)}
 
 
+@dataclass(frozen=True, slots=True)
 class CostObjective:
-    """Compare one scalar quantity with one target inside optimization.
+    """Compare one scalar quantity with one target inside optimization."""
 
-    The residual is ``(quantity - target) / scale`` and the total cost adds
-    ``weight * abs(residual)**2``.  If ``scale`` is omitted, SCNSim uses the
-    nonzero target magnitude, or unity for an exact dimensionless zero target.
-    An exact dimensionful zero target requires an explicit physical scale.
-    ``weight`` is dimensionless relative importance, not a tolerance or Gate.
-    """
+    id: str
+    quantity: object
+    target: Quantity
+    weight: Quantity
+    scale: Quantity | None = None
 
     def __init__(
         self,
         *,
         id: str,
         quantity: object,
-        target: object,
-        weight: object,
-        scale: object | None = None,
+        target: Quantity,
+        weight: Quantity,
+        scale: Quantity | None = None,
     ) -> None:
-        unavailable("CostObjective construction")
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "quantity", quantity)
+        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "weight", weight)
+        object.__setattr__(self, "scale", scale)
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.id, str) or not self.id:
+            raise InvalidOptimizationSpec("objective id must be nonempty", stage="spec_validation")
+        _require_quantity(self.target, name="target")
+        units.require_positive_quantity(self.weight, "dimensionless", name="weight")
+        if self.scale is not None:
+            _require_quantity(self.scale, name="scale")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"id": self.id, "quantity": _canonical_value(self.quantity), "target": self.target, "weight": self.weight, "scale": self.scale}
 
 
+@dataclass(frozen=True, slots=True)
 class CMAESSpec:
-    """Declare deterministic CMA-ES execution controls, not design success.
+    """Pinned deterministic CMA-ES controls for a Direct optimization request."""
 
-    ``max_evaluations`` is a finite work budget. ``initial_sigma`` is expressed
-    in the dimensionless unit-coordinate box. These controls do not decide
-    whether a circuit meets a Design Target; only a Human-owned accepted Gate
-    may do so. ``population_size=None`` uses ``4 + floor(3 ln(n))`` for ``n``
-    active variables. The sealed baseline consumes the first evaluation and
-    may win; only complete generations are retained. ``seed`` is restricted to
-    the portable signed 64-bit range. Hidden package stopping criteria are not
-    part of V1.
-    """
+    seed: int = 0
+    max_evaluations: int = 200
+    population_size: int | None = None
+    initial_sigma: float = 0.25
 
     def __init__(
         self,
@@ -310,114 +372,132 @@ class CMAESSpec:
         population_size: int | None = None,
         initial_sigma: float = 0.25,
     ) -> None:
-        unavailable("CMAESSpec construction")
+        object.__setattr__(self, "seed", seed)
+        object.__setattr__(self, "max_evaluations", max_evaluations)
+        object.__setattr__(self, "population_size", population_size)
+        object.__setattr__(self, "initial_sigma", initial_sigma)
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.seed, int) or not -(2**63) <= self.seed < 2**63:
+            raise InvalidOptimizationSpec("seed must be a signed 64-bit integer", stage="spec_validation")
+        if not isinstance(self.max_evaluations, int) or self.max_evaluations < 1:
+            raise InvalidOptimizationSpec("max_evaluations must be positive", stage="spec_validation")
+        if self.population_size is not None and (not isinstance(self.population_size, int) or self.population_size < 2):
+            raise InvalidOptimizationSpec("population_size must be at least two", stage="spec_validation")
+        if not isfinite(self.initial_sigma) or self.initial_sigma <= 0.0:
+            raise InvalidOptimizationSpec("initial_sigma must be finite and positive", stage="spec_validation")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "cma_es", "seed": self.seed, "max_evaluations": self.max_evaluations, "population_size": self.population_size, "initial_sigma": self.initial_sigma}
 
 
+@dataclass(frozen=True, slots=True)
 class OptimizationSpec:
-    """Plan one Direct-only, multi-variable, multi-objective search.
+    """One immutable Direct-only multi-variable CMA-ES request declaration."""
 
-    Quantity selectors define how every objective is computed.  Candidate
-    binding, Plan compilation, reduction replay, shared quantity evaluation,
-    objective aggregation, and CMA-ES remain inside one Julia process; Python
-    does not receive a callback for each candidate.
+    variables: tuple[OptimizationVariable, ...]
+    objectives: tuple[CostObjective, ...]
+    optimizer: CMAESSpec
+    allow_extrapolation: tuple[ParameterRef, ...] = ()
 
-    The ``dev3`` runtime slice accepts diagonal-root ``frequency`` and
-    ``linewidth`` selectors; same-dimensional ``QuantitySum`` composition is
-    legal only inside a ``CostObjective``.
-    ``dev5`` completes the catalog with hybridized-pole frequency/linewidth,
-    transfer-zero frequency, residue-coupling magnitude, and response-element
-    magnitude/real/imaginary selectors.  Later-slice selectors remain
-    fail-fast until their owning runtime slice exists.  The Spec is immutable
-    and owns model-default bounds plus any named consumer overrides.
-    """
+    def __init__(self, *, variables: Sequence[OptimizationVariable], objectives: Sequence[CostObjective], optimizer: CMAESSpec) -> None:
+        self._initialize(variables=variables, objectives=objectives, optimizer=optimizer, allow_extrapolation=())
 
-    def __init__(
+    def _initialize(
         self,
         *,
         variables: Sequence[OptimizationVariable],
         objectives: Sequence[CostObjective],
         optimizer: CMAESSpec,
+        allow_extrapolation: Sequence[ParameterRef],
     ) -> None:
-        unavailable("OptimizationSpec construction")
-
-    def show(self) -> object:
-        """Inspect variables, bound provenance, objectives, and optimizer.
-
-        Presentation distinguishes immutable model defaults, named consumer
-        overrides, resolved bounds, objectives, and optimizer controls.
-        """
-
-        unavailable("OptimizationSpec.show")
+        checked_variables = tuple(variables)
+        checked_objectives = tuple(objectives)
+        if not checked_variables or not all(isinstance(item, OptimizationVariable) for item in checked_variables):
+            raise InvalidOptimizationSpec("variables must be nonempty OptimizationVariable values", stage="spec_validation")
+        if not checked_objectives or not all(isinstance(item, CostObjective) for item in checked_objectives):
+            raise InvalidOptimizationSpec("objectives must be nonempty CostObjective values", stage="spec_validation")
+        if not isinstance(optimizer, CMAESSpec):
+            raise InvalidOptimizationSpec("optimizer must be CMAESSpec", stage="spec_validation")
+        variable_keys = tuple(_parameter_key(item.parameter) for item in checked_variables)
+        if len(set(variable_keys)) != len(variable_keys):
+            raise InvalidOptimizationSpec("optimization parameters must be unique", stage="spec_validation")
+        if len({item.id for item in checked_objectives}) != len(checked_objectives):
+            raise InvalidOptimizationSpec("objective IDs must be unique", stage="spec_validation")
+        auth = tuple(sorted(tuple(allow_extrapolation), key=_parameter_key))
+        if len({_parameter_key(item) for item in auth}) != len(auth) or any(_parameter_key(item) not in variable_keys for item in auth):
+            raise InvalidOptimizationSpec("allow_extrapolation must contain unique active parameters", stage="spec_validation")
+        object.__setattr__(self, "variables", checked_variables)
+        object.__setattr__(self, "objectives", checked_objectives)
+        object.__setattr__(self, "optimizer", optimizer)
+        object.__setattr__(self, "allow_extrapolation", auth)
 
     def variable(self, parameter: ParameterRef) -> OptimizationVariable:
-        """Inspect one active variable by exact public parameter identity."""
-
         unavailable("OptimizationSpec.variable")
 
-    def with_variable_overrides(
-        self,
-        *,
-        bounds: Mapping[ParameterRef, tuple[object, object]],
-        allow_extrapolation: Sequence[ParameterRef] = (),
-    ) -> OptimizationSpec:
-        """Return an immutable consumer-customized copy of this Spec.
-
-        Named bounds replace that variable's prior consumer override; unnamed
-        variables preserve their existing default or override.  The supplied
-        ``allow_extrapolation`` sequence is the complete authorization set for
-        the returned Spec, replacing rather than extending the source set.
-        Authorization is request-local and is not inherited by winner
-        parameters or a later solve/evaluate request.
-        """
-
+    def with_variable_overrides(self, *, bounds: Mapping[ParameterRef, tuple[Quantity, Quantity]], allow_extrapolation: Sequence[ParameterRef] = ()) -> OptimizationSpec:
         unavailable("OptimizationSpec.with_variable_overrides")
 
+    def show(self) -> HtmlPresentation:
+        rows = "".join(
+            "<tr>"
+            f"<td>{escape('.'.join(_parameter_key(variable.parameter)))}</td>"
+            f"<td>{escape(_quantity_pair_text(variable.model_default_bounds))}</td>"
+            f"<td>{escape(_quantity_pair_text(variable.consumer_override_bounds))}</td>"
+            f"<td>{escape(_quantity_pair_text(variable.bounds))}</td>"
+            f"<td>{escape(variable.transform)}</td>"
+            "</tr>"
+            for variable in self.variables
+        )
+        objectives = "".join(
+            f"<li>{escape(objective.id)}: {escape(_selector_text(objective.quantity))}</li>"
+            for objective in self.objectives
+        )
+        controls = (
+            f"seed={self.optimizer.seed}; max_evaluations={self.optimizer.max_evaluations}; "
+            f"population_size={self.optimizer.population_size}; initial_sigma={self.optimizer.initial_sigma}"
+        )
+        return HtmlPresentation(
+            "<table><thead><tr><th>parameter</th><th>model default</th><th>consumer override</th><th>resolved</th><th>transform</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table><h3>objectives</h3><ul>{objectives}</ul><h3>optimizer</h3><p>{escape(controls)}</p>"
+        )
 
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "optimization", "variables": tuple(item._canonical_record() for item in self.variables),
+            "objectives": tuple(item._canonical_record() for item in self.objectives),
+            "optimizer": self.optimizer._canonical_record(), "allow_extrapolation": self.allow_extrapolation,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PumpAxis:
-    """Name one independent HB fundamental frequency.
+    """Name one independent HB pump axis; implemented in the HB ``dev6`` slice."""
 
-    A commensurate harmonic belongs to a higher integer mode of the same axis,
-    not a duplicate axis.  Pump amplitude belongs to an ``HBCaseSpec`` drive
-    binding, not to this axis.
-    """
-
-    def __init__(self, *, id: str, frequency: object) -> None:
+    def __init__(self, *, id: str, frequency: Quantity) -> None:
         unavailable("PumpAxis construction")
 
 
+@dataclass(frozen=True, slots=True)
 class CurrentDrive:
-    """Name one current injection on a logical Port and Fourier-lattice mode.
-
-    The drive declares *where and at which mode* current can be applied.  Each
-    case supplies its own complex Fourier coefficient.  ``mode=()`` is pure DC;
-    otherwise tuple rank and ordering follow ``HBSolveSpec.pump_axes``.
-    """
+    """Declare one logical-Port HB drive; unavailable before ``dev6``."""
 
     def __init__(self, *, id: str, at: PortRef, mode: tuple[int, ...]) -> None:
         unavailable("CurrentDrive construction")
 
 
+@dataclass(frozen=True, slots=True)
 class HBCaseSpec:
-    """One user-named DC/AC operating condition in an HB batch.
+    """Name one HB operating condition; unavailable before ``dev6``."""
 
-    ``currents`` maps request-global ``CurrentDrive`` objects to physical
-    Fourier coefficients.  Omitted drives are exact zero.  Case IDs name
-    experiments such as ``baseline`` or ``pump_high``; Bias/Pump state is a
-    derived result classification, not a lookup key.
-    """
-
-    def __init__(self, *, id: str, currents: Mapping[CurrentDrive, object]) -> None:
+    def __init__(self, *, id: str, currents: Mapping[CurrentDrive, Quantity]) -> None:
         unavailable("HBCaseSpec construction")
 
 
+@dataclass(frozen=True, slots=True)
 class HBTruncation:
-    """Declare one finite HB operating-point and modulation lattice.
-
-    Per-axis bounds keep the lattice finite.  ``max_intermodulation_order``
-    optionally adds the L1 crop ``sum(abs(mode)) <= N``.  The 3WM/4WM flags
-    select interactions kept in the same nonlinear balance and linearized
-    response; they are not separate solves or a count of pump tones.
-    """
+    """Declare a finite HB mode lattice; unavailable before ``dev6``."""
 
     def __init__(
         self,
@@ -431,17 +511,9 @@ class HBTruncation:
         unavailable("HBTruncation construction")
 
 
+@dataclass(frozen=True, slots=True)
 class SParameterTrace:
-    """Name one ordered S-matrix projection across a solve frequency grid.
-
-    ``input_port`` and ``output_port`` retain their conventional names but hold
-    exact final selected node-coordinate IDs.  A logical Port ID is not an
-    alias unless anonymous-node promotion deliberately gave both the same
-    string; a generated transformed channel need not be one original
-    ``PortRef``.  A trace is a view of the complete matrix result, not another
-    solve.  Direct traces use empty mode tuples; HB tuples follow the declared
-    pump-axis ordering.
-    """
+    """Name a selected-matrix S projection; unavailable before N-port ``dev5``."""
 
     def __init__(
         self,
@@ -455,29 +527,16 @@ class SParameterTrace:
         unavailable("SParameterTrace construction")
 
 
+@dataclass(frozen=True, slots=True)
 class HBSolveSpec:
-    """Request a shared-basis batch of nonlinear HB operating conditions.
-
-    Axes, drive schema, signal grid, traces, mixing selection, and truncation
-    are request-global so every named case is comparable.  The selected view
-    must be Port-realizable, and every resulting linear-response mode must have
-    nonzero signed frequency because the backend return-Z normalization is
-    singular at zero.  ``allow_driven_ptc`` must be explicit when a PTC view has
-    nonzero DC or AC drive; authorization preserves the loaded operating point
-    and compensates only its linearized response.
-
-    V1 deliberately exposes no numerical-control object or keyword.  The
-    pinned backend, iteration/line-search controls, single-thread policy, and
-    independent final-residual check belong to the versioned runtime algorithm
-    identity so two callers cannot silently request different HB numerics.
-    """
+    """Request a shared-basis nonlinear HB case batch; unavailable before ``dev6``."""
 
     def __init__(
         self,
         *,
         pump_axes: Sequence[PumpAxis],
         drives: Sequence[CurrentDrive],
-        frequencies: object,
+        frequencies: Quantity,
         cases: Sequence[HBCaseSpec],
         truncation: HBTruncation,
         traces: Sequence[SParameterTrace] = (),
@@ -486,32 +545,29 @@ class HBSolveSpec:
         unavailable("HBSolveSpec construction")
 
 
+@dataclass(frozen=True, slots=True)
 class ReportSpec:
-    """Choose exact existing Results to assemble into one auditable report.
+    """Choose exact existing Analysis Results for a pure derived report."""
 
-    Report assembly never searches for "latest" evidence and does not solve,
-    interpolate, or create a Design Target.  Each input keeps its exact result
-    identity and may be a Direct result, an HB batch, a typed quantity, or an
-    optimization result.
-    Report assembly itself is a pure derived operation with no request receipt.
-    """
+    inputs: tuple[AnalysisResult, ...]
 
     def __init__(self, *, inputs: Sequence[AnalysisResult]) -> None:
-        unavailable("ReportSpec construction")
+        checked = tuple(inputs)
+        if not checked or not all(_is_verified_analysis_result(item) for item in checked):
+            raise TypeError("ReportSpec.inputs must be nonempty AnalysisResult values")
+        object.__setattr__(self, "inputs", checked)
 
 
+def _canonical_value(value: object) -> object:
+    record = getattr(value, "_canonical_record", None)
+    return record() if callable(record) else value
+
+
+@dataclass(frozen=True, slots=True)
 class CircuitDiagramSpec:
-    """Choose one read-only schematic representation of a complete Plan.
-
-    ``authoring`` preserves semantic components and declared connections for
-    human inspection.  ``compiled`` exposes the complete deterministic
-    baseline physical expansion, including every transmission-line pi section,
-    without showing backend rows or reduction results.  Parameter values, when
-    requested, are always the Plan baseline.
-
-    Theme and value presentation affect only the diagram identity.  They never
-    alter Plan or numerical receipt identity.
-    """
+    representation: Literal["authoring", "compiled"] = "authoring"
+    theme: Literal["auto", "light", "dark"] = "auto"
+    show_parameter_values: bool = False
 
     def __init__(
         self,
@@ -520,4 +576,11 @@ class CircuitDiagramSpec:
         theme: Literal["auto", "light", "dark"] = "auto",
         show_parameter_values: bool = False,
     ) -> None:
-        unavailable("CircuitDiagramSpec construction")
+        object.__setattr__(self, "representation", representation)
+        object.__setattr__(self, "theme", theme)
+        object.__setattr__(self, "show_parameter_values", show_parameter_values)
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        if self.representation not in {"authoring", "compiled"} or self.theme not in {"auto", "light", "dark"}:
+            raise ValueError("invalid diagram representation or theme")

@@ -26,16 +26,21 @@ SCNSim resolves the first applicable portable provenance form in this order:
 
 | Source | Canonical evidence |
 |---|---|
-| installed wheel | normalized distribution name/version and sorted `RECORD` rows with their content hashes |
+| installed wheel | normalized distribution name/version and the portable sorted `RECORD` identity rows described below |
 | editable Git package | Git object ID, package-relative source file list and bytes, plus a digest of the dirty package-tree overlay |
 | imported source module | logical module name and the complete normalized bytes of its defining `.py` module |
 | Notebook definition | dedented UTF-8/NFC class and factory source with normalized newlines |
 
-For a wheel, SCNSim parses `RECORD` as CSV, normalizes separators, preserves
-the declared hash/size fields (including the ordinary empty self row), sorts by
-distribution-relative path, verifies every declared file hash, and hashes the
-canonical row list. Distribution names use normalized package-name spelling;
-versions use installed metadata spelling.
+For a wheel, the `scnsim.wheel_record` version 2 envelope parses `RECORD` as
+CSV and excludes installer-owned `.dist-info/INSTALLER`, `REQUESTED`,
+`direct_url.json`, `uv_cache.json`, and `uv_build.json` rows, plus
+`__pycache__/` and `.pyc` rows. For every remaining row, SCNSim normalizes path
+separators, requires and verifies the SHA-256 hash and size of every included
+non-self file, rejects symlinked targets, sorts by distribution-relative path,
+rejects duplicates, and hashes the canonical row list. Exactly one ordinary
+empty `RECORD` self row remains in that list. Distribution names use normalized package-name spelling and
+versions use installed metadata spelling; installation directory, installer,
+download URL, and installer/cache metadata do not enter Plan identity.
 
 For editable Git, `source_sha256` hashes a sorted manifest of package-relative
 path, Git file mode, and current file bytes beneath the catalog's Python package

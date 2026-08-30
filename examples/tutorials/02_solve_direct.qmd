@@ -9,7 +9,7 @@ execute:
 **Learn:** describe one Port response before executing it.
 **Run:** prepare and solve one Direct S/Y/Z request.
 **Inspect:** the complete one-Port S/Y/Z surfaces.
-**Status:** `CONVERGING` scaffold.
+**Status:** `CONVERGING` dev3 candidate.
 :::
 
 ## Describe the response you need

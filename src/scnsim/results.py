@@ -1,541 +1,509 @@
-"""Typed result-surface declarations for the SCNSim V1 scaffold.
+"""Receipt-backed results and downstream presentation values.
 
-Results are immutable, already-materialized values. Analysis Results additionally
-bind verified receipts and artifacts. They never become mutable state on a
-``CircuitRun`` or ``NetworkViewRef``. The properties below document the intended
-Notebook discovery surface; every access fails until its implementation exists.
+Public constructors deliberately fail: a user cannot manufacture a result that
+looks like verified workspace evidence.  ``_verified_result`` is the narrow
+decoder hook used after workspace receipt/artifact verification.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass, field, fields
 from enum import Enum
-from os import PathLike
+from html import escape
+from os import O_RDONLY, PathLike, fsync, link, open as os_open
 from pathlib import Path
-from typing import Literal
+from tempfile import NamedTemporaryFile
+from types import MappingProxyType
+from typing import TypeVar, Literal
 
+import numpy as np
+from pint import Quantity
+
+from . import units
 from ._scaffold import unavailable
 from .authoring import ParameterSet
 from .errors import HBCaseFailure
 
 
-class BiasState(Enum):
-    """Whether a bound HB case has a nonzero effective all-zero-mode drive."""
+T = TypeVar("T")
 
+
+def _freeze(value: object) -> object:
+    """Detach mutable decoder payloads before exposing a Result surface."""
+
+    if isinstance(value, np.ndarray):
+        copy = np.array(value, copy=True)
+        copy.setflags(write=False)
+        return copy
+    if isinstance(value, Quantity):
+        if value._REGISTRY is not units.registry:
+            raise TypeError("result quantities must use scnsim.units")
+        magnitude = value.magnitude
+        if isinstance(magnitude, np.ndarray):
+            magnitude = _freeze(magnitude)
+        return units.registry.Quantity(magnitude, value.units)
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_freeze(item) for item in value)
+    return value
+
+
+def _sha256(value: object, *, name: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+    return value
+
+
+def _verified_result(cls: type[T], /, **values: object) -> T:
+    """Private verified-decoder hook; never call this on unverified evidence.
+
+    The caller supplies exactly the public dataclass fields for ``cls``.  The
+    hook validates receipt identity fields and recursively detaches mappings,
+    sequences, and NumPy/Pint arrays before the value becomes user-visible.
+    """
+
+    if not isinstance(cls, type) or not issubclass(cls, (Result, MatrixView, ResultIdentity, ReconciliationEvidence, OptimizationBest, OperatorPointResult)):
+        raise TypeError("_verified_result only constructs SCNSim result values")
+    if cls is HBCaseOutcome:
+        expected = {
+            "id", "failure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
+        }
+        if set(values) != expected:
+            raise TypeError("verified HBCaseOutcome fields mismatch")
+        failure = values["failure"]
+        success = failure is None
+        if not isinstance(values["id"], str) or not values["id"]:
+            raise ValueError("HB case id must be nonempty")
+        if failure is not None and not isinstance(failure, HBCaseFailure):
+            raise TypeError("HB failure must be HBCaseFailure")
+        required = ("bias_state", "pump_state", "s", "y", "z", "states")
+        if success != all(values[name] is not None for name in required):
+            raise ValueError("HB success must provide every success-only surface")
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_id", values["id"])
+        object.__setattr__(instance, "_failure", failure)
+        for name in ("bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
+            object.__setattr__(instance, f"_{name}", _freeze(values[name]))
+        return instance
+    expected = {item.name for item in fields(cls) if item.init}
+    if set(values) != expected:
+        missing = expected - set(values)
+        extra = set(values) - expected
+        raise TypeError(f"verified {cls.__name__} fields mismatch: missing={sorted(missing)}, extra={sorted(extra)}")
+    if cls is ResultIdentity:
+        for name, value in values.items():
+            _sha256(value, name=name)
+    if issubclass(cls, AnalysisResult) and not _is_verified_identity(values.get("identity")):
+        raise TypeError("analysis results require a verified ResultIdentity")
+    instance = object.__new__(cls)
+    for name, value in values.items():
+        object.__setattr__(instance, name, _freeze(value))
+    if cls is ResultIdentity:
+        object.__setattr__(instance, "_verified_identity_token", _VERIFIED_TOKEN)
+    if issubclass(cls, AnalysisResult):
+        object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
+    return instance
+
+
+_VERIFIED_TOKEN = object()
+
+
+def _is_verified_identity(value: object) -> bool:
+    return type(value) is ResultIdentity and getattr(value, "_verified_identity_token", None) is _VERIFIED_TOKEN
+
+
+def _is_verified_analysis_result(value: object) -> bool:
+    return (
+        type(value) in (DirectSolveResult, DiagonalRootResult, OptimizationResult)
+        and getattr(value, "_verified_result_token", None) is _VERIFIED_TOKEN
+        and _is_verified_identity(getattr(value, "identity", None))
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class HtmlPresentation:
+    """Small self-contained HTML display object for notebook and headless use."""
+
+    html: str
+
+    def _repr_html_(self) -> str:
+        return self.html
+
+    def __str__(self) -> str:
+        return self.html
+
+
+class BiasState(Enum):
     OFF = "off"
     ON = "on"
 
 
 class PumpState(Enum):
-    """Whether a bound HB case has a nonzero effective nonzero-mode drive."""
-
     OFF = "off"
     ON = "on"
 
 
+@dataclass(frozen=True, slots=True)
 class Result:
-    """Base role shared by immutable, already-materialized SCNSim values.
-
-    Reading or presenting a Result never triggers another computation. Derived
-    Results need not pretend to own an analysis request or receipt.
-    """
+    """Base role shared by immutable, already-materialized SCNSim values."""
 
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
 
     def show(self, **presentation: object) -> object:
-        """Present already-materialized data without solving or interpolation."""
-
-        unavailable(f"{type(self).__name__}.show")
+        return HtmlPresentation(f"<pre>{escape(repr(self))}</pre>")
 
 
+@dataclass(frozen=True, slots=True)
 class ResultIdentity:
-    """Immutable hashes for one receipt-backed terminal analysis Result."""
+    """Immutable Plan/request/attempt/result hashes from one verified receipt."""
+
+    plan_sha256: str
+    request_sha256: str
+    attempt_sha256: str
+    result_sha256: str
+    _verified_identity_token: object = field(init=False, repr=False, compare=False)
 
     def __init__(self) -> None:
         unavailable("ResultIdentity construction")
 
-    @property
-    def plan_sha256(self) -> str:
-        unavailable("ResultIdentity.plan_sha256")
 
-    @property
-    def request_sha256(self) -> str:
-        unavailable("ResultIdentity.request_sha256")
-
-    @property
-    def attempt_sha256(self) -> str:
-        unavailable("ResultIdentity.attempt_sha256")
-
-    @property
-    def result_sha256(self) -> str:
-        unavailable("ResultIdentity.result_sha256")
-
-
+@dataclass(frozen=True, slots=True)
 class AnalysisResult(Result):
-    """Receipt-backed terminal Result returned by solve/evaluate/optimize."""
+    """Receipt-backed terminal Result returned by solve, evaluate, or optimize."""
 
-    @property
-    def identity(self) -> ResultIdentity:
-        """Exact Plan, request, attempt, and Result hashes."""
+    identity: ResultIdentity
+    _verified_result_token: object = field(init=False, repr=False, compare=False)
 
-        unavailable(f"{type(self).__name__}.identity")
+    def __init__(self) -> None:
+        unavailable(f"{type(self).__name__} construction")
 
 
+@dataclass(frozen=True, slots=True)
 class MatrixView:
-    """Labeled data for one de-embedded selected SCNSim network.
+    """Labeled selected-network matrix data with immutable array payloads."""
 
-    ``matrix`` is the complex array (Quantity-valued for dimensionful
-    families); ``frequencies`` and ``coordinates`` keep its axes explicit.
-    Source-loaded/raw operators remain diagnostics rather than this public
-    S/Y/Z surface.  This data object never performs a solve or interpolation.
-    """
+    matrix: Quantity
+    frequencies: Quantity
+    coordinates: tuple[str, ...]
+    input_channels: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    output_channels: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    probe_loads: Mapping[str, Literal["raw", "compensated"]] = field(default_factory=dict)
 
     def __init__(self) -> None:
         unavailable("MatrixView construction")
 
-    @property
-    def matrix(self) -> object:
-        """Complex matrix or matrix stack in declared coordinate order."""
 
-        unavailable("MatrixView.matrix")
-
-    @property
-    def frequencies(self) -> object:
-        """Exact Quantity-valued frequency grid carried by the matrix stack."""
-
-        unavailable("MatrixView.frequencies")
-
-    @property
-    def coordinates(self) -> tuple[str, ...]:
-        """Ordered selected-view coordinate IDs before any HB mode lifting."""
-
-        unavailable("MatrixView.coordinates")
-
-    @property
-    def input_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
-        """Flattened input-axis ``(coordinate, mode)`` labels in stored order."""
-
-        unavailable("MatrixView.input_channels")
-
-    @property
-    def output_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
-        """Flattened output-axis ``(coordinate, mode)`` labels in stored order."""
-
-        unavailable("MatrixView.output_channels")
-
-    @property
-    def probe_loads(self) -> Mapping[str, Literal["raw", "compensated"]]:
-        """Read-only logical-Port IDs and each probe load's exact view state."""
-
-        unavailable("MatrixView.probe_loads")
-
-
+@dataclass(frozen=True, slots=True)
 class MatrixFamilyResult(Result):
-    """One selected-view matrix family, such as Y or Z, over a solved grid."""
+    """One typed matrix family on an immutable selected-network View."""
 
-    @property
-    def view(self) -> MatrixView:
-        """Return the labeled selected-view matrix data."""
+    view: MatrixView
 
-        unavailable(f"{type(self).__name__}.view")
+    def __init__(self) -> None:
+        unavailable(f"{type(self).__name__} construction")
 
 
+@dataclass(frozen=True, slots=True)
 class ScatteringMatrixResult(MatrixFamilyResult):
     """Selected-view generalized power-wave S matrices and presentation."""
 
-    def show(
-        self,
-        *,
-        magnitude: Literal["linear", "db"] = "linear",
-    ) -> object:
-        """Display magnitude and wrapped phase without changing result identity."""
+    def __init__(self) -> None:
+        unavailable("ScatteringMatrixResult construction")
 
-        unavailable(f"{type(self).__name__}.show")
+    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+        if magnitude not in {"linear", "db"}:
+            raise ValueError("magnitude must be 'linear' or 'db'")
+        import matplotlib.pyplot as plt
+
+        matrix = np.asarray(getattr(self.view.matrix, "magnitude", self.view.matrix))
+        if matrix.ndim != 3:
+            raise ValueError("S matrix must have [frequency, output, input] axes")
+        values = matrix[:, 0, 0]
+        shown_magnitude = np.abs(values)
+        if magnitude == "db":
+            shown_magnitude = 20.0 * np.log10(shown_magnitude)
+        frequencies = np.asarray(self.view.frequencies.magnitude)
+        figure, (upper, lower) = plt.subplots(2, 1, sharex=True)
+        upper.plot(frequencies, shown_magnitude)
+        lower.plot(frequencies, np.angle(values))
+        upper.set_ylabel("|S| (dB)" if magnitude == "db" else "|S|")
+        lower.set_ylabel("phase (rad)")
+        lower.set_xlabel("frequency")
+        return figure
 
 
+@dataclass(frozen=True, slots=True)
 class ReconciliationEvidence:
-    """Typed comparison between selected-view and backend-native S evidence."""
+    comparable: bool
+    reason: str | None
+    last_comparable_ancestor: str
 
     def __init__(self) -> None:
         unavailable("ReconciliationEvidence construction")
 
-    @property
-    def comparable(self) -> bool:
-        """Whether topology, boundary, reference, frequency, and basis align."""
 
-        unavailable("ReconciliationEvidence.comparable")
-
-    @property
-    def reason(self) -> str | None:
-        """Exact mismatch reason when ``comparable`` is false."""
-
-        unavailable("ReconciliationEvidence.reason")
-
-    @property
-    def last_comparable_ancestor(self) -> str:
-        """SHA-256 identity of the longest comparable Ref-lineage prefix."""
-
-        unavailable("ReconciliationEvidence.last_comparable_ancestor")
-
-
+@dataclass(frozen=True, slots=True)
 class HBScatteringMatrixResult(ScatteringMatrixResult):
-    """HB S matrices with backend-native and reconciliation evidence."""
+    backend_native: MatrixView | None = None
+    reconciliation: ReconciliationEvidence | None = None
 
-    @property
-    def backend_native(self) -> MatrixView:
-        """Backend-returned matrix with its native basis and normalization."""
-
-        unavailable("HBScatteringMatrixResult.backend_native")
-
-    @property
-    def reconciliation(self) -> ReconciliationEvidence:
-        """Return typed comparability and conversion/residual evidence."""
-
-        unavailable("HBScatteringMatrixResult.reconciliation")
+    def __init__(self) -> None:
+        unavailable("HBScatteringMatrixResult construction")
 
 
+@dataclass(frozen=True, slots=True)
 class DirectSolveResult(AnalysisResult):
-    """Linear Direct response over the requested grid and selected view.
+    """Complete finite Direct S/Y/Z response from one verified receipt."""
 
-    ``s``, ``y``, and ``z`` expose parallel labeled matrix-family surfaces.
-    The Result has no fake HB case layer.
-    """
+    frequencies: Quantity
+    s: ScatteringMatrixResult
+    y: MatrixFamilyResult
+    z: MatrixFamilyResult
+    traces: Mapping[str, TraceResult] = field(default_factory=dict)
 
-    @property
-    def frequencies(self) -> object:
-        """Exact Quantity-valued grid used by this Direct solve."""
-
-        unavailable("DirectSolveResult.frequencies")
-
-    @property
-    def s(self) -> ScatteringMatrixResult:
-        """Selected-view S matrices and presentation helpers."""
-
-        unavailable("DirectSolveResult.s")
-
-    @property
-    def y(self) -> MatrixFamilyResult:
-        """Selected-view Quantity-valued admittance matrices."""
-
-        unavailable("DirectSolveResult.y")
-
-    @property
-    def z(self) -> MatrixFamilyResult:
-        """Selected-view Quantity-valued impedance matrices."""
-
-        unavailable("DirectSolveResult.z")
-
-    @property
-    def traces(self) -> Mapping[str, TraceResult]:
-        """Ordered read-only mapping of declared Direct trace ID to its result."""
-
-        unavailable("DirectSolveResult.traces")
+    def __init__(self) -> None:
+        unavailable("DirectSolveResult construction")
 
 
+@dataclass(frozen=True, slots=True)
 class DirectQuantityResult(AnalysisResult):
-    """One evaluated Direct root, pole, zero, coupling, or response scalar.
+    root: Quantity | None = None
+    frequency: Quantity | None = None
+    linewidth: Quantity | None = None
+    slope: Quantity | None = None
+    value: Quantity | None = None
+    magnitude: Quantity | None = None
+    real: Quantity | None = None
+    imag: Quantity | None = None
 
-    The exact public properties depend on the originating Spec.  Root-like
-    results expose ``root``, ``frequency``, ``linewidth``, and applicable slope
-    evidence; response/coupling results expose their declared complex scalar
-    and typed projections.
-    """
-
-    @property
-    def root(self) -> object:
-        """Complex angular-frequency Quantity when the originating Spec has one."""
-
-        unavailable("DirectQuantityResult.root")
-
-    @property
-    def frequency(self) -> object:
-        """Physical frequency Quantity derived from the selected complex root."""
-
-        unavailable("DirectQuantityResult.frequency")
-
-    @property
-    def linewidth(self) -> object:
-        """Positive passive linewidth Quantity when defined by the Spec."""
-
-        unavailable("DirectQuantityResult.linewidth")
-
-    @property
-    def slope(self) -> object:
-        """Local nonzero-derivative evidence for the machine-resolved root."""
-
-        unavailable("DirectQuantityResult.slope")
-
-    @property
-    def value(self) -> object:
-        """Declared complex response or coupling Quantity when applicable."""
-
-        unavailable("DirectQuantityResult.value")
-
-    @property
-    def magnitude(self) -> object:
-        """Magnitude projection of the declared complex scalar when applicable."""
-
-        unavailable("DirectQuantityResult.magnitude")
-
-    @property
-    def real(self) -> object:
-        """Real projection of the declared complex scalar when applicable."""
-
-        unavailable("DirectQuantityResult.real")
-
-    @property
-    def imag(self) -> object:
-        """Imaginary projection of the declared complex scalar when applicable."""
-
-        unavailable("DirectQuantityResult.imag")
+    def __init__(self) -> None:
+        unavailable(f"{type(self).__name__} construction")
 
 
+@dataclass(frozen=True, slots=True)
 class DiagonalRootResult(DirectQuantityResult):
-    """Loaded root, frequency, linewidth, and local slope from one root request."""
+    """Loaded root and local slope evidence from one diagonal-root request."""
 
-    @property
-    def root(self) -> object:
-        """Machine-resolved complex angular-frequency Quantity."""
+    root: Quantity
+    frequency: Quantity
+    linewidth: Quantity
+    slope: Quantity
 
-        unavailable("DiagonalRootResult.root")
-
-    @property
-    def frequency(self) -> object:
-        """Physical frequency Quantity derived from the resolved root."""
-
-        unavailable("DiagonalRootResult.frequency")
-
-    @property
-    def linewidth(self) -> object:
-        """Positive passive linewidth Quantity from the same root."""
-
-        unavailable("DiagonalRootResult.linewidth")
-
-    @property
-    def slope(self) -> object:
-        """Local nonzero complex slope evidence at the resolved root."""
-
-        unavailable("DiagonalRootResult.slope")
+    def __init__(self) -> None:
+        unavailable("DiagonalRootResult construction")
 
 
+@dataclass(frozen=True, slots=True)
 class OperatorPointResult:
-    """One exact frequency slice of a labeled Direct dynamic operator."""
+    frequency: Quantity
+    matrix: Quantity
+    coordinates: tuple[str, ...]
 
     def __init__(self) -> None:
         unavailable("OperatorPointResult construction")
 
-    @property
-    def frequency(self) -> object:
-        """Exact Quantity-valued requested frequency; never interpolated."""
 
-        unavailable("OperatorPointResult.frequency")
-
-    @property
-    def matrix(self) -> object:
-        """Coordinate- and unit-bearing complex dynamic-operator matrix."""
-
-        unavailable("OperatorPointResult.matrix")
-
-    @property
-    def coordinates(self) -> tuple[str, ...]:
-        """Ordered coordinates labeling the operator rows and columns."""
-
-        unavailable("OperatorPointResult.coordinates")
-
-
+@dataclass(frozen=True, slots=True)
 class OperatorResult(AnalysisResult):
-    """Labeled, unit-bearing Direct dynamic operator materialized on a grid."""
+    points: tuple[OperatorPointResult, ...]
 
-    def at(self, frequency: object) -> OperatorPointResult:
-        """Select an exact requested grid point; never interpolate."""
+    def __init__(self) -> None:
+        unavailable("OperatorResult construction")
 
-        unavailable("OperatorResult.at")
+    def at(self, frequency: Quantity) -> OperatorPointResult:
+        for point in self.points:
+            if point.frequency == frequency:
+                return point
+        raise KeyError("frequency was not materialized")
 
 
+@dataclass(frozen=True, slots=True)
 class OptimizationBest:
-    """Best evaluated candidate and its immutable physical ``ParameterSet``."""
+    """Lowest finite-cost baseline or population candidate in ledger order."""
+
+    parameters: ParameterSet
+    cost: float
 
     def __init__(self) -> None:
         unavailable("OptimizationBest construction")
 
-    @property
-    def parameters(self) -> ParameterSet:
-        """Values that may be passed explicitly to another Direct or HB request."""
 
-        unavailable("OptimizationBest.parameters")
-
-
+@dataclass(frozen=True, slots=True)
 class OptimizationResult(AnalysisResult):
-    """Auditable Direct-only search result with candidate and failure ledgers."""
+    """Verified CMA winner and immutable completed-generation ledgers."""
 
-    @property
-    def best(self) -> OptimizationBest:
-        """Return the best successfully evaluated candidate, not stale fallback."""
+    best: OptimizationBest
+    ledger: tuple[Mapping[str, object], ...] = ()
 
-        unavailable("OptimizationResult.best")
+    def __init__(self) -> None:
+        unavailable("OptimizationResult construction")
 
 
 class HBCaseOutcome(Result):
-    """One named success or numerical failure in a shared ``HBBatchResult``.
+    """One named success or receipt-backed numerical HB failure.
 
-    Every declared case remains addressable. A successful outcome exposes
-    selected-view S/Y/Z, traces, and derived Bias/Pump classifications. A
-    failed outcome exposes its receipt-backed ``HBCaseFailure``; accessing a
-    success-only property raises that same failure rather than returning an
-    empty or stale value.
+    ``states`` and ``state_node_map`` are operating-point evidence only, never
+    View coordinates or current-drive targets.
     """
+
+    __slots__ = (
+        "_id", "_failure", "_bias_state", "_pump_state", "_s", "_y", "_z",
+        "_traces", "_states", "_state_node_map",
+    )
+
+    def __init__(self) -> None:
+        unavailable("HBCaseOutcome construction")
 
     @property
     def id(self) -> str:
-        """Exact user-declared case ID used as the batch lookup key."""
-
-        unavailable("HBCaseOutcome.id")
+        return self._id
 
     @property
     def succeeded(self) -> bool:
-        """Whether this case materialized its complete success surface."""
-
-        unavailable("HBCaseOutcome.succeeded")
+        return self._failure is None
 
     @property
     def failure(self) -> HBCaseFailure | None:
-        """Receipt-backed numerical failure, or ``None`` after success."""
+        return self._failure
 
-        unavailable("HBCaseOutcome.failure")
+    def _success(self, value: object) -> object:
+        if self._failure is not None:
+            raise self._failure
+        return value
 
     @property
     def bias_state(self) -> BiasState:
-        """Derived DC-bias classification for a successful case."""
-
-        unavailable("HBCaseOutcome.bias_state")
+        return self._success(self._bias_state)  # type: ignore[return-value]
 
     @property
     def pump_state(self) -> PumpState:
-        """Derived nonzero-mode classification after source-vector summation."""
-
-        unavailable("HBCaseOutcome.pump_state")
+        return self._success(self._pump_state)  # type: ignore[return-value]
 
     @property
     def s(self) -> HBScatteringMatrixResult:
-        """Selected-view, backend-native, and reconciliation S evidence."""
-
-        unavailable("HBCaseOutcome.s")
+        return self._success(self._s)  # type: ignore[return-value]
 
     @property
     def y(self) -> MatrixFamilyResult:
-        """Selected-view Quantity-valued admittance matrices."""
-
-        unavailable("HBCaseOutcome.y")
+        return self._success(self._y)  # type: ignore[return-value]
 
     @property
     def z(self) -> MatrixFamilyResult:
-        """Selected-view Quantity-valued impedance matrices."""
-
-        unavailable("HBCaseOutcome.z")
+        return self._success(self._z)  # type: ignore[return-value]
 
     @property
     def traces(self) -> Mapping[str, TraceResult]:
-        """Ordered read-only mapping of declared trace ID to materialized trace."""
-
-        unavailable("HBCaseOutcome.traces")
+        return self._success(self._traces)  # type: ignore[return-value]
 
     @property
-    def states(self) -> object:
-        """Operating-point node-flux Fourier evidence in weber.
+    def states(self) -> Quantity:
+        return self._success(self._states)  # type: ignore[return-value]
 
-        Nodes are the ordered mapped compiled non-ground nodes, not selectable
-        Ref or coordinate identities and not drive targets.
-        """
-
-        unavailable("HBCaseOutcome.states")
+    @property
+    def state_node_map(self) -> tuple[Mapping[str, object], ...]:
+        return self._success(self._state_node_map)  # type: ignore[return-value]
 
 
+@dataclass(frozen=True, slots=True)
 class HBBatchResult(AnalysisResult):
-    """Ordered collection of user-named HB cases sharing one basis and request.
+    cases: Mapping[str, HBCaseOutcome]
 
-    Use ``hb.cases[id]``.  The batch deliberately has no ``hb[id]`` shortcut
-    and no special ``pump_on`` collection because many independently named
-    driven conditions may all derive ``PumpState.ON``.
-    """
+    def __init__(self) -> None:
+        unavailable("HBBatchResult construction")
 
-    @property
-    def cases(self) -> Mapping[str, HBCaseOutcome]:
-        """Ordered mapping from every declared case ID to its typed outcome."""
-
-        unavailable("HBBatchResult.cases")
-
-    def show(
-        self,
-        *,
-        magnitude: Literal["linear", "db"] = "linear",
-    ) -> object:
-        """Overlay declared cases using named traces or the full matrix fallback."""
-
-        unavailable("HBBatchResult.show")
+    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+        return HtmlPresentation(f"<pre>HB cases: {escape(', '.join(self.cases))}</pre>")
 
 
+@dataclass(frozen=True, slots=True)
 class TraceResult(Result):
-    """One named complex S projection over the parent solve's frequency grid."""
+    frequencies: Quantity
+    value: Quantity
 
-    @property
-    def frequencies(self) -> object:
-        """Exact Quantity-valued grid inherited from the parent solve."""
+    def __init__(self) -> None:
+        unavailable("TraceResult construction")
 
-        unavailable("TraceResult.frequencies")
+    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+        if magnitude not in {"linear", "db"}:
+            raise ValueError("magnitude must be 'linear' or 'db'")
+        import matplotlib.pyplot as plt
 
-    @property
-    def value(self) -> object:
-        """Complex trace values in declared frequency order."""
-
-        unavailable("TraceResult.value")
-
-    def show(
-        self,
-        *,
-        magnitude: Literal["linear", "db"] = "linear",
-    ) -> object:
-        """Display magnitude and wrapped phase without recomputation."""
-
-        unavailable("TraceResult.show")
+        values = np.abs(np.asarray(self.value.magnitude))
+        if magnitude == "db":
+            values = 20.0 * np.log10(values)
+        figure, axis = plt.subplots()
+        axis.plot(np.asarray(self.frequencies.magnitude), values)
+        return figure
 
 
+@dataclass(frozen=True, slots=True)
 class ExplanationResult(Result):
-    """Deterministic compile preflight with no solver or workspace write."""
+    evidence: Mapping[str, object]
+
+    def __init__(self) -> None:
+        unavailable("ExplanationResult construction")
+
+    def show(self, **presentation: object) -> HtmlPresentation:
+        return HtmlPresentation(f"<pre>{escape(repr(dict(self.evidence)))}</pre>")
 
 
+@dataclass(frozen=True, slots=True)
 class InventoryResult(Result):
-    """Pure deterministic listing from the current bound workspace leaf.
+    requests: tuple[Mapping[str, object], ...]
 
-    It lists exact request identities without selecting or implying a latest
-    request.
-    """
+    def __init__(self) -> None:
+        unavailable("InventoryResult construction")
 
 
+@dataclass(frozen=True, slots=True)
 class ReportResult(Result):
-    """Pure derived report assembled from explicit ``AnalysisResult`` inputs."""
+    html: str
+    inputs: tuple[AnalysisResult, ...] = ()
+
+    def __init__(self) -> None:
+        unavailable("ReportResult construction")
+
+    def show(self, **presentation: object) -> HtmlPresentation:
+        return HtmlPresentation(self.html)
 
     def save(self, path: str | PathLike[str]) -> Path:
-        """Write one new self-contained HTML file atomically.
+        target = Path(path)
+        if target.suffix != ".html":
+            raise ValueError("report path must end in .html")
+        if not target.parent.is_dir():
+            raise FileNotFoundError(target.parent)
+        if target.exists():
+            raise FileExistsError(target)
+        with NamedTemporaryFile("w", encoding="utf-8", dir=target.parent, prefix=f".{target.name}.", suffix=".tmp", delete=False) as temporary:
+            temporary.write(self.html)
+            temporary.flush()
+            fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        try:
+            link(temporary_path, target)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        directory_fd = os_open(target.parent, O_RDONLY)
+        try:
+            fsync(directory_fd)
+        finally:
+            from os import close
+            close(directory_fd)
+        return target
 
-        The parent must exist, the suffix must be ``.html``, and an existing
-        target is never overwritten. The returned ``Path`` names the new file.
-        Invalid suffix, missing parent, and existing target use ``ValueError``,
-        ``FileNotFoundError``, and ``FileExistsError`` respectively.
-        """
 
-        unavailable("ReportResult.save")
-
-
+@dataclass(frozen=True, slots=True)
 class CircuitDiagramResult(Result):
-    """Materialized authoring or compiler-expanded Plan diagram.
+    drawing: object
+    representation: Literal["authoring", "compiled"] = "authoring"
 
-    A compiled result records Plan, compiler, and expanded-graph identities.
-    Neither representation contains a reduced equivalent or backend row and
-    neither becomes topology or numerical-result authority.
-    """
+    def __init__(self) -> None:
+        unavailable("CircuitDiagramResult construction")
 
-    def show(self) -> object:
-        """Present this materialized diagram without compiling or analyzing."""
-
-        unavailable("CircuitDiagramResult.show")
+    def show(self, **presentation: object) -> object:
+        return self.drawing

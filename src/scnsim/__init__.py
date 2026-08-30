@@ -1,9 +1,9 @@
 """SCNSim — Superconducting Circuit Network Simulation.
 
-This package is currently an importable ``CONVERGING`` API scaffold.  Its
-classes, signatures, and docstrings make the proposed V1 mental model
-inspectable with ``help()`` and IDE completion.  Solver/compiler behavior is
-intentionally absent and every executable surface fails explicitly.
+This package is a ``CONVERGING`` V1 candidate.  Primitive authoring, Direct
+analysis, retained diagonal-root evaluation, optimization, durable evidence,
+and report assembly implement the Lessons 1--5 surface.  Later V1 slices stay
+importable but fail explicitly until their candidate implementation lands.
 
 Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
 with :class:`CircuitRun` plus a model package supplied by your team if you only

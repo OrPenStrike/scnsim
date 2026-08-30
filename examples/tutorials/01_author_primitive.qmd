@@ -9,7 +9,7 @@ execute:
 **Learn:** make components, nodes, ground, and one logical Port the physical authority.
 **Run:** author one reflective LC circuit.
 **Inspect:** its authoring schematic.
-**Status:** `CONVERGING` scaffold.
+**Status:** `CONVERGING` dev3 candidate.
 :::
 
 ## Assemble only the branches you mean
@@ -74,7 +74,7 @@ diagram = plan.render_schematic(
 diagram.show()
 ```
 
-The current scaffold stops explicitly at construction, so this page promises
-no rendered circuit or numerical evidence yet.
+The dev3 candidate returns a real Schemdraw authoring diagram here. It remains
+presentation of the authored Plan—not numerical evidence and not a solver run.
 
 [Course map](../../docs/index.qmd) · [Next: prepare and solve a Direct response](02_solve_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)

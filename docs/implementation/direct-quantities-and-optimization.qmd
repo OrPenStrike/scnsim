@@ -46,8 +46,10 @@ is zero; zero denominator with nonzero numerator is infinity. Operands and the
 resulting residual must be finite. An empty complement that requires no solve
 is a no-op. Any failed stage fails the whole grid request; no partial family,
 pseudoinverse, or infinity is materialized.
-The Result records matrix norm, conditioning, precision, and residual evidence,
-but condition number creates no additional threshold.
+These residual checks are mandatory execution-time Gates. Their raw values are
+not public Result or receipt fields, and condition number is neither a Gate nor
+a required computation. A verified success instead binds the exact algorithm
+ID and semantic runtime source digest that performed every required check.
 
 Each quantity Spec compiles to a typed dependency node: response element,
 diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
