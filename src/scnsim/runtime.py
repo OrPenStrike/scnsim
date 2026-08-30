@@ -18,6 +18,7 @@ package cannot be mistaken for a working simulator.
 from __future__ import annotations
 
 from os import PathLike
+from typing import overload
 
 from ._scaffold import unavailable
 from .authoring import (
@@ -29,6 +30,7 @@ from .authoring import (
 )
 from .results import (
     DirectQuantityResult,
+    DiagonalRootResult,
     DirectSolveResult,
     ExplanationResult,
     HBBatchResult,
@@ -36,7 +38,6 @@ from .results import (
     OperatorResult,
     OptimizationResult,
     ReportResult,
-    Result,
 )
 from .specs import (
     DiagonalRootSpec,
@@ -137,6 +138,24 @@ class CircuitRun:
 
         unavailable("CircuitRun.original")
 
+    @overload
+    def solve(
+        self,
+        ref: NetworkViewRef,
+        spec: DirectSolveSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DirectSolveResult: ...
+
+    @overload
+    def solve(
+        self,
+        ref: NetworkViewRef,
+        spec: HBSolveSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> HBBatchResult: ...
+
     def solve(
         self,
         ref: NetworkViewRef,
@@ -147,6 +166,38 @@ class CircuitRun:
         """Execute or reuse one sealed solve on a Port-realizable selected view."""
 
         unavailable("CircuitRun.solve")
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
+        spec: DiagonalRootSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DiagonalRootResult: ...
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
+        spec: OperatorSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OperatorResult: ...
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
+        spec: (
+            HybridizedPoleSpec
+            | TransferZeroSpec
+            | ResidueNormalizedCouplingSpec
+            | ResponseElementSpec
+        ),
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DirectQuantityResult: ...
 
     def evaluate(
         self,
@@ -161,7 +212,7 @@ class CircuitRun:
         ),
         *,
         parameters: ParameterSet | None = None,
-    ) -> DirectQuantityResult | OperatorResult:
+    ) -> DiagonalRootResult | DirectQuantityResult | OperatorResult:
         """Evaluate one typed Direct quantity or materialize its full operator.
 
         This public method does not imply per-candidate Python execution:
@@ -180,6 +231,63 @@ class CircuitRun:
 
         unavailable("CircuitRun.optimize")
 
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: DirectSolveSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DirectSolveResult: ...
+
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: DiagonalRootSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DiagonalRootResult: ...
+
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: OptimizationSpec,
+    ) -> OptimizationResult: ...
+
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: HBSolveSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> HBBatchResult: ...
+
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: OperatorSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OperatorResult: ...
+
+    @overload
+    def resolve(
+        self,
+        ref: NetworkViewRef,
+        spec: (
+            HybridizedPoleSpec
+            | TransferZeroSpec
+            | ResidueNormalizedCouplingSpec
+            | ResponseElementSpec
+        ),
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> DirectQuantityResult: ...
+
     def resolve(
         self,
         ref: NetworkViewRef,
@@ -196,10 +304,46 @@ class CircuitRun:
         ),
         *,
         parameters: ParameterSet | None = None,
-    ) -> Result:
-        """Verify and load the exact prior result without executing or finding latest."""
+    ) -> (
+        DirectSolveResult
+        | HBBatchResult
+        | DiagonalRootResult
+        | DirectQuantityResult
+        | OperatorResult
+        | OptimizationResult
+    ):
+        """Verify and load the exact prior result without executing or finding latest.
+
+        ``parameters`` must be omitted for ``OptimizationSpec`` because
+        ``optimize()`` always starts from the sealed Plan baseline.
+        """
 
         unavailable("CircuitRun.resolve")
+
+    @overload
+    def explain(
+        self,
+        ref: NetworkViewRef,
+        spec: OptimizationSpec,
+    ) -> ExplanationResult: ...
+
+    @overload
+    def explain(
+        self,
+        ref: NetworkViewRef,
+        spec: (
+            DirectSolveSpec
+            | HBSolveSpec
+            | DiagonalRootSpec
+            | HybridizedPoleSpec
+            | TransferZeroSpec
+            | ResidueNormalizedCouplingSpec
+            | ResponseElementSpec
+            | OperatorSpec
+        ),
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> ExplanationResult: ...
 
     def explain(
         self,
@@ -218,7 +362,11 @@ class CircuitRun:
         *,
         parameters: ParameterSet | None = None,
     ) -> ExplanationResult:
-        """Compile deterministic preflight evidence without solver/workspace writes."""
+        """Compile deterministic preflight evidence without solver/workspace writes.
+
+        ``parameters`` must be omitted for ``OptimizationSpec`` because the
+        optimization baseline is the sealed Plan baseline.
+        """
 
         unavailable("CircuitRun.explain")
 

@@ -14,13 +14,47 @@ $$
 D(\omega)=K-\omega^2 C-i\omega G.
 $$
 
+Every entry of $D$ is serialized in coherent `siemens / second` with
+dimensionality `conductance_per_time`.
+
+The selected circuit admittance under the same convention is
+
+$$
+Y_{\mathrm{circ}}(\omega)=\frac{D(\omega)}{-i\omega}
+=G-i\omega C+\frac{i}{\omega}K.
+$$
+
+For every requested ordinary frequency $f$, evaluation uses
+$\omega=2\pi f$ after coherent-SI conversion.
+
 Port loading and selected-network conversion follow the Runtime Contract.
-Schur reduction, Y/Z conversion, and S conversion use factorizations and linear
-solves. The Result records matrix norm, conditioning, precision, and residual
-evidence without inventing an acceptance threshold.
+Schur reduction, source-boundary formation, Y-to-Z conversion, and Y-to-S
+conversion use factorizations and linear solves. Each solve must satisfy
+$\eta(A,X,B)\le\tau(n)$ for its $AX=B$, where
+
+$$
+\eta(A,X,B)=
+\frac{\lVert AX-B\rVert_\infty}
+{\lVert\lvert A\rvert\lvert X\rvert+\lvert B\rvert\rVert_\infty},
+\qquad
+\tau(n)=256(n+1)\epsilon_{\mathrm{Float64}}.
+$$
+
+Absolute values are entrywise complex magnitudes, the matrix infinity norm is
+the maximum absolute row sum, and $n$ is the square system order. Exact `0/0`
+is zero; zero denominator with nonzero numerator is infinity. Operands and the
+resulting residual must be finite. An empty complement that requires no solve
+is a no-op. Any failed stage fails the whole grid request; no partial family,
+pseudoinverse, or infinity is materialized.
+The Result records matrix norm, conditioning, precision, and residual evidence,
+but condition number creates no additional threshold.
 
 Each quantity Spec compiles to a typed dependency node: response element,
 diagonal root, hybridized pole, transfer zero, or residue-normalized coupling.
+Family-specific pole, zero, residue, response-element, and materialized-operator
+mechanics belong to
+[Direct Poles, Zeros, Couplings, and Operators](direct-poles-zeros-and-operators.qmd);
+this page owns only the shared Direct operator/evaluation graph and CMA core.
 The exact `DiagonalRootSpec` complex-Newton residual, analytic derivative,
 machine-resolution certificate, and baseline-owned continuation are fixed in
 [Diagonal-Root Numerical Procedure](diagonal-root-numerical-procedure.qmd).
@@ -34,20 +68,187 @@ factorization, and root nodes. A Direct response and quantity remain distinct
 public requests, but objectives within one optimization candidate share their
 common dependency graph.
 
+The `dev3` restriction to an original one-Port Direct view with no named traces
+belongs only to `solve_direct`. It is neither a general View law nor an
+`optimize_direct` restriction: `dev3` optimization may evaluate
+`DiagonalRootSpec.frequency` and `.linewidth` on any retained View supported by
+the diagonal-root procedure. A `dev3` Direct-response frequency grid is
+non-empty, one-dimensional, finite, strictly increasing, duplicate-free, and
+positive. A complete response Result always contains finite frequency, S, Y,
+and Z arrays. Exact-open one-Port algebra is checked below this Result boundary
+because its Z is not finite.
+
 Optimization converts finite physical bounds to unit-interval coordinates,
 evaluates declared normalized objectives, and keeps the CMA-ES loop entirely
-inside Julia. Python receives completed-generation progress only. A candidate
+inside Julia. Python's internal process layer receives completed-generation
+JSONL progress; this is not a public operation keyword or callback. A candidate
 whose bound values produce a singular operator, physically invalid mapped
 child value, or non-continuable branch records a typed failure and `Inf` cost;
 it cannot reuse a stale quantity. Invalid request schemas, mapping definitions,
 or compiler invariants fail the request rather than being relabeled as bad
-candidates. `Inf` is Julia optimizer state only: canonical JSON records a
+candidates. `Inf` is optimizer-call data only: canonical JSON records a
 tagged failed-candidate penalty and never emits a non-finite JSON number.
+
+Each active `ParameterRef` is unique. Bounds have matching dimensionality,
+obey $x_{\min}<x_{\max}$, and contain the sealed baseline. The default linear
+map is $z=(x-x_{\min})/(x_{\max}-x_{\min})$. Explicit `transform="log"`
+additionally requires positive lower, upper, and baseline values and applies
+the dimensionless coherent-SI ratio
+$z=\ln(\widehat x/\widehat x_{\min})/
+\ln(\widehat x_{\max}/\widehat x_{\min})$; its inverse is
+$\widehat x=\widehat x_{\min}
+(\widehat x_{\max}/\widehat x_{\min})^z$. Invalid bounds or baseline fail
+before an attempt.
+
+Each variable's schema keeps three distinct roles:
+`model_default_bounds` is the immutable original interval,
+`consumer_override_bounds` is either `null` or the consumer interval, and
+resolved `lower` and `upper` are the bounds that execute. Repeated
+`with_variable_overrides()` calls always retain the same original model
+defaults, replace overrides for the named variables, and preserve prior
+overrides for variables not named by that call. A provided
+`allow_extrapolation` collection is a full replacement, never a union with
+prior authorization. A freshly constructed `OptimizationSpec` serializes an
+empty authorization list; every nonempty list is sorted by `ParameterRef`
+identity and contains only unique active variables.
+
+The complete optimization Spec, including those bound roles and request-local
+extrapolation authorization, enters the request hash. Equivalent source-unit
+spellings remain receipt-only provenance. The receipt binds the request hash
+rather than duplicating a second bounds authority.
+
+Candidate binding is ordered and fail closed: resolve the public parameter
+value, check every calibration-support interval, check request-local
+authorization for any out-of-support value, apply the `AffineMap`, and then
+validate the mapped physical child value. Every out-of-support fan-out emits
+exactly one `extrapolationEvidence` entry naming the parameter,
+`consumer_target`, resolved input value, support interval, lower/upper side,
+canonical distance beyond support, and authorization source. A rejected
+candidate records `none`; an approved candidate records `optimization_spec`;
+ordinary solve/evaluate receipt evidence records `parameter_set`. In-support
+fan-out emits no entry. Distance has the input/support dimensionality and is
+stored in coherent SI as `support_lower - input_value` on the lower side or
+`input_value - support_upper` on the upper side; every emitted distance is
+strictly positive. None claims calibration evidence outside that interval.
+
+Failure ownership is exact. Malformed variables, bounds, objectives, selectors,
+or controls raise `InvalidOptimizationSpec` before an attempt. A sealed compiler
+invariant violated during execution fails the request as `CompilerInvariantError`.
+After the successful baseline, an unapproved out-of-support optimizer sample is
+the existing `InvalidCandidatePhysicalParameter` with
+`stage="affine_support"`; it
+receives the tagged positive-infinity penalty and the generation continues. A
+candidate-dependent nonphysical mapped primitive value uses the same failure
+type at its physical-validation stage: every bound primitive R, L, and C must
+remain finite and strictly positive. Bounds may cross that physical domain,
+but such a sampled candidate cannot compile. An eliminated solve, unresolved
+local slope, or exhausted Newton/continuation procedure becomes
+`EliminatedBlockSolveFailure`, `RootSlopeUnresolved`, or
+`NumericalResolutionUnresolved`. Those candidate failures also receive the
+tagged positive-infinity penalty. The same support, physical, or numerical
+failure during the mandatory baseline fails the whole request. Runtime or
+transport failures remain request-level `RuntimePreparationError` or
+`BackendProtocolError` rather than candidate outcomes.
+
+## Make the optimizer replayable
+
+`CMAESSpec` defaults to `seed=0`, `max_evaluations=200`,
+`population_size=None`, and `initial_sigma=0.25`. For $n$ variables the default
+population is $4+\lfloor3\ln n\rfloor$. The baseline maps to the initial mean,
+is evaluated once before generation 1, consumes budget, and may win.
+
+The first slice pins
+[CMAEvolutionStrategy.jl 0.2.6](https://github.com/jbrea/CMAEvolutionStrategy.jl/tree/v0.2.6),
+registry tree `6bf0985be2c5ea58305d2d04e336684f64fdc12a`. Its public
+`minimize()` initializes the covariance to
+
+$$
+C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
+\qquad i=0,\ldots,n-1,
+$$
+
+not exact identity. That package behavior is part of the optimization
+algorithm identity.
+
+SCNSim first maps physical values to $z\in[0,1]$, calls
+`minimize(objective, baseline_z, initial_sigma, ...)`, passes
+`lower=zeros(n)` and `upper=ones(n)`, and lets the package apply its one
+lin-quad unit-box transform in $z$ space. SCNSim does not clip, mirror, or apply
+a second physical-bound transform. The exact call additionally uses
+`popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
+`parallel_evaluation=true`, `multi_threading=false`, `verbosity=0`, and sets
+`ftol`, `xtol`, `stagnation`, `ftarget`, `maxtime`, and `noise_handling` to
+`nothing`. Its internal callback captures generation evidence and emits
+progress without changing sampling or stopping; ledger sealing follows the
+post-update continuation boundary defined below. The signed Int64 seed
+is passed as the UInt64 with the same bits; the package then constructs its
+pinned `MersenneTwister`. An explicit
+population is an integer of at least two, and `initial_sigma` is positive and
+finite.
+
+The request constants are
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"` and
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
+for changed sampling, update, transform, replay, or stop semantics is invalid;
+that change requires a new ID. The outer algorithm ID is a transitive binding:
+it includes the exact package release and registry tree, Julia patch, call and
+stop configuration, box transform, candidate compile/Direct/objective
+algorithm IDs, raw/transformed hash encoding, continuation-certificate
+projection and boundary timing, replay checks, and winner/tie rule. A change to
+any of those dependencies requires another outer ID rather than silently
+preserving `.v2`.
+
+Only complete generations count:
+
+$$
+g=\left\lfloor\frac{B-1}{\lambda}\right\rfloor,\qquad g\ge1.
+$$
+
+Candidate failure and cache reuse still consume population ordinals. Exact
+cost ties resolve by the earliest baseline/generation/population ordinal. The
+`dev3` candidate supports any number of primitive R/L/C parameters and
+objectives, with `DiagonalRootSpec.frequency` and `.linewidth` selectors on a
+supported retained View.
+
+`dev5` adds the schema-backed selectors
+`HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
+`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResponseElementSpec.magnitude`/`.real`/`.imag`. `QuantitySum` remains legal
+only as the `quantity` inside a `CostObjective`; it is not a standalone
+quantity request or a new scalar selector. This selector expansion reuses the
+identical CMA replay, generation-ledger, candidate-cache, winner/tie, and retry
+semantics above and below; it changes no CMA numerical behavior or algorithm
+identity.
+
+The candidate cache is request-local and keyed by the exact canonical resolved
+`ParameterSet` plus the selected View/objective dependency identity. It may
+reuse only a typed outcome from the current verified ledger chain; it never
+imports a nearby candidate or another request. The new population position is
+still recorded as a cache hit with its own evaluation ordinal.
 
 ## Resume only complete generations
 
-Every completed generation seals its population, physical ParameterSets,
-objective components, failures, and optimizer state in an append-only ledger.
+Every verified generation ledger contains its population, the callback-visible
+raw CMA sample columns as `optimizer_latent_coordinates_f64`, the transformed
+unit-box columns as `optimizer_coordinates_f64`, physical ParameterSets,
+objective components, and failures in an append-only ledger. Both coordinate
+arrays have length $n$ and use request-variable order within each population
+column; candidate records remain in population-column order.
+
+The canonical raw `[n, lambda]` matrix hashes to
+`raw_optimizer_population_sha256`; the canonical transformed matrix hashes to
+`transformed_optimizer_population_sha256`. Both hashes cover the declared
+shape, population-column order, and exact Float64 bits, and must reproduce the
+candidate arrays in the same ledger. The raw hash binds callback-visible $y$;
+the transformed hash binds the $z$ actually consumed by physical evaluation.
+Neither may be inferred from the other or from rounded physical values.
+
+Each successful objective component records its evaluated Quantity, signed
+normalized residual, and weighted cost; the request-owned target, resolved
+scale/source, and weight therefore reproduce both the component and total cost.
+It contains exactly $\lambda$ population outcomes in column order, with their
+global evaluation ordinals; the successful baseline outcome is stored once in
+the optimization Result rather than repeated in every generation.
 An interrupted generation is discarded and deterministically replayed. Resume
 requires exact Plan, request, algorithm, seed, controls, normalization, runtime,
 and completed-ledger identity. No public resume switch changes those rules.
@@ -58,8 +259,78 @@ the new attempt. Equal-generation ledgers must have identical hashes; a
 disagreement is corruption, not a tie to resolve by recency. With no compatible
 ledger, the request starts from its declared seed.
 
-The winning `ParameterSet` is ordinary immutable output. Passing it to another
-solve or evaluate call creates a new exact request; reduction lineage and
+Julia does not serialize or restore the package's private `Optimizer` object.
+It starts the exact pinned call again from the request seed. For every already
+sealed generation, the batch objective verifies each transformed unit-box
+Float64 bit pattern, generation, and population column before returning the
+sealed costs without executing candidate physics. The package callback then
+verifies every raw `y` Float64 bit pattern before the package updates its mean
+or covariance. This second check is required because the lin-quad transform is
+many-to-one. The first unsealed generation resumes real evaluation. Any replay
+mismatch is `EvidenceIntegrityError`, not a population to accept or a reason to
+fall back to physical-value round-tripping.
+
+The callback runs before the package's `update!`, so callback evidence alone
+does not make that generation resumable. Every verified generation ledger also
+carries a `continuation_certificate` with projection ID
+`cmaes-jl-0.2.6-julia-1.12.6-continuation-state.v1`. Its `state_sha256` hashes a
+canonical JSON projection of every dynamic field that can affect a later
+sample, update, or enabled stop:
+
+- `Parameters.n`, `Parameters.λ`, `Parameters.mean`; every field of `Sigma`;
+  every field of `Covariance`, including `C.mat`, eigenvalues, eigenvectors,
+  and square roots; all recombination weights; box-constraint vectors; seed,
+  execution flags, and the fixed `nothing` noise state;
+- `Stop.it`, `Stop.maxiter`, and `Stop.reason`; wall-clock `t0` and logger state
+  are excluded because `maxtime`, `ftol`, `stagnation`, `ftarget`, and `xtol`
+  are all disabled and SCNSim selects the winner from its own ledger;
+- every Julia 1.12.6 `MersenneTwister` field: seed, the DSFMT Int32 state
+  words in `state.val`, `vals`, `ints`, `idxF`, `idxI`, `adv`, `adv_jump`,
+  `adv_vals`, and `adv_ints`; and
+- for a nonterminal boundary, both the next callback's raw `y` and transformed
+  `z` matrices with shape `[n, lambda]`, generation, and population-column
+  order.
+
+Float64 values use the canonical 16-digit bit encoding, Int32/UInt64/UInt128
+values use fixed-width two's-complement or unsigned lowercase hexadecimal, and
+remaining signed integers use canonical decimal strings. Vectors use their
+declared order and square matrices use row order followed by column order. The
+certificate is a continuation-integrity comparison only, not an independently
+reconstructable state artifact; SCNSim never restores this projection or a
+private package object. Its discriminator, projection ID, field set, and array
+order are versioned with the optimization algorithm ID.
+
+A nonterminal certificate also carries
+`next_raw_optimizer_population_sha256` and
+`next_transformed_optimizer_population_sha256`, computed from the exact next
+$y$ and $z$ matrices in that projection. A terminal certificate forbids both
+fields because no next population exists. These hashes are distinct from the
+generation ledger's current-population hashes; together they make the delayed
+boundary check explicit without serializing a private `Optimizer`.
+
+Because the only public hook is pre-update, generation $k<g$ becomes verified
+at callback $k+1$, before `update!(k+1)`, with boundary
+`post_update_post_next_sample_pre_next_update`. The projection contains
+post-update-$k$ numerical state, the RNG after sampling generation $k+1$, and
+the exact raw/transformed next population whose hashes the certificate names.
+If an attempt ends before this boundary, generation $k$ remains unverified and
+retry falls back to the preceding ledger. Generation $g$ is verified only after
+`minimize()` returns with boundary `terminal_post_update`, `Stop.it=g`,
+`Stop.reason=:maxiter`, its post-update state, and no next-population hash.
+During retry, the batch objective verifies transformed `z` before returning
+stored costs for a sealed generation. For the first unsealed generation it
+caches `z` and evaluates the physics normally; its callback recomputes the
+preceding ledger's certificate from package state, RNG, raw `y`, and cached
+`z`, then aborts on mismatch before the package may update or publish evidence.
+A final replay must match the terminal certificate. This one-generation
+evidence lag is intentional and prevents an unchecked post-update divergence
+from becoming resume state.
+
+Every candidate `ParameterSet`, including the immutable winner, carries an
+empty `allow_extrapolation` collection even when the optimization request was
+authorized to explore outside support. Reusing those values in another solve
+or evaluate call requires a new `ParameterSet` with explicit request-local
+approval. The new call creates a new exact request; reduction lineage and
 extrapolation approval are never inherited implicitly.
 
 [Next: HB realization and outcomes](hb-realization-and-outcomes.qmd)

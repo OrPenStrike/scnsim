@@ -21,6 +21,11 @@ complete $C$ to be positive definite. This limitation avoids descriptor and
 infinite-mode handling for `DiagonalRootSpec`; it does not restrict real-grid
 Direct S/Y/Z.
 
+The implementation first requires finite symmetric Float64 $C$ and evaluates
+that condition with `cholesky(Symmetric(C); check=true)`. Factorization failure
+is `UnsupportedSingularCapacitanceForDiagonalRootV1`; V1 adds no separate
+eigenvalue cutoff or condition-number Gate.
+
 With $E$ the eliminated complement, factorize $Q_{EE}$ and solve
 
 $$
@@ -108,8 +113,10 @@ simple, locally isolated root. It is not a validated complex enclosure or a
 proof of global uniqueness. V1 makes no claim that it found the root nearest to
 `root_hint`; the hint selects the deterministic Newton basin only.
 
-Bitwise stagnation is success only if this certificate passes. Otherwise the
-request returns `NumericalResolutionUnresolved`,
+Bitwise stagnation means that the proposed update leaves both the real and
+imaginary Float64 bit patterns of $\omega$ unchanged. It is success only if
+this certificate passes. Otherwise the request returns
+`NumericalResolutionUnresolved`,
 `EliminatedBlockSolveFailure`, or `RootSlopeUnresolved`. A missing, non-finite,
 non-positive, or non-frequency `root_hint` returns `InvalidDiagonalRootHint`.
 A non-positive-definite $C$ returns
@@ -144,4 +151,4 @@ detect every possible Newton-basin jump between certified endpoints. A global
 branch proof would require a later enclosure-based algorithm and a new runtime
 algorithm identity; complete-QEP nearest-root matching is not a substitute.
 
-[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)
+[Next: Direct poles, zeros, couplings, and operators](direct-poles-zeros-and-operators.qmd)

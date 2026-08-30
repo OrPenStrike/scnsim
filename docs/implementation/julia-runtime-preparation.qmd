@@ -24,7 +24,35 @@ Pure authoring and authoring-schematic operations do not prepare Julia.
 real compiler preflight. Preparation is dependency work, not a solver action
 and not workspace evidence.
 
+For a terminal operation, preparation and exact-version verification complete
+before request/attempt workspace mutation. The Plan-bound Run workspace may
+already exist and remains intact if preparation fails. Failure here raises
+`RuntimePreparationError` without an attempt. After Python allocates an
+attempt, child-process creation failure and every later transport failure are
+attempt-backed `BackendProtocolError` outcomes under the process protocol. The
+protocol finalizes the immutable attempt record only after its blocked launch
+bootstrap succeeds or fails.
+
 ## Ship one internal Julia environment
+
+SCNSim will commit these package resources:
+
+```text
+src/scnsim/_julia/
+  Project.toml
+  Manifest.toml
+  runtime.json
+  src/SCNSimBackend.jl
+  bin/scnsim_request.jl
+```
+
+`runtime.json` binds Julia `1.12.6` and the versioned algorithm IDs. The first
+slice Manifest contains JSON3, CMAEvolutionStrategy.jl `0.2.6` at registry tree
+`6bf0985be2c5ea58305d2d04e336684f64fdc12a`, and required standard libraries
+only. The HB slice adds JosephsonCircuits `0.5.4` at General-registry tree
+`43fa323200866910a93dd06ab8c002ed393ed9bb` (tag commit
+`a88bafb8f57ad5b43ef302ae893288f0b75c11e3`). Python locates all resources
+through `importlib.resources`, never caller cwd or a user Julia project.
 
 SCNSim will commit one internal `Project.toml` and `Manifest.toml`. The package
 launches the JuliaPkg-resolved executable with `--project` pointing to that
@@ -52,10 +80,15 @@ work.
 
 The attempt separately records the actual executable hash, host OS and
 architecture, CPU description, Julia threads, BLAS threads, and BLAS vendor.
-Those execution resources do not rename the request. The Primitive Direct E2E
-launcher fixes Julia and BLAS to one thread to reduce avoidable variation, but
-still records the observed values. See
+Those execution resources do not rename the request. Every V1 numerical slice
+fixes Julia and BLAS to one thread to reduce avoidable variation, while still
+recording the observed values. See
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
+
+The first candidate supports Linux and macOS. Windows raises
+`UnsupportedRuntimePlatformError` before workspace mutation, Julia selection,
+or download. The first slice also requires a 64-bit Julia platform so signed
+Int64 optimizer seeds can be reinterpreted exactly as UInt64.
 
 ## Fail without a hidden fallback
 

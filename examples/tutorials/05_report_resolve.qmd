@@ -14,8 +14,8 @@ execute:
 
 ## Report only Results you already hold
 
-The report request names exact Result objects. It does not solve, search a
-workspace for “latest,” or invent an acceptance decision.
+The report specification names exact `AnalysisResult` inputs. It does not
+solve, search a workspace for “latest,” or invent an acceptance decision.
 
 ```{python}
 #| id: build-explicit-report
@@ -77,6 +77,10 @@ identity. `resolve()` never executes and never falls back to another receipt.
 
 ```{python}
 #| id: resolve-exact-root
+from fixtures.primitive_resonator import build_primitive_resonator
+from scnsim import CircuitRun, DiagonalRootSpec, ReductionPipeline, units as u
+
+workspace = "workspaces/primitive-course"
 fixture_after_restart = build_primitive_resonator()
 run_after_restart = CircuitRun(
     plan=fixture_after_restart.plan,

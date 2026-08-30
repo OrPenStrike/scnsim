@@ -1,19 +1,22 @@
 """Typed result-surface declarations for the SCNSim V1 scaffold.
 
-Results are immutable views of verified receipts and artifacts.  They never
-become mutable state on a ``CircuitRun`` or ``NetworkViewRef``.  The properties
-below document the intended Notebook discovery surface; every access fails
-until the corresponding execution and durable evidence implementation exists.
+Results are immutable, already-materialized values. Analysis Results additionally
+bind verified receipts and artifacts. They never become mutable state on a
+``CircuitRun`` or ``NetworkViewRef``. The properties below document the intended
+Notebook discovery surface; every access fails until its implementation exists.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import Enum
+from os import PathLike
+from pathlib import Path
 from typing import Literal
 
 from ._scaffold import unavailable
 from .authoring import ParameterSet
+from .errors import HBCaseFailure
 
 
 class BiasState(Enum):
@@ -31,10 +34,10 @@ class PumpState(Enum):
 
 
 class Result:
-    """Base role shared by exact, immutable SCNSim operation results.
+    """Base role shared by immutable, already-materialized SCNSim values.
 
-    A Result owns its request/ref/runtime identities and verified evidence.  It
-    does not own the Plan and cannot silently trigger another computation.
+    Reading or presenting a Result never triggers another computation. Derived
+    Results need not pretend to own an analysis request or receipt.
     """
 
     def __init__(self) -> None:
@@ -44,6 +47,39 @@ class Result:
         """Present already-materialized data without solving or interpolation."""
 
         unavailable(f"{type(self).__name__}.show")
+
+
+class ResultIdentity:
+    """Immutable hashes for one receipt-backed terminal analysis Result."""
+
+    def __init__(self) -> None:
+        unavailable("ResultIdentity construction")
+
+    @property
+    def plan_sha256(self) -> str:
+        unavailable("ResultIdentity.plan_sha256")
+
+    @property
+    def request_sha256(self) -> str:
+        unavailable("ResultIdentity.request_sha256")
+
+    @property
+    def attempt_sha256(self) -> str:
+        unavailable("ResultIdentity.attempt_sha256")
+
+    @property
+    def result_sha256(self) -> str:
+        unavailable("ResultIdentity.result_sha256")
+
+
+class AnalysisResult(Result):
+    """Receipt-backed terminal Result returned by solve/evaluate/optimize."""
+
+    @property
+    def identity(self) -> ResultIdentity:
+        """Exact Plan, request, attempt, and Result hashes."""
+
+        unavailable(f"{type(self).__name__}.identity")
 
 
 class MatrixView:
@@ -72,9 +108,21 @@ class MatrixView:
 
     @property
     def coordinates(self) -> tuple[str, ...]:
-        """Ordered selected-view coordinate IDs labeling both matrix axes."""
+        """Ordered selected-view coordinate IDs before any HB mode lifting."""
 
         unavailable("MatrixView.coordinates")
+
+    @property
+    def input_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
+        """Flattened input-axis ``(coordinate, mode)`` labels in stored order."""
+
+        unavailable("MatrixView.input_channels")
+
+    @property
+    def output_channels(self) -> tuple[tuple[str, tuple[int, ...]], ...]:
+        """Flattened output-axis ``(coordinate, mode)`` labels in stored order."""
+
+        unavailable("MatrixView.output_channels")
 
     @property
     def probe_loads(self) -> Mapping[str, Literal["raw", "compensated"]]:
@@ -125,8 +173,8 @@ class ReconciliationEvidence:
         unavailable("ReconciliationEvidence.reason")
 
     @property
-    def last_comparable_ancestor(self) -> object:
-        """Evidence identity for the last lineage point that remained comparable."""
+    def last_comparable_ancestor(self) -> str:
+        """SHA-256 identity of the longest comparable Ref-lineage prefix."""
 
         unavailable("ReconciliationEvidence.last_comparable_ancestor")
 
@@ -147,7 +195,7 @@ class HBScatteringMatrixResult(ScatteringMatrixResult):
         unavailable("HBScatteringMatrixResult.reconciliation")
 
 
-class DirectSolveResult(Result):
+class DirectSolveResult(AnalysisResult):
     """Linear Direct response over the requested grid and selected view.
 
     ``s``, ``y``, and ``z`` expose parallel labeled matrix-family surfaces.
@@ -185,7 +233,7 @@ class DirectSolveResult(Result):
         unavailable("DirectSolveResult.traces")
 
 
-class DirectQuantityResult(Result):
+class DirectQuantityResult(AnalysisResult):
     """One evaluated Direct root, pole, zero, coupling, or response scalar.
 
     The exact public properties depend on the originating Spec.  Root-like
@@ -243,6 +291,34 @@ class DirectQuantityResult(Result):
         unavailable("DirectQuantityResult.imag")
 
 
+class DiagonalRootResult(DirectQuantityResult):
+    """Loaded root, frequency, linewidth, and local slope from one root request."""
+
+    @property
+    def root(self) -> object:
+        """Machine-resolved complex angular-frequency Quantity."""
+
+        unavailable("DiagonalRootResult.root")
+
+    @property
+    def frequency(self) -> object:
+        """Physical frequency Quantity derived from the resolved root."""
+
+        unavailable("DiagonalRootResult.frequency")
+
+    @property
+    def linewidth(self) -> object:
+        """Positive passive linewidth Quantity from the same root."""
+
+        unavailable("DiagonalRootResult.linewidth")
+
+    @property
+    def slope(self) -> object:
+        """Local nonzero complex slope evidence at the resolved root."""
+
+        unavailable("DiagonalRootResult.slope")
+
+
 class OperatorPointResult:
     """One exact frequency slice of a labeled Direct dynamic operator."""
 
@@ -268,7 +344,7 @@ class OperatorPointResult:
         unavailable("OperatorPointResult.coordinates")
 
 
-class OperatorResult(Result):
+class OperatorResult(AnalysisResult):
     """Labeled, unit-bearing Direct dynamic operator materialized on a grid."""
 
     def at(self, frequency: object) -> OperatorPointResult:
@@ -290,7 +366,7 @@ class OptimizationBest:
         unavailable("OptimizationBest.parameters")
 
 
-class OptimizationResult(Result):
+class OptimizationResult(AnalysisResult):
     """Auditable Direct-only search result with candidate and failure ledgers."""
 
     @property
@@ -300,51 +376,82 @@ class OptimizationResult(Result):
         unavailable("OptimizationResult.best")
 
 
-class HBCaseResult(Result):
-    """One named HB operating condition from a shared ``HBBatchResult``.
+class HBCaseOutcome(Result):
+    """One named success or numerical failure in a shared ``HBBatchResult``.
 
-    It exposes selected-view S/Y/Z matrices, named trace projections, and
-    derived Bias/Pump classifications.  Its case ID is the only lookup key.
+    Every declared case remains addressable. A successful outcome exposes
+    selected-view S/Y/Z, traces, and derived Bias/Pump classifications. A
+    failed outcome exposes its receipt-backed ``HBCaseFailure``; accessing a
+    success-only property raises that same failure rather than returning an
+    empty or stale value.
     """
 
     @property
-    def bias_state(self) -> BiasState:
-        """Derived DC-bias classification after source-vector summation."""
+    def id(self) -> str:
+        """Exact user-declared case ID used as the batch lookup key."""
 
-        unavailable("HBCaseResult.bias_state")
+        unavailable("HBCaseOutcome.id")
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether this case materialized its complete success surface."""
+
+        unavailable("HBCaseOutcome.succeeded")
+
+    @property
+    def failure(self) -> HBCaseFailure | None:
+        """Receipt-backed numerical failure, or ``None`` after success."""
+
+        unavailable("HBCaseOutcome.failure")
+
+    @property
+    def bias_state(self) -> BiasState:
+        """Derived DC-bias classification for a successful case."""
+
+        unavailable("HBCaseOutcome.bias_state")
 
     @property
     def pump_state(self) -> PumpState:
         """Derived nonzero-mode classification after source-vector summation."""
 
-        unavailable("HBCaseResult.pump_state")
+        unavailable("HBCaseOutcome.pump_state")
 
     @property
     def s(self) -> HBScatteringMatrixResult:
         """Selected-view, backend-native, and reconciliation S evidence."""
 
-        unavailable("HBCaseResult.s")
+        unavailable("HBCaseOutcome.s")
 
     @property
     def y(self) -> MatrixFamilyResult:
         """Selected-view Quantity-valued admittance matrices."""
 
-        unavailable("HBCaseResult.y")
+        unavailable("HBCaseOutcome.y")
 
     @property
     def z(self) -> MatrixFamilyResult:
         """Selected-view Quantity-valued impedance matrices."""
 
-        unavailable("HBCaseResult.z")
+        unavailable("HBCaseOutcome.z")
 
     @property
     def traces(self) -> Mapping[str, TraceResult]:
         """Ordered read-only mapping of declared trace ID to materialized trace."""
 
-        unavailable("HBCaseResult.traces")
+        unavailable("HBCaseOutcome.traces")
+
+    @property
+    def states(self) -> object:
+        """Operating-point node-flux Fourier evidence in weber.
+
+        Nodes are the ordered mapped compiled non-ground nodes, not selectable
+        Ref or coordinate identities and not drive targets.
+        """
+
+        unavailable("HBCaseOutcome.states")
 
 
-class HBBatchResult(Result):
+class HBBatchResult(AnalysisResult):
     """Ordered collection of user-named HB cases sharing one basis and request.
 
     Use ``hb.cases[id]``.  The batch deliberately has no ``hb[id]`` shortcut
@@ -353,8 +460,8 @@ class HBBatchResult(Result):
     """
 
     @property
-    def cases(self) -> Mapping[str, HBCaseResult]:
-        """Ordered read-only mapping keyed only by declared case ID."""
+    def cases(self) -> Mapping[str, HBCaseOutcome]:
+        """Ordered mapping from every declared case ID to its typed outcome."""
 
         unavailable("HBBatchResult.cases")
 
@@ -398,11 +505,26 @@ class ExplanationResult(Result):
 
 
 class InventoryResult(Result):
-    """Listing of exact request identities known to a workspace, never latest."""
+    """Pure deterministic listing from the current bound workspace leaf.
+
+    It lists exact request identities without selecting or implying a latest
+    request.
+    """
 
 
 class ReportResult(Result):
-    """Report assembled from exact named Results without executing analysis."""
+    """Pure derived report assembled from explicit ``AnalysisResult`` inputs."""
+
+    def save(self, path: str | PathLike[str]) -> Path:
+        """Write one new self-contained HTML file atomically.
+
+        The parent must exist, the suffix must be ``.html``, and an existing
+        target is never overwritten. The returned ``Path`` names the new file.
+        Invalid suffix, missing parent, and existing target use ``ValueError``,
+        ``FileNotFoundError``, and ``FileExistsError`` respectively.
+        """
+
+        unavailable("ReportResult.save")
 
 
 class CircuitDiagramResult(Result):

@@ -8,20 +8,26 @@ toc-depth: 2
 
 ## Bind one leaf workspace to one Plan
 
-A V1 leaf workspace is a relocatable directory with one sealed Plan plus
-append-only request attempts. Each request carries its own semantic runtime:
+A V1 replaceable workspace is a relocatable stable root pointing to one leaf
+with one sealed Plan plus append-only request attempts. Each request carries
+its own semantic runtime:
 
 ```text
-workspace.json
-plan.json
-requests/<request-sha256>/
-  request.json
-  attempts/000001/
-    attempt.json
-    logs/
-    artifacts/result.zarr/
-    result.json
-    receipt.json
+.scnsim.lock                    # persistent advisory-lock inode
+workspace.json                 # replaceable root and active-leaf pointer
+leaves/<leaf-instance-id>/
+  workspace.json               # immutable Plan binding
+  plan.json
+  requests/<request-sha256>/
+    request.json
+    attempts/.staging-000001-<lowercase-canonical-uuidv4>/
+    attempts/000001/
+      attempt.json
+      logs/
+      artifacts/
+      outcome.json
+      result.json
+      receipt.json
 ```
 
 The workspace location is not part of computational request identity. It
@@ -29,21 +35,35 @@ selects the evidence store in which that request must be found; relocating the
 whole verified workspace does not rename the request. All stored paths are
 relative to the workspace. `receipt.json` is written last and only after Python
 verifies the attempt outcome. It seals success, typed failure, or interruption;
-only a verified success receipt can materialize a Result. A temporary staging
-directory is never a successful Result.
+only a verified success receipt can materialize an `AnalysisResult`. A
+temporary staging directory is never a successful analysis Result.
 
 V1 uses one writer lock per workspace; different workspaces may run in
 parallel. This deliberately simple ceiling avoids two processes selecting the
 same next attempt number or sealing competing successes. Per-request locking
 is considered only if measured same-workspace throughput requires it.
 
+On Linux and macOS the stable root permanently retains `.scnsim.lock` and uses
+stdlib `fcntl.flock`: writers take an exclusive lock and `resolve()` takes a
+shared lock. The file is never deleted or replaced; normal exit, crash, or
+process termination releases the kernel-held lock. Windows fails before any
+workspace mutation.
+
+The writer lock spans Plan binding or replacement, attempt-ordinal allocation,
+child execution, staged-artifact promotion, outcome verification, and receipt
+sealing. `resolve()` takes the same lock only long enough to read one stable
+hash chain; it never holds an execution slot.
+
 ## Iterate topology in one workspace {#iterate-topology-in-one-workspace}
 
-`CircuitRun(..., versioned=False)` is the default Notebook behavior. Reopening
+`CircuitRun(..., versioned=False)` is the default Notebook behavior. The root
+contains an atomically replaced JSON active-leaf pointer. Its canonical target
+is `leaves/<leaf-instance-id>`; no filesystem symlink is used. Reopening
 the same path with the same Plan identity reuses its evidence. A different Plan
-is validated and sealed first, then an exclusive lock, sibling staging
-directory, and atomic rename replace the old leaf workspace. No prompt,
-recycle area, or implicit topology history is added. A prior Run or lazy Result
+is validated and sealed first. Under the exclusive lock, Python completes a
+sibling staged leaf, atomically renames it to `leaves/<new-leaf-instance-id>`,
+atomically replaces the root pointer, and only then removes the prior leaf. No
+prompt, recycle area, or implicit topology history is added. A prior Run or lazy Result
 whose bound leaf `workspace_instance_id` or Plan no longer matches that path
 raises
 `WorkspacePlanReplacedError` instead of reading unrelated evidence.
@@ -67,7 +87,7 @@ iteration02/
 ```
 
 Each `iterationNN` is an ordinary leaf workspace. The parent maps exact Plan
-hashes to monotonically assigned directories, using at least two decimal
+hashes and leaf instance IDs to monotonically assigned directories, using at least two decimal
 digits. Reopening the same Plan reuses its existing iteration; only a new Plan
 identity allocates the next ordinal. Specs and ParameterSets remain requests
 inside that iteration.
@@ -75,13 +95,15 @@ inside that iteration.
 Index entries are stored in ascending ordinal order. Ordinals and directories
 are unique, every Plan hash appears once, and `next_iteration` is one greater
 than the greatest existing ordinal (or `1` when empty). These cross-entry
-invariants are semantic validation in addition to the JSON Schema shape. The
-parent and all leaf workspace-instance IDs are also mutually distinct.
+invariants are semantic validation in addition to the JSON Schema shape. A
+replaceable root, a versioned parent, and all leaf workspace-instance IDs under
+that root are mutually distinct; every pointer/index entry repeats the exact
+child leaf ID it names.
 
-Opening an existing unversioned leaf with `versioned=True` is a supported,
-atomic one-way conversion: the leaf becomes `iteration01` and the parent index
-is written around it without changing its leaf instance or request identities;
-the new parent receives its own instance ID. Opening a
+Opening an existing replaceable root with `versioned=True` is a supported,
+atomic one-way conversion: its active leaf becomes `iteration01` and the
+versioned parent index replaces the root pointer without changing that leaf's
+instance or request identities; the new parent receives its own instance ID. Opening a
 versioned parent with `versioned=False` raises
 `WorkspaceVersioningDowngradeForbidden` before mutation. The message explains
 that versioning was an explicit preservation choice and directs the user to a
@@ -108,6 +130,79 @@ finds the verified success, and validates Plan, semantic runtime, receipt, manif
 artifact hashes. Missing or corrupt evidence is an error; it never falls back
 to another attempt or request.
 
+## Inspect one bound leaf without selecting it {#inventory-one-bound-leaf}
+
+`run.inventory()` is pure workspace inspection. It takes the persistent
+workspace lock in shared mode while it resolves the Run's leaf and verifies the
+request/attempt chains, then releases the lock before returning. It takes no
+execution slot, launches no child process, creates no request or attempt,
+cleans no staging directory, changes no root pointer or index, and writes
+nothing.
+
+Inventory operates on exactly the leaf bound to the invoking Run. At a
+replaceable root it inspects only the current active leaf and verifies that the
+leaf instance ID and Plan still match the Run; a stale Run raises
+`WorkspacePlanReplacedError`. A versioned Run inspects only its own retained
+iteration, including `iteration01` for a Run preserved by the supported
+one-way upgrade, and never scans sibling iterations.
+
+Within that leaf, inventory verifies every request directory against its exact
+`request.json` hash and Plan binding. Request rows are ordered
+lexicographically by `request_sha256`. Canonical hidden staging directories are
+ignored for listing and status and are left untouched; malformed staging names
+retain the existing integrity failure behavior. Every visible final attempt is
+validated against the existing attempt, outcome, Result, and receipt contracts,
+and its ordinal text is listed in numeric ascending ordinal order.
+
+A request is `succeeded` when any attempt contains a complete verified success.
+This includes a verified HB batch whose every case is a numerical
+`HBCaseFailure`. Without a verified success, the request status is `failed` or
+`interrupted` according to the sealed outcome of the greatest finalized
+ordinal. A request directory with no final attempt after hidden staging entries
+are ignored, any broken request/attempt/receipt hash chain, or any invalid
+final attempt raises `EvidenceIntegrityError` for the whole inspection;
+inventory never skips the bad request or returns a partial listing.
+
+The returned `InventoryResult` remains inspection output, not a request
+selector. `resolve()`, `build_report()`, and every other public API refuse to
+consume it as a latest or current request; resolution still requires the exact
+Ref, Spec, and ParameterSet contract, and reports still require explicit
+receipt-backed analysis Results.
+
+Optimization adds one immutable, hash-linked ledger per completed generation.
+The ledger records package-visible optimizer coordinates, population ordinals,
+physical bindings, objective components, cache/failure state, and the prior
+ledger hash. It separately binds the canonical raw and transformed population
+hashes. It does not serialize package-private optimizer state. Retry
+selects the greatest verified compatible generation, restarts the pinned
+optimizer from the same seed, and replays ledger costs only when coordinates,
+generation, and population column match bitwise. Equal ordinals with different
+hashes or any replay mismatch are `EvidenceIntegrityError`; an interrupted
+generation is discarded and deterministically replayed.
+
+## Promote one attempt atomically
+
+Attempt staging is always a sibling of the final ordinal directory. For
+positive numeric ordinal `k`, its path text is `str(k).zfill(6)`: `1` becomes
+`000001`, while `1000000` remains `1000000`. The two names are therefore
+`requests/<request-sha256>/attempts/.staging-<ordinal-text>-<uuidv4>/` and
+`requests/<request-sha256>/attempts/<ordinal-text>/`. The staging suffix must
+match lowercase canonical UUIDv4 form; a short ordinal, uppercase UUID, wrong
+version/variant nibble, or mismatch with `attempt.json.ordinal` is invalid
+evidence rather than an alternate spelling.
+
+Julia writes only inside that staging directory. Python validates the outcome
+and allowed artifacts, writes
+`receipt.json` last, fsyncs the written files and directories, then atomically
+renames the staging directory to the final ordinal name on the same filesystem.
+
+A valid `outcome.json`, logs, and referenced artifacts move with that rename;
+the receipt records the outcome SHA-256. Invalid raw outcome bytes may be moved
+under `logs/`, but the final attempt cannot retain them under the authoritative
+`outcome.json` name. Interruption never promotes an unverified Result. Hidden
+staging left by a crash is neither an attempt nor a Result and is removed by
+the next exclusive writer before allocating a new ordinal.
+
 ## Store arrays without pickling
 
 Scalar metadata, schemas, failures, and receipts use canonical JSON. Large real
@@ -122,7 +217,15 @@ Chunk shape, array order, dtype, axes, units, coordinate IDs, and real/imag
 pairing are manifest authority. A Python Result may load chunks lazily, but
 must reconstruct the declared NumPy/Pint surface before returning it.
 
+Julia alone creates `.zgroup`, dataset `.zarray`, and chunk files. Python is an
+exact validator and reader: it rejects any metadata byte difference, missing or
+extra path, invalid chunk name/length, or manifest/hash mismatch and never
+rewrites the tree through a Zarr library. The root-group/dataset layout and
+exact compact no-newline metadata bytes are fixed in
+[Canonical Identities and Schemas](canonical-identities-and-schemas.qmd); no
+`.zattrs`, `.zmetadata`, sidecar, or other extra is permitted.
+
 The exact envelopes and Result/artifact references are defined by the
 [machine-readable identity schemas](canonical-identities-and-schemas.qmd).
 
-[Next: Compilation, Ports, and views](compilation-ports-and-views.qmd)
+[Next: Composite snapshots and recursive expansion](composite-snapshots-and-recursive-expansion.qmd)

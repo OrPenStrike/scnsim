@@ -16,14 +16,17 @@ from typing import Literal
 
 from ._scaffold import unavailable
 from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
+from .results import AnalysisResult
 
 
 class DirectSolveSpec:
     """Request a linear frequency-domain response on one selected view.
 
     Use this when the desired output is the Direct S/Y/Z matrix over a
-    frequency grid for a Port-realizable selected view, optionally with named
-    scalar traces.  It is a *solve* request, not a root finder and not the full
+    nonempty, finite, strictly increasing positive frequency grid for a
+    Port-realizable selected view.  The first executable slice accepts only the
+    original one-Port view and no named traces.  It is a
+    *solve* request, not a root finder and not the full
     dynamic operator.  For those tasks use
     ``DiagonalRootSpec``/``HybridizedPoleSpec`` or ``OperatorSpec``.
     """
@@ -79,9 +82,11 @@ class HybridizedPoleSpec:
     """Select an anchored complex pole of a retained coupled block.
 
     Use this when coupling between several named coordinates is part of the
-    physical mode being measured.  SCNSim finds a root of the ordered block
-    determinant and records branch/simple-root evidence; it does not relabel a
-    diagonal root as a hybridized pole.
+    physical mode being measured. SCNSim starts the fixed local numerical
+    procedure at ``anchor`` and records root, null-vector, and nonzero-slope
+    evidence for the ordered block. The anchor is not a nearest-root request or
+    proof of global spectral uniqueness, and a diagonal root is never silently
+    relabeled as a hybridized pole.
     """
 
     def __init__(
@@ -213,7 +218,9 @@ class OptimizationVariable:
 
     SCNSim canonicalizes the bound Quantities and maps them to dimensionless
     optimizer coordinates.  ``transform='log'`` is explicit; no unit name or
-    small SI magnitude silently changes the search coordinates.
+    small SI magnitude silently changes the search coordinates. Log bounds and
+    the sealed baseline must be strictly positive; every transform requires
+    finite ordered same-dimensional bounds containing that baseline.
     """
 
     def __init__(
@@ -233,7 +240,11 @@ class OptimizationVariable:
 
     @property
     def bounds(self) -> tuple[object, object]:
-        """Finite physical lower/upper bounds after any immutable override."""
+        """Resolved finite physical lower/upper bounds used by this variable.
+
+        Immutable model-default and consumer-override provenance belongs to
+        the owning ``OptimizationSpec``, not this resolved view.
+        """
 
         unavailable("OptimizationVariable.bounds")
 
@@ -281,17 +292,23 @@ class CostObjective:
 class CMAESSpec:
     """Declare deterministic CMA-ES execution controls, not design success.
 
-    ``max_evaluations`` is a finite work budget.  It does not decide whether a
-    circuit meets a Design Target; only a Human-owned accepted Gate may do so.
-    The minimal scaffold intentionally omits speculative convergence knobs.
+    ``max_evaluations`` is a finite work budget. ``initial_sigma`` is expressed
+    in the dimensionless unit-coordinate box. These controls do not decide
+    whether a circuit meets a Design Target; only a Human-owned accepted Gate
+    may do so. ``population_size=None`` uses ``4 + floor(3 ln(n))`` for ``n``
+    active variables. The sealed baseline consumes the first evaluation and
+    may win; only complete generations are retained. ``seed`` is restricted to
+    the portable signed 64-bit range. Hidden package stopping criteria are not
+    part of V1.
     """
 
     def __init__(
         self,
         *,
-        seed: int,
-        max_evaluations: int,
+        seed: int = 0,
+        max_evaluations: int = 200,
         population_size: int | None = None,
+        initial_sigma: float = 0.25,
     ) -> None:
         unavailable("CMAESSpec construction")
 
@@ -303,6 +320,15 @@ class OptimizationSpec:
     binding, Plan compilation, reduction replay, shared quantity evaluation,
     objective aggregation, and CMA-ES remain inside one Julia process; Python
     does not receive a callback for each candidate.
+
+    The ``dev3`` runtime slice accepts diagonal-root ``frequency`` and
+    ``linewidth`` selectors; same-dimensional ``QuantitySum`` composition is
+    legal only inside a ``CostObjective``.
+    ``dev5`` completes the catalog with hybridized-pole frequency/linewidth,
+    transfer-zero frequency, residue-coupling magnitude, and response-element
+    magnitude/real/imaginary selectors.  Later-slice selectors remain
+    fail-fast until their owning runtime slice exists.  The Spec is immutable
+    and owns model-default bounds plus any named consumer overrides.
     """
 
     def __init__(
@@ -315,7 +341,11 @@ class OptimizationSpec:
         unavailable("OptimizationSpec construction")
 
     def show(self) -> object:
-        """Inspect variables, bounds, objectives, normalization, and optimizer."""
+        """Inspect variables, bound provenance, objectives, and optimizer.
+
+        Presentation distinguishes immutable model defaults, named consumer
+        overrides, resolved bounds, objectives, and optimizer controls.
+        """
 
         unavailable("OptimizationSpec.show")
 
@@ -330,7 +360,15 @@ class OptimizationSpec:
         bounds: Mapping[ParameterRef, tuple[object, object]],
         allow_extrapolation: Sequence[ParameterRef] = (),
     ) -> OptimizationSpec:
-        """Return an immutable consumer-customized copy of this model default."""
+        """Return an immutable consumer-customized copy of this Spec.
+
+        Named bounds replace that variable's prior consumer override; unnamed
+        variables preserve their existing default or override.  The supplied
+        ``allow_extrapolation`` sequence is the complete authorization set for
+        the returned Spec, replacing rather than extending the source set.
+        Authorization is request-local and is not inherited by winner
+        parameters or a later solve/evaluate request.
+        """
 
         unavailable("OptimizationSpec.with_variable_overrides")
 
@@ -427,6 +465,11 @@ class HBSolveSpec:
     singular at zero.  ``allow_driven_ptc`` must be explicit when a PTC view has
     nonzero DC or AC drive; authorization preserves the loaded operating point
     and compensates only its linearized response.
+
+    V1 deliberately exposes no numerical-control object or keyword.  The
+    pinned backend, iteration/line-search controls, single-thread policy, and
+    independent final-residual check belong to the versioned runtime algorithm
+    identity so two callers cannot silently request different HB numerics.
     """
 
     def __init__(
@@ -448,10 +491,12 @@ class ReportSpec:
 
     Report assembly never searches for "latest" evidence and does not solve,
     interpolate, or create a Design Target.  Each input keeps its exact result
-    identity and may be a Direct result, one HB case, or an optimization result.
+    identity and may be a Direct result, an HB batch, a typed quantity, or an
+    optimization result.
+    Report assembly itself is a pure derived operation with no request receipt.
     """
 
-    def __init__(self, *, inputs: Sequence[object]) -> None:
+    def __init__(self, *, inputs: Sequence[AnalysisResult]) -> None:
         unavailable("ReportSpec construction")
 
 

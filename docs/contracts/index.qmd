@@ -31,7 +31,9 @@ replace a public invariant.
 ## Implementation Design {#implementation-design}
 
 Read this collection in order before changing the scaffold. Each page answers
-one maintainer question.
+one maintainer question. Together they cover all thirteen lessons and every
+currently declared public V1 surface; a later runtime slice may remain
+fail-fast, but its implementation boundary is no longer left implicit.
 
 1. [Which layer owns each responsibility?](../implementation/system-architecture.qmd)
 2. [When is a Plan sealed, and what is hashed?](../implementation/plan-sealing-and-identity.qmd)
@@ -40,12 +42,16 @@ one maintainer question.
 5. [How is Julia prepared without manual setup?](../implementation/julia-runtime-preparation.qmd)
 6. [What crosses the Python–Julia process boundary?](../implementation/python-julia-protocol.qmd)
 7. [How are requests, attempts, receipts, and arrays stored?](../implementation/workspace-attempts-and-artifacts.qmd)
-8. [How do compilation, Ports, and views become one selected network?](../implementation/compilation-ports-and-views.qmd)
-9. [How is one loaded diagonal root solved and certified?](../implementation/diagonal-root-numerical-procedure.qmd)
-10. [How are Direct quantities and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
-11. [How are HB normalization and partial case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
-12. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
-13. [How are Q2D input, legacy provenance, and implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
+8. [How is a Composite sealed and recursively expanded?](../implementation/composite-snapshots-and-recursive-expansion.qmd)
+9. [How do primitive compilation and logical Ports form one physical graph?](../implementation/compilation-ports-and-views.qmd)
+10. [How do Q2D matrices become a complete pi ladder?](../implementation/rlgc-q2d-and-pi-expansion.qmd)
+11. [How does an ordered Ref lineage become one selected network?](../implementation/view-lineage-and-selected-networks.qmd)
+12. [How is one loaded diagonal root solved and certified?](../implementation/diagonal-root-numerical-procedure.qmd)
+13. [How are poles, zeros, response elements, couplings, and operators evaluated?](../implementation/direct-poles-zeros-and-operators.qmd)
+14. [How are Direct operators and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
+15. [How are full V1 HB normalization and case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
+16. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
+17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
 The collection describes the intended candidate implementation, not source
 that already exists. When a future slice changes one of these decisions, only

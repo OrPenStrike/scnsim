@@ -269,9 +269,11 @@ class CompositePlan:
 
     A custom Library factory declares public parameters with baselines, adds
     children, composes their pins into internal electric nodes, and explicitly
-    exposes only supported pins and coordinates before ``build()``.  Hidden
-    children, nodes, and parameters remain implementation evidence.  This
-    scaffold declares that authoring boundary but implements none of it.
+    exposes only supported pins and coordinates before ``build()``. ``build()``
+    permanently seals the complete private graph; later mutation fails rather
+    than changing the identity of an existing ``ComponentInstance``. Hidden
+    children, nodes, bindings, and parameters remain compilation evidence.
+    This scaffold declares that authoring boundary but implements none of it.
     """
 
     def __init__(self, *, id: str, library: Library) -> None:
@@ -319,7 +321,7 @@ class CompositePlan:
         unavailable("CompositePlan.expose_coordinate")
 
     def build(self) -> ComponentInstance:
-        """Seal the declaration as one exact-identity composite instance."""
+        """Permanently seal and snapshot one exact composite instance."""
 
         unavailable("CompositePlan.build")
 

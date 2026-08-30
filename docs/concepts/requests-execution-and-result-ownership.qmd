@@ -22,9 +22,12 @@ would make those situations ambiguous.
 `CircuitRun` owns the sealed Plan's runtime context, workspace, requests,
 receipts, and terminal execution. A Ref and Spec describe one exact question;
 `solve()`, `evaluate()`, and `optimize()` perform different kinds of real
-work and return typed Results. A Result owns one verified answer and its exact
-evidence identity, while `resolve()` retrieves that answer without making a
-new computation.
+work and return typed `AnalysisResult` values. An Analysis Result owns one
+verified answer and its exact evidence identity, while `resolve()` retrieves
+that answer without making a new computation. The broader `Result` role also
+covers already-materialized derived values such as explanations, diagrams, and
+reports; those preserve their explicit sources without inventing an operation
+receipt.
 
 The question and the attempt have separate identities. Repeating a failed or
 interrupted request appends a new immutable attempt; it does not change the

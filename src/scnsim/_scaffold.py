@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from typing import NoReturn
 
-
-class ScaffoldUnavailableError(NotImplementedError):
-    """Raised when a declared SCNSim surface has no candidate implementation yet."""
+from .errors import ScaffoldUnavailableError
 
 
 def unavailable(surface: str) -> NoReturn:
@@ -14,5 +12,11 @@ def unavailable(surface: str) -> NoReturn:
 
     raise ScaffoldUnavailableError(
         f"{surface} is declared for SCNSim V1 review but is not implemented in "
-        "the current CONVERGING scaffold."
+        "the current CONVERGING scaffold.",
+        stage="scaffold",
+        evidence={
+            "type": "failure_evidence",
+            "operation": "scaffold",
+            "context_kind": "scaffold",
+        },
     )

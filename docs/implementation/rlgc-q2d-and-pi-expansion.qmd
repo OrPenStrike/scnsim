@@ -1,0 +1,165 @@
+---
+title: "RLGC, Q2D, and Pi Expansion"
+subtitle: "How does one frozen N-conductor extraction become an auditable physical ladder?"
+toc-depth: 2
+---
+
+**Status:** `CONVERGING` implementation design. The public RLGC contract in
+[Component Authoring](../component-authoring.qmd#general-rlgc) remains the
+authoritative API. This page fixes the loader and compiler mechanics; it does
+not turn one extraction into broadband or convergence evidence.
+
+## Accept one native AEDT grammar
+
+`load_q2d_rlgc()` accepts exactly the AEDT 2024.2 combined `CG, RL` CSV profile.
+It reads raw bytes, records their SHA-256 before decoding, then requires strict
+UTF-8 with no replacement characters or byte-order mark. CRLF and LF delimit
+records; all other content is parsed exactly as written. The first five records
+must be, in order:
+
+```text
+<setup>:LastAdaptive
+Problem Type:  CG, RL
+C Units:pF/meter, G Units:mho/meter, R Units:ohm/meter, L Units:nH/meter
+Reduce Matrix:  Original
+Frequency:  <finite-decimal>GHz
+```
+
+`<setup>` is recorded as source evidence. `<finite-decimal>` is parsed once to
+a finite positive Float64 GHz value and converted to SI Hz; it is extraction
+provenance, not a solve-grid instruction. The loader rejects a missing, extra,
+or reordered header record rather than accepting a visually similar export.
+
+After any blank separator, exactly one primary block of each title is required:
+
+```text
+Capacitance Matrix
+Conductance Matrix
+Inductance Matrix
+Resistance Matrix
+```
+
+Primary blocks occur in that C/G/L/R order. Supplemental native coupling or
+Spice blocks may appear between them, but can neither replace a primary block
+nor contribute values. A primary block contains one CSV header whose first
+field is empty and whose remaining fields are nonempty, unique native labels;
+then exactly one row for every header label, in the same order, with the row
+label in the first field and one finite decimal value per column. All four
+blocks must use that identical native-label order. Whitespace surrounding CSV
+fields is trimmed only to identify labels and numeric tokens; the raw-byte
+digest remains the source identity.
+
+The public `conductor_map` is a complete bijection from those native labels to
+public conductor names. It relabels the ordered basis but never sorts,
+subsets, diagonalizes, or otherwise changes it. `reference_conductor` is the
+public name for the omitted reference group; it is not required to occur in the
+CSV. The receipt carries raw digest, native labels/order, public labels/order,
+five header records, source units, SI frequency, canonical matrices, and
+profile ID `aedt_q2d_xy_cross_section_positive_z`.
+
+Calling this loader is a **caller assertion** that the bytes came from the
+supported AEDT XY-cross-section profile and that extractor `+z` is line
+head-to-tail current. CSV bytes cannot prove that origin, direction, setup
+convergence, or any external solver run. The receipt therefore records
+`profile_boundary="caller_asserted"`; a caller unable to make that assertion
+must use a manual `RLGC` declaration instead.
+
+## Validate matrices without repairing them
+
+The loader converts the four declared per-length units to SCNSim SI Float64
+arrays once. Every converted entry must be finite, and all symmetry checks are
+bit-exact after that conversion:
+
+$$
+M_{ij}=M_{ji},\qquad M\in\{C,G,L,R\}.
+$$
+
+For the ordered $N\geq1$ conductor basis it then requires:
+
+- $C$ and $G$ have nonpositive off-diagonals and nonnegative row sums;
+- $C$ and $L$ pass an unpivoted Float64 Cholesky factorization;
+- the minimum eigenvalue of each symmetric $G$ and $R$ is nonnegative.
+
+No tolerance is applied to symmetry, Maxwell signs, row sums, or the
+nonnegative-eigenvalue test. SCNSim does not symmetrize, clip a small negative
+entry, project to a positive semidefinite matrix, add a grounding term, or
+discard a mutual entry. A failed check is invalid input, not a near-valid
+network. The continuum model and the reason these matrices share one ordered
+conductor basis are maintained in
+[Telegrapher Model: From RLGC Continuum to a Finite LC Ladder](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/transmission-lines/telegrapher-rlgc-distributed-line.qmd#finite-symmetric-pi-section).
+
+Manual `RLGC` follows the same Float64 matrix validation and receives
+`source_kind="manual"`; it may record an unspecified source frequency but
+never obtains a Q2D profile claim by similarity.
+
+## Expand exactly one symmetric pi ladder
+
+For a transmission line with bound length $\ell$ and fixed positive integer
+`n_sections`, the compiler uses
+
+$$
+\Delta x=\ell/n_{\mathrm{sections}}.
+$$
+
+It allocates stations `0` through `n_sections` for each conductor in declared
+order. Station `0` is the qualified `head` pin and station `n_sections` is the
+qualified `tail` pin. Section $s$ connects station $s-1$ to $s$ with the full
+ordered series blocks $R\Delta x$ and $L\Delta x$. At each end of every section
+it stamps the complete Maxwell shunt blocks
+
+$$
+G\Delta x/2,\qquad C\Delta x/2
+$$
+
+to Plan ground. Thus an interior station has the sum of its two adjacent
+half-shunts; an endpoint has exactly one. Length rebinding recomputes
+$\Delta x$ but does not change station count, conductor order, matrix rank, or
+pin identity.
+
+The implementation must preserve an explicit station/section record even for
+an exact-zero branch. Lowering may omit a zero-valued physical row, but its
+matrix value, section index, station attachment, and `omitted_as_zero` evidence
+remain in the compile product and terminal receipt. There is no scalar
+equivalent for an $N>1$ block and no hidden collapse of mutual C/G/L/R terms.
+
+## Lower one graph faithfully for Direct and HB
+
+The pi graph is backend-neutral. Direct consumes every validated full R/L/G/C
+block in the declared basis. HB consumes full C/G and L blocks in that same
+basis, but only diagonal $R$: any bitwise nonzero off-diagonal resistance
+entry makes an HB request fail during preflight. HB must not drop, diagonalize,
+or approximate that entry. This is a capability boundary, not a different
+physical Plan.
+
+The parent component, section index, station/conductor identities, bound
+values, orientation, and each backend lowering are receipt evidence. Direct
+and HB therefore may use distinct realizations while remaining traceable to one
+expanded graph.
+
+## Render the whole compiled audit
+
+`CircuitDiagramSpec(representation="compiled")` is a deterministic audit of the
+expanded graph, not a Direct/HB diagram or a reduced network. It orders line
+components by their compiled component identity, then sections ascending, then
+conductors in the declared basis. It shows every station and section, endpoint
+attachment, $\Delta x$, conductor/reference identity, head-to-tail orientation,
+all series blocks, and both endpoint half-shunts. Interior stations identify
+both contributions and their total.
+
+For $N=1$ the audit may use ordinary R/L/G/C symbols; for $N>1$ it keeps
+ordered conductor lanes and prints complete matrix-valued blocks. Exact-zero
+rows may be visually omitted only when their complete table says
+`omitted_as_zero`. Pagination is deterministic and retains continuous station
+and section IDs; no view, solver row, partial range, or numerical result is
+introduced by rendering.
+
+## Preflight evidence
+
+`run.explain()` recompiles the bound graph and reports the facts above,
+including Q2D/manual provenance, validation evidence, station map, zero-row
+evidence, and Direct/HB capability. It is pure preflight: it does not launch a
+solver, allocate an attempt, write a workspace receipt, or materialize a
+numerical Result. It may prepare the package-owned Julia environment when a
+real compiler preflight requires it; preparation is not solver or receipt work.
+
+[Next: View lineage and selected networks](view-lineage-and-selected-networks.qmd)
