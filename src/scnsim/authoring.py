@@ -1,7 +1,7 @@
-"""Public authoring declarations for primitive and dev4 Composite circuits.
+"""Public authoring declarations for primitive, Composite, and RLGC circuits.
 
-The sealed Plan remains the sole physical authority. RLGC and compiled
-diagrams retain their declared fail-fast boundary for later V1 slices.
+The sealed Plan remains the sole physical authority. HB authoring retains its
+declared fail-fast boundary for the dev6 slice.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 import unicodedata
 
+import numpy as np
+
 from ._scaffold import unavailable
 from .errors import PlanSealedError, SCNSimValidationError
 from .units import Quantity, registry, require_positive_quantity, require_quantity
@@ -29,7 +31,7 @@ def _identifier(value: str, *, field: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"{field} must be a string")
     value = unicodedata.normalize("NFC", value)
-    if not value or any(ord(char) < 32 or char in "/\\" for char in value):
+    if not value or any(ord(char) < 32 or ord(char) == 127 or char in "/\\" for char in value):
         raise ValueError(f"{field} must be a nonempty portable identifier")
     return value
 
@@ -95,7 +97,7 @@ def _binding(value: object, unit: str, *, name: str, positive: bool = False) -> 
 class PinRef:
     """Stable reference to one named electrical terminal of a component."""
 
-    __slots__ = ("_component", "name")
+    __slots__ = ("_component", "_name")
 
     def __init__(self) -> None:
         unavailable("PinRef construction")
@@ -104,8 +106,12 @@ class PinRef:
     def _create(cls, component: ComponentInstance, name: str) -> PinRef:
         instance = object.__new__(cls)
         instance._component = component
-        instance.name = name
+        instance._name = name
         return instance
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     @property
     def component_id(self) -> str:
@@ -148,7 +154,7 @@ class ElectricNodeRef:
 class CoordinateRef:
     """Public handle to one observable coordinate inside a later composite."""
 
-    __slots__ = ("_component", "name")
+    __slots__ = ("_component", "_name")
 
     def __init__(self) -> None:
         unavailable("CoordinateRef construction")
@@ -157,8 +163,12 @@ class CoordinateRef:
     def _create(cls, component: ComponentInstance, name: str) -> CoordinateRef:
         instance = object.__new__(cls)
         instance._component = component
-        instance.name = name
+        instance._name = name
         return instance
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     @property
     def id(self) -> str:
@@ -177,7 +187,7 @@ class CoordinateRef:
 class PortRef:
     """Plan-bound handle to one logical Port component."""
 
-    __slots__ = ("_plan", "id", "_node", "role", "reference_impedance")
+    __slots__ = ("_plan", "_id", "_node", "_role", "_reference_impedance")
 
     def __init__(self) -> None:
         unavailable("PortRef construction")
@@ -193,11 +203,23 @@ class PortRef:
     ) -> PortRef:
         instance = object.__new__(cls)
         instance._plan = plan
-        instance.id = id
+        instance._id = id
         instance._node = node
-        instance.role = role
-        instance.reference_impedance = reference_impedance
+        instance._role = role
+        instance._reference_impedance = reference_impedance
         return instance
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def role(self) -> Literal["terminated", "nonloading_probe"]:
+        return self._role
+
+    @property
+    def reference_impedance(self) -> Quantity:
+        return self._reference_impedance
 
     @property
     def node(self) -> ElectricNodeRef:
@@ -317,7 +339,7 @@ def _public_affine_map(
 class InductiveBranchRef:
     """Stable oriented handle to an inductive branch exposed for dev4 coupling."""
 
-    __slots__ = ("_component", "id")
+    __slots__ = ("_component", "_id")
 
     def __init__(self) -> None:
         unavailable("InductiveBranchRef construction")
@@ -326,8 +348,12 @@ class InductiveBranchRef:
     def _create(cls, component: ComponentInstance, id: str) -> InductiveBranchRef:
         instance = object.__new__(cls)
         instance._component = component
-        instance.id = id
+        instance._id = id
         return instance
+
+    @property
+    def id(self) -> str:
+        return self._id
 
     @property
     def component_id(self) -> str:
@@ -411,48 +437,206 @@ class ParameterSet:
 
 
 class RLGC:
-    """Immutable per-length matrices for a later distributed-line slice."""
+    """Immutable ordered per-length matrices for one frozen transmission line."""
+
+    __slots__ = (
+        "_conductors", "_reference_conductor", "_resistance", "_inductance",
+        "_conductance", "_capacitance", "_extraction_frequency", "_source",
+        "_source_quantities",
+    )
 
     def __init__(
         self,
         *,
         conductors: Sequence[str],
         reference_conductor: str,
-        resistance_per_length: object,
-        inductance_per_length: object,
-        conductance_per_length: object,
-        capacitance_per_length: object,
-        extraction_frequency: object | None = None,
+        resistance_per_length: Quantity,
+        inductance_per_length: Quantity,
+        conductance_per_length: Quantity,
+        capacitance_per_length: Quantity,
+        extraction_frequency: Quantity | None = None,
     ) -> None:
-        unavailable("RLGC construction")
+        if isinstance(conductors, (str, bytes)) or not isinstance(conductors, Sequence):
+            raise TypeError("conductors must be a nonempty sequence of identifiers")
+        names = tuple(_identifier(name, field="conductor") for name in conductors)
+        if not names:
+            raise ValueError("RLGC requires at least one conductor")
+        if len(set(names)) != len(names):
+            raise SCNSimValidationError("RLGC conductor names must be unique", stage="authoring")
+        reference = _identifier(reference_conductor, field="reference_conductor")
+        if reference in names:
+            raise SCNSimValidationError("reference_conductor cannot occur in the RLGC conductor basis", stage="authoring")
+
+        size = len(names)
+        resistance = _rlgc_matrix(resistance_per_length, "ohm / meter", size, name="resistance_per_length")
+        inductance = _rlgc_matrix(inductance_per_length, "henry / meter", size, name="inductance_per_length")
+        conductance = _rlgc_matrix(conductance_per_length, "siemens / meter", size, name="conductance_per_length")
+        capacitance = _rlgc_matrix(capacitance_per_length, "farad / meter", size, name="capacitance_per_length")
+        _validate_rlgc_matrices(resistance, inductance, conductance, capacitance)
+
+        frequency: float | None
+        if extraction_frequency is None:
+            frequency = None
+        else:
+            value = require_positive_quantity(extraction_frequency, "hertz", name="extraction_frequency")
+            frequency = float(value.to("hertz").magnitude)
+        object.__setattr__(self, "_conductors", names)
+        object.__setattr__(self, "_reference_conductor", reference)
+        object.__setattr__(self, "_resistance", resistance)
+        object.__setattr__(self, "_inductance", inductance)
+        object.__setattr__(self, "_conductance", conductance)
+        object.__setattr__(self, "_capacitance", capacitance)
+        object.__setattr__(self, "_extraction_frequency", frequency)
+        object.__setattr__(self, "_source", _freeze_rlgc_source({"source_kind": "manual"}))
+        source_quantities = {
+            "resistance_per_length": registry.Quantity(1.0, resistance_per_length.units),
+            "inductance_per_length": registry.Quantity(1.0, inductance_per_length.units),
+            "conductance_per_length": registry.Quantity(1.0, conductance_per_length.units),
+            "capacitance_per_length": registry.Quantity(1.0, capacitance_per_length.units),
+        }
+        if extraction_frequency is not None:
+            source_quantities["extraction_frequency"] = registry.Quantity(1.0, extraction_frequency.units)
+        object.__setattr__(self, "_source_quantities", MappingProxyType(source_quantities))
+
+    @classmethod
+    def _from_source(cls, *, source: Mapping[str, object], **kwargs: object) -> "RLGC":
+        value = cls(**kwargs)
+        object.__setattr__(value, "_source", _freeze_rlgc_source(source))
+        return value
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("RLGC values are immutable")
 
     @property
     def conductors(self) -> tuple[str, ...]:
-        unavailable("RLGC.conductors")
+        return self._conductors
 
     @property
     def reference_conductor(self) -> str:
-        unavailable("RLGC.reference_conductor")
+        return self._reference_conductor
 
     @property
-    def resistance_per_length(self) -> object:
-        unavailable("RLGC.resistance_per_length")
+    def resistance_per_length(self) -> Quantity:
+        return _rlgc_quantity(self._resistance, "ohm / meter")
 
     @property
-    def inductance_per_length(self) -> object:
-        unavailable("RLGC.inductance_per_length")
+    def inductance_per_length(self) -> Quantity:
+        return _rlgc_quantity(self._inductance, "henry / meter")
 
     @property
-    def conductance_per_length(self) -> object:
-        unavailable("RLGC.conductance_per_length")
+    def conductance_per_length(self) -> Quantity:
+        return _rlgc_quantity(self._conductance, "siemens / meter")
 
     @property
-    def capacitance_per_length(self) -> object:
-        unavailable("RLGC.capacitance_per_length")
+    def capacitance_per_length(self) -> Quantity:
+        return _rlgc_quantity(self._capacitance, "farad / meter")
 
     @property
-    def extraction_frequency(self) -> object | None:
-        unavailable("RLGC.extraction_frequency")
+    def extraction_frequency(self) -> Quantity | None:
+        return None if self._extraction_frequency is None else registry.Quantity(self._extraction_frequency, "hertz")
+
+    def _canonical_record(self) -> dict[str, object]:
+        return {
+            "type": "rlgc",
+            "conductors": list(self._conductors),
+            "reference_conductor": self._reference_conductor,
+            "orientation": "extractor_positive_z_is_head_to_tail",
+            "resistance_per_length": _rlgc_matrix_record(self._resistance, "ohm / meter", "resistance_per_length"),
+            "inductance_per_length": _rlgc_matrix_record(self._inductance, "henry / meter", "inductance_per_length"),
+            "conductance_per_length": _rlgc_matrix_record(self._conductance, "siemens / meter", "conductance_per_length"),
+            "capacitance_per_length": _rlgc_matrix_record(self._capacitance, "farad / meter", "capacitance_per_length"),
+            "extraction_frequency": None if self._extraction_frequency is None else _quantity_record(registry.Quantity(self._extraction_frequency, "hertz"), "hertz"),
+            "source": _thaw_rlgc_source(self._source),
+        }
+
+
+def _rlgc_matrix(value: object, unit: str, size: int, *, name: str) -> tuple[tuple[float, ...], ...]:
+    if not isinstance(value, Quantity):
+        raise TypeError(f"{name} must be a SCNSim Quantity-valued matrix")
+    if value._REGISTRY is not registry:
+        raise TypeError(f"{name} must use the scnsim.units registry")
+    try:
+        matrix = np.asarray(value.to(unit).magnitude, dtype=np.float64)
+    except Exception as exc:
+        raise ValueError(f"{name} must have dimensionality compatible with {unit}") from exc
+    if matrix.ndim != 2 or matrix.shape != (size, size):
+        raise SCNSimValidationError(f"{name} must be a {size} by {size} matrix", stage="authoring")
+    if not np.isfinite(matrix).all():
+        raise ValueError(f"{name} entries must be finite")
+    return tuple(tuple(float(entry) for entry in row) for row in matrix)
+
+
+def _rlgc_quantity(matrix: tuple[tuple[float, ...], ...], unit: str) -> Quantity:
+    values = np.asarray(matrix, dtype=np.float64)
+    values.setflags(write=False)
+    return registry.Quantity(values, unit)
+
+
+def _rlgc_matrix_record(matrix: tuple[tuple[float, ...], ...], unit: str, dimensionality: str) -> dict[str, object]:
+    from ._canonical import float64_hex
+
+    size = len(matrix)
+    return {
+        "type": "quantity_matrix_f64",
+        "shape": [size, size],
+        "values_f64": [float64_hex(value) for row in matrix for value in row],
+        "si_unit": unit,
+        "dimensionality": dimensionality,
+    }
+
+
+def _validate_rlgc_matrices(
+    resistance: tuple[tuple[float, ...], ...],
+    inductance: tuple[tuple[float, ...], ...],
+    conductance: tuple[tuple[float, ...], ...],
+    capacitance: tuple[tuple[float, ...], ...],
+) -> None:
+    matrices = {
+        "resistance_per_length": resistance,
+        "inductance_per_length": inductance,
+        "conductance_per_length": conductance,
+        "capacitance_per_length": capacitance,
+    }
+    arrays = {name: np.asarray(value, dtype=np.float64) for name, value in matrices.items()}
+    for name, matrix in arrays.items():
+        if not np.array_equal(matrix.view(np.uint64), matrix.T.view(np.uint64)):
+            raise SCNSimValidationError(f"{name} must be exactly symmetric", stage="authoring")
+    for name in ("capacitance_per_length", "conductance_per_length"):
+        matrix = arrays[name]
+        if np.any(matrix[~np.eye(len(matrix), dtype=bool)] > 0):
+            raise SCNSimValidationError(f"{name} off-diagonal entries must be nonpositive", stage="authoring")
+        if np.any(matrix.sum(axis=1) < 0):
+            raise SCNSimValidationError(f"{name} row sums must be nonnegative", stage="authoring")
+    for name in ("capacitance_per_length", "inductance_per_length"):
+        try:
+            np.linalg.cholesky(arrays[name])
+        except np.linalg.LinAlgError as exc:
+            raise SCNSimValidationError(f"{name} must be positive definite", stage="authoring") from exc
+    for name in ("conductance_per_length", "resistance_per_length"):
+        if float(np.linalg.eigvalsh(arrays[name])[0]) < 0:
+            raise SCNSimValidationError(f"{name} must be positive semidefinite", stage="authoring")
+
+
+def _freeze_rlgc_source(value: Mapping[str, object]) -> Mapping[str, object]:
+    def freeze(item: object) -> object:
+        if isinstance(item, Mapping):
+            return MappingProxyType({str(key): freeze(nested) for key, nested in item.items()})
+        if isinstance(item, (list, tuple)):
+            return tuple(freeze(nested) for nested in item)
+        return item
+
+    return MappingProxyType({str(key): freeze(item) for key, item in value.items()})
+
+
+def _thaw_rlgc_source(value: Mapping[str, object]) -> dict[str, object]:
+    def thaw(item: object) -> object:
+        if isinstance(item, Mapping):
+            return {key: thaw(nested) for key, nested in item.items()}
+        if isinstance(item, tuple):
+            return [thaw(nested) for nested in item]
+        return item
+
+    return {key: thaw(item) for key, item in value.items()}
 
 
 class AffineMap:
@@ -476,8 +660,17 @@ class AffineMap:
             raise TypeError("intercept must be a Quantity from scnsim.units")
         self._output_unit = _unit_name(intercept.units)
         self.intercept = require_quantity(intercept, self._output_unit, name="intercept")
+        from ._canonical import _UNITS
+
+        slope_dimensions = (registry.Unit(self._output_unit) / registry.Unit(input.unit)).dimensionality
+        self._slope_unit = next(
+            (unit for unit in _UNITS if registry.Unit(unit).dimensionality == slope_dimensions),
+            None,
+        )
+        if self._slope_unit is None:
+            raise ValueError("slope dimensionality is outside SCNSim's canonical unit vocabulary")
         try:
-            self.slope = require_quantity(self.slope, self._output_unit + " / " + input.unit, name="slope")
+            self.slope = require_quantity(self.slope, self._slope_unit, name="slope")
         except Exception as exc:
             raise ValueError("slope dimensionality must map input to intercept") from exc
         self._support = (
@@ -498,7 +691,7 @@ class AffineMap:
         return {
             "kind": "affine",
             "input": self.input._canonical_ref(),
-            "slope": _quantity_record(self.slope, self._output_unit + " / " + self.input.unit),
+            "slope": _quantity_record(self.slope, self._slope_unit),
             "intercept": _quantity_record(require_quantity(self.intercept, self._output_unit, name="intercept"), self._output_unit),
             "support": [_quantity_record(self._support[0], self.input.unit), _quantity_record(self._support[1], self.input.unit)],
         }
@@ -507,7 +700,7 @@ class AffineMap:
 class ComponentInstance:
     """One immutable built-in or sealed Composite component snapshot."""
 
-    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_binding_refs", "_affine_sources", "_ground_groups")
+    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_binding_refs", "_affine_sources", "_ground_groups", "_rlgc_source")
 
     def __init__(self) -> None:
         unavailable("ComponentInstance construction")
@@ -524,6 +717,7 @@ class ComponentInstance:
         branches: Mapping[str, object] = (),
         coordinates: Mapping[str, object] = (),
         ground_groups: Sequence[Sequence[Mapping[str, object]]] = (),
+        rlgc_source: RLGC | None = None,
         catalog_id: str,
         catalog_source: Mapping[str, object],
     ) -> ComponentInstance:
@@ -555,6 +749,7 @@ class ComponentInstance:
         instance._binding_refs = MappingProxyType(binding_refs)
         instance._affine_sources = MappingProxyType(affine_sources)
         instance._ground_groups = tuple(tuple(dict(endpoint) for endpoint in group) for group in ground_groups)
+        instance._rlgc_source = None if rlgc_source is None else rlgc_source._source_quantities
         return instance
 
     @property
@@ -576,10 +771,14 @@ class ComponentInstance:
         return self._catalog_id
 
     def pin(self, name: str, *, conductor: str | None = None) -> PinRef:
-        """Return one declared primitive terminal."""
+        """Return one declared terminal, optionally qualified by conductor."""
 
         if conductor is not None:
-            unavailable("ComponentInstance.pin(conductor=...)")
+            if self._factory != "transmission_line":
+                unavailable("ComponentInstance.pin(conductor=...)")
+            name = f"{_identifier(name, field='pin id')}.{_identifier(conductor, field='conductor')}"
+        elif self._factory == "transmission_line":
+            raise TypeError("transmission_line pins require conductor=")
         try:
             return self._pins[name]
         except KeyError:
@@ -1084,11 +1283,40 @@ class _BuiltinComponents(Library):
         self,
         *,
         id: str,
-        length: object,
+        length: Quantity | ParameterRef | AffineMap,
         rlgc: RLGC,
         n_sections: int,
     ) -> ComponentInstance:
-        unavailable("components.transmission_line")
+        if not isinstance(rlgc, RLGC):
+            raise TypeError("rlgc must be an RLGC value")
+        if isinstance(n_sections, bool) or not isinstance(n_sections, int):
+            raise TypeError("n_sections must be a positive Python integer")
+        if n_sections < 1:
+            raise ValueError("n_sections must be a positive Python integer")
+        baseline, binding = _binding(length, "meter", name="length", positive=True)
+        pins = tuple(
+            f"{end}.{conductor}"
+            for end in ("head", "tail")
+            for conductor in rlgc.conductors
+        )
+        return ComponentInstance._create(
+            id=id,
+            factory="transmission_line",
+            pins=pins,
+            parameters={"length": (baseline, "meter")},
+            realization={
+                "kind": "transmission_line",
+                "length": binding,
+                "rlgc": rlgc._canonical_record(),
+                "n_sections": n_sections,
+                "pin_conductors": list(rlgc.conductors),
+                "bindings": {"length": binding},
+                "branches": {},
+            },
+            rlgc_source=rlgc,
+            catalog_source=_builtin_source(),
+            catalog_id="scnsim.components",
+        )
 
     def interdigitated_capacitor(
         self,
@@ -1236,6 +1464,214 @@ class _PlanNode:
     id: str
     visibility: Literal["public", "internal", "port_promoted"]
     endpoints: tuple[PinRef, ...]
+
+
+def _compiled_line_audit(compiled: Mapping[str, object], *, show_values: bool) -> tuple[str, ...]:
+    """Render the real recursive compiler preflight as a deterministic audit."""
+
+    from ._canonical import canonical_json_bytes
+
+    original = compiled["ref_lineage"]["original"]
+    lines = [
+        f"plan_sha256 {compiled['plan_sha256']}",
+        f"compiler_sha256 {original['compiled_graph_sha256']}",
+        f"expanded_graph_sha256 {compiled['expanded_graph_sha256']}",
+    ]
+    audit_rows = tuple(
+        row for row in compiled["expanded_branch_rows"]
+        if row.get("kind") == "transmission_line_audit"
+    )
+    line_paths = {tuple(row["component_path"]) for row in audit_rows}
+    line_nodes = {
+        station["compiled_node_id"]
+        for row in audit_rows
+        for station in row["stations"]
+    }
+    lines.extend(
+        f"node {index}: {identifier}"
+        for index, identifier in enumerate(compiled["node_order"])
+        if identifier not in line_nodes
+    )
+    if show_values:
+        lines.extend(
+            "binding " + canonical_json_bytes(binding).decode("utf-8")
+            for binding in compiled["resolved_bindings"]
+        )
+    for row in compiled["expanded_branch_rows"]:
+        if tuple(row.get("component_path", ())) in line_paths:
+            continue
+        record = dict(row)
+        if not show_values:
+            for field in (
+                "value", "coupling_coefficient", "derived_mutual_inductance",
+                "length", "dx",
+            ):
+                record.pop(field, None)
+            if record.get("kind") == "transmission_line_audit":
+                record["stations"] = [
+                    {
+                        key: value for key, value in station.items()
+                        if key not in {"compiled_capacitance_total", "compiled_conductance_total"}
+                    }
+                    for station in record.get("stations", ())
+                ]
+                source = record.get("rlgc_source")
+                if isinstance(source, Mapping):
+                    record["rlgc_source"] = {
+                        key: value for key, value in source.items()
+                        if key != "header_records"
+                    }
+        lines.append("branch " + canonical_json_bytes(record).decode("utf-8"))
+    return tuple(lines)
+
+
+def _draw_compiled_ladders(
+    drawing: object,
+    compiled: Mapping[str, object],
+    *,
+    color: str,
+    show_values: bool,
+) -> float:
+    """Draw each recursively compiled transmission line from preflight rows."""
+
+    import schemdraw.elements as elm
+    from ._canonical import float64_from_hex
+
+    rows = tuple(compiled["expanded_branch_rows"])
+
+    def matrix_text(record: Mapping[str, object] | None) -> str:
+        if not show_values or not isinstance(record, Mapping):
+            return ""
+        shape = record.get("shape")
+        values = record.get("values_f64")
+        if not isinstance(shape, list) or len(shape) != 2 or not isinstance(values, list):
+            return ""
+        width = shape[1]
+        matrix = [values[index:index + width] for index in range(0, len(values), width)]
+        rendered = "[" + "; ".join(
+            ", ".join(f"{float64_from_hex(value):g}" for value in row)
+            for row in matrix
+        ) + "]"
+        return f"{rendered} {record.get('si_unit', '')}".rstrip()
+
+    def section_matrix(path: tuple[str, ...], kind: str, section: int) -> str:
+        selected = [
+            row for row in rows
+            if tuple(row.get("component_path", ())) == path
+            and row.get("kind") == kind and row.get("section") == section
+        ]
+        if not show_values or not selected:
+            return ""
+        conductors = audit["conductors"]
+        by_pair = {(row["row_conductor"], row["column_conductor"]): row["value"] for row in selected}
+        values = [
+            [float64_from_hex(by_pair[(left, right)]["si_value_f64"]) for right in conductors]
+            for left in conductors
+        ]
+        unit = selected[0]["value"]["si_unit"]
+        return "[" + "; ".join(", ".join(f"{value:g}" for value in row) for row in values) + f"] {unit}"
+
+    def half_shunt(record: Mapping[str, object] | None) -> str:
+        if record is None:
+            return "none"
+        return f"s{record['section']}.{record['end']}"
+
+    cursor_y = 0.0
+    for audit in (row for row in rows if row.get("kind") == "transmission_line_audit"):
+        path = tuple(audit["component_path"])
+        conductors = tuple(audit["conductors"])
+        sections = int(audit["n_sections"])
+        title = (
+            f"line {'.'.join(path)} | conductors={','.join(conductors)} | "
+            f"reference={audit['reference_conductor']} | sections={sections} | +z head→tail"
+        )
+        if show_values:
+            length = audit["length"]
+            spacing = audit["dx"]
+            title += (
+                f" | length={float64_from_hex(length['si_value_f64']):g} {length['si_unit']}"
+                f" | dx={float64_from_hex(spacing['si_value_f64']):g} {spacing['si_unit']}"
+            )
+        drawing.add(elm.Line(color=color).endpoints((0.0, cursor_y), (0.2, cursor_y)).label(title, loc="right", color=color))
+        cursor_y -= 1.2
+        stations = {(item["station"], item["conductor"]): item for item in audit["stations"]}
+        step = 4.0
+        panel_size = 4
+        panel_count = (sections + panel_size - 1) // panel_size
+        for panel_index, first_section in enumerate(range(1, sections + 1, panel_size), start=1):
+            last_section = min(first_section + panel_size - 1, sections)
+            first_station = first_section - 1
+            top_y = cursor_y - 1.2
+            lane_y = {conductor: top_y - 1.25 * index for index, conductor in enumerate(conductors)}
+            bottom_y = min(lane_y.values())
+            ground_y = bottom_y - 2.4
+            drawing.add(
+                elm.Line(color=color).endpoints((0.0, cursor_y), (0.2, cursor_y))
+                .label(
+                    f"panel {panel_index}/{panel_count} | sections {first_section}–{last_section}",
+                    loc="right", color=color,
+                )
+            )
+            if len(conductors) == 1:
+                conductor = conductors[0]
+                y = lane_y[conductor]
+                for section in range(first_section, last_section + 1):
+                    left = step * (section - first_section)
+                    middle, right = left + step / 2, left + step
+                    r_label = "R" + (("\n" + section_matrix(path, "series_resistance", section)) if show_values else "")
+                    l_label = "L" + (("\n" + section_matrix(path, "series_inductance", section)) if show_values else "")
+                    drawing.add(elm.Resistor(color=color).endpoints((left, y), (middle, y)).label(r_label, color=color))
+                    drawing.add(elm.Inductor(color=color).endpoints((middle, y), (right, y)).label(l_label, color=color))
+                for station in range(first_station, last_section + 1):
+                    x = step * (station - first_station)
+                    record = stations[(station, conductor)]
+                    provenance = (
+                        f"{station}: {record['compiled_node_id']} [{record['attachment']}; "
+                        f"L={half_shunt(record['left_half_shunt'])}; R={half_shunt(record['right_half_shunt'])}]"
+                    )
+                    drawing.add(elm.Dot(open=True, color=color).at((x, y)).label(provenance, loc="top", color=color))
+                    drawing.add(elm.Line(color=color).endpoints((x - 0.22, y), (x + 0.22, y)))
+                    c_text = matrix_text(record.get("compiled_capacitance_total"))
+                    g_text = matrix_text(record.get("compiled_conductance_total"))
+                    drawing.add(elm.Capacitor(color=color).endpoints((x - 0.22, y), (x - 0.22, ground_y)).label("C" + (("\n" + c_text) if c_text else ""), loc="left", color=color))
+                    drawing.add(elm.Resistor(color=color).endpoints((x + 0.22, y), (x + 0.22, ground_y)).label("G" + (("\n" + g_text) if g_text else ""), loc="right", color=color))
+                    drawing.add(elm.Line(color=color).endpoints((x - 0.55, ground_y), (x + 0.55, ground_y)))
+                    drawing.add(elm.Ground(color=color).at((x, ground_y)))
+            else:
+                for section in range(first_section, last_section + 1):
+                    left = step * (section - first_section)
+                    right = left + step
+                    for y in lane_y.values():
+                        drawing.add(elm.Line(color=color).endpoints((left, y), (right, y)))
+                    label = f"section {section}  R·dx / L·dx"
+                    if show_values:
+                        label += (
+                            "\nR=" + section_matrix(path, "series_resistance", section)
+                            + "\nL=" + section_matrix(path, "series_inductance", section)
+                        )
+                    drawing.add(elm.Rect((left + 0.7, bottom_y - 0.35), (right - 0.7, top_y + 0.35), color=color).label(label, color=color))
+                for station in range(first_station, last_section + 1):
+                    x = step * (station - first_station)
+                    for conductor, y in lane_y.items():
+                        record = stations[(station, conductor)]
+                        provenance = (
+                            f"{station}.{conductor}: {record['compiled_node_id']} "
+                            f"[{record['attachment']}; L={half_shunt(record['left_half_shunt'])}; "
+                            f"R={half_shunt(record['right_half_shunt'])}]"
+                        )
+                        drawing.add(elm.Dot(open=True, color=color).at((x, y)).label(provenance, loc="left", color=color))
+                    first = stations[(station, conductors[0])]
+                    label = f"station {station}  C/G matrix"
+                    if show_values:
+                        label += (
+                            "\nC=" + matrix_text(first.get("compiled_capacitance_total"))
+                            + "\nG=" + matrix_text(first.get("compiled_conductance_total"))
+                        )
+                    drawing.add(elm.Rect((x - 0.45, ground_y + 0.5), (x + 0.45, bottom_y - 0.35), color=color).label(label, loc="right", color=color))
+                    drawing.add(elm.Line(color=color).endpoints((x - 0.6, ground_y), (x + 0.6, ground_y)))
+                    drawing.add(elm.Ground(color=color).at((x, ground_y)))
+            cursor_y = ground_y - 2.5
+    return cursor_y
 
 
 class CircuitPlan:
@@ -1526,21 +1962,42 @@ class CircuitPlan:
     _canonical_record = _canonical_snapshot
 
     def render_schematic(self, spec: CircuitDiagramSpec | None = None) -> CircuitDiagramResult:
-        """Materialize a read-only authoring schematic without sealing the Plan."""
+        """Materialize a read-only authoring or declared-line compiled schematic."""
 
         self._validate_complete()
         from .results import CircuitDiagramResult, _verified_result
         from .specs import CircuitDiagramSpec
 
         spec = CircuitDiagramSpec() if spec is None else spec
-        if spec.representation != "authoring":
-            unavailable("CircuitPlan.render_schematic(compiled)")
         try:
             import schemdraw
             import schemdraw.elements as elm
         except ImportError as exc:
             raise RuntimeError("Schemdraw is required for authoring schematics") from exc
         color = "#111827" if spec.theme != "dark" else "#f8fafc"
+        if spec.representation == "compiled":
+            from .runtime import _compiled_schematic_evidence
+
+            compiled = _compiled_schematic_evidence(self)
+            drawing = schemdraw.Drawing(show=False, transparent=True)
+            drawing.config(unit=1.0, color=color, lw=1.2, fontsize=8)
+            legend_y = _draw_compiled_ladders(
+                drawing, compiled, color=color,
+                show_values=spec.show_parameter_values,
+            )
+            for index, line in enumerate(
+                _compiled_line_audit(compiled, show_values=spec.show_parameter_values),
+                start=1,
+            ):
+                y = legend_y - float(index)
+                drawing.add(
+                    elm.Line(color=color)
+                    .endpoints((0.0, y), (0.2, y))
+                    .label(line, loc="right", color=color)
+                )
+            return _verified_result(
+                CircuitDiagramResult, drawing=drawing, representation="compiled"
+            )
         drawing = schemdraw.Drawing(show=False, transparent=True)
         drawing.config(unit=2.5, color=color, lw=1.8, fontsize=11)
         node_y = {id(node): 3.0 * (index + 1) for index, node in enumerate(self._nodes)}

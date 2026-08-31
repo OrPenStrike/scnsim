@@ -8,7 +8,7 @@ decoder hook used after workspace receipt/artifact verification.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from enum import Enum
 from html import escape
 from os import O_RDONLY, PathLike, fsync, link, open as os_open
@@ -89,11 +89,18 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         for name in ("bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
             object.__setattr__(instance, f"_{name}", _freeze(values[name]))
         return instance
-    expected = {item.name for item in fields(cls) if item.init}
-    if set(values) != expected:
-        missing = expected - set(values)
-        extra = set(values) - expected
+    expected = {item.name: item for item in fields(cls) if item.init}
+    missing = set(expected) - set(values)
+    extra = set(values) - set(expected)
+    required_missing = {
+        name for name in missing
+        if expected[name].default is MISSING and expected[name].default_factory is MISSING
+    }
+    if required_missing or extra:
         raise TypeError(f"verified {cls.__name__} fields mismatch: missing={sorted(missing)}, extra={sorted(extra)}")
+    for name in missing:
+        descriptor = expected[name]
+        values[name] = descriptor.default_factory() if descriptor.default_factory is not MISSING else descriptor.default
     if cls is ResultIdentity:
         for name, value in values.items():
             _sha256(value, name=name)
@@ -118,7 +125,13 @@ def _is_verified_identity(value: object) -> bool:
 
 def _is_verified_analysis_result(value: object) -> bool:
     return (
-        type(value) in (DirectSolveResult, DiagonalRootResult, OptimizationResult)
+        type(value) in (
+            DirectSolveResult,
+            DiagonalRootResult,
+            DirectQuantityResult,
+            OperatorResult,
+            OptimizationResult,
+        )
         and getattr(value, "_verified_result_token", None) is _VERIFIED_TOKEN
         and _is_verified_identity(getattr(value, "identity", None))
     )
@@ -272,6 +285,8 @@ class DirectSolveResult(AnalysisResult):
 
 @dataclass(frozen=True, slots=True)
 class DirectQuantityResult(AnalysisResult):
+    """One verified scalar Direct quantity and its contract-defined evidence."""
+
     root: Quantity | None = None
     frequency: Quantity | None = None
     linewidth: Quantity | None = None
@@ -280,6 +295,13 @@ class DirectQuantityResult(AnalysisResult):
     magnitude: Quantity | None = None
     real: Quantity | None = None
     imag: Quantity | None = None
+    zero: Quantity | None = None
+    numerator_slope: Quantity | None = None
+    denominator: Quantity | None = None
+    coupling: Quantity | None = None
+    branch_a_residue: Quantity | None = None
+    branch_b_residue: Quantity | None = None
+    family: Literal["S", "Y", "Z"] | None = None
 
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
@@ -300,6 +322,8 @@ class DiagonalRootResult(DirectQuantityResult):
 
 @dataclass(frozen=True, slots=True)
 class OperatorPointResult:
+    """One verified labeled selected-network operator at one frequency."""
+
     frequency: Quantity
     matrix: Quantity
     coordinates: tuple[str, ...]
@@ -310,12 +334,16 @@ class OperatorPointResult:
 
 @dataclass(frozen=True, slots=True)
 class OperatorResult(AnalysisResult):
+    """Verified selected-network operator points in declared frequency order."""
+
     points: tuple[OperatorPointResult, ...]
 
     def __init__(self) -> None:
         unavailable("OperatorResult construction")
 
     def at(self, frequency: Quantity) -> OperatorPointResult:
+        """Return the already materialized point at exactly ``frequency``."""
+
         for point in self.points:
             if point.frequency == frequency:
                 return point
@@ -449,11 +477,90 @@ class ExplanationResult(Result):
         unavailable("ExplanationResult construction")
 
     def show(self, **presentation: object) -> HtmlPresentation:
-        return HtmlPresentation(f"<pre>{escape(repr(dict(self.evidence)))}</pre>")
+        def table(title: str, headers: tuple[str, ...], rows: object) -> str:
+            body = "".join(
+                "<tr>" + "".join(f"<td>{escape(str(cell))}</td>" for cell in row) + "</tr>"
+                for row in rows
+            )
+            head = "".join(f"<th>{escape(header)}</th>" for header in headers)
+            return f"<h3>{escape(title)}</h3><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+        evidence = self.evidence
+        compiled = evidence.get("compiled", {})
+        lineage = evidence.get("ref_lineage", {})
+        hierarchy = evidence.get("component_hierarchy", ())
+        parameters = evidence.get("parameters", {}).get("bindings", ()) if isinstance(evidence.get("parameters"), Mapping) else ()
+        html = table(
+            "Identity",
+            ("field", "value"),
+            ((name, evidence.get(name)) for name in ("plan_sha256", "request_sha256", "runtime_semantic", "spec")),
+        )
+        html += table(
+            "View lineage",
+            ("step", "evidence"),
+            ((name, lineage.get(name)) for name in ("original", "ptc", "transforms", "retain", "terminal_coordinates", "port_realizable")),
+        )
+        html += table(
+            "Components and parameters",
+            ("kind", "identity", "declaration"),
+            tuple(("component", item.get("component_path"), item) for item in hierarchy)
+            + tuple(("parameter", item.get("parameter"), item.get("value")) for item in parameters),
+        )
+        if isinstance(compiled, Mapping):
+            html += table(
+                "Compiler and capability",
+                ("field", "value"),
+                (
+                    ("node_order", compiled.get("node_order")),
+                    ("C shape", compiled.get("c_matrix", {}).get("shape")),
+                    ("K shape", compiled.get("k_matrix", {}).get("shape")),
+                    ("G shape", compiled.get("g_matrix", {}).get("shape")),
+                    ("ports", compiled.get("ports")),
+                    ("root", compiled.get("root_preflight")),
+                    ("optimization", compiled.get("optimization_preflight")),
+                    ("Direct / HB", compiled.get("direct_hb_capability")),
+                ),
+            )
+            rows = compiled.get("expanded_branch_rows", ())
+            line_rows = tuple(
+                row for row in rows
+                if isinstance(row, Mapping) and row.get("kind") == "transmission_line_audit"
+            )
+            if line_rows:
+                html += table(
+                    "Transmission-line expansion",
+                    ("component", "conductors/reference", "sections", "length / dx", "orientation", "stations", "source"),
+                    (
+                        (
+                            row.get("component_path"),
+                            (row.get("conductors"), row.get("reference_conductor")),
+                            row.get("n_sections"),
+                            (row.get("length"), row.get("dx")),
+                            row.get("orientation"), row.get("stations"), row.get("rlgc_source"),
+                        )
+                        for row in line_rows
+                    ),
+                )
+            html += table(
+                "Expanded branch rows",
+                ("component", "kind", "section", "station/end", "row", "column", "value", "omitted"),
+                (
+                    (
+                        row.get("component_path"), row.get("kind"), row.get("section"),
+                        (row.get("station"), row.get("end")), row.get("row_conductor"),
+                        row.get("column_conductor"), row.get("value"), row.get("omitted_as_zero"),
+                    )
+                    for row in rows
+                    if isinstance(row, Mapping)
+                ),
+            )
+        return HtmlPresentation(html)
 
 
 @dataclass(frozen=True, slots=True)
 class InventoryResult(Result):
+    """Pure read-only evidence inventory; it never selects a result for resolve."""
+
     requests: tuple[Mapping[str, object], ...]
 
     def __init__(self) -> None:

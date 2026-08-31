@@ -18,6 +18,7 @@ import numpy as np
 from pint import Quantity
 
 from . import units
+from ._canonical import _identifier
 from ._scaffold import unavailable
 from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
 from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec
@@ -102,6 +103,52 @@ def _validate_frequency_grid(quantity: Quantity) -> None:
         raise ValueError("frequencies must be strictly increasing without duplicates")
 
 
+def _validate_frequency_anchor(value: Quantity, *, name: str) -> None:
+    """Validate a real or complex finite frequency anchor without discarding its seed."""
+
+    if not isinstance(value, Quantity) or value._REGISTRY is not units.registry:
+        raise TypeError(f"{name} must use the scnsim.units registry")
+    try:
+        coherent = value.to("hertz")
+    except Exception as exc:
+        raise TypeError(f"{name} must be a frequency Quantity") from exc
+    magnitude = np.asarray(coherent.magnitude)
+    if magnitude.ndim != 0:
+        raise ValueError(f"{name} must be a scalar Quantity")
+    scalar = complex(magnitude.item())
+    if not isfinite(scalar.real) or not isfinite(scalar.imag) or scalar.real <= 0.0:
+        raise ValueError(f"{name} must be finite with a positive real part")
+
+
+def _family(value: str) -> Literal["S", "Y", "Z"]:
+    if value not in {"S", "Y", "Z"}:
+        raise ValueError("family must be 'S', 'Y', or 'Z'")
+    return value  # type: ignore[return-value]
+
+
+def _selector_unit(value: object) -> str | None:
+    if not isinstance(value, QuantitySelector):
+        return None
+    if value.type in {"diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
+        return "hertz"
+    if value.type == "residue_coupling_projection":
+        return "radian / second"
+    if value.type == "response_element_projection":
+        family = getattr(value.spec, "family", None)
+        return {"S": "dimensionless", "Y": "siemens", "Z": "ohm"}.get(family)
+    return None
+
+
+def _validate_selector(value: object) -> str:
+    unit = _selector_unit(value)
+    if unit is None:
+        raise InvalidOptimizationSpec(
+            "quantity must be a declared scalar selector",
+            stage="spec_validation",
+        )
+    return unit
+
+
 @dataclass(frozen=True, slots=True)
 class DirectSolveSpec:
     """Request a complete Direct S/Y/Z response on one selected view."""
@@ -175,84 +222,157 @@ class DiagonalRootSpec:
 class HybridizedPoleSpec:
     """Select an anchored complex pole of a retained coupled block.
 
-    This full-V1 quantity remains unavailable before the ``dev5`` Direct slice.
     It cannot be substituted with a diagonal root or a nearest sampled peak.
     """
 
+    coordinates: tuple[Coordinate, ...]
+    anchor: Quantity
+
     def __init__(self, *, coordinates: Sequence[Coordinate], anchor: Quantity) -> None:
-        unavailable("HybridizedPoleSpec construction")
+        checked = tuple(coordinates)
+        identifiers = tuple(_coordinate_id(value) for value in checked)
+        if len(identifiers) < 2 or len(set(identifiers)) != len(identifiers):
+            raise ValueError("HybridizedPoleSpec requires at least two unique coordinates")
+        _validate_frequency_anchor(anchor, name="anchor")
+        object.__setattr__(self, "coordinates", checked)
+        object.__setattr__(self, "anchor", anchor)
 
     @property
     def frequency(self) -> QuantitySelector:
-        unavailable("HybridizedPoleSpec.frequency selector")
+        return QuantitySelector(self, "frequency", "hybridized_pole_projection")
 
     @property
     def linewidth(self) -> QuantitySelector:
-        unavailable("HybridizedPoleSpec.linewidth selector")
+        return QuantitySelector(self, "linewidth", "hybridized_pole_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "hybridized_pole",
+            "coordinates": tuple(_coordinate_id(value) for value in self.coordinates),
+            "anchor": self.anchor,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class TransferZeroSpec:
     """Select an anchored exact zero of one declared transfer element.
 
-    This is an analytic complex-Newton quantity, not a sampled response
-    minimum. It remains explicitly unavailable before ``dev5``.
+    This is an analytic complex-Newton quantity, not a sampled response minimum.
     """
 
+    anchor: Quantity
+    family: Literal["S", "Y", "Z"]
+    input_coordinate: Coordinate
+    output_coordinate: Coordinate
+
     def __init__(self, *, anchor: Quantity, family: Literal["S", "Y", "Z"], input_coordinate: Coordinate, output_coordinate: Coordinate) -> None:
-        unavailable("TransferZeroSpec construction")
+        _validate_frequency_anchor(anchor, name="anchor")
+        _family(family)
+        _coordinate_id(input_coordinate)
+        _coordinate_id(output_coordinate)
+        object.__setattr__(self, "anchor", anchor)
+        object.__setattr__(self, "family", family)
+        object.__setattr__(self, "input_coordinate", input_coordinate)
+        object.__setattr__(self, "output_coordinate", output_coordinate)
 
     @property
     def frequency(self) -> QuantitySelector:
-        unavailable("TransferZeroSpec.frequency selector")
+        return QuantitySelector(self, "frequency", "transfer_zero_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "transfer_zero", "anchor": self.anchor, "family": self.family,
+            "input_coordinate": _coordinate_id(self.input_coordinate),
+            "output_coordinate": _coordinate_id(self.output_coordinate),
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class ResidueNormalizedCouplingSpec:
     """Evaluate local coupling using explicit pole/root residue evidence.
 
-    This later Direct surface fails rather than fitting a splitting before its
-    ``dev5`` implementation exists.
+    This surface never substitutes a fitted splitting for residue evidence.
     """
 
+    branch_a: DiagonalRootSpec | HybridizedPoleSpec
+    branch_b: DiagonalRootSpec | HybridizedPoleSpec
+    frequency: Quantity
+
     def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity) -> None:
-        unavailable("ResidueNormalizedCouplingSpec construction")
+        if not isinstance(branch_a, (DiagonalRootSpec, HybridizedPoleSpec)) or not isinstance(branch_b, (DiagonalRootSpec, HybridizedPoleSpec)):
+            raise TypeError("branches must be DiagonalRootSpec or HybridizedPoleSpec")
+        units.require_positive_quantity(frequency, "hertz", name="frequency")
+        object.__setattr__(self, "branch_a", branch_a)
+        object.__setattr__(self, "branch_b", branch_b)
+        object.__setattr__(self, "frequency", frequency)
 
     @property
     def magnitude(self) -> QuantitySelector:
-        unavailable("ResidueNormalizedCouplingSpec.magnitude selector")
+        return QuantitySelector(self, "magnitude", "residue_coupling_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "residue_normalized_coupling",
+            "branch_a": self.branch_a._canonical_record(),
+            "branch_b": self.branch_b._canonical_record(),
+            "frequency": self.frequency,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class ResponseElementSpec:
     """Evaluate one exact S/Y/Z element on a selected Direct network.
 
-    This later scalar surface never interpolates a sweep and is unavailable
-    until the N-port ``dev5`` slice.
+    This scalar surface never interpolates a sweep.
     """
 
+    family: Literal["S", "Y", "Z"]
+    input_coordinate: Coordinate
+    output_coordinate: Coordinate
+    frequency: Quantity
+
     def __init__(self, *, family: Literal["S", "Y", "Z"], input_coordinate: Coordinate, output_coordinate: Coordinate, frequency: Quantity) -> None:
-        unavailable("ResponseElementSpec construction")
+        _family(family)
+        _coordinate_id(input_coordinate)
+        _coordinate_id(output_coordinate)
+        units.require_positive_quantity(frequency, "hertz", name="frequency")
+        object.__setattr__(self, "family", family)
+        object.__setattr__(self, "input_coordinate", input_coordinate)
+        object.__setattr__(self, "output_coordinate", output_coordinate)
+        object.__setattr__(self, "frequency", frequency)
 
     @property
     def magnitude(self) -> QuantitySelector:
-        unavailable("ResponseElementSpec.magnitude selector")
+        return QuantitySelector(self, "magnitude", "response_element_projection")
 
     @property
     def real(self) -> QuantitySelector:
-        unavailable("ResponseElementSpec.real selector")
+        return QuantitySelector(self, "real", "response_element_projection")
 
     @property
     def imag(self) -> QuantitySelector:
-        unavailable("ResponseElementSpec.imag selector")
+        return QuantitySelector(self, "imag", "response_element_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "response_element", "family": self.family,
+            "input_coordinate": _coordinate_id(self.input_coordinate),
+            "output_coordinate": _coordinate_id(self.output_coordinate), "frequency": self.frequency,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class OperatorSpec:
     """Materialize the full Direct operator on an exact grid in ``dev5``."""
 
+    frequencies: Quantity
+
     def __init__(self, *, frequencies: Quantity) -> None:
-        unavailable("OperatorSpec construction")
+        _validate_frequency_grid(frequencies)
+        object.__setattr__(self, "frequencies", frequencies)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "operator", "frequencies": self.frequencies}
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,6 +431,9 @@ class QuantitySum:
     def __init__(self, *terms: object) -> None:
         if not terms:
             raise InvalidOptimizationSpec("QuantitySum requires one or more terms", stage="spec_validation")
+        dimensions = tuple(units.registry.Unit(_validate_selector(term)).dimensionality for term in terms)
+        if len(set(dimensions)) != 1:
+            raise InvalidOptimizationSpec("QuantitySum terms must share one dimensionality", stage="spec_validation")
         object.__setattr__(self, "terms", tuple(terms))
 
     def _canonical_record(self) -> Mapping[str, object]:
@@ -344,12 +467,29 @@ class CostObjective:
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        if not isinstance(self.id, str) or not self.id:
-            raise InvalidOptimizationSpec("objective id must be nonempty", stage="spec_validation")
+        try:
+            identifier = _identifier(self.id, field="objective id")
+        except Exception as exc:
+            raise InvalidOptimizationSpec("objective id must be a canonical identifier", stage="spec_validation") from exc
+        object.__setattr__(self, "id", identifier)
+        if isinstance(self.quantity, QuantitySum):
+            quantity_unit = _selector_unit(self.quantity.terms[0])
+        else:
+            quantity_unit = _selector_unit(self.quantity)
+        if quantity_unit is None:
+            raise InvalidOptimizationSpec("objective quantity must be a scalar selector or QuantitySum", stage="spec_validation")
         _require_quantity(self.target, name="target")
+        try:
+            self.target.to(quantity_unit)
+        except Exception as exc:
+            raise InvalidOptimizationSpec("objective target dimensionality disagrees with selector", stage="spec_validation") from exc
         units.require_positive_quantity(self.weight, "dimensionless", name="weight")
         if self.scale is not None:
             _require_quantity(self.scale, name="scale")
+            try:
+                self.scale.to(quantity_unit)
+            except Exception as exc:
+                raise InvalidOptimizationSpec("objective scale dimensionality disagrees with selector", stage="spec_validation") from exc
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"id": self.id, "quantity": _canonical_value(self.quantity), "target": self.target, "weight": self.weight, "scale": self.scale}
@@ -426,7 +566,12 @@ class OptimizationSpec:
         if len({item.id for item in checked_objectives}) != len(checked_objectives):
             raise InvalidOptimizationSpec("objective IDs must be unique", stage="spec_validation")
         auth = tuple(sorted(tuple(allow_extrapolation), key=_parameter_key))
-        if len({_parameter_key(item) for item in auth}) != len(auth) or any(_parameter_key(item) not in variable_keys for item in auth):
+        active_parameters = {_parameter_key(item.parameter): item.parameter for item in checked_variables}
+        if (
+            len({_parameter_key(item) for item in auth}) != len(auth)
+            or any(_parameter_key(item) not in variable_keys for item in auth)
+            or any(active_parameters[_parameter_key(item)] is not item for item in auth)
+        ):
             raise InvalidOptimizationSpec("allow_extrapolation must contain unique active parameters", stage="spec_validation")
         object.__setattr__(self, "variables", checked_variables)
         object.__setattr__(self, "objectives", checked_objectives)
@@ -434,12 +579,52 @@ class OptimizationSpec:
         object.__setattr__(self, "allow_extrapolation", auth)
 
     def variable(self, parameter: ParameterRef) -> OptimizationVariable:
-        unavailable("OptimizationSpec.variable")
+        """Return the active variable owned by this exact public parameter."""
+
+        key = _parameter_key(parameter)
+        for variable in self.variables:
+            if _parameter_key(variable.parameter) == key:
+                if variable.parameter is parameter:
+                    return variable
+                raise InvalidOptimizationSpec(
+                    "optimization variable ParameterRef is foreign",
+                    stage="spec_validation",
+                )
+        raise KeyError(f"no optimization variable for {'.'.join((*key[0], key[1]))}")
 
     def with_variable_overrides(self, *, bounds: Mapping[ParameterRef, tuple[Quantity, Quantity]], allow_extrapolation: Sequence[ParameterRef] = ()) -> OptimizationSpec:
-        unavailable("OptimizationSpec.with_variable_overrides")
+        """Return a copy with named bounds replaced and a new authorization set."""
+
+        if not isinstance(bounds, Mapping):
+            raise InvalidOptimizationSpec("bounds must map active ParameterRef values to pairs", stage="spec_validation")
+        overrides = {_parameter_key(parameter): (parameter, value) for parameter, value in bounds.items()}
+        if len(overrides) != len(bounds):
+            raise InvalidOptimizationSpec("override parameters must be unique", stage="spec_validation")
+        active = {_parameter_key(variable.parameter): variable.parameter for variable in self.variables}
+        for key, (parameter, _) in overrides.items():
+            if key not in active:
+                raise InvalidOptimizationSpec("override parameter is not active", stage="spec_validation")
+            if active[key] is not parameter:
+                raise InvalidOptimizationSpec(
+                    "override ParameterRef is foreign",
+                    stage="spec_validation",
+                )
+        instance = object.__new__(OptimizationSpec)
+        instance._initialize(
+            variables=tuple(
+                variable._override(overrides[_parameter_key(variable.parameter)][1])
+                if _parameter_key(variable.parameter) in overrides else variable
+                for variable in self.variables
+            ),
+            objectives=self.objectives,
+            optimizer=self.optimizer,
+            allow_extrapolation=allow_extrapolation,
+        )
+        return instance
 
     def show(self) -> HtmlPresentation:
+        """Present model defaults, active overrides, objectives, and CMA controls."""
+
         rows = "".join(
             "<tr>"
             f"<td>{escape('.'.join(_parameter_key(variable.parameter)))}</td>"
@@ -513,7 +698,13 @@ class HBTruncation:
 
 @dataclass(frozen=True, slots=True)
 class SParameterTrace:
-    """Name a selected-matrix S projection; unavailable before N-port ``dev5``."""
+    """Name a selected-matrix S projection for Direct; HB use remains dev6-only."""
+
+    id: str
+    input_port: str
+    input_mode: tuple[int, ...]
+    output_port: str
+    output_mode: tuple[int, ...]
 
     def __init__(
         self,
@@ -524,7 +715,24 @@ class SParameterTrace:
         output_port: str,
         output_mode: tuple[int, ...],
     ) -> None:
-        unavailable("SParameterTrace construction")
+        id = _identifier(id, field="trace id")
+        input_port = _identifier(input_port, field="trace input Port")
+        output_port = _identifier(output_port, field="trace output Port")
+        if not isinstance(input_mode, tuple) or not isinstance(output_mode, tuple):
+            raise TypeError("trace modes must be tuples")
+        if any(not isinstance(mode, int) or isinstance(mode, bool) for mode in (*input_mode, *output_mode)):
+            raise TypeError("trace modes must contain integers")
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "input_port", input_port)
+        object.__setattr__(self, "input_mode", input_mode)
+        object.__setattr__(self, "output_port", output_port)
+        object.__setattr__(self, "output_mode", output_mode)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "id": self.id, "input_port": self.input_port, "input_mode": self.input_mode,
+            "output_port": self.output_port, "output_mode": self.output_mode,
+        }
 
 
 @dataclass(frozen=True, slots=True)

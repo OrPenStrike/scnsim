@@ -11,8 +11,8 @@ use it.
 ::: {.callout-note title="Stabilized dev4 scope" appearance="simple"}
 The Library, Composite, and recursive-expansion behavior taught in Lessons
 6–8 is `STABILIZED`. Lessons 1–5 remain the `CONVERGING` dev3 execution
-candidate; Lessons 9–13 remain `CONVERGING` and explicit fail-fast APIs until
-their named V1 slices land.
+candidate. Lessons 9–11 are the `CONVERGING` dev5 candidate; Lessons 12–13
+remain explicit fail-fast APIs until their named V1 slices land.
 :::
 
 ## Author and analyze

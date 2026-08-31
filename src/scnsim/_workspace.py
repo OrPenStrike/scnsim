@@ -46,6 +46,7 @@ _LEAF_STAGING = re.compile(
     r"^\.staging-leaf-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
 )
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_IDENTIFIER = re.compile(r"^[^/\\\x00-\x1f\x7f]+$")
 
 
 def _canonical_bytes(value: Mapping[str, object]) -> bytes:
@@ -266,7 +267,11 @@ class WorkspaceBinding:
                 ordinals.add(ordinal)
                 plans.add(plan)
                 leaf_ids.add(identity)
-                WorkspaceBinding(self.root, self.root / str(entry["directory"]), plan, identity)._verify_leaf()
+                # The root index is shared authority, so its own shape and
+                # uniqueness are still checked.  A sibling's leaf evidence is
+                # not: a Run is bound to exactly one versioned iteration and
+                # read-only APIs must not turn unrelated historical damage
+                # into a latest/current selector or a failure of this leaf.
                 if identity == self.workspace_instance_id and plan == self.plan_sha256:
                     match = entry
             if sorted(ordinals) != list(range(1, len(ordinals) + 1)) or next_iteration != len(ordinals) + 1:
@@ -479,6 +484,162 @@ class WorkspaceBinding:
             )
         return success
 
+    def resolve_matching_success(
+        self,
+        *,
+        operation: str,
+        spec: Mapping[str, object],
+        parameters: Mapping[str, object],
+        runtime_semantic: Mapping[str, object],
+        lazy_lineage: Mapping[str, object],
+    ) -> VerifiedSuccess:
+        """Read one exact success without compiling, allocating, or selecting latest.
+
+        A View declaration deliberately does not contain compiler-realized
+        matrices.  This reader therefore compares its declarative projection
+        with each stored realized lineage, while every stored request and final
+        attempt remains fully chain-verified.  It is intentionally leaf-local
+        and cannot be repurposed as a workspace-wide ``current`` selector.
+        """
+
+        if not isinstance(operation, str) or not operation:
+            raise TypeError("operation must be a nonempty string")
+        for name, value in (
+            ("spec", spec),
+            ("parameters", parameters),
+            ("runtime_semantic", runtime_semantic),
+            ("lazy_lineage", lazy_lineage),
+        ):
+            if not isinstance(value, Mapping):
+                raise TypeError(f"{name} must be a mapping")
+
+        # The lock spans enumeration and all artifact reads.  No writer path,
+        # cleanup, request construction, or Julia preparation is reachable.
+        with self.reader():
+            plan = _load_canonical(self.leaf / "plan.json")
+            wanted_lineage = _lazy_lineage_projection(lazy_lineage, plan)
+            wanted_spec = _canonical_bytes(dict(spec))
+            wanted_parameters = _canonical_bytes(dict(parameters))
+            wanted_runtime = _canonical_bytes(dict(runtime_semantic))
+            requests = self.leaf / "requests"
+            if requests.is_symlink() or (requests.exists() and not requests.is_dir()):
+                raise _integrity("Workspace requests path is unsafe.", path=str(requests))
+
+            successes: list[VerifiedSuccess] = []
+            if requests.exists():
+                for request_directory in sorted(requests.iterdir(), key=lambda item: item.name):
+                    if (
+                        request_directory.is_symlink()
+                        or not request_directory.is_dir()
+                        or _SHA256.fullmatch(request_directory.name) is None
+                    ):
+                        raise _integrity("Workspace contains a malformed request directory.", path=str(request_directory))
+                    request_sha256 = request_directory.name
+                    request_path = request_directory / "request.json"
+                    if (
+                        request_path.is_symlink()
+                        or not request_path.is_file()
+                        or _sha256(request_path.read_bytes()) != request_sha256
+                    ):
+                        raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
+                    request = _load_canonical(request_path)
+                    _verify_request_document(request, self.plan_sha256, plan)
+                    attempts = request_directory / "attempts"
+                    if attempts.is_symlink() or not attempts.is_dir():
+                        raise _integrity("Resolve request has no final attempts.", request_sha256=request_sha256)
+                    finals = self._final_attempt_directories(attempts)
+                    if not finals:
+                        raise _integrity("Resolve request has no final attempts.", request_sha256=request_sha256)
+
+                    matches = (
+                        request.get("operation") == operation
+                        and _canonical_bytes(request["spec"]) == wanted_spec
+                        and _canonical_bytes(request["parameters"]) == wanted_parameters
+                        and _canonical_bytes(request["runtime_semantic"]) == wanted_runtime
+                        and _lazy_lineage_projection(request["ref_lineage"], plan) == wanted_lineage
+                    )
+                    for final in finals:
+                        attempt, receipt, result = self._verify_attempt(
+                            final, request_sha256, final.name, require_final_name=True
+                        )
+                        if matches and receipt["outcome"] == "success":
+                            if result is None:
+                                raise _integrity("Successful receipt lacks a Result.", attempt=str(final))
+                            successes.append(VerifiedSuccess(request, attempt, receipt, result, final))
+
+            if not successes:
+                raise ResultUnavailableError(
+                    "No verified success exists for this exact declared request.",
+                    stage="resolve",
+                    evidence={"operation": operation, "workspace": str(self.root)},
+                )
+            if len(successes) != 1:
+                raise _integrity(
+                    "Multiple verified successes match one declared request.",
+                    operation=operation,
+                    workspace=str(self.root),
+                )
+            return successes[0]
+
+    def inventory_document(self) -> dict[str, object]:
+        """Verify and summarize only this Run's bound immutable leaf.
+
+        This is intentionally a leaf-local reader: callers must already hold
+        :meth:`reader`, so it neither cleans staging nor chooses a result for
+        any later operation.
+        """
+
+        self.assert_current()
+        requests = self.leaf / "requests"
+        if requests.is_symlink() or (requests.exists() and not requests.is_dir()):
+            raise _integrity("Workspace requests path is unsafe.", path=str(requests))
+        rows: list[dict[str, object]] = []
+        if requests.exists():
+            for request_directory in sorted(requests.iterdir(), key=lambda item: item.name):
+                if (
+                    request_directory.is_symlink()
+                    or not request_directory.is_dir()
+                    or _SHA256.fullmatch(request_directory.name) is None
+                ):
+                    raise _integrity("Workspace contains a malformed request directory.", path=str(request_directory))
+                request_sha256 = request_directory.name
+                request_path = request_directory / "request.json"
+                if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
+                    raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
+                request = _load_canonical(request_path)
+                _verify_request_document(request, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
+                attempts = request_directory / "attempts"
+                if attempts.is_symlink() or not attempts.is_dir():
+                    raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                finals = self._final_attempt_directories(attempts)
+                if not finals:
+                    raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                outcomes: list[str] = []
+                for final in finals:
+                    _attempt, receipt, _result = self._verify_attempt(
+                        final, request_sha256, final.name, require_final_name=True
+                    )
+                    outcome = receipt.get("outcome")
+                    if outcome not in {"success", "failure", "interrupted"}:
+                        raise _integrity("Inventory final attempt lacks a terminal outcome.", attempt=str(final))
+                    outcomes.append(outcome)
+                status = "succeeded" if "success" in outcomes else "failed" if outcomes[-1] == "failure" else "interrupted"
+                if status not in {"succeeded", "failed", "interrupted"}:
+                    raise _integrity("Inventory status cannot be determined.", request_sha256=request_sha256)
+                rows.append({
+                    "request_sha256": request_sha256,
+                    "operation": request["operation"],
+                    "status": status,
+                    "attempts": [final.name for final in finals],
+                })
+        return {
+            "schema": "scnsim.inventory",
+            "schema_version": 1,
+            "workspace_instance_id": self.workspace_instance_id,
+            "plan_sha256": self.plan_sha256,
+            "requests": rows,
+        }
+
     def resume_ledger_sha256(self, request_sha256: str) -> str | None:
         """Return the latest attempt's highest verified CMA generation ledger."""
 
@@ -601,7 +762,8 @@ class WorkspaceBinding:
         if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
             raise _integrity("Attempt request bytes do not match their identity.", attempt=str(directory))
         request_document = _load_canonical(request_path)
-        _verify_request_document(request_document, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
+        plan_document = _load_canonical(self.leaf / "plan.json")
+        _verify_request_document(request_document, self.plan_sha256, plan_document)
         attempt_path = directory / "attempt.json"
         receipt_path = directory / "receipt.json"
         attempt = _load_canonical(attempt_path)
@@ -712,8 +874,14 @@ class WorkspaceBinding:
             raise _integrity("Receipt source-unit evidence is malformed.", attempt=str(directory))
         if [item["identity"] for item in source_units] != sorted({item["identity"] for item in source_units}):
             raise _integrity("Receipt source-unit evidence is not sorted and unique.", attempt=str(directory))
-        if evidence.get("extrapolation_evidence") != []:
-            raise _integrity("Dev3 primitive attempts cannot carry extrapolation evidence.", attempt=str(directory))
+        _verify_extrapolation_evidence(
+            evidence.get("extrapolation_evidence"),
+            allowed_sources={"parameter_set"},
+            required_rows=[] if request_document.get("operation") == "optimize_direct" else _required_extrapolation_rows(
+                plan_document, request_document["parameters"],
+                authorization_source="parameter_set", require_authorized=outcome == "success",
+            ),
+        )
         expected_provenance = _sha256(_canonical_bytes({"schema": "scnsim.receipt_provenance", "source_units": source_units}))
         if (
             evidence.get("runtime_semantic_sha256") != _sha256(_canonical_bytes(request_document.get("runtime_semantic")))
@@ -759,21 +927,22 @@ class WorkspaceBinding:
             result = _load_canonical(result_path)
             if _sha256(_canonical_bytes(result)) != result_sha:
                 raise _integrity("Success receipt result hash does not match result bytes.", attempt=str(directory))
+            expected_result_kind = (
+                "direct_response" if request_document.get("operation") == "solve_direct"
+                else "optimization" if request_document.get("operation") == "optimize_direct"
+                else request_document.get("spec", {}).get("type") if request_document.get("operation") == "evaluate_direct" and isinstance(request_document.get("spec"), dict)
+                else None
+            )
             if (
                 result.get("schema") != "scnsim.result"
                 or result.get("request_sha256") != request_sha256
                 or result.get("attempt_sha256") != attempt_sha256
-                or result.get("result_kind")
-                != {
-                    "solve_direct": "direct_response",
-                    "evaluate_direct": "diagonal_root",
-                    "optimize_direct": "optimization",
-                }.get(request_document.get("operation"))
+                or result.get("result_kind") != expected_result_kind
             ):
                 raise _integrity("Result envelope does not match its success receipt.", attempt=str(directory))
             if outcome_document.get("result_sha256") != result_sha:
                 raise _integrity("Outcome and receipt bind different Result identities.", attempt=str(directory))
-            _verify_result_document(result, request_document, request_sha256, attempt_sha256)
+            _verify_result_document(result, request_document, request_sha256, attempt_sha256, plan_document)
             _verify_artifact_inventory(directory, result, receipt)
             if result.get("result_kind") == "optimization":
                 _verify_generation_artifacts(
@@ -1323,31 +1492,475 @@ def _verify_request_document(
     operation = request.get("operation")
     spec = request.get("spec")
     runtime = request.get("runtime_semantic")
-    expected = {
-        "solve_direct": ("direct_solve", "scnsim.direct_response.v1"),
-        "evaluate_direct": ("diagonal_root", "scnsim.diagonal_root.newton32.v1"),
-        "optimize_direct": ("optimization", "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"),
-    }.get(operation)
+    algorithms = {
+        "solve_direct": {"direct_solve": "scnsim.direct_response.v1"},
+        "evaluate_direct": {
+            "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+            "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
+            "transfer_zero": "scnsim.transfer_zero.newton32.v1",
+            "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
+            "response_element": "scnsim.response_element.v1",
+            "operator": "scnsim.direct_operator.v1",
+        },
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"},
+    }
+    expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
         set(request) != {"schema", "schema_version", "plan_sha256", "operation", "ref_lineage", "spec", "parameters", "runtime_semantic"}
         or request.get("schema") != "scnsim.request"
         or request.get("schema_version") != 1
         or request.get("plan_sha256") != plan_sha256
-        or expected is None
+        or expected_algorithm is None
         or any(not isinstance(request.get(field), dict) for field in ("ref_lineage", "spec", "parameters", "runtime_semantic"))
-        or spec.get("type") != expected[0]
-        or runtime.get("algorithm_id") != expected[1]
+        or runtime.get("algorithm_id") != expected_algorithm
     ):
         raise _integrity("Stored request envelope is open or inconsistent.")
+    runtime_fields = {
+        "algorithm_id", "python_source_sha256", "julia_source_sha256",
+        "julia_version", "project_sha256", "manifest_sha256",
+    }
+    if set(runtime) != runtime_fields or not isinstance(runtime.get("julia_version"), str) or not runtime["julia_version"]:
+        raise _integrity("Stored runtime semantic identity is open or malformed.")
+    for field in ("python_source_sha256", "julia_source_sha256", "project_sha256", "manifest_sha256"):
+        _valid_sha(runtime.get(field))
     _verify_parameter_set_document(request["parameters"])
+    terminal, port_realizable = _verify_v1_lineage(request.get("ref_lineage"), plan)
     if operation == "solve_direct":
-        _verify_direct_request(request, plan)
+        _verify_v1_direct_spec(spec, terminal, port_realizable)
+    elif operation == "evaluate_direct":
+        _verify_v1_evaluation_spec(spec, terminal, port_realizable)
     else:
-        retained = _verify_retained_request(request, plan)
-        if operation == "evaluate_direct":
-            _verify_diagonal_root_spec(spec, retained)
+        _verify_v1_optimization_spec(spec, terminal, port_realizable)
+        if request["parameters"].get("allow_extrapolation") != spec.get("allow_extrapolation"):
+            raise _integrity("Optimization request has inconsistent extrapolation authorities.")
+
+
+def _identifiers(value: object, *, field: str, nonempty: bool = True) -> list[str]:
+    if not isinstance(value, list) or (nonempty and not value) or any(
+        not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in value
+    ):
+        raise _integrity(f"{field} is not an ordered identifier array.")
+    if len(set(value)) != len(value):
+        raise _integrity(f"{field} repeats an identifier.")
+    return list(value)
+
+
+def _lazy_lineage_projection(
+    lineage: Mapping[str, object] | object,
+    plan: Mapping[str, object],
+) -> dict[str, object]:
+    """Project lazy and realized lineage into the resolve declaration key.
+
+    The lazy ``NetworkViewRef`` deliberately has only user declarations for
+    PTC, transforms, and retain.  Its compiler-realized counterpart includes
+    matrices, branch evidence, and reconstruction checks.  Resolve may bind
+    only the declaration the user actually made: original identity, selected
+    PTC ports, ordered transform inputs plus generated identities, and the
+    retained coordinate list.  This is not a second View implementation.
+    """
+
+    outer_fields = {
+        "type", "original", "ptc", "transforms", "retain",
+        "terminal_coordinates", "port_realizable", "lineage_sha256",
+    }
+    if not isinstance(lineage, Mapping) or set(lineage) != outer_fields or lineage.get("type") != "network_view_lineage":
+        raise _integrity("Resolve View declaration is open or malformed.")
+
+    original = lineage.get("original")
+    original_fields = {
+        "type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable",
+    }
+    if not isinstance(original, Mapping) or set(original) != original_fields or original.get("type") != "original":
+        raise _integrity("Resolve original View identity is malformed.")
+    _valid_sha(original.get("compiled_graph_sha256"))
+    coordinates = _identifiers(original.get("coordinate_order"), field="Resolve original coordinate order")
+    ports = _identifiers(original.get("port_order"), field="Resolve original Port order", nonempty=False)
+    plan_ports = plan.get("ports")
+    if (
+        not isinstance(plan_ports, list)
+        or ports != [item.get("port_id") for item in plan_ports if isinstance(item, Mapping)]
+        or not isinstance(original.get("port_realizable"), bool)
+    ):
+        raise _integrity("Resolve original View identity disagrees with the sealed Plan.")
+
+    ptc = lineage.get("ptc")
+    selected_ports: list[str] | None = None
+    if ptc is not None:
+        if not isinstance(ptc, Mapping) or ptc.get("type") != "ptc" or "selected_ports" not in ptc:
+            raise _integrity("Resolve PTC declaration is malformed.")
+        # Lazy declarations contain exactly these two fields; realized steps
+        # are separately validated by _verify_request_document before they
+        # reach this projection.
+        selected_ports = _identifiers(ptc.get("selected_ports"), field="Resolve PTC selected Ports")
+        if any(port not in ports for port in selected_ports):
+            raise _integrity("Resolve PTC selects a Port outside the original View.")
+
+    transforms = lineage.get("transforms")
+    if not isinstance(transforms, list):
+        raise _integrity("Resolve transform declaration is malformed.")
+    projected_transforms: list[dict[str, object]] = []
+    current = list(coordinates)
+    for step in transforms:
+        if not isinstance(step, Mapping) or step.get("type") != "transform_pair":
+            raise _integrity("Resolve transform declaration is malformed.")
+        inputs = _identifiers(step.get("input_coordinates"), field="Resolve transform input coordinates")
+        if len(inputs) != 2 or any(value not in current for value in inputs):
+            raise _integrity("Resolve transform inputs are not a current ordered pair.")
+        if "id" in step:
+            # This is the lazy Python declaration.  The generated names are
+            # authoritative rather than a reversible parsing convention.
+            identifier = step.get("id")
+            output = step.get("output_coordinates")
+            if (
+                set(step) != {"type", "id", "input_coordinates", "output_coordinates"}
+                or not isinstance(identifier, str)
+                or not identifier
+                or any(character.isspace() for character in identifier)
+                or output != [f"{identifier}.common", f"{identifier}.differential"]
+            ):
+                raise _integrity("Resolve lazy transform declaration is malformed.")
+            common, differential = output
         else:
-            _verify_optimization_selector_coordinates(spec, retained)
+            # This is the stored realized evidence.  Its closed shape is
+            # verified before projection, so select only the declared outputs.
+            common, differential = step.get("common_id"), step.get("differential_id")
+            if not isinstance(common, str) or not common or not isinstance(differential, str) or not differential:
+                raise _integrity("Resolve realized transform declaration is malformed.")
+        if common == differential or common in current or differential in current:
+            raise _integrity("Resolve generated transform identities collide with the current basis.")
+        current = [value for value in current if value not in inputs]
+        current.extend((common, differential))
+        projected_transforms.append(
+            {
+                "input_coordinates": inputs,
+                "common_id": common,
+                "differential_id": differential,
+            }
+        )
+
+    retain = lineage.get("retain")
+    retained: list[str] | None = None
+    if retain is not None:
+        if not isinstance(retain, Mapping) or retain.get("type") != "retain":
+            raise _integrity("Resolve retain declaration is malformed.")
+        retained = _identifiers(retain.get("retained_coordinates"), field="Resolve retained coordinates")
+        if any(value not in current for value in retained):
+            raise _integrity("Resolve retain declaration selects an unavailable coordinate.")
+
+    return {
+        "original": dict(original),
+        "ptc_selected_ports": selected_ports,
+        "transforms": projected_transforms,
+        "retained_coordinates": retained,
+    }
+
+
+def _verify_v1_lineage(lineage: object, plan: Mapping[str, object] | None) -> tuple[list[str], bool]:
+    """Close the full dev5 View grammar without reimplementing compilation.
+
+    Matrix bytes are compiler-owned evidence; the workspace binds their hashes,
+    ordering and applicability rather than manufacturing a second compiler in
+    Python.
+    """
+
+    if not isinstance(lineage, dict) or set(lineage) != {
+        "type", "original", "ptc", "transforms", "retain", "terminal_coordinates", "port_realizable", "lineage_sha256",
+    } or lineage.get("type") != "network_view_lineage":
+        raise _integrity("View lineage envelope is open or malformed.")
+    if lineage.get("lineage_sha256") != _sha256(_canonical_bytes({key: value for key, value in lineage.items() if key != "lineage_sha256"})):
+        raise _integrity("View lineage hash does not bind its contents.")
+    original = lineage.get("original")
+    if not isinstance(original, dict) or set(original) != {"type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable"} or original.get("type") != "original":
+        raise _integrity("Original View lineage is malformed.")
+    _valid_sha(original.get("compiled_graph_sha256"))
+    original_coordinates = _identifiers(original.get("coordinate_order"), field="Original coordinate order")
+    if plan is not None and original_coordinates != _plan_coordinates(plan)[0]:
+        raise _integrity("Original View coordinate order disagrees with the sealed Plan.")
+    plan_ports = plan.get("ports") if plan is not None else None
+    if plan is not None and not isinstance(plan_ports, list):
+        raise _integrity("Sealed Plan ports are malformed.")
+    expected_ports = [port.get("port_id") for port in plan_ports if isinstance(port, dict)] if isinstance(plan_ports, list) else None
+    port_roles = {
+        port.get("port_id"): port.get("role")
+        for port in plan_ports or ()
+        if isinstance(port, dict)
+    }
+    port_order = _identifiers(original.get("port_order"), field="Original Port order", nonempty=False)
+    if (expected_ports is not None and port_order != expected_ports) or not isinstance(original.get("port_realizable"), bool):
+        raise _integrity("Original View Port identity disagrees with the sealed Plan.")
+    coordinates = list(original_coordinates)
+    ptc = lineage.get("ptc")
+    if ptc is not None:
+        if not isinstance(ptc, dict) or set(ptc) != {"type", "selected_ports", "load_mask_sha256", "loads", "reconstruction_residual_f64", "output_coordinate_order", "evidence_sha256"} or ptc.get("type") != "ptc":
+            raise _integrity("PTC lineage step is malformed.")
+        selected = _identifiers(ptc.get("selected_ports"), field="PTC selected Ports")
+        if any(port not in port_order for port in selected) or ptc.get("output_coordinate_order") != coordinates:
+            raise _integrity("PTC lineage does not preserve the original coordinate basis.")
+        if any(port_roles.get(port) != "nonloading_probe" for port in selected):
+            raise _integrity("PTC selects a Port that is not a nonloading probe.")
+        if not isinstance(ptc.get("loads"), list) or [item.get("port_id") if isinstance(item, dict) else None for item in ptc["loads"]] != selected:
+            raise _integrity("PTC load evidence does not match its selected Port order.")
+        for item in ptc["loads"]:
+            if not isinstance(item, dict) or set(item) != {"port_id", "reference_impedance", "before", "after"} or item.get("before") != "raw" or item.get("after") != "compensated":
+                raise _integrity("PTC load evidence is malformed.")
+            _verify_quantity_role(item.get("reference_impedance"), complex_value=False, unit="ohm", dimensionality="resistance")
+        _valid_sha(ptc.get("load_mask_sha256")); _valid_sha(ptc.get("evidence_sha256")); _f64_value(ptc.get("reconstruction_residual_f64"))
+    transforms = lineage.get("transforms")
+    if not isinstance(transforms, list):
+        raise _integrity("Transform lineage must be an array.")
+    for step in transforms:
+        fields = {"type", "input_coordinates", "weights_f64", "differential_id", "common_id", "included_external_cut_branches", "excluded_direct_mutual_branches", "reference_matrix", "principal_root", "reconstruction_residual_f64", "output_coordinate_order", "evidence_sha256"}
+        if not isinstance(step, dict) or set(step) != fields or step.get("type") != "transform_pair":
+            raise _integrity("Transform lineage step is malformed.")
+        pair = _identifiers(step.get("input_coordinates"), field="Transform input coordinates")
+        if len(pair) != 2 or any(item not in coordinates for item in pair):
+            raise _integrity("Transform input coordinates are not an ordered current pair.")
+        weights = step.get("weights_f64")
+        if not isinstance(weights, list) or len(weights) != 2 or any(not _finite_f64(item) for item in weights):
+            raise _integrity("Transform weights are malformed.")
+        common, differential = step.get("common_id"), step.get("differential_id")
+        if any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in (common, differential)) or differential == common or differential in coordinates or common in coordinates:
+            raise _integrity("Transform output coordinate identity is malformed.")
+        expected = [item for item in coordinates if item not in pair] + [common, differential]
+        if step.get("output_coordinate_order") != expected:
+            raise _integrity("Transform output ordering is not canonical.")
+        for matrix in ("reference_matrix", "principal_root"):
+            evidence = step.get(matrix)
+            if not isinstance(evidence, dict) or set(evidence) != {"rows", "columns", "sha256"} or any(not isinstance(evidence.get(field), int) or evidence[field] < 0 for field in ("rows", "columns")):
+                raise _integrity("Transform matrix evidence is malformed.")
+            _valid_sha(evidence.get("sha256"))
+        _verify_branch_refs(step.get("included_external_cut_branches"), field="Transform included cut branches", nonempty=True)
+        _verify_branch_refs(step.get("excluded_direct_mutual_branches"), field="Transform excluded direct-mutual branches", nonempty=False)
+        _valid_sha(step.get("evidence_sha256")); _f64_value(step.get("reconstruction_residual_f64"))
+        coordinates = expected
+    retain = lineage.get("retain")
+    if retain is not None:
+        fields = {"type", "retained_coordinates", "eliminated_coordinates", "output_coordinate_order", "a_matrix", "b_matrix", "r_matrix", "d_matrix", "q_matrix", "selected_projector", "omitted_projector", "omitted_matched_loads", "source_boundary_sha256", "deembedding_evidence_sha256"}
+        if not isinstance(retain, dict) or set(retain) != fields or retain.get("type") != "retain":
+            raise _integrity("Retain lineage step is malformed.")
+        retained = _identifiers(retain.get("retained_coordinates"), field="Retained coordinates")
+        eliminated = _identifiers(retain.get("eliminated_coordinates"), field="Eliminated coordinates", nonempty=False)
+        if set(retained) | set(eliminated) != set(coordinates) or set(retained) & set(eliminated) or retain.get("output_coordinate_order") != retained:
+            raise _integrity("Retain lineage is not an exact partition of its input basis.")
+        for matrix in ("a_matrix", "b_matrix", "r_matrix", "d_matrix", "q_matrix", "selected_projector", "omitted_projector", "omitted_matched_loads"):
+            evidence = retain.get(matrix)
+            if not isinstance(evidence, dict) or set(evidence) != {"rows", "columns", "sha256"}:
+                raise _integrity("Retain matrix evidence is malformed.")
+            _valid_sha(evidence.get("sha256"))
+        _valid_sha(retain.get("source_boundary_sha256")); _valid_sha(retain.get("deembedding_evidence_sha256"))
+        coordinates = retained
+    terminal = _identifiers(lineage.get("terminal_coordinates"), field="Terminal channel order")
+    port_realizable = lineage.get("port_realizable")
+    # The compiler's original basis is physical-node ordered, whereas the raw
+    # public Direct boundary is the declared logical-Port order.  Transforms
+    # alter quantity coordinates but do not themselves create a wave boundary;
+    # only terminal retain() selects transformed channel IDs.
+    expected_terminal = coordinates if retain is not None else port_order
+    if terminal != expected_terminal or not isinstance(port_realizable, bool):
+        raise _integrity("Terminal View capability disagrees with its lineage.")
+    return terminal, port_realizable
+
+
+def _verify_v1_direct_spec(spec: object, terminal: list[str], port_realizable: bool) -> None:
+    if not port_realizable:
+        raise _integrity("Direct S/Y/Z request is not Port-realizable.")
+    if not isinstance(spec, dict) or set(spec) != {"type", "frequencies", "traces"} or spec.get("type") != "direct_solve":
+        raise _integrity("Direct solve Spec is malformed.")
+    frequencies = spec.get("frequencies")
+    if not isinstance(frequencies, list) or not frequencies:
+        raise _integrity("Direct solve frequency grid is malformed.")
+    previous = 0.0
+    for frequency in frequencies:
+        _verify_quantity_role(frequency, complex_value=False, unit="hertz", dimensionality="inverse_time")
+        value = _f64_value(frequency["si_value_f64"])
+        if value <= previous:
+            raise _integrity("Direct solve frequency grid is not strictly positive and increasing.")
+        previous = value
+    traces = spec.get("traces")
+    if not isinstance(traces, list):
+        raise _integrity("Direct trace declarations are malformed.")
+    trace_ids: set[str] = set()
+    for trace in traces:
+        if (
+            not isinstance(trace, dict)
+            or set(trace) != {"id", "input_port", "input_mode", "output_port", "output_mode"}
+            or not isinstance(trace.get("id"), str)
+            or _IDENTIFIER.fullmatch(trace["id"]) is None
+            or trace["id"] in trace_ids
+            or trace.get("input_port") not in terminal
+            or trace.get("output_port") not in terminal
+            or trace.get("input_mode") != []
+            or trace.get("output_mode") != []
+        ):
+            raise _integrity("Direct trace declaration is malformed.")
+        trace_ids.add(trace["id"])
+
+
+def _verify_v1_evaluation_spec(
+    spec: object,
+    terminal: list[str],
+    port_realizable: bool,
+    *,
+    residue_branch: bool = False,
+) -> None:
+    if not isinstance(spec, dict) or not isinstance(spec.get("type"), str):
+        raise _integrity("Direct evaluation Spec is malformed.")
+    kind = spec["type"]
+    if kind == "diagonal_root":
+        coordinate = spec.get("coordinate")
+        invalid = coordinate not in terminal or len(terminal) < 2 if residue_branch else terminal != [coordinate]
+        if set(spec) != {"type", "coordinate", "root_hint"} or invalid:
+            raise _integrity("Diagonal-root Spec is incompatible with its retained View.")
+        _verify_quantity_role(spec.get("root_hint"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+    elif kind == "hybridized_pole":
+        if set(spec) != {"type", "coordinates", "anchor"} or len(terminal) < 2 or _identifiers(spec.get("coordinates"), field="Hybridized-pole coordinates") != terminal:
+            raise _integrity("Hybridized-pole coordinates must equal the complete retained View.")
+        _verify_frequency_anchor(spec.get("anchor"))
+    elif kind == "transfer_zero":
+        if set(spec) != {"type", "anchor", "family", "input_coordinate", "output_coordinate"} or spec.get("family") not in {"S", "Y", "Z"} or spec.get("input_coordinate") not in terminal or spec.get("output_coordinate") not in terminal:
+            raise _integrity("Transfer-zero Spec is malformed.")
+        if spec.get("family") == "S" and not port_realizable:
+            raise _integrity("S-family transfer-zero evaluation is not Port-realizable.")
+        _verify_frequency_anchor(spec.get("anchor"))
+    elif kind == "residue_normalized_coupling":
+        branches = (spec.get("branch_a"), spec.get("branch_b"))
+        if (
+            set(spec) != {"type", "branch_a", "branch_b", "frequency"}
+            or any(not isinstance(branch, dict) or branch.get("type") not in {"diagonal_root", "hybridized_pole"} for branch in branches)
+        ):
+            raise _integrity("Residue-normalized coupling Spec is malformed.")
+        _verify_v1_evaluation_spec(branches[0], terminal, port_realizable, residue_branch=True)
+        _verify_v1_evaluation_spec(branches[1], terminal, port_realizable, residue_branch=True)
+        _verify_quantity_role(spec.get("frequency"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+    elif kind == "response_element":
+        if set(spec) != {"type", "family", "input_coordinate", "output_coordinate", "frequency"} or spec.get("family") not in {"S", "Y", "Z"} or spec.get("input_coordinate") not in terminal or spec.get("output_coordinate") not in terminal:
+            raise _integrity("Response-element Spec is malformed.")
+        if spec.get("family") == "S" and not port_realizable:
+            raise _integrity("S-family response evaluation is not Port-realizable.")
+        _verify_quantity_role(spec.get("frequency"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+    elif kind == "operator":
+        if set(spec) != {"type", "frequencies"}:
+            raise _integrity("Operator Spec is malformed.")
+        _verify_v1_direct_spec({"type": "direct_solve", "frequencies": spec.get("frequencies"), "traces": []}, terminal, True)
+    else:
+        raise _integrity("Direct evaluation Spec is outside dev5.")
+
+
+def _verify_frequency_anchor(value: object) -> None:
+    if isinstance(value, dict) and value.get("type") == "quantity_f64":
+        _verify_quantity_role(value, complex_value=False, unit="hertz", dimensionality="inverse_time")
+    else:
+        _verify_quantity_role(value, complex_value=True, unit="hertz", dimensionality="inverse_time")
+
+
+def _verify_v1_optimization_spec(spec: object, terminal: list[str], port_realizable: bool) -> None:
+    if not isinstance(spec, dict) or set(spec) != {"type", "variables", "objectives", "optimizer", "allow_extrapolation"} or spec.get("type") != "optimization":
+        raise _integrity("Optimization Spec is malformed.")
+    variables, objectives, optimizer, authorizations = spec.get("variables"), spec.get("objectives"), spec.get("optimizer"), spec.get("allow_extrapolation")
+    if not isinstance(variables, list) or not variables or not isinstance(objectives, list) or not objectives or not isinstance(optimizer, dict) or not isinstance(authorizations, list):
+        raise _integrity("Optimization Spec has malformed collections.")
+    variable_keys: list[tuple[tuple[str, ...], str]] = []
+    for variable in variables:
+        if not isinstance(variable, dict) or set(variable) != {"parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"} or variable.get("transform") not in {"linear", "log"}:
+            raise _integrity("Optimization variable is malformed.")
+        key = _parameter_key_integrity(variable.get("parameter")); variable_keys.append(key)
+        for name in ("model_default_bounds", "consumer_override_bounds"):
+            bounds = variable.get(name)
+            if bounds is None and name == "consumer_override_bounds":
+                continue
+            _verify_bounds(bounds)
+        _verify_quantity_compatible(variable.get("lower"), variable.get("upper"))
+        if variable.get("consumer_override_bounds") is None:
+            if variable.get("model_default_bounds") != [variable.get("lower"), variable.get("upper")]:
+                raise _integrity("Optimization resolved bounds do not preserve model defaults.")
+        elif variable.get("consumer_override_bounds") != [variable.get("lower"), variable.get("upper")]:
+            raise _integrity("Optimization resolved bounds do not match consumer override.")
+    if len(set(variable_keys)) != len(variable_keys):
+        raise _integrity("Optimization variables are not unique.")
+    authorization_keys = [_parameter_key_integrity(item) for item in authorizations]
+    if authorization_keys != sorted(set(authorization_keys)) or any(key not in variable_keys for key in authorization_keys):
+        raise _integrity("Optimization extrapolation authorization is not sorted active variables.")
+    objective_ids: set[str] = set()
+    for objective in objectives:
+        if not isinstance(objective, dict) or set(objective) != {"id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"} or not isinstance(objective.get("id"), str) or _IDENTIFIER.fullmatch(objective["id"]) is None or objective["id"] in objective_ids:
+            raise _integrity("Optimization objective is malformed.")
+        objective_ids.add(objective["id"])
+        role = _verify_selector(objective.get("quantity"), terminal, port_realizable)
+        _verify_quantity_role(objective.get("target"), complex_value=False, unit=role[0], dimensionality=role[1])
+        _verify_quantity_role(objective.get("resolved_scale"), complex_value=False, unit=role[0], dimensionality=role[1])
+        if not _finite_f64(objective.get("weight_f64")) or objective.get("scale_source") not in {"relative_target", "dimensionless_unity", "explicit"}:
+            raise _integrity("Optimization objective scale is malformed.")
+    required_optimizer = {"type", "seed", "max_evaluations", "population_size", "resolved_population_size", "initial_sigma_f64", "box_transform_id", "complete_generations", "unused_evaluations", "hidden_stops"}
+    if set(optimizer) != required_optimizer or optimizer.get("type") != "cma_es" or optimizer.get("box_transform_id") != "cmaes-jl-0.2.6-linquad-unit-box.v1" or optimizer.get("hidden_stops") != "disabled":
+        raise _integrity("Optimization controls are malformed.")
+
+
+def _parameter_key_integrity(value: object) -> tuple[tuple[str, ...], str]:
+    if not isinstance(value, dict) or set(value) != {"component_path", "parameter_id"}:
+        raise _integrity("ParameterRef is malformed.")
+    path = value.get("component_path"); identifier = value.get("parameter_id")
+    if not isinstance(path, list) or not path or any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in path) or not isinstance(identifier, str) or _IDENTIFIER.fullmatch(identifier) is None:
+        raise _integrity("ParameterRef identity is malformed.")
+    return tuple(path), identifier
+
+
+def _verify_branch_refs(value: object, *, field: str, nonempty: bool) -> None:
+    if not isinstance(value, list) or (nonempty and not value):
+        raise _integrity(f"{field} is malformed.")
+    keys: list[tuple[tuple[str, ...], str]] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"component_path", "branch_id"}:
+            raise _integrity(f"{field} has an open branch identity.")
+        path, branch = item.get("component_path"), item.get("branch_id")
+        if not isinstance(path, list) or not path or any(not isinstance(segment, str) or _IDENTIFIER.fullmatch(segment) is None for segment in path) or not isinstance(branch, str) or _IDENTIFIER.fullmatch(branch) is None:
+            raise _integrity(f"{field} has a malformed branch identity.")
+        keys.append((tuple(path), branch))
+    if keys != sorted(set(keys)):
+        raise _integrity(f"{field} is not sorted and unique.")
+
+
+def _verify_bounds(value: object) -> None:
+    if not isinstance(value, list) or len(value) != 2:
+        raise _integrity("Optimization bounds are malformed.")
+    _verify_quantity_compatible(value[0], value[1])
+    if _f64_value(value[0]["si_value_f64"]) >= _f64_value(value[1]["si_value_f64"]):
+        raise _integrity("Optimization bounds are not ordered.")
+
+
+def _verify_quantity_compatible(left: object, right: object) -> None:
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        raise _integrity("Quantity pair is malformed.")
+    unit, dimensionality = left.get("si_unit"), left.get("dimensionality")
+    _verify_quantity_role(left, complex_value=False, unit=unit, dimensionality=dimensionality)
+    _verify_quantity_role(right, complex_value=False, unit=unit, dimensionality=dimensionality)
+
+
+def _verify_selector(value: object, terminal: list[str], port_realizable: bool) -> tuple[str, str]:
+    if not isinstance(value, dict):
+        raise _integrity("Optimization selector is malformed.")
+    if value.get("type") == "quantity_sum":
+        if set(value) != {"type", "terms"} or not isinstance(value.get("terms"), list) or not value["terms"]:
+            raise _integrity("QuantitySum is malformed.")
+        roles = [_verify_selector(item, terminal, port_realizable) for item in value["terms"]]
+        if any(role[1] != roles[0][1] for role in roles[1:]):
+            raise _integrity("QuantitySum terms have incompatible physical roles.")
+        return roles[0]
+    fields = {"type", "spec", "projection"}
+    kind = value.get("type")
+    expected = {
+        "diagonal_root_projection": ("diagonal_root", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
+        "hybridized_pole_projection": ("hybridized_pole", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
+        "transfer_zero_projection": ("transfer_zero", {"frequency"}, ("hertz", "inverse_time")),
+        "residue_coupling_projection": ("residue_normalized_coupling", {"magnitude"}, ("radian / second", "inverse_time")),
+        "response_element_projection": ("response_element", {"magnitude", "real", "imag"}, None),
+    }.get(kind)
+    if set(value) != fields or expected is None or value.get("projection") not in expected[1] or not isinstance(value.get("spec"), dict) or value["spec"].get("type") != expected[0]:
+        raise _integrity("Optimization selector is outside the Direct catalog.")
+    _verify_v1_evaluation_spec(value["spec"], terminal, port_realizable)
+    if expected[2] is not None:
+        return expected[2]
+    family = value["spec"].get("family")
+    return {"S": ("dimensionless", "dimensionless"), "Y": ("siemens", "conductance"), "Z": ("ohm", "resistance")}[family]
 
 
 def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
@@ -1457,8 +2070,38 @@ def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
     def visit(component: object, *, top_level: bool) -> None:
         if not isinstance(component, Mapping):
             raise _integrity("Sealed Plan Component inventory is malformed.")
-        component_path(component)
+        path = component_path(component)
         component_realization = realization(component)
+        if component_realization.get("kind") == "transmission_line":
+            conductors = component_realization.get("pin_conductors")
+            sections = component_realization.get("n_sections")
+            if (
+                not isinstance(conductors, list)
+                or not conductors
+                or any(not isinstance(item, str) or not item for item in conductors)
+                or len(set(conductors)) != len(conductors)
+                or not isinstance(sections, int)
+                or isinstance(sections, bool)
+                or sections < 1
+            ):
+                raise _integrity("Transmission-line station declaration is malformed.")
+            for station in range(1, sections):
+                for conductor in conductors:
+                    order.append(
+                        "internal-"
+                        + _sha256(
+                            _canonical_bytes(
+                                {
+                                    "schema": "scnsim.line_station",
+                                    "schema_version": 1,
+                                    "component_path": list(path),
+                                    "station": station,
+                                    "conductor": conductor,
+                                }
+                            )
+                        )
+                    )
+            return
         if component_realization.get("kind") != "composite":
             return
         node_map = private_nodes(component)
@@ -1676,7 +2319,7 @@ def _verify_optimization_selector_coordinates(spec: object, coordinate: str) -> 
                 verify(term)
             return
         if set(value) != {"type", "spec", "projection"} or value.get("type") != "diagonal_root_projection" or value.get("projection") not in {"frequency", "linewidth"}:
-            raise _integrity("Optimization selector is outside the dev3 quantity family.")
+            raise _integrity("Optimization selector is outside the Direct quantity family.")
         _verify_diagonal_root_spec(value.get("spec"), coordinate)
 
     for objective in spec["objectives"]:
@@ -1746,14 +2389,17 @@ def _verify_result_document(
     request: Mapping[str, object],
     request_sha256: str,
     attempt_sha256: str,
+    plan: Mapping[str, object],
 ) -> None:
-    """Close the three dev3 Result shapes before typed decoding."""
+    """Close every dev5 Direct Result before typed public decoding."""
 
-    kind = {
-        "solve_direct": "direct_response",
-        "evaluate_direct": "diagonal_root",
-        "optimize_direct": "optimization",
-    }.get(request.get("operation"))
+    spec = request.get("spec")
+    kind = (
+        "direct_response" if request.get("operation") == "solve_direct"
+        else "optimization" if request.get("operation") == "optimize_direct"
+        else spec.get("type") if request.get("operation") == "evaluate_direct" and isinstance(spec, dict)
+        else None
+    )
     common = {"schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256"}
     if (
         result.get("schema") != "scnsim.result"
@@ -1769,7 +2415,11 @@ def _verify_result_document(
         catalog = result.get("array_catalog")
         if not isinstance(catalog, dict) or set(catalog) != {"frequencies", "s", "y", "z"}:
             raise _integrity("Direct Result array catalog is incomplete.")
-        expected_coordinates, expected_frequency_count = _verify_direct_request(request)
+        terminal, port_realizable = _verify_v1_lineage(request.get("ref_lineage"), plan)
+        expected_probes = _expected_probe_load_state(request.get("ref_lineage"))
+        _verify_v1_direct_spec(request.get("spec"), terminal, port_realizable)
+        frequencies = request["spec"]["frequencies"]
+        expected_frequency_count = len(frequencies)
         frequency_count = _verify_direct_artifact(catalog["frequencies"], "frequencies")
         if frequency_count != expected_frequency_count:
             raise _integrity("Direct artifacts disagree with the requested frequency grid length.")
@@ -1777,9 +2427,9 @@ def _verify_result_document(
             if _verify_direct_artifact(catalog[role], role) != frequency_count:
                 raise _integrity("Direct artifacts disagree on frequency-axis length.")
             if (
-                catalog[role].get("coordinate_ids") != expected_coordinates
+                catalog[role].get("coordinate_ids") != terminal
                 or catalog[role].get("coordinate_ids") != catalog["s"].get("coordinate_ids")
-                or catalog[role].get("probe_load_state") != catalog["s"].get("probe_load_state")
+                or catalog[role].get("probe_load_state") != expected_probes
             ):
                 raise _integrity("Direct artifacts disagree with the request View or each other.")
     elif kind == "diagonal_root":
@@ -1792,6 +2442,63 @@ def _verify_result_document(
         _verify_quantity_role(scalars["frequency"], complex_value=False, unit="hertz", dimensionality="inverse_time")
         _verify_quantity_role(scalars["linewidth"], complex_value=False, unit="hertz", dimensionality="inverse_time")
         _verify_quantity_role(scalars["slope"], complex_value=True, unit="siemens", dimensionality="conductance")
+    elif kind == "hybridized_pole":
+        _verify_root_like_result(result, {"root", "frequency", "linewidth", "slope", "evidence_sha256"})
+        arrays = result.get("array_catalog")
+        if not isinstance(arrays, dict) or set(arrays) != {"null_vector"}:
+            raise _integrity("Hybridized-pole artifact catalog is incomplete.")
+        terminal, _ = _verify_v1_lineage(request.get("ref_lineage"), plan)
+        _verify_null_vector_artifact(arrays["null_vector"], terminal)
+    elif kind == "transfer_zero":
+        if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
+            raise _integrity("Transfer-zero Result envelope is malformed.")
+        scalars = result.get("scalar_catalog")
+        if not isinstance(scalars, dict) or set(scalars) != {"zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"}:
+            raise _integrity("Transfer-zero scalar catalog is incomplete.")
+        _verify_quantity_role(scalars["zero"], complex_value=True, unit="radian / second", dimensionality="inverse_time")
+        _verify_quantity_role(scalars["frequency"], complex_value=False, unit="hertz", dimensionality="inverse_time")
+        for field in ("numerator_slope", "denominator"):
+            _verify_quantity_role(scalars[field], complex_value=True, unit="dimensionless", dimensionality="dimensionless")
+        _valid_sha(scalars["evidence_sha256"])
+    elif kind == "residue_normalized_coupling":
+        if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
+            raise _integrity("Residue coupling Result envelope is malformed.")
+        scalars = result.get("scalar_catalog")
+        if not isinstance(scalars, dict) or set(scalars) != {"coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"}:
+            raise _integrity("Residue coupling scalar catalog is incomplete.")
+        _verify_quantity_role(scalars["coupling"], complex_value=True, unit="radian / second", dimensionality="inverse_time")
+        _verify_quantity_role(scalars["magnitude"], complex_value=False, unit="radian / second", dimensionality="inverse_time")
+        for field in ("branch_a_residue", "branch_b_residue"):
+            _verify_quantity_role(scalars[field], complex_value=True, unit="ohm", dimensionality="resistance")
+        _valid_sha(scalars["evidence_sha256"])
+    elif kind == "response_element":
+        if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
+            raise _integrity("Response-element Result envelope is malformed.")
+        scalars = result.get("scalar_catalog")
+        if not isinstance(scalars, dict) or set(scalars) != {"family", "value", "magnitude", "real", "imag", "evidence_sha256"}:
+            raise _integrity("Response-element scalar catalog is incomplete.")
+        role = {"S": ("dimensionless", "dimensionless"), "Y": ("siemens", "conductance"), "Z": ("ohm", "resistance")}.get(scalars.get("family"))
+        if role is None:
+            raise _integrity("Response-element family is malformed.")
+        _verify_quantity_role(scalars["value"], complex_value=True, unit=role[0], dimensionality=role[1])
+        for field in ("magnitude", "real", "imag"):
+            _verify_quantity_role(scalars[field], complex_value=False, unit=role[0], dimensionality=role[1])
+        _valid_sha(scalars["evidence_sha256"])
+    elif kind == "operator":
+        if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("scalar_catalog") != {}:
+            raise _integrity("Operator Result envelope is malformed.")
+        catalog = result.get("array_catalog")
+        if not isinstance(catalog, dict) or set(catalog) != {"frequencies", "operator"}:
+            raise _integrity("Operator artifact catalog is incomplete.")
+        count = _verify_direct_artifact(catalog["frequencies"], "frequencies")
+        spec_frequencies = request.get("spec", {}).get("frequencies") if isinstance(request.get("spec"), dict) else None
+        terminal, _ = _verify_v1_lineage(request.get("ref_lineage"), plan)
+        if not isinstance(spec_frequencies, list) or count != len(spec_frequencies):
+            raise _integrity("Operator frequency artifact disagrees with its request grid.")
+        _verify_operator_artifact(
+            catalog["operator"], count, terminal,
+            _expected_probe_load_state(request.get("ref_lineage")),
+        )
     elif kind == "optimization":
         expected = common | {"baseline", "best", "completed_generations", "unused_evaluations", "ledger_artifacts"}
         if set(result) != expected or not isinstance(result.get("baseline"), dict) or not isinstance(result.get("best"), dict):
@@ -1820,7 +2527,6 @@ def _verify_result_document(
             or baseline.get("generation") != 0
             or baseline.get("population_column") is not None
             or baseline.get("cache_hit") is not False
-            or baseline.get("extrapolation_evidence") != []
             or not isinstance(baseline.get("optimizer_coordinates_f64"), list)
             or not baseline["optimizer_coordinates_f64"]
             or any(not _finite_f64(value) for value in baseline["optimizer_coordinates_f64"])
@@ -1832,6 +2538,17 @@ def _verify_result_document(
         ):
             raise _integrity("Optimization baseline envelope is open or malformed.")
         _verify_parameter_set_document(baseline["parameters"], require_empty_authorization=True)
+        _verify_extrapolation_evidence(
+            baseline.get("extrapolation_evidence"),
+            allowed_sources={"none", "optimization_spec"},
+            required_rows=_required_extrapolation_rows(
+                plan,
+                baseline["parameters"],
+                authorization_source="optimization_spec",
+                optimization_authorizations=request.get("spec", {}).get("allow_extrapolation", [])
+                if isinstance(request.get("spec"), dict) else [],
+            ),
+        )
         generations = result.get("completed_generations")
         unused = result.get("unused_evaluations")
         ledgers = result.get("ledger_artifacts")
@@ -1861,7 +2578,153 @@ def _verify_result_document(
             ):
                 raise _integrity("Optimization ledger catalog entry is open or malformed.")
     else:
-        raise _integrity("Result operation is outside the dev3 runtime.")
+        raise _integrity("Result operation is outside the Direct runtime.")
+
+
+def _verify_root_like_result(result: Mapping[str, object], fields: set[str]) -> None:
+    common = {"schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256"}
+    if set(result) != common | {"scalar_catalog", "array_catalog"}:
+        raise _integrity("Root Result envelope is malformed.")
+    scalars = result.get("scalar_catalog")
+    if not isinstance(scalars, dict) or set(scalars) != fields:
+        raise _integrity("Root scalar catalog is incomplete.")
+    _verify_quantity_role(scalars["root"], complex_value=True, unit="radian / second", dimensionality="inverse_time")
+    _verify_quantity_role(scalars["frequency"], complex_value=False, unit="hertz", dimensionality="inverse_time")
+    _verify_quantity_role(scalars["linewidth"], complex_value=False, unit="hertz", dimensionality="inverse_time")
+    _verify_quantity_role(scalars["slope"], complex_value=True, unit="siemens", dimensionality="conductance")
+    _valid_sha(scalars["evidence_sha256"])
+
+
+def _verify_null_vector_artifact(value: object, expected_coordinates: list[str]) -> None:
+    if not isinstance(value, dict):
+        raise _integrity("Hybridized-pole null-vector artifact is malformed.")
+    common = {
+        "id", "path", "sha256", "media_type", "file_manifest", "dtype", "shape",
+        "chunks", "complex_storage", "group_metadata", "datasets", "axes", "unit",
+        "dimensionality", "chunk_policy", "coordinate_ids",
+    }
+    if (
+        set(value) != common
+        or value.get("id") != "null_vector"
+        or value.get("path") != "artifacts/null_vector.zarr"
+        or value.get("file_manifest") != "artifacts/null_vector.manifest.json"
+        or _SHA256.fullmatch(str(value.get("sha256", ""))) is None
+        or value.get("media_type") != "application/vnd+zarr-v2"
+        or value.get("dtype") != "complex128"
+        or value.get("complex_storage") != "paired_float64_real_imag"
+        or value.get("group_metadata") != {"zarr_format": 2}
+        or value.get("unit") != "dimensionless"
+        or value.get("dimensionality") != "dimensionless"
+        or value.get("chunk_policy") != "single_complete_array_v1"
+    ):
+        raise _integrity("Hybridized-pole null-vector artifact is malformed.")
+    coordinates = value.get("coordinate_ids"); shape = value.get("shape"); chunks = value.get("chunks")
+    if (
+        not isinstance(coordinates, list)
+        or len(coordinates) < 2
+        or any(not isinstance(item, str) or not item for item in coordinates)
+        or len(set(coordinates)) != len(coordinates)
+        or coordinates != expected_coordinates
+        or shape != [len(coordinates)]
+        or chunks != [len(coordinates)]
+        or value.get("axes") != [{"id": "retained_coordinate", "kind": "coordinate", "values": coordinates}]
+    ):
+        raise _integrity("Hybridized-pole null-vector ordering is malformed.")
+    _verify_zarr_datasets(value.get("datasets"), shape=shape, chunks=chunks, names=["real", "imag"])
+
+
+def _expected_probe_load_state(lineage: object) -> list[dict[str, str]]:
+    if not isinstance(lineage, Mapping) or not isinstance(lineage.get("original"), Mapping):
+        raise _integrity("View lineage has no original Port order.")
+    ports = _identifiers(lineage["original"].get("port_order"), field="Original Port order", nonempty=False)
+    ptc = lineage.get("ptc")
+    selected = set() if ptc is None else set(_identifiers(ptc.get("selected_ports"), field="PTC selected Ports"))
+    return [
+        {"port_id": port, "state": "compensated" if port in selected else "raw"}
+        for port in ports
+    ]
+
+
+def _verify_operator_artifact(
+    value: object,
+    frequency_count: int,
+    expected_coordinates: list[str],
+    expected_probes: list[dict[str, str]],
+) -> None:
+    if not isinstance(value, dict):
+        raise _integrity("Operator artifact is malformed.")
+    common = {
+        "id", "path", "sha256", "media_type", "file_manifest", "dtype", "shape",
+        "chunks", "complex_storage", "group_metadata", "datasets", "axes", "unit",
+        "dimensionality", "chunk_policy", "coordinate_ids", "probe_load_state",
+    }
+    if (
+        set(value) != common
+        or value.get("id") != "operator"
+        or value.get("path") != "artifacts/operator.zarr"
+        or value.get("file_manifest") != "artifacts/operator.manifest.json"
+        or _SHA256.fullmatch(str(value.get("sha256", ""))) is None
+        or value.get("media_type") != "application/vnd+zarr-v2"
+        or value.get("dtype") != "complex128"
+        or value.get("complex_storage") != "paired_float64_real_imag"
+        or value.get("group_metadata") != {"zarr_format": 2}
+        or value.get("unit") != "siemens / second"
+        or value.get("dimensionality") != "conductance_per_time"
+        or value.get("chunk_policy") != "frequency_slab_full_matrix_v1"
+    ):
+        raise _integrity("Operator artifact is malformed.")
+    coordinates = value.get("coordinate_ids"); shape = value.get("shape"); chunks = value.get("chunks")
+    if (
+        not isinstance(coordinates, list)
+        or not coordinates
+        or any(not isinstance(item, str) or not item for item in coordinates)
+        or len(set(coordinates)) != len(coordinates)
+        or coordinates != expected_coordinates
+        or shape != [frequency_count, len(coordinates), len(coordinates)]
+        or chunks != [min(frequency_count, 1024), len(coordinates), len(coordinates)]
+        or value.get("axes") != [
+            {"id": "frequency", "kind": "frequency", "artifact_id": "frequencies"},
+            {"id": "row_coordinate", "kind": "row_coordinate", "values": coordinates},
+            {"id": "column_coordinate", "kind": "column_coordinate", "values": coordinates},
+        ]
+    ):
+        raise _integrity("Operator artifact axes are malformed.")
+    probes = value.get("probe_load_state")
+    if (
+        not isinstance(probes, list)
+        or any(
+            not isinstance(item, dict)
+            or set(item) != {"port_id", "state"}
+            or not isinstance(item.get("port_id"), str)
+            or not item["port_id"]
+            or item.get("state") not in {"raw", "compensated"}
+            for item in probes
+        )
+        or probes != expected_probes
+    ):
+        raise _integrity("Operator artifact probe-load state is malformed.")
+    _verify_zarr_datasets(value.get("datasets"), shape=shape, chunks=chunks, names=["real", "imag"])
+
+
+def _verify_zarr_datasets(
+    value: object,
+    *,
+    shape: object,
+    chunks: object,
+    names: list[str],
+) -> None:
+    """Close the shared no-codec Zarr V2 metadata contract."""
+
+    if not isinstance(value, list) or [item.get("path") if isinstance(item, dict) else None for item in value] != names:
+        raise _integrity("Zarr artifact datasets are malformed.")
+    expected = {
+        "zarr_format": 2, "shape": shape, "chunks": chunks, "dtype": "<f8",
+        "compressor": None, "fill_value": None, "order": "C", "filters": None,
+        "dimension_separator": ".",
+    }
+    for dataset in value:
+        if not isinstance(dataset, dict) or set(dataset) != {"path", "metadata"} or dataset.get("metadata") != expected:
+            raise _integrity("Zarr artifact dataset metadata is malformed.")
 
 
 def _verify_quantity_role(value: object, *, complex_value: bool, unit: str, dimensionality: str) -> None:
@@ -1877,6 +2740,17 @@ def _verify_quantity_role(value: object, *, complex_value: bool, unit: str, dime
         or any(not _finite_f64(value[field]) for field in magnitude_fields)
     ):
         raise _integrity("Typed quantity Result field has the wrong physical role.")
+
+
+def _verify_quantity_any(value: object) -> None:
+    if not isinstance(value, dict) or value.get("type") != "quantity_f64":
+        raise _integrity("Typed quantity is malformed.")
+    unit, dimensionality = value.get("si_unit"), value.get("dimensionality")
+    if not isinstance(unit, str) or not isinstance(dimensionality, str):
+        raise _integrity("Typed quantity has no physical role.")
+    if (unit, dimensionality) not in _canonical_quantity_roles():
+        raise _integrity("Typed quantity uses a closed-vocabulary-invalid physical role.")
+    _verify_quantity_role(value, complex_value=False, unit=unit, dimensionality=dimensionality)
 
 
 def _finite_f64(value: object) -> bool:
@@ -1935,6 +2809,213 @@ def _verify_parameter_set_document(value: object, *, require_empty_authorization
         raise _integrity("Optimization candidate ParameterSet inherited extrapolation authorization.")
 
 
+def _verify_extrapolation_evidence(
+    value: object,
+    *,
+    allowed_sources: set[str],
+    required_rows: list[dict[str, object]] | None = None,
+) -> None:
+    """Validate one evidence row per explicitly out-of-support fan-out edge."""
+
+    if not isinstance(value, list):
+        raise _integrity("Extrapolation evidence is not an array.")
+    keys: list[tuple[tuple[tuple[str, ...], str], tuple[tuple[str, ...], str]]] = []
+    for row in value:
+        if not isinstance(row, dict) or set(row) != {"parameter", "consumer_target", "support", "input_value", "side", "distance", "authorization_source"}:
+            raise _integrity("Extrapolation evidence row is malformed.")
+        parameter = _parameter_key_integrity(row.get("parameter"))
+        target = _parameter_key_integrity(row.get("consumer_target"))
+        support = row.get("support")
+        if not isinstance(support, list) or len(support) != 2:
+            raise _integrity("Extrapolation support interval is malformed.")
+        _verify_quantity_compatible(support[0], support[1])
+        _verify_quantity_compatible(support[0], row.get("input_value"))
+        _verify_quantity_compatible(support[0], row.get("distance"))
+        lower, upper = _f64_value(support[0]["si_value_f64"]), _f64_value(support[1]["si_value_f64"])
+        input_value = _f64_value(row["input_value"]["si_value_f64"])
+        distance = _f64_value(row["distance"]["si_value_f64"])
+        side = row.get("side")
+        expected = lower - input_value if side == "lower" else input_value - upper if side == "upper" else None
+        if lower >= upper or expected is None or expected <= 0.0 or distance <= 0.0 or struct.pack(">d", expected).hex() != row["distance"].get("si_value_f64"):
+            raise _integrity("Extrapolation evidence does not reproduce its canonical distance.")
+        if row.get("authorization_source") not in allowed_sources:
+            raise _integrity("Extrapolation evidence has an unauthorized source.")
+        keys.append((parameter, target))
+    if keys != sorted(set(keys)):
+        raise _integrity("Extrapolation evidence is not sorted and unique per fan-out edge.")
+    if required_rows is not None and value != required_rows:
+        raise _integrity("Extrapolation evidence omits or alters a required affine fan-out edge.")
+
+
+def _required_extrapolation_rows(
+    plan: Mapping[str, object],
+    parameters: object,
+    *,
+    authorization_source: str,
+    optimization_authorizations: object | None = None,
+    require_authorized: bool = True,
+) -> list[dict[str, object]]:
+    """Derive every out-of-support affine edge from sealed authorities.
+
+    This mirrors the fixed binding order without becoming a second compiler:
+    it resolves only scalar parameter bindings needed to identify support
+    crossings.  Receipt evidence uses the request's ParameterSet authority;
+    candidate evidence uses the complete OptimizationSpec authorization set.
+    An unauthorized candidate still owns a ``none`` row, so a typed ``+Inf``
+    outcome cannot silently erase the rejected fan-out that caused it.
+    """
+
+    if authorization_source not in {"parameter_set", "optimization_spec"}:
+        raise _integrity("Extrapolation evidence authority is unknown.")
+    _verify_parameter_set_document(parameters)
+    assert isinstance(parameters, Mapping)  # narrowed by the closed verifier
+    bindings = parameters.get("bindings")
+    if not isinstance(bindings, list):
+        raise _integrity("ParameterSet bindings are malformed.")
+    values: dict[tuple[tuple[str, ...], str], dict[str, object]] = {}
+    for binding in bindings:
+        if not isinstance(binding, Mapping):
+            raise _integrity("ParameterSet binding is malformed.")
+        key = _parameter_key_integrity(binding.get("parameter"))
+        raw_value = binding.get("value")
+        _verify_quantity_any(raw_value)
+        values[key] = dict(raw_value)
+
+    if authorization_source == "parameter_set":
+        raw_authorizations = parameters.get("allow_extrapolation")
+    else:
+        raw_authorizations = optimization_authorizations
+    if not isinstance(raw_authorizations, list):
+        raise _integrity("Extrapolation authorization collection is malformed.")
+    authorized = {_parameter_key_integrity(reference) for reference in raw_authorizations}
+    rows: list[dict[str, object]] = []
+    resolved_targets: set[tuple[tuple[str, ...], str]] = set()
+
+    def resolve(binding: object, target: Mapping[str, object]) -> dict[str, object]:
+        if not isinstance(binding, Mapping) or not isinstance(binding.get("kind"), str):
+            raise _integrity("Sealed parameter binding is malformed.")
+        kind = binding["kind"]
+        if kind == "constant":
+            if set(binding) != {"kind", "value"}:
+                raise _integrity("Constant parameter binding is malformed.")
+            value = binding.get("value")
+            _verify_quantity_any(value)
+            return dict(value)
+        input_reference = binding.get("input")
+        input_key = _parameter_key_integrity(input_reference)
+        input_value = values.get(input_key)
+        if input_value is None:
+            raise _integrity("Sealed affine input has no resolved public value.")
+        if kind == "identity":
+            if set(binding) != {"kind", "input"}:
+                raise _integrity("Identity parameter binding is malformed.")
+            return dict(input_value)
+        if kind != "affine" or set(binding) != {"kind", "input", "slope", "intercept", "support"}:
+            raise _integrity("Affine parameter binding is malformed.")
+        support = binding.get("support")
+        if not isinstance(support, list) or len(support) != 2:
+            raise _integrity("Affine support interval is malformed.")
+        _verify_quantity_compatible(support[0], support[1])
+        _verify_quantity_compatible(support[0], input_value)
+        slope, intercept = binding.get("slope"), binding.get("intercept")
+        _verify_quantity_any(slope); _verify_quantity_any(intercept)
+        lower = _f64_value(support[0]["si_value_f64"])
+        upper = _f64_value(support[1]["si_value_f64"])
+        input_scalar = _f64_value(input_value["si_value_f64"])
+        if lower >= upper:
+            raise _integrity("Affine support interval is not ordered.")
+        if input_scalar < lower or input_scalar > upper:
+            source = authorization_source if input_key in authorized else "none"
+            if authorization_source == "parameter_set" and source == "none":
+                if require_authorized:
+                    raise _integrity("Successful request has unauthorized affine extrapolation.")
+            side, distance = (
+                ("lower", lower - input_scalar)
+                if input_scalar < lower else ("upper", input_scalar - upper)
+            )
+            if distance <= 0.0:
+                raise _integrity("Affine extrapolation distance is not positive.")
+            from ._canonical import float64_hex
+
+            distance_record = dict(input_value)
+            distance_record["si_value_f64"] = float64_hex(distance)
+            if source != "none" or authorization_source == "optimization_spec":
+                rows.append(
+                    {
+                        "parameter": dict(input_reference),
+                        "consumer_target": dict(target),
+                        "support": [dict(support[0]), dict(support[1])],
+                        "input_value": dict(input_value),
+                        "side": side,
+                        "distance": distance_record,
+                        "authorization_source": source,
+                    }
+                )
+        from ._canonical import float64_hex
+
+        mapped = _f64_value(slope["si_value_f64"]) * input_scalar + _f64_value(intercept["si_value_f64"])
+        if not math.isfinite(mapped):
+            raise _integrity("Affine mapping is non-finite.")
+        output = dict(intercept)
+        output["si_value_f64"] = float64_hex(mapped)
+        return output
+
+    def apply(target: Mapping[str, object], binding: object) -> None:
+        target_key = _parameter_key_integrity(target)
+        if target_key in values:
+            return
+        if target_key in resolved_targets:
+            raise _integrity("Sealed parameter graph repeats one consumer target.")
+        resolved_targets.add(target_key)
+        values[target_key] = resolve(binding, target)
+
+    def visit(component: object) -> None:
+        if not isinstance(component, Mapping):
+            raise _integrity("Sealed Plan component is malformed.")
+        path = component.get("component_path")
+        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path):
+            raise _integrity("Sealed component path is malformed.")
+        entries = component.get("parameter_bindings")
+        realization = component.get("realization")
+        if not isinstance(entries, list) or not isinstance(realization, Mapping):
+            raise _integrity("Sealed component parameter inventory is malformed.")
+        for entry in entries:
+            if not isinstance(entry, Mapping) or set(entry) != {"id", "binding"} or not isinstance(entry.get("id"), str) or not entry["id"]:
+                raise _integrity("Sealed bound parameter is malformed.")
+            apply({"component_path": list(path), "parameter_id": entry["id"]}, entry.get("binding"))
+        if realization.get("kind") != "composite":
+            return
+        maps = realization.get("public_parameter_maps")
+        children = realization.get("children")
+        if not isinstance(maps, list) or not isinstance(children, list):
+            raise _integrity("Sealed Composite parameter graph is malformed.")
+        for parameter_map in maps:
+            if not isinstance(parameter_map, Mapping) or set(parameter_map) != {"parameter", "consumers"}:
+                raise _integrity("Sealed Composite public parameter map is malformed.")
+            source = _parameter_key_integrity(parameter_map.get("parameter"))
+            if source not in values:
+                raise _integrity("Composite public parameter map has no resolved source.")
+            consumers = parameter_map.get("consumers")
+            if not isinstance(consumers, list):
+                raise _integrity("Composite public parameter consumers are malformed.")
+            for consumer in consumers:
+                if not isinstance(consumer, Mapping) or set(consumer) != {"target", "binding"}:
+                    raise _integrity("Composite public parameter consumer is malformed.")
+                apply(consumer.get("target"), consumer.get("binding"))
+        for child in children:
+            visit(child)
+
+    components = plan.get("components")
+    if not isinstance(components, list):
+        raise _integrity("Sealed Plan components are malformed.")
+    for component in components:
+        visit(component)
+    rows.sort(key=lambda row: (_parameter_key_integrity(row["parameter"]), _parameter_key_integrity(row["consumer_target"])))
+    if len({(_parameter_key_integrity(row["parameter"]), _parameter_key_integrity(row["consumer_target"])) for row in rows}) != len(rows):
+        raise _integrity("Sealed affine fan-out evidence is ambiguous.")
+    return rows
+
+
 def _verify_direct_artifact(value: object, role: str) -> int:
     if not isinstance(value, dict):
         raise _integrity("Direct artifact catalog entry is not an object.", artifact_id=role)
@@ -1964,14 +3045,18 @@ def _verify_direct_artifact(value: object, role: str) -> int:
     shape = value.get("shape")
     chunks = value.get("chunks")
     if matrix:
-        valid_shape = isinstance(shape, list) and len(shape) == 3 and isinstance(shape[0], int) and not isinstance(shape[0], bool) and shape[0] >= 1 and shape[1:] == [1, 1]
-        valid_chunks = bool(valid_shape and isinstance(chunks, list) and chunks == [min(shape[0], 1024), 1, 1])
+        valid_shape = (
+            isinstance(shape, list) and len(shape) == 3
+            and all(isinstance(item, int) and not isinstance(item, bool) and item >= 1 for item in shape)
+            and shape[1] == shape[2]
+        )
+        valid_chunks = bool(valid_shape and isinstance(chunks, list) and chunks == [min(shape[0], 1024), shape[1], shape[2]])
         valid_storage = value.get("dtype") == "complex128" and value.get("complex_storage") == "paired_float64_real_imag" and value.get("chunk_policy") == "frequency_slab_full_matrix_v1"
         coordinates = value.get("coordinate_ids")
         probes = value.get("probe_load_state")
-        if not isinstance(coordinates, list) or len(coordinates) != 1 or not isinstance(coordinates[0], str):
+        if not isinstance(coordinates, list) or len(coordinates) != shape[1] or any(not isinstance(item, str) or not item for item in coordinates) or len(set(coordinates)) != len(coordinates):
             raise _integrity("Direct matrix coordinate catalog is invalid.", artifact_id=role)
-        if not isinstance(probes, list) or len(probes) != 1 or not isinstance(probes[0], dict) or set(probes[0]) != {"port_id", "state"} or probes[0].get("port_id") != coordinates[0] or probes[0].get("state") != "raw":
+        if not isinstance(probes, list) or any(not isinstance(item, dict) or set(item) != {"port_id", "state"} or item.get("state") not in {"raw", "compensated"} for item in probes):
             raise _integrity("Direct matrix probe-load catalog is invalid.", artifact_id=role)
         valid_axes = value.get("axes") == [
             {"id": "frequency", "kind": "frequency", "artifact_id": "frequencies"},
@@ -2164,6 +3249,12 @@ def _verify_generation_artifacts(
     if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
         raise _integrity("Optimization ledgers lack their exact request envelope.")
     request = _load_canonical(request_path)
+    plan_path = directory.parents[3] / "plan.json"
+    plan = _load_canonical(plan_path)
+    plan_sha256 = request.get("plan_sha256")
+    if not isinstance(plan_sha256, str) or _sha256(plan_path.read_bytes()) != plan_sha256:
+        raise _integrity("Optimization ledger request does not bind its leaf Plan.")
+    _verify_request_document(request, plan_sha256, plan)
     spec = request.get("spec")
     if request.get("operation") != "optimize_direct" and artifacts:
         raise _integrity("Only optimization attempts may retain generation ledgers.")
@@ -2200,7 +3291,7 @@ def _verify_generation_artifacts(
             or ledger.get("generation") != generation
         ):
             raise _integrity("Optimization ledger identity is inconsistent.", path=path)
-        _verify_generation_ledger(ledger, spec, generation)
+        _verify_generation_ledger(ledger, spec, plan, generation)
         producer = ledger.get("attempt_sha256")
         if producer != attempt_sha256 and not _prior_ledger_is_receipt_backed(
             directory,
@@ -2256,11 +3347,16 @@ def _verify_generation_artifacts(
     if result_path.exists():
         result = _load_canonical(result_path)
         if result.get("result_kind") == "optimization":
-            _verify_optimization_winner(result, spec, [ledger for _, _, ledger in ledgers])
+            _verify_optimization_winner(result, spec, plan, [ledger for _, _, ledger in ledgers])
     return [(generation, digest) for generation, digest, _ in ledgers]
 
 
-def _verify_generation_ledger(ledger: Mapping[str, object], spec: Mapping[str, object], generation: int) -> None:
+def _verify_generation_ledger(
+    ledger: Mapping[str, object],
+    spec: Mapping[str, object],
+    plan: Mapping[str, object],
+    generation: int,
+) -> None:
     expected = {
         "schema", "schema_version", "request_sha256", "attempt_sha256",
         "algorithm_id", "generation", "previous_ledger_sha256", "population_size",
@@ -2294,6 +3390,8 @@ def _verify_generation_ledger(ledger: Mapping[str, object], spec: Mapping[str, o
             candidate,
             variables=len(variables),
             objective_ids=[str(objective.get("id")) for objective in objectives if isinstance(objective, dict)],
+            plan=plan,
+            optimization_authorizations=spec.get("allow_extrapolation", []),
             generation=generation,
             column=column,
             evaluation_ordinal=expected_ordinal,
@@ -2357,6 +3455,8 @@ def _verify_candidate_outcome(
     *,
     variables: int,
     objective_ids: list[str],
+    plan: Mapping[str, object],
+    optimization_authorizations: object,
     generation: int,
     column: int | None,
     evaluation_ordinal: int,
@@ -2380,7 +3480,6 @@ def _verify_candidate_outcome(
         or value.get("generation") != generation
         or value.get("population_column") != column
         or not isinstance(value.get("cache_hit"), bool)
-        or value.get("extrapolation_evidence") != []
         or not isinstance(coordinates, list)
         or len(coordinates) != variables
         or any(not _finite_f64(item) or not 0.0 <= _f64_value(item) <= 1.0 for item in coordinates)
@@ -2388,6 +3487,16 @@ def _verify_candidate_outcome(
     ):
         raise _integrity("Optimization candidate envelope is open or malformed.")
     _verify_parameter_set_document(value.get("parameters"), require_empty_authorization=True)
+    _verify_extrapolation_evidence(
+        value.get("extrapolation_evidence"),
+        allowed_sources={"none", "optimization_spec"},
+        required_rows=_required_extrapolation_rows(
+            plan,
+            value["parameters"],
+            authorization_source="optimization_spec",
+            optimization_authorizations=optimization_authorizations,
+        ),
+    )
     outcome = value.get("outcome")
     if not isinstance(outcome, dict):
         raise _integrity("Optimization candidate outcome is malformed.")
@@ -2412,7 +3521,7 @@ def _verify_candidate_outcome(
                 or _f64_value(component["weighted_cost_f64"]) < 0.0
             ):
                 raise _integrity("Optimization objective component is malformed.")
-            _verify_quantity_role(component.get("value"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+            _verify_quantity_any(component.get("value"))
             total += _f64_value(component["weighted_cost_f64"])
         if struct.pack(">d", total).hex() != outcome.get("cost_f64"):
             raise _integrity("Optimization candidate cost does not equal its ordered components.")
@@ -2429,7 +3538,12 @@ def _verify_candidate_outcome(
         raise _integrity("Optimization candidate outcome discriminator is unknown.")
 
 
-def _verify_optimization_winner(result: Mapping[str, object], spec: Mapping[str, object], ledgers: list[Mapping[str, object]]) -> None:
+def _verify_optimization_winner(
+    result: Mapping[str, object],
+    spec: Mapping[str, object],
+    plan: Mapping[str, object],
+    ledgers: list[Mapping[str, object]],
+) -> None:
     variables = spec.get("variables")
     objectives = spec.get("objectives")
     optimizer = spec.get("optimizer")
@@ -2441,6 +3555,8 @@ def _verify_optimization_winner(result: Mapping[str, object], spec: Mapping[str,
         baseline,
         variables=len(variables),
         objective_ids=objective_ids,
+        plan=plan,
+        optimization_authorizations=spec.get("allow_extrapolation", []),
         generation=0,
         column=None,
         evaluation_ordinal=0,
