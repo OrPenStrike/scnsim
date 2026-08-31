@@ -70,6 +70,15 @@ does not change the `CONVERGING` semantic state by itself.
 | `1.0.0.dev5` — Advanced native Direct, Lessons 9–11 | general RLGC and strict native Q2D ingestion, N-trace pi expansion, named/N-Port selected networks, PTC compensation, retained-coordinate transforms, compiled expanded-graph schematic, `inventory()`, immutable model-default/consumer-override bounds with request-local extrapolation evidence, every remaining documented Direct quantity family, and the full scalar selector catalog: diagonal-root and hybridized-pole frequency/linewidth, transfer-zero frequency, residue-normalized-coupling magnitude, and response-element magnitude/real/imag; `QuantitySum` remains `CostObjective`-only | Full V1 HB and Direct/HB comparison taught in Lessons 12–13; selector and override expansion reuses the `dev3` CMA replay, ledger, cache, winner, and retry semantics without changing CMA numerics |
 | `1.0.0.dev6` — Full V1 HB, Lessons 12–13 | pump axes, named drives and cases, truncation and mixing, JosephsonCircuits realization, selected-network/PTC adaptation, per-case partial outcomes, HB quantities and presentation/evidence, and Direct/HB comparison on independently declared grids | None within the current public V1; any later feature requires a separately converged contract |
 
+The `dev4` compiler expands Composite snapshots only into backend-neutral
+intrinsic C/K/G rows and branch evidence. It does not extend the `dev3`
+scalar `port_index`/`Z0` representation into a second Port model. Arbitrary
+Plan Port counts with operation-level capability checks, the canonical
+`B`/`R`/`M` selected-network representation, PTC masking of declared
+`nonloading_probe` loads, selector-specific objective units, Julia-side NFC
+parity, complete explain presentation, and the corresponding refined error
+classification arrive together in `dev5`.
+
 The `dev3` slice implements the exact
 [identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json),
 replacement/versioned workspace contract, portable catalog/runtime provenance,

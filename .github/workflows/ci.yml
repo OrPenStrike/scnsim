@@ -53,7 +53,7 @@ jobs:
           esac
           uv run --locked python scripts/check_version.py --line "$line"
 
-      - name: Verify the fail-fast scaffold
+      - name: Verify the public package surface
         run: |
           uv run --locked python - <<'PY'
           import inspect
@@ -63,7 +63,6 @@ jobs:
           from scnsim import (
               CircuitPlan,
               Library,
-              ScaffoldUnavailableError,
               components,
           )
 
@@ -77,18 +76,6 @@ jobs:
           assert inspect.signature(components.capacitor).return_annotation == "ComponentInstance"
           assert inspect.signature(CircuitPlan).parameters["id"].kind.name == "KEYWORD_ONLY"
           assert inspect.getdoc(CircuitPlan)
-          try:
-              components.capacitor(id="ci-cap", capacitance=object())
-          except ScaffoldUnavailableError:
-              pass
-          else:
-              raise SystemExit("component factories must remain fail-fast")
-          try:
-              CircuitPlan(id="ci-probe")
-          except ScaffoldUnavailableError:
-              pass
-          else:
-              raise SystemExit("CircuitPlan must remain fail-fast in the scaffold")
           print(scnsim.__version__)
           PY
 
@@ -104,6 +91,11 @@ jobs:
           with zipfile.ZipFile(wheels[0]) as wheel:
               names = wheel.namelist()
           assert "scnsim/py.typed" in names
+          assert "scnsim/_julia/Project.toml" in names
+          assert "scnsim/_julia/Manifest.toml" in names
+          assert "scnsim/_julia/runtime.json" in names
+          assert "scnsim/_julia/src/SCNSimBackend.jl" in names
+          assert "scnsim/_julia/bin/scnsim_request.jl" in names
           assert any(name.endswith("/licenses/LICENSE") for name in names)
           assert any(name.endswith("/licenses/NOTICE") for name in names)
           PY
@@ -114,8 +106,48 @@ jobs:
 
           import scnsim
 
-          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev2"
+          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev3"
           print(scnsim.__version__)
+          PY
+
+      - name: Verify portable wheel identity and Python 3.10 import
+        run: |
+          mkdir -p dist/path-a dist/path-b
+          cp dist/*.whl dist/path-a/
+          cp dist/*.whl dist/path-b/
+          uv venv --clear --python 3.12 .venv-path-a
+          uv venv --clear --python 3.12 .venv-path-b
+          uv pip install --python .venv-path-a/bin/python dist/path-a/*.whl
+          uv pip install --python .venv-path-b/bin/python dist/path-b/*.whl
+          uv run --locked python - <<'PY'
+          import json
+          import subprocess
+
+          probe = r'''
+          import json
+          from scnsim import CircuitPlan, components, units as u
+          from scnsim._canonical import canonical_plan_document, catalog_source_record, sha256_hex
+
+          plan = CircuitPlan(id="portable-wheel")
+          capacitor = plan.add(components.capacitor(id="c", capacitance=1.0 * u.pF))
+          node = plan.net(capacitor.pin("terminal_1"), id="n")
+          plan.ground(capacitor.pin("terminal_2"))
+          plan.add_port(id="p", at=node, role="terminated", reference_impedance=50.0 * u.ohm)
+          source = catalog_source_record(components)
+          document = canonical_plan_document(plan._canonical_snapshot())
+          print(json.dumps([source["source_sha256"], sha256_hex(document)]))
+          '''
+          values = [
+              json.loads(subprocess.check_output([interpreter, "-c", probe], text=True))
+              for interpreter in (".venv-path-a/bin/python", ".venv-path-b/bin/python")
+          ]
+          assert values[0] == values[1], values
+          PY
+          uv venv --clear --python 3.10 .venv-py310
+          uv pip install --python .venv-py310/bin/python dist/*.whl
+          .venv-py310/bin/python - <<'PY'
+          import scnsim
+          assert scnsim.__version__ == "1.0.0.dev3"
           PY
 
       - name: Verify Notebook hygiene
@@ -274,4 +306,34 @@ jobs:
             echo "generated output is tracked"
             exit 1
           fi
+
+  runtime-preparation-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Prepare the packaged Julia runtime
+        env:
+          JULIA_DEPOT_PATH: ${{ runner.temp }}/scnsim-julia-depot
+        run: |
+          uv build --no-sources
+          uv venv --clear --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          .venv-wheel/bin/python - <<'PY'
+          from scnsim._backend import prepare_runtime
+
+          runtime = prepare_runtime()
+          assert runtime.julia_version == "1.12.6"
+          PY
           git diff --check

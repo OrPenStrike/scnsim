@@ -69,6 +69,16 @@ current and is eliminated with a factorization/linear solve—never an explicit
 inverse and never a submatrix of a native S result. The boundary meaning is
 maintained in [Schur Complement and Kron Reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices).
 
+That node-coordinate partition is sufficient for Direct quantity evaluation.
+It does not imply a wave boundary. If the retained terminal basis is not
+Port-realizable, all eight wave-only retain records (`A`, `B`, `R`, `D`, `Q`,
+the selected/omitted projectors, and omitted matched loads) use the canonical
+`0 x 0` not-applicable evidence digest. The source-boundary and de-embedding
+hashes bind corresponding closed not-applicable envelopes. These records must
+not be read as zero physical matrices; the selected-network construction is
+absent. Existing logical-Port loads remain in the complete node operator used
+by the quantity procedure.
+
 For a Port-realizable final basis, the compiler derives and records the ordered
 original-Port selector $B_p$, final coordinate map $A_k$, final injection map
 $B_k$, transformed reference matrix $R_k$, its principal real-SPD square root
@@ -79,9 +89,10 @@ B_k=B_pA_k^T,\qquad R_k=A_kR_pA_k^T,\qquad D_k=R_k^{1/2}.
 $$
 
 The root is the principal SPD root; SCNSim never substitutes diagonal entries
-for a nondiagonal $R_k$. It records map rank, SPD evidence, load mask, selected
-and omitted partitions, factorization/solve residuals, and ordered coordinate
-IDs. The resulting S convention is the canonical generalized power-wave
+for a nondiagonal $R_k$. The lineage binds the exact maps, load mask, selected
+and omitted partitions, and ordered coordinate IDs. Required factorization and
+solve residual checks are execution-time Gates; their raw diagnostic values
+are not durable Result or receipt fields. The resulting S convention is the canonical generalized power-wave
 construction in
 [Port Reference Impedance Semantics](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
 
@@ -94,6 +105,11 @@ one uniquely Port-bound original node, or a generated coordinate from an
 invertible transform of a complete Port-bound subspace. Anonymous Internal
 nodes are never selectable. An unported final coordinate fails rather than
 receiving a special matrix-only response.
+
+The failure is a preflight capability result: no Julia solver is launched and
+no request attempt is allocated. Conversely, the quantity path consumes only
+the retained/complement node lineage and never interprets the not-applicable
+wave evidence as a Port selector or reference impedance.
 
 For a valid final basis, Direct and HB both publish the same ordered N-port
 selected-network families $Y^{\mathrm{view}}$, $Z^{\mathrm{view}}$, and

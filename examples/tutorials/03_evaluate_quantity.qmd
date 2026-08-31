@@ -9,7 +9,7 @@ execute:
 **Learn:** derive an analysis View without changing the physical circuit.
 **Run:** retain one node and evaluate its loaded diagonal root.
 **Inspect:** the immutable View lineage and typed root evidence.
-**Status:** `CONVERGING` scaffold.
+**Status:** `CONVERGING` dev3 candidate.
 :::
 
 ## Derive the analysis boundary without changing the circuit

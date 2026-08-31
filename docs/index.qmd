@@ -10,8 +10,11 @@ use it.
 
 ::: {.callout-warning title="Candidate package" appearance="simple"}
 SCNSim remains `CONVERGING`. The course expresses the intended native V1 API,
-but the current package is a fail-fast scaffold and produces no simulation
-evidence.
+and `1.0.0.dev3` implements the Lessons 1–5 primitive Direct, root,
+optimization, evidence, and report path. Lessons 6–13 physical and execution
+surfaces remain explicit fail-fast APIs until their named V1 slices land; the
+empty `Library()`/`help()` inspection introduced in Lesson 6 remains inert and
+available by design.
 :::
 
 ## Author and analyze

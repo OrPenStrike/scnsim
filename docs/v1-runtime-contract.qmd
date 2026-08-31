@@ -9,9 +9,9 @@ toc-depth: 3
 
 This document is the single current candidate authority for the SCNSim V1
 runtime semantics. It is written for Human review and does not claim
-`ACCEPTED`, `STABILIZED`, executable simulation behavior, or release. The
-Python package is installable only as a fail-fast class/signature/docstring
-scaffold for UX review.
+`ACCEPTED`, `STABILIZED`, or release. The `1.0.0.dev3` candidate implements the
+Lessons 1–5 primitive Direct, root, optimization, workspace, and report path;
+later V1 surfaces remain explicit fail-fast behavior.
 :::
 
 ## Contract scope
@@ -846,6 +846,23 @@ Q_k=D_k^{-1}A_kD_p,
 \qquad P_o=I-P_k.
 $$
 
+These wave-boundary objects exist only when the terminal View is
+Port-realizable. Retaining an unported Public node does not turn that node into
+a Port and does not define $A_k$, $B_k$, $R_k$, $D_k$, $Q_k$, $P_k$, $P_o$, or
+an omitted matched-load matrix. Its lineage stores the canonical not-applicable
+representation for every such field: an `evidenceMatrix` with `rows=0` and
+`columns=0`, whose SHA-256 covers the closed
+`applicability=not_port_realizable` envelope. The source-boundary and
+de-embedding hashes cover matching closed not-applicable envelopes. This is an
+identity sentinel, not a zero-valued physical Port model.
+
+The retained node and its complement remain exact node-coordinate lineage.
+Direct quantity evaluation forms the complete loaded node operator—including
+every logical-Port load not removed by PTC—and Schur-eliminates the complement
+under zero external current. It may therefore evaluate a loaded node root.
+`solve()` fails capability preflight on the same View before execution because
+no S/Y/Z wave network exists there.
+
 V1 requires a transformed pair to have one common load state: both original
 Port loads are selected by PTC or neither is. That restriction makes the
 retained and load partitions separable. A mixed-state pair fails preflight
@@ -1197,9 +1214,12 @@ mechanics are fixed in
 
 ### Required lineage and receipt evidence
 
-Every terminal Result records the sealed Plan, compiled operator, ParameterSet,
-ordered Ref lineage, retained/eliminated coordinates, selected channel order,
-and exact runtime identity.
+The durable evidence chain for every terminal `AnalysisResult` binds the sealed
+Plan, compiled operator, ParameterSet, ordered Ref lineage,
+retained/eliminated coordinates, selected channel order, and exact runtime
+identity. Those records remain owned by their canonical Plan, request, Result,
+artifact, and receipt documents rather than being duplicated into every public
+Result object.
 
 The Plan/compile evidence records every exact Library and component-schema
 identity, component hierarchy and public schema, pin-to-electric-node/ground
@@ -1360,9 +1380,9 @@ $Y_{\mathrm{circ}}(\omega)$ is $\omega=2\pi f$ after coherent-SI conversion.
 
 At every requested point SCNSim must form finite selected-network Y, Z, and S.
 A failed Schur complement, source-boundary solve, Y-to-Z solve, or Y-to-S solve
-fails the whole request as `DirectResponseFormationError` with the exact stage
-and frequency evidence. It publishes no partial grid, pseudoinverse, infinity,
-or stale family. For every required $AX=B$, including multiple right-hand
+fails the whole request as `DirectResponseFormationError` with the exact stage.
+It publishes no partial grid, pseudoinverse, infinity, or stale family. For
+every required $AX=B$, including multiple right-hand
 sides, SCNSim computes the normalized backward residual
 
 $$
@@ -1383,7 +1403,9 @@ $$
 
 Here $n$ is the order of the square $A$ being checked. An empty complement that
 requires no solve is a no-op rather than a zero-dimensional factorization.
-Condition estimates remain receipt evidence and do not add a second threshold.
+The residual is a mandatory execution-time Gate but its raw value is not a
+public Result or receipt field. Condition number is neither a Gate nor a
+required computation.
 The exact-open one-Port identity $Y=0,\ S=+1$ remains an internal algebra probe;
 because finite Z does not exist, it cannot become a successful complete public
 `DirectSolveResult`.
@@ -1943,10 +1965,19 @@ scale state, or automatic coordinate equilibration in this V1 candidate.
 Direct and Schur implementations must:
 
 - use factorization/linear solves rather than an explicit inverse;
-- expose matrix norms, condition number, floating-point precision, and
-  reconstruction/backward residual evidence; and
-- keep conditioning evidence distinct from a Human-selected acceptability
+- compute and enforce every operation-specific normalized residual and
+  machine-resolution certificate before publishing success; and
+- keep those execution checks distinct from a Human-selected design-quality
   threshold.
+
+Raw residuals, condition estimates, and complete numerical certificates are
+not durable Result or receipt fields. A verified success states that the exact
+operation algorithm ID and semantic runtime source digest completed every
+required internal Gate. The Result stores the materialized answer and identity;
+the receipt stores provenance and the hash chain. `resolve()` validates that
+durable chain without recomputing the numerical checks. Re-evaluating the
+numerical decision requires executing the same request again rather than
+inferring it from omitted diagnostics.
 
 If later public fixtures demonstrate a real raw-SI conditioning problem, the
 shared solve boundary may add a deterministic, reversible equilibration. Its
@@ -2433,8 +2464,8 @@ attempt as interrupted when its staging evidence is valid, and re-raises the
 interrupt in Python. A later call to the same operation appends a new attempt;
 `resolve()` does not continue or retry it.
 
-Condition number is published evidence, not an automatic pass/fail decision.
-SCNSim does not invent conditioning thresholds, optimization Gates, search
+Condition number is neither computed nor published by the V1 Direct/root
+runtime. SCNSim does not invent conditioning thresholds, optimization Gates, search
 envelopes, targets, weights, or acceptance conditions from backend defaults or
 tests.
 

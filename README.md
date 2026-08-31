@@ -12,9 +12,10 @@ running Direct, harmonic-balance, and optimization workflows. It owns the
 circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
-> **Status:** `CONVERGING`. Version `1.0.0.dev2` is an installable, fail-fast
-> API scaffold for reviewing the V1 design. It does not yet implement the
-> compiler, solvers, unit registry, workspace, or report runtime.
+> **Status:** `CONVERGING`. Version `1.0.0.dev3` is the first executable V1
+> candidate: Lessons 1–5 implement primitive authoring, Direct analysis,
+> retained diagonal-root evaluation, optimization, durable evidence, and
+> reports. Later V1 slices remain explicit fail-fast surfaces.
 
 ## Install for development
 
@@ -41,9 +42,9 @@ uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-Custom `Library` declarations are inspectable. Component creation, physical
-Plan authoring, and Runtime operations deliberately raise
-`ScaffoldUnavailableError` at this checkpoint.
+Primitive R/L/C authoring and the Lessons 1–5 Runtime path are executable.
+Composite, RLGC, PTC/transform, expanded Direct, inventory, and HB operations
+continue to raise `ScaffoldUnavailableError` until their named V1 slices land.
 
 ## Read the documentation
 
@@ -53,7 +54,7 @@ Plan authoring, and Runtime operations deliberately raise
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim uses Plans, views, typed requests, and explicit ownership.
 - [Contract](docs/contracts/index.qmd) — public behavior plus the maintainer
-  implementation design that precedes executable Runtime work.
+  implementation design followed by the current executable Runtime slices.
 
 Each lesson also has a generated Notebook in
 [`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)

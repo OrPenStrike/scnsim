@@ -42,11 +42,17 @@ For the full-V1 Plan schema, that rule is mechanical rather than inferred:
 | `catalog_sources` | ascending `catalog_id` |
 | `components` and nested `children` | ascending lexicographic `component_path` segment array |
 | component `parameter_bindings` and `inductive_branches` | ascending declared `id` |
+| Composite `public_pin_map`, `public_coordinate_map`, and `public_inductive_branch_map` | ascending `public_id` |
+| Composite `public_parameter_maps`; each map's `consumers` | ascending public `(component_path, parameter_id)`; ascending target `(component_path, parameter_id)` |
 | component `pin_order` | Library-schema declaration order |
 | `nodes` | ascending `node_id` |
 | node `endpoints` and `grounded_endpoints` | ascending `(component_path, pin_id)` |
 | `ports` | Plan declaration order |
 | Plan and Composite `couplings` | ascending coupling `id` |
+
+Every canonical identity in those set-like collections is unique; duplicates
+fail closed. `pin_order`, Ports, and `QuantitySum.terms` remain declaration
+ordered because their order carries public meaning.
 
 An anonymous non-Port node hashes the canonical envelope
 `{"schema":"scnsim.internal_node","schema_version":1,"endpoints":[...]}`,
@@ -145,6 +151,17 @@ then verifies the complete chain before reuse or `resolve()`:
   Plan hashes match that entry;
 - `requests/<sha256>/` is named by its exact `request.json` hash, whose Plan hash
   matches the leaf Plan;
+- a retained lineage names one exact Public node partition; when that terminal
+  coordinate is not uniquely Port-bound, every wave-only retain
+  `evidenceMatrix` is exactly `0 x 0` and hashes the closed
+  `scnsim.lineage_matrix` v1 envelope with
+  `applicability=not_port_realizable`, its label, empty shape, and empty
+  row-major Float64 list; source-boundary and de-embedding hashes similarly
+  cover closed v1 not-applicable envelopes with no fabricated matrix members;
+- when the coordinate is uniquely Port-bound, those same digests instead bind
+  the actual $A_k$, $B_k$, $R_k$, $D_k$, $Q_k$, original-Port projectors, and
+  omitted matched-load matrix; `port_realizable` must agree with that Plan
+  attachment in either case;
 - a positive attempt ordinal uses `str(ordinal).zfill(6)`: both final
   `attempts/<ordinal-text>/` and staging
   `attempts/.staging-<ordinal-text>-<uuid>/` therefore have at least six

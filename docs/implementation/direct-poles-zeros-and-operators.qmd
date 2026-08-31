@@ -211,8 +211,9 @@ $$
 for at most 32 updates. The initial anchor is checked before update one. If a
 proposed update leaves both Float64 real/imaginary bit patterns unchanged, the
 complete certificate is checked immediately; failure is
-`NumericalResolutionUnresolved`. Every finite analytic $h/h'$ pair and update
-count is recorded. `anchor` chooses only this deterministic Newton basin. It
+`NumericalResolutionUnresolved`. Every finite analytic $h/h'$ pair is checked
+inside the identified algorithm execution but is not persisted as raw
+diagnostic evidence. `anchor` chooses only this deterministic Newton basin. It
 is not a nearest-pole instruction, a search window, or evidence of global
 uniqueness.
 
@@ -305,8 +306,8 @@ $$
 $$
 
 for at most 32 updates. The anchor candidate is checked before update one;
-bitwise stagnation succeeds only when the complete certificate passes. Every
-finite analytic $T/T'$ pair and update count is recorded. All Schur and
+bitwise stagnation succeeds only when the complete certificate passes. Finite
+analytic $T/T'$ pairs are checked during execution but are not persisted. All Schur and
 family-formation derivatives come from the analytic solve rule
 
 $$
@@ -397,8 +398,8 @@ $|T/T'|/|\omega|\le\tau(q_N)$.
 
 The denominator operator $A_D$ must remain finite and machine nonsingular: its
 factorization and full `A_D X = I` backward residual must pass at
-$\tau(q_D)$, where $q_D$ is its order, and its condition estimate is recorded
-without a second threshold. Let $\widehat A_D$ be its recorded coherent-SI
+$\tau(q_D)$, where $q_D$ is its order. No condition number is computed or
+published. Let $\widehat A_D$ be its recorded coherent-SI
 equation/unknown-scaled dimensionless form and
 $\widehat\Delta=\det(\widehat A_D)$, reconstructed through the same canonical
 cofactor/scaling rule; empty Y-complement uses $\widehat\Delta=1$. The Result
@@ -537,7 +538,8 @@ right endpoint. Every evaluation starts again from the sealed baseline branch;
 it never uses a previous optimizer candidate, reapplies the locator, enumerates
 and chooses the nearest root, or detours in parameter space.
 
-The Result records every accepted subdivision and certificate. Exhausted
+The algorithm performs every required subdivision and certificate check, but
+does not persist their raw diagnostics. Exhausted
 subdivision, an unresolved local slope/rank, an eliminated-block or transfer
 denominator failure, or a physical-domain failure returns its typed failure
 rather than another root. This deterministic lineage is not a validated
@@ -558,11 +560,13 @@ typed context; no partial sum or stale term is published.
 Scalar public outputs for `HybridizedPoleSpec`, `TransferZeroSpec`,
 `ResidueNormalizedCouplingSpec`, and `ResponseElementSpec` live canonically in
 the typed `scalar_catalog` of `result.json`; they do not create scalar Zarr
-artifacts. A `QuantitySum` value and its ordered component values live only in
-the optimization candidate's objective evidence. Branch locators,
-continuation steps, null vectors, numerator/denominator identities, analytic
-slopes, solve residuals, units, selected-network identity, and ParameterSet
-remain receipt/result evidence. `HybridizedPoleSpec` uses its one fixed null
+artifacts. A `QuantitySum` stores only its aggregate value in the optimization
+candidate's objective evidence; the request owns the ordered selector terms,
+and individual term values are execution-local. Branch locators,
+null vectors, numerator/denominator identities, public analytic slopes, units,
+selected-network identity, and ParameterSet remain durable evidence. Raw
+continuation, solve-residual, condition, and complete-certificate diagnostics
+do not. `HybridizedPoleSpec` uses its one fixed null
 vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 
 The closed algorithm IDs are

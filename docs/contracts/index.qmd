@@ -7,9 +7,9 @@ subtitle: "Public behavior and the design that will implement it"
 ## CONVERGING authority
 
 These pages describe the current SCNSim V1 candidate. They do not claim Human
-acceptance, executable solver behavior, stabilization, or release. The
-installable package remains a fail-fast scaffold until a reviewed
-implementation slice replaces the corresponding unavailable paths.
+acceptance, stabilization, or release. The `1.0.0.dev3` candidate implements
+the Lessons 1–5 slice; later slices remain fail-fast until their reviewed
+implementations replace the corresponding unavailable paths.
 :::
 
 ## Public contracts
@@ -53,6 +53,6 @@ fail-fast, but its implementation boundary is no longer left implicit.
 16. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
 17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
-The collection describes the intended candidate implementation, not source
-that already exists. When a future slice changes one of these decisions, only
-the affected page and public contract return for Human review.
+The collection remains the implementation authority whether a slice is
+executable or still fail-fast. When a future slice changes one of these
+decisions, only the affected page and public contract return for Human review.

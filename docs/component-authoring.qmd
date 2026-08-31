@@ -8,9 +8,10 @@ toc-depth: 3
 ## CONVERGING contract
 
 This page is the single current candidate authority for SCNSim V1 component
-authoring. Its classes, signatures, and docstrings are now importable as a
-fail-fast scaffold; physical validation, compilation, and execution are not
-yet implemented, accepted, stabilized, or released.
+authoring. Primitive R/L/C authoring and the Lessons 1–5 execution boundary are
+implemented in the `1.0.0.dev3` candidate. Composite, RLGC, coupling, and later
+component surfaces remain fail-fast; no V1 scope is yet accepted, stabilized,
+or released.
 :::
 
 ## Contract scope
