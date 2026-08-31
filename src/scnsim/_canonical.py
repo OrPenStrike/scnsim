@@ -432,13 +432,41 @@ def _canonical_component(component: Mapping[str, object]) -> dict[str, object]:
         nested = dict(realization)
         nested["children"] = [_canonical_component(item) for item in _iter_mappings(nested.get("children"), "children")]
         nested["children"].sort(key=_component_key)
+        if len({_component_key(item) for item in nested["children"]}) != len(nested["children"]):
+            raise _validation("nested component paths must be unique")
         nested["private_nodes"] = [
             {**dict(node), "endpoints": canonical_endpoints(_iter_mappings(dict(node).get("endpoints"), "private node endpoints"))}
             for node in _iter_mappings(nested.get("private_nodes"), "private_nodes")
         ]
         nested["private_nodes"].sort(key=lambda node: _identifier(node.get("id"), field="private_node.id"))
+        if len({_identifier(node.get("id"), field="private_node.id") for node in nested["private_nodes"]}) != len(nested["private_nodes"]):
+            raise _validation("private node IDs must be unique")
         nested["grounded_endpoints"] = canonical_endpoints(_iter_mappings(nested.get("grounded_endpoints"), "grounded_endpoints")) if nested.get("grounded_endpoints") else []
         nested["couplings"] = _sort_id_maps(_iter_mappings(nested.get("couplings"), "couplings"))
+        nested["public_pin_map"] = _sort_id_maps(
+            _iter_mappings(nested.get("public_pin_map"), "public_pin_map"), key="public_id"
+        )
+        nested["public_coordinate_map"] = _sort_id_maps(
+            _iter_mappings(nested.get("public_coordinate_map"), "public_coordinate_map"), key="public_id"
+        )
+        nested["public_inductive_branch_map"] = _sort_id_maps(
+            _iter_mappings(nested.get("public_inductive_branch_map"), "public_inductive_branch_map"), key="public_id"
+        )
+        parameter_maps = [
+            dict(item) for item in _iter_mappings(nested.get("public_parameter_maps"), "public_parameter_maps")
+        ]
+        for parameter_map in parameter_maps:
+            consumers = [
+                dict(item) for item in _iter_mappings(parameter_map.get("consumers"), "parameter consumers")
+            ]
+            consumers.sort(key=lambda item: _parameter_ref_key(item.get("target")))
+            if len({_parameter_ref_key(item.get("target")) for item in consumers}) != len(consumers):
+                raise _validation("parameter consumer targets must be unique")
+            parameter_map["consumers"] = consumers
+        parameter_maps.sort(key=lambda item: _parameter_ref_key(item.get("parameter")))
+        if len({_parameter_ref_key(item.get("parameter")) for item in parameter_maps}) != len(parameter_maps):
+            raise _validation("public parameter maps must be unique")
+        nested["public_parameter_maps"] = parameter_maps
         result["realization"] = nested
     return result
 

@@ -314,7 +314,7 @@ class QuantitySum:
         object.__setattr__(self, "terms", tuple(terms))
 
     def _canonical_record(self) -> Mapping[str, object]:
-        return {"type": "sum", "terms": tuple(_canonical_value(item) for item in self.terms)}
+        return {"type": "quantity_sum", "terms": tuple(_canonical_value(item) for item in self.terms)}
 
 
 @dataclass(frozen=True, slots=True)
