@@ -183,6 +183,35 @@ def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(sorted(_plan_coordinates(plan)[1]))
 
 
+def _source_unit_identity(
+    *,
+    scope: str,
+    component_path: Sequence[str] = (),
+    parameter_id: str,
+    field: str,
+) -> str:
+    """Encode one source-unit authority without flattening path segments."""
+
+    if (
+        not isinstance(scope, str)
+        or not scope
+        or not isinstance(parameter_id, str)
+        or not parameter_id
+        or not isinstance(field, str)
+        or not field
+        or any(not isinstance(segment, str) or not segment for segment in component_path)
+    ):
+        raise CompilerInvariantError("source-unit provenance identity is malformed", stage="request_encode")
+    return canonical_json_bytes(
+        {
+            "scope": scope,
+            "component_path": list(component_path),
+            "parameter_id": parameter_id,
+            "field": field,
+        }
+    ).decode("utf-8")
+
+
 def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
     if isinstance(value, QuantitySelector):
         return (value,)
@@ -1127,10 +1156,68 @@ class CircuitRun:
         def add_component(component: object, path: tuple[str, ...]) -> None:
             parameters_by_id = getattr(component, "_parameters", None)
             realization = getattr(component, "_realization", None)
-            if not isinstance(parameters_by_id, Mapping) or not isinstance(realization, Mapping):
+            affine_sources = getattr(component, "_affine_sources", None)
+            if (
+                not isinstance(parameters_by_id, Mapping)
+                or not isinstance(realization, Mapping)
+                or not isinstance(affine_sources, Mapping)
+            ):
                 raise CompilerInvariantError("sealed component source provenance is malformed", stage="request_encode")
             for parameter in component._parameters.values():
-                add(f"plan.{'.'.join(path)}.{parameter.id}", parameter.baseline, parameter.unit)
+                add(
+                    _source_unit_identity(
+                        scope="plan_parameter",
+                        component_path=path,
+                        parameter_id=parameter.id,
+                        field="baseline",
+                    ),
+                    parameter.baseline,
+                    parameter.unit,
+                )
+            bindings = realization.get("bindings")
+            if not isinstance(bindings, Mapping):
+                raise CompilerInvariantError("sealed component binding provenance is malformed", stage="request_encode")
+            for parameter_id, source in affine_sources.items():
+                binding = bindings.get(parameter_id)
+                if (
+                    not isinstance(parameter_id, str)
+                    or not parameter_id
+                    or not isinstance(source, Mapping)
+                    or set(source) != {"slope", "intercept", "support"}
+                    or not isinstance(binding, Mapping)
+                    or binding.get("kind") != "affine"
+                ):
+                    raise CompilerInvariantError("sealed AffineMap source provenance is malformed", stage="request_encode")
+
+                def source_unit(field: str, index: int | None = None) -> str:
+                    envelope = binding.get(field)
+                    if index is not None:
+                        if not isinstance(envelope, Sequence) or isinstance(envelope, (str, bytes)) or len(envelope) != 2:
+                            raise CompilerInvariantError("sealed AffineMap support provenance is malformed", stage="request_encode")
+                        envelope = envelope[index]
+                    if not isinstance(envelope, Mapping) or not isinstance(envelope.get("si_unit"), str) or not envelope["si_unit"]:
+                        raise CompilerInvariantError("sealed AffineMap quantity provenance is malformed", stage="request_encode")
+                    return envelope["si_unit"]
+
+                support = source["support"]
+                if not isinstance(support, tuple) or len(support) != 2:
+                    raise CompilerInvariantError("sealed AffineMap support provenance is malformed", stage="request_encode")
+                for field, value, unit in (
+                    ("slope", source["slope"], source_unit("slope")),
+                    ("intercept", source["intercept"], source_unit("intercept")),
+                    ("support_lower", support[0], source_unit("support", 0)),
+                    ("support_upper", support[1], source_unit("support", 1)),
+                ):
+                    add(
+                        _source_unit_identity(
+                            scope="plan_affine",
+                            component_path=path,
+                            parameter_id=parameter_id,
+                            field=field,
+                        ),
+                        value,
+                        unit,
+                    )
             children = realization.get("children", ())
             if not isinstance(children, Sequence) or isinstance(children, (str, bytes)):
                 raise CompilerInvariantError("sealed Composite child provenance is malformed", stage="request_encode")
@@ -1143,34 +1230,67 @@ class CircuitRun:
         for component in self._plan.components:
             add_component(component, (component.id,))
         for port in self._plan.ports:
-            add(f"plan.port.{port.id}.reference_impedance", port.reference_impedance, "ohm")
+            add(
+                _source_unit_identity(
+                    scope="plan_port",
+                    parameter_id=port.id,
+                    field="reference_impedance",
+                ),
+                port.reference_impedance,
+                "ohm",
+            )
         for parameter, value in parameters.values.items():
             path, identifier = _parameter_key(parameter)
             add(
-                f"request.parameter.{'.'.join(path)}.{identifier}",
+                _source_unit_identity(
+                    scope="request_parameter",
+                    component_path=path,
+                    parameter_id=identifier,
+                    field="value",
+                ),
                 value,
                 parameter.unit,
             )
         if isinstance(spec, DirectSolveSpec):
-            add("request.spec.frequencies", spec.frequencies, "hertz")
+            add(_source_unit_identity(scope="request_spec", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
         elif isinstance(spec, DiagonalRootSpec):
-            add("request.spec.root_hint", spec.root_hint, "hertz")
+            add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
         else:
             for index, variable in enumerate(spec.variables):
                 parameter = variable.parameter
+                path, identifier = _parameter_key(parameter)
                 for role, bounds in (
                     ("model_default", variable.model_default_bounds),
                     ("consumer_override", variable.consumer_override_bounds),
                 ):
                     if bounds is None:
                         continue
-                    add(f"request.spec.variable.{index}.{role}.lower", bounds[0], parameter.unit)
-                    add(f"request.spec.variable.{index}.{role}.upper", bounds[1], parameter.unit)
+                    add(
+                        _source_unit_identity(
+                            scope="request_optimization_variable",
+                            component_path=path,
+                            parameter_id=identifier,
+                            field=f"{index}:{role}:lower",
+                        ),
+                        bounds[0],
+                        parameter.unit,
+                    )
+                    add(
+                        _source_unit_identity(
+                            scope="request_optimization_variable",
+                            component_path=path,
+                            parameter_id=identifier,
+                            field=f"{index}:{role}:upper",
+                        ),
+                        bounds[1],
+                        parameter.unit,
+                    )
             for index, objective in enumerate(spec.objectives):
-                add(f"request.spec.objective.{index}.target", objective.target, "hertz")
-                add(f"request.spec.objective.{index}.weight", objective.weight, "dimensionless")
+                parameter_id = f"objective:{index}"
+                add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field="target"), objective.target, "hertz")
+                add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field="weight"), objective.weight, "dimensionless")
                 if objective.scale is not None:
-                    add(f"request.spec.objective.{index}.scale", objective.scale, "hertz")
+                    add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field="scale"), objective.scale, "hertz")
         return sorted(evidence, key=lambda item: str(item["identity"]))
 
     def _decode_success(self, success: VerifiedSuccess):

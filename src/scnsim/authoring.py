@@ -79,6 +79,13 @@ def _binding(value: object, unit: str, *, name: str, positive: bool = False) -> 
             raise ValueError(f"{name} baseline must be strictly positive")
         binding = value._canonical_binding()
         binding["_input_ref"] = value.input
+        binding["_affine_source"] = MappingProxyType(
+            {
+                "slope": value.slope,
+                "intercept": value.intercept,
+                "support": value._support,
+            }
+        )
         return baseline, binding
     validator = require_positive_quantity if positive else require_quantity
     baseline = validator(value, unit, name=name)
@@ -202,7 +209,7 @@ class PortRef:
 class ParameterRef:
     """Stable public handle to one primitive or sealed Composite parameter."""
 
-    __slots__ = ("_component", "id", "baseline", "unit")
+    __slots__ = ("_component", "_id", "_baseline", "_unit")
 
     def __init__(self) -> None:
         unavailable("ParameterRef construction")
@@ -213,10 +220,22 @@ class ParameterRef:
     ) -> ParameterRef:
         instance = object.__new__(cls)
         instance._component = component
-        instance.id = id
-        instance.baseline = baseline
-        instance.unit = unit
+        instance._id = id
+        instance._baseline = baseline
+        instance._unit = unit
         return instance
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def baseline(self) -> Quantity:
+        return self._baseline
+
+    @property
+    def unit(self) -> str:
+        return self._unit
 
     @property
     def component_id(self) -> str:
@@ -488,7 +507,7 @@ class AffineMap:
 class ComponentInstance:
     """One immutable built-in or sealed Composite component snapshot."""
 
-    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_binding_refs", "_ground_groups")
+    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_binding_refs", "_affine_sources", "_ground_groups")
 
     def __init__(self) -> None:
         unavailable("ComponentInstance construction")
@@ -518,12 +537,23 @@ class ComponentInstance:
         instance._branches = MappingProxyType({name: InductiveBranchRef._create(instance, name) for name in branches})
         instance._coordinates = MappingProxyType({name: CoordinateRef._create(instance, name) for name in coordinates})
         binding_refs: dict[str, ParameterRef] = {}
+        affine_sources: dict[str, Mapping[str, object]] = {}
         for name, binding in realization.get("bindings", {}).items():
             reference = binding.pop("_input_ref", None)
             if reference is not None:
                 binding_refs[name] = reference
+            source = binding.pop("_affine_source", None)
+            if source is not None:
+                affine_sources[name] = MappingProxyType(
+                    {
+                        "slope": source["slope"],
+                        "intercept": source["intercept"],
+                        "support": tuple(source["support"]),
+                    }
+                )
         instance._realization = MappingProxyType(dict(realization))
         instance._binding_refs = MappingProxyType(binding_refs)
+        instance._affine_sources = MappingProxyType(affine_sources)
         instance._ground_groups = tuple(tuple(dict(endpoint) for endpoint in group) for group in ground_groups)
         return instance
 
@@ -743,6 +773,8 @@ class CompositePlan:
         name, node = _identifier(id, field="pin id"), self._node(at)
         if name in self._exposed_pins:
             raise SCNSimValidationError("public pin IDs must be unique", stage="authoring")
+        if any(existing is node for existing in self._exposed_pins.values()):
+            raise SCNSimValidationError("one private node may expose only one public pin", stage="authoring")
         self._exposed_pins[name] = node
         return PinRef._create(self, name)
 
@@ -751,6 +783,8 @@ class CompositePlan:
         name, node = _identifier(id, field="coordinate id"), self._node(at)
         if name in self._coordinates:
             raise SCNSimValidationError("public coordinate IDs must be unique", stage="authoring")
+        if any(existing is node for existing in self._coordinates.values()):
+            raise SCNSimValidationError("one private node may expose only one public coordinate", stage="authoring")
         self._coordinates[name] = node
         return CoordinateRef._create(self, name)
 
