@@ -12,10 +12,9 @@ running Direct, harmonic-balance, and optimization workflows. It owns the
 circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
-> **Status:** `CONVERGING`. Version `1.0.0.dev4` is the executable V1
-> candidate: Lessons 1–8 implement primitive analysis, optimization, durable
-> evidence, reusable Libraries, and Composite expansion. Later V1 slices
-> remain explicit fail-fast surfaces.
+> **Status:** `STABILIZED` for the dev4 reusable-composition scope taught in
+> Lessons 6–8. The standalone dev3 execution scope and the later dev5/dev6 V1
+> slices remain `CONVERGING`; unavailable later surfaces continue to fail fast.
 
 ## Install for development
 

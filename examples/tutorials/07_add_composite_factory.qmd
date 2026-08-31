@@ -9,7 +9,7 @@ execute:
 **Learn:** package repeated private topology behind one catalog factory.
 **Run:** define a grounded parallel-LC `CompositePlan`.
 **Inspect:** the resulting component's public parameters and pin.
-**Status:** `CONVERGING` dev4 candidate.
+**Status:** `STABILIZED` dev4 Lessons 6–8 scope.
 :::
 
 ## Build the topology once inside the factory

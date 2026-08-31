@@ -79,6 +79,9 @@ jobs:
           print(scnsim.__version__)
           PY
 
+      - name: Run accepted dev4 stabilization tests
+        run: uv run --locked python -m unittest discover -s tests -v
+
       - name: Build and inspect the wheel
         run: |
           uv build --no-sources
@@ -336,4 +339,8 @@ jobs:
           runtime = prepare_runtime()
           assert runtime.julia_version == "1.12.6"
           PY
+          SCNSIM_RUN_JULIA_TESTS=1 JULIA_DEPOT_PATH="$JULIA_DEPOT_PATH" \
+            .venv-wheel/bin/python -m unittest discover -s tests \
+            -p test_dev4_stabilization.py \
+            -k test_valid_mutual_coupling_survives_recursive_julia_compilation -v
           git diff --check

@@ -4,16 +4,16 @@ subtitle: "Candidate Library, RLGC, Composite, electric-node, logical-Port, and 
 toc-depth: 3
 ---
 
-::: {.callout-warning}
-## CONVERGING contract
+::: {.callout-note}
+## Stabilized dev4 contract
 
-This page is the single current candidate authority for SCNSim V1 component
-authoring. Primitive R/L/C authoring and the Lessons 1–5 execution boundary are
-implemented in the `1.0.0.dev3` candidate. The `1.0.0.dev4` candidate implements
+This page is the stabilized authority for the SCNSim `1.0.0.dev4` component
+authoring slice. Primitive R/L/C authoring and the Lessons 1–5 execution
+boundary are implemented in dev3. Dev4 implements
 custom Libraries, complete Composite snapshots, recursive primitive expansion,
-and mutual-coupling snapshots for Lessons 6–8. RLGC/transmission lines and later
-component surfaces remain explicit fail-fast behavior; no V1 scope is yet accepted,
-stabilized, or released.
+and mutual-coupling snapshots for Lessons 6–8. Durable tests and validation
+now bind that accepted scope. RLGC/transmission lines and later component surfaces remain
+explicit fail-fast behavior.
 :::
 
 ## Contract scope

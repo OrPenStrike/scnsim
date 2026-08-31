@@ -4,8 +4,8 @@ subtitle: "How does a custom Python factory become one portable finite physical 
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design and `1.0.0.dev4` candidate
-implementation. The
+**Status:** `STABILIZED` implementation for the accepted `1.0.0.dev4`
+Lessons 6–8 scope. The
 [Component Authoring Contract](../component-authoring.qmd#composite-snapshot-boundary)
 owns the public `CompositePlan` and `ComponentInstance` behavior; this page
 fixes the maintainer mechanism that realizes it.

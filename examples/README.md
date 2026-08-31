@@ -20,5 +20,6 @@ Notebooks.
 Validation compares ordered semantic cells, explicit code IDs, source, and
 kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. In the
-`1.0.0.dev4` candidate, Lessons 1–8 execute; Lessons 9–13 remain explicit
-fail-fast surfaces until their named slices land.
+`1.0.0.dev4`, the reusable-composition behavior taught in Lessons 6–8 is
+`STABILIZED`; the standalone dev3 execution scope and Lessons 9–13 remain
+`CONVERGING`.

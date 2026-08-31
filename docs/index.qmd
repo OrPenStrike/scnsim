@@ -8,12 +8,11 @@ Follow the course in order. Each page answers one user question with one focused
 operation and inspection. If an API has not been taught, the course does not
 use it.
 
-::: {.callout-warning title="Candidate package" appearance="simple"}
-SCNSim remains `CONVERGING`. The course expresses the intended native V1 API,
-and `1.0.0.dev4` implements the Lessons 1–8 Direct, root, optimization,
-evidence, report, Library, and Composite path. Lessons 9–13 physical and
-execution surfaces remain explicit fail-fast APIs until their named V1 slices
-land.
+::: {.callout-note title="Stabilized dev4 scope" appearance="simple"}
+The Library, Composite, and recursive-expansion behavior taught in Lessons
+6–8 is `STABILIZED`. Lessons 1–5 remain the `CONVERGING` dev3 execution
+candidate; Lessons 9–13 remain `CONVERGING` and explicit fail-fast APIs until
+their named V1 slices land.
 :::
 
 ## Author and analyze

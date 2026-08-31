@@ -4,20 +4,24 @@ subtitle: "Candidate execution, units, reduction, Result, and evidence semantics
 toc-depth: 3
 ---
 
-::: {.callout-warning}
-## CONVERGING contract
+::: {.callout-note}
+## Mixed lifecycle contract
 
-This document is the single current candidate authority for the SCNSim V1
-runtime semantics. It is written for Human review and does not claim
-`ACCEPTED`, `STABILIZED`, or release. The `1.0.0.dev3` candidate implements the
+This document is the single current authority for SCNSim V1 runtime semantics.
+Only the accepted Library, Composite, recursive-expansion, and mutual-coupling
+scope taught in Lessons 6–8 is `STABILIZED`. The dev3 slice implements the
 Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
-The `1.0.0.dev4` candidate additionally implements custom Libraries, complete
+Dev4 additionally implements custom Libraries, complete
 Composite snapshots, declaration-ordered public parameters, recursive
 primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
 RLGC/transmission lines, N-port/PTC/
 transform, compiled schematics, full explain tables, inventory, extrapolation
 authorization/evidence, selector-dependent objective-unit expansion, Julia NFC
 parity, and HB remain explicit fail-fast behavior.
+
+Stabilization is limited to the dev4-owned Lessons 6–8 behavior named above.
+The standalone dev3 Direct/root/optimization scope and the later Direct and HB
+sections remain `CONVERGING`; none becomes accepted by being documented here.
 
 For a Plan containing an `AffineMap`, dev4 rejects any nonempty extrapolation
 authorization before request creation; it does not create partial extrapolation
@@ -54,13 +58,13 @@ Concept pages explain the design pressures behind
 remains the exact authority for signatures, formulas, invariants, failures,
 receipt evidence, and limits. The separate
 [Implementation Design](contracts/index.qmd#implementation-design) explains how
-the candidate Runtime will realize this public behavior without becoming a
-second public contract.
+the Runtime realizes this public behavior without becoming a second public
+contract.
 
 ## Review map
 
-This candidate proposes the following behavior for Human review; none of it is
-accepted yet:
+The review map spans the full V1 contract; lifecycle state remains scoped as
+stated above:
 
 | Review question | Detailed section |
 |---|---|
@@ -107,7 +111,7 @@ topology, coordinate names, Direct operators, reductions, or public consumer
 contracts.
 
 SCNSim has no previously accepted or delivered Unit or Runtime API to migrate.
-This document revises one `CONVERGING` candidate in place. It does not
+This document records the accepted dev4 contract in place. It does not
 supersede, mutate, redirect, or provide compatibility for the legacy
 Workbench. Reusable implementation may later be transplanted only from the
 exact public handoff with its Git provenance.
