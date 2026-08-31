@@ -584,6 +584,8 @@ def _canonical_public_node_maps(
     result.sort(key=lambda item: item["public_id"])
     if len({item["public_id"] for item in result}) != len(result):
         raise _validation("public node IDs must be unique")
+    if len({item["private_node_id"] for item in result}) != len(result):
+        raise _validation("public node maps cannot alias one private node")
     return result
 
 

@@ -296,6 +296,23 @@ function recursive_nodes!(nodes::Vector{String}, component; top_level::Bool)
     return nothing
 end
 
+function validate_composite_maps!(component)
+    realization = component["realization"]
+    String(realization["kind"]) == "composite" || return nothing
+    for (field, message) in (
+        ("public_pin_map", "Composite public pin map repeats a private node target"),
+        ("public_coordinate_map", "Composite public coordinate map repeats a private node target"),
+    )
+        targets = String[item["private_node_id"] for item in realization[field]]
+        length(targets) == length(unique(targets)) ||
+            fail("execution", "compiler_invariant", "compile", "compile", message)
+    end
+    for child in realization["children"]
+        validate_composite_maps!(child)
+    end
+    return nothing
+end
+
 function recursive_parameter_values!(values::Dict{String,Float64}, component,
     mapped_targets::Set{String}, context_kind::String)
     for entry in component["parameter_bindings"]
@@ -463,6 +480,7 @@ function compile_recursive(plan_value, request_values::Dict{String,Float64}; con
     plan = plain(plan_value)
     get(plan, "schema", nothing) == "scnsim.plan" || fail("execution", "compiler_invariant", "compile", "compile", "plan schema discriminator is invalid")
     values = recursive_parameter_values(plan, request_values; context_kind = context_kind)
+    for component in plan["components"]; validate_composite_maps!(component); end
     nodes = String[item["node_id"] for item in plan["nodes"]]
     for component in plan["components"]; recursive_nodes!(nodes, component; top_level = true); end
     nodes = unique(sort!(nodes)); isempty(nodes) && fail("execution", "compiler_invariant", "compile", "compile", "sealed Plan has no non-reference node")

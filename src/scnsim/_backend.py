@@ -785,6 +785,14 @@ def run_preflight(
             },
         )
     frame = _decode_canonical_line(lines[0], stage="preflight")
+    if frame.get("schema") == "scnsim.preflight_failure" and frame.get("schema_version") == 1:
+        if set(frame) != {"schema", "schema_version", "failure"} or not isinstance(frame.get("failure"), Mapping):
+            raise BackendProtocolError(
+                "Julia preflight returned a malformed typed failure frame",
+                stage="preflight",
+                evidence={"frame": frame},
+            )
+        return frame
     if frame.get("schema") != "scnsim.preflight" or frame.get("schema_version") != 1:
         raise BackendProtocolError(
             "Julia preflight returned an unexpected protocol frame",

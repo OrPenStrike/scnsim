@@ -49,6 +49,7 @@ from ._workspace import (
     _verify_artifact_inventory,
     _verify_generation_artifacts,
     _verify_result_document,
+    _plan_coordinates,
     bind_workspace,
     verified_generation_links,
 )
@@ -177,30 +178,9 @@ def _plan_has_affine_binding(value: object) -> bool:
 
 
 def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
-    """Collect public node and Composite-coordinate identities from one seal."""
+    """Collect only directly selectable Plan and top-level Composite coordinates."""
 
-    coordinates = {
-        node["node_id"]
-        for node in plan["nodes"]
-        if node["visibility"] in {"public", "port_promoted"}
-    }
-
-    def visit(component: Mapping[str, object]) -> None:
-        realization = component.get("realization")
-        if not isinstance(realization, Mapping) or realization.get("kind") != "composite":
-            return
-        for record in realization.get("public_coordinate_map", ()):
-            if not isinstance(record, Mapping) or not isinstance(record.get("public_id"), str):
-                raise CompilerInvariantError(
-                    "Composite public-coordinate map is malformed",
-                    stage="plan_seal",
-                )
-            coordinates.add(record["public_id"])
-    for component in plan["components"]:
-        if not isinstance(component, Mapping):
-            raise CompilerInvariantError("Plan component is malformed", stage="plan_seal")
-        visit(component)
-    return tuple(sorted(coordinates))
+    return tuple(sorted(_plan_coordinates(plan)[1]))
 
 
 def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
@@ -353,10 +333,7 @@ class CircuitRun:
         return self._original
 
     def _original_lineage(self) -> dict[str, object]:
-        node_order = list(dict.fromkeys(
-            [node["node_id"] for node in self._plan_document["nodes"]]
-            + sorted(self._public_coordinates)
-        ))
+        node_order, _ = _plan_coordinates(self._plan_document)
         port_order = [port["port_id"] for port in self._plan_document["ports"]]
         if len(port_order) != 1:
             raise PortRealizabilityError(
@@ -680,6 +657,10 @@ class CircuitRun:
                 prepared,
                 plan_path=plan_path.resolve(),
                 request_path=request_path.resolve(),
+            )
+        if compiled.get("schema") == "scnsim.preflight_failure":
+            raise _error_from_record(
+                _validated_failure_record(compiled.get("failure"), request["operation"])
             )
         return _verified_result(
             ExplanationResult,
@@ -1117,8 +1098,16 @@ class CircuitRun:
         parameters: ParameterSet,
     ) -> list[dict[str, object]]:
         evidence: list[dict[str, object]] = []
+        identities: set[str] = set()
 
         def add(identity: str, value: object, si_unit: str) -> None:
+            if identity in identities:
+                raise CompilerInvariantError(
+                    "source-unit provenance has duplicate parameter authority",
+                    stage="request_encode",
+                    evidence={"identity": identity},
+                )
+            identities.add(identity)
             magnitude = np.asarray(value.magnitude)
             probe = (
                 value
@@ -1135,10 +1124,24 @@ class CircuitRun:
                 }
             )
 
-        for component in self._plan.components:
+        def add_component(component: object, path: tuple[str, ...]) -> None:
+            parameters_by_id = getattr(component, "_parameters", None)
+            realization = getattr(component, "_realization", None)
+            if not isinstance(parameters_by_id, Mapping) or not isinstance(realization, Mapping):
+                raise CompilerInvariantError("sealed component source provenance is malformed", stage="request_encode")
             for parameter in component._parameters.values():
-                path, identifier = _parameter_key(parameter)
-                add(f"plan.{'.'.join(path)}.{identifier}", parameter.baseline, parameter.unit)
+                add(f"plan.{'.'.join(path)}.{parameter.id}", parameter.baseline, parameter.unit)
+            children = realization.get("children", ())
+            if not isinstance(children, Sequence) or isinstance(children, (str, bytes)):
+                raise CompilerInvariantError("sealed Composite child provenance is malformed", stage="request_encode")
+            for child in children:
+                child_id = getattr(child, "id", None)
+                if not isinstance(child_id, str) or not child_id:
+                    raise CompilerInvariantError("sealed Composite child provenance is malformed", stage="request_encode")
+                add_component(child, (*path, child_id))
+
+        for component in self._plan.components:
+            add_component(component, (component.id,))
         for port in self._plan.ports:
             add(f"plan.port.{port.id}.reference_impedance", port.reference_impedance, "ohm")
         for parameter, value in parameters.values.items():

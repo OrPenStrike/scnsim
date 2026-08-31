@@ -68,12 +68,18 @@ def _binding(value: object, unit: str, *, name: str, positive: bool = False) -> 
         baseline = require_quantity(value.baseline, unit, name=name)
         if positive and baseline.to(unit).magnitude <= 0:
             raise ValueError(f"{name} baseline must be strictly positive")
-        return baseline, {"kind": "identity", "input": value._canonical_ref()}
+        return baseline, {
+            "kind": "identity",
+            "input": value._canonical_ref(),
+            "_input_ref": value,
+        }
     if isinstance(value, AffineMap):
         baseline = value._value_at_baseline(unit=unit, name=name)
         if positive and baseline.to(unit).magnitude <= 0:
             raise ValueError(f"{name} baseline must be strictly positive")
-        return baseline, value._canonical_binding()
+        binding = value._canonical_binding()
+        binding["_input_ref"] = value.input
+        return baseline, binding
     validator = require_positive_quantity if positive else require_quantity
     baseline = validator(value, unit, name=name)
     return baseline, {"kind": "constant", "value": _quantity_record(baseline, unit)}
@@ -482,7 +488,7 @@ class AffineMap:
 class ComponentInstance:
     """One immutable built-in or sealed Composite component snapshot."""
 
-    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_ground_groups")
+    __slots__ = ("_factory", "_id", "_pins", "_parameters", "_branches", "_coordinates", "_catalog_id", "_catalog_source", "_realization", "_binding_refs", "_ground_groups")
 
     def __init__(self) -> None:
         unavailable("ComponentInstance construction")
@@ -511,7 +517,13 @@ class ComponentInstance:
         instance._parameters = MappingProxyType({name: ParameterRef._create(instance, name, baseline, unit) for name, (baseline, unit) in parameters.items()})
         instance._branches = MappingProxyType({name: InductiveBranchRef._create(instance, name) for name in branches})
         instance._coordinates = MappingProxyType({name: CoordinateRef._create(instance, name) for name in coordinates})
+        binding_refs: dict[str, ParameterRef] = {}
+        for name, binding in realization.get("bindings", {}).items():
+            reference = binding.pop("_input_ref", None)
+            if reference is not None:
+                binding_refs[name] = reference
         instance._realization = MappingProxyType(dict(realization))
+        instance._binding_refs = MappingProxyType(binding_refs)
         instance._ground_groups = tuple(tuple(dict(endpoint) for endpoint in group) for group in ground_groups)
         return instance
 
@@ -768,6 +780,7 @@ class CompositePlan:
             raise SCNSimValidationError("every composite child pin must be netted or grounded", stage="plan_seal", evidence={"missing_pins": missing})
         if any(len(node.endpoints) == 1 and node not in self._exposed_pins.values() and node not in self._coordinates.values() for node in self._nodes):
             raise SCNSimValidationError("an unexposed composite node must join at least two pins", stage="plan_seal")
+        _validate_parameter_bindings(self._parameters, self._components)
         _validate_coupling_graph(self._couplings)
         source = _catalog_source(self._library, self._factory)
         component = ComponentInstance._create(
@@ -796,6 +809,25 @@ def _parameter_maps(parameters: Mapping[str, ParameterRef], children: Sequence[C
             raise SCNSimValidationError("every Composite parameter must bind one child slot", stage="plan_seal", evidence={"parameter": parameter.id})
         maps.append({"parameter": parameter._canonical_ref(), "consumers": consumers})
     return maps
+
+
+def _validate_parameter_bindings(
+    parameters: Mapping[str, ParameterRef], children: Sequence[ComponentInstance]
+) -> None:
+    """Close each dynamic child slot over this exact Composite's public refs."""
+
+    declared = tuple(parameters.values())
+    for child in children:
+        for target, binding in child._realization.get("bindings", {}).items():
+            if binding.get("kind") not in {"identity", "affine"}:
+                continue
+            reference = child._binding_refs.get(target)
+            if reference not in declared or binding["input"] != reference._canonical_ref():
+                raise SCNSimValidationError(
+                    "a Composite child parameter binding must use one declared public parameter",
+                    stage="plan_seal",
+                    evidence={"child": child.id, "parameter": target},
+                )
 
 
 def _catalog_source(library: Library, factory: str) -> dict[str, object]:
@@ -1248,7 +1280,7 @@ class CircuitPlan:
                     raise SCNSimValidationError("one Composite public coordinate cannot resolve to multiple outer nodes", stage="plan_seal")
                 if nodes:
                     node = nodes[0]
-                    if node.visibility in {"internal", "port_promoted"}:
+                    if node.visibility == "internal":
                         promoted = coordinate.id
                         if promoted in reserved or any(other.id == promoted for other in self._nodes if other is not node):
                             raise SCNSimValidationError("promoted Composite coordinate ID collides with an outer Plan node", stage="plan_seal")

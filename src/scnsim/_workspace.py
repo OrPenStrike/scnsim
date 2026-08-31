@@ -1351,7 +1351,14 @@ def _verify_request_document(
 
 
 def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
-    """Return Runtime's sealed coordinate order and its public selection set."""
+    """Return the compiler basis order and the public selection subset.
+
+    The Python lineage must name the same full basis that the recursive Julia
+    compiler uses.  Public selection deliberately remains narrower: Plan
+    public nodes and coordinates exposed by immediate Composite children only.
+    """
+
+    from ._canonical import internal_node_id
 
     nodes = plan.get("nodes")
     components = plan.get("components")
@@ -1366,23 +1373,122 @@ def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
         if node.get("visibility") in {"public", "port_promoted"}:
             public.add(node["node_id"])
 
-    def visit(component: object) -> None:
-        if not isinstance(component, dict):
+    def component_path(component: Mapping[str, object]) -> tuple[str, ...]:
+        path = component.get("component_path")
+        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path):
+            raise _integrity("Sealed Component path is malformed.")
+        return tuple(path)
+
+    def realization(component: Mapping[str, object]) -> Mapping[str, object]:
+        value = component.get("realization")
+        if not isinstance(value, Mapping) or not isinstance(value.get("kind"), str):
+            raise _integrity("Sealed Component realization is malformed.")
+        return value
+
+    def records(value: object, *, label: str) -> list[Mapping[str, object]]:
+        if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
+            raise _integrity(f"{label} is malformed.")
+        return list(value)
+
+    def endpoint(value: object, *, label: str) -> tuple[tuple[str, ...], str]:
+        if not isinstance(value, Mapping):
+            raise _integrity(f"{label} is malformed.")
+        path = value.get("component_path")
+        pin = value.get("pin_id")
+        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path) or not isinstance(pin, str) or not pin:
+            raise _integrity(f"{label} is malformed.")
+        return tuple(path), pin
+
+    def private_nodes(container: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+        values = records(realization(container).get("private_nodes"), label="Composite private-node inventory")
+        mapped: dict[str, Mapping[str, object]] = {}
+        for value in values:
+            identifier = value.get("id")
+            endpoints = value.get("endpoints")
+            if not isinstance(identifier, str) or not identifier or not isinstance(endpoints, list):
+                raise _integrity("Composite private-node record is malformed.")
+            if identifier in mapped:
+                raise _integrity("Composite private-node IDs are not unique.")
+            mapped[identifier] = value
+        return mapped
+
+    def expanded_node_id(container: Mapping[str, object], private_node: Mapping[str, object]) -> str:
+        leaves: list[dict[str, object]] = []
+
+        def expand(current: Mapping[str, object], value: object, ancestry: set[tuple[tuple[str, ...], str]]) -> None:
+            path, pin = endpoint(value, label="Composite private endpoint")
+            key = (path, pin)
+            if key in ancestry:
+                raise _integrity("Composite private-node expansion is cyclic or duplicates an endpoint.")
+            children = records(realization(current).get("children"), label="Composite child inventory")
+            matches = [child for child in children if component_path(child) == path]
+            if len(matches) != 1:
+                raise _integrity("Composite endpoint does not resolve to one immediate child.")
+            child = matches[0]
+            child_realization = realization(child)
+            if child_realization.get("kind") != "composite":
+                leaves.append({"component_path": list(path), "pin_id": pin})
+                return
+            maps = records(child_realization.get("public_pin_map"), label="Composite public-pin map")
+            mappings = [item for item in maps if item.get("public_id") == pin]
+            if len(mappings) != 1 or not isinstance(mappings[0].get("private_node_id"), str):
+                raise _integrity("Composite child endpoint lacks one public-pin map.")
+            nested = private_nodes(child).get(mappings[0]["private_node_id"])
+            if nested is None:
+                raise _integrity("Composite public pin targets no private node.")
+            nested_endpoints = nested.get("endpoints")
+            if not isinstance(nested_endpoints, list):
+                raise _integrity("Composite private-node record is malformed.")
+            next_ancestry = set(ancestry)
+            next_ancestry.add(key)
+            for nested_endpoint in nested_endpoints:
+                expand(child, nested_endpoint, next_ancestry)
+
+        endpoints = private_node.get("endpoints")
+        if not isinstance(endpoints, list) or not endpoints:
+            raise _integrity("Composite private-node record is malformed.")
+        for item in endpoints:
+            expand(container, item, set())
+        try:
+            return internal_node_id(leaves)
+        except Exception as error:
+            raise _integrity("Composite private-node expansion is malformed.") from error
+
+    def visit(component: object, *, top_level: bool) -> None:
+        if not isinstance(component, Mapping):
             raise _integrity("Sealed Plan Component inventory is malformed.")
-        realization = component.get("realization")
-        if not isinstance(realization, dict) or realization.get("kind") != "composite":
+        component_path(component)
+        component_realization = realization(component)
+        if component_realization.get("kind") != "composite":
             return
-        coordinates = realization.get("public_coordinate_map")
-        if not isinstance(coordinates, list):
-            raise _integrity("Composite coordinate inventory is malformed.")
+        node_map = private_nodes(component)
+        pins = records(component_realization.get("public_pin_map"), label="Composite public-pin map")
+        pin_targets: set[str] = set()
+        for record in pins:
+            public_id = record.get("public_id")
+            private_id = record.get("private_node_id")
+            if not isinstance(public_id, str) or not public_id or not isinstance(private_id, str) or private_id not in node_map:
+                raise _integrity("Composite public-pin map is malformed.")
+            pin_targets.add(private_id)
+        coordinate_targets: dict[str, str] = {}
+        coordinates = records(component_realization.get("public_coordinate_map"), label="Composite coordinate inventory")
         for record in coordinates:
-            if not isinstance(record, dict) or not isinstance(record.get("public_id"), str) or not record["public_id"]:
+            public_id = record.get("public_id")
+            private_id = record.get("private_node_id")
+            if not isinstance(public_id, str) or not public_id or not isinstance(private_id, str) or private_id not in node_map:
                 raise _integrity("Composite public-coordinate map is malformed.")
-            public.add(record["public_id"])
+            if top_level:
+                coordinate_targets[private_id] = public_id
+                public.add(public_id)
+        for private_id, private_node in node_map.items():
+            if private_id not in pin_targets:
+                order.append(coordinate_targets.get(private_id, expanded_node_id(component, private_node)))
+        for child in records(component_realization.get("children"), label="Composite child inventory"):
+            visit(child, top_level=False)
 
     for component in components:
-        visit(component)
-    return list(dict.fromkeys(order + sorted(public))), public
+        visit(component, top_level=True)
+    return sorted(set(order)), public
 
 
 def _verify_direct_request(
