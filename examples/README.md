@@ -20,5 +20,5 @@ Notebooks.
 Validation compares ordered semantic cells, explicit code IDs, source, and
 kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. In the
-`1.0.0.dev3` candidate, Lessons 1–5 execute; later physical/runtime lessons
-remain explicit fail-fast surfaces until their named slices land.
+`1.0.0.dev4` candidate, Lessons 1–8 execute; Lessons 9–13 remain explicit
+fail-fast surfaces until their named slices land.

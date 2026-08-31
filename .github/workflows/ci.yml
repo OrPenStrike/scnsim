@@ -106,7 +106,7 @@ jobs:
 
           import scnsim
 
-          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev3"
+          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev4"
           print(scnsim.__version__)
           PY
 
@@ -147,7 +147,7 @@ jobs:
           uv pip install --python .venv-py310/bin/python dist/*.whl
           .venv-py310/bin/python - <<'PY'
           import scnsim
-          assert scnsim.__version__ == "1.0.0.dev3"
+          assert scnsim.__version__ == "1.0.0.dev4"
           PY
 
       - name: Verify Notebook hygiene

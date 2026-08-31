@@ -10,8 +10,18 @@ toc-depth: 3
 This document is the single current candidate authority for the SCNSim V1
 runtime semantics. It is written for Human review and does not claim
 `ACCEPTED`, `STABILIZED`, or release. The `1.0.0.dev3` candidate implements the
-Lessons 1–5 primitive Direct, root, optimization, workspace, and report path;
-later V1 surfaces remain explicit fail-fast behavior.
+Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
+The `1.0.0.dev4` candidate additionally implements custom Libraries, complete
+Composite snapshots, declaration-ordered public parameters, recursive
+primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
+RLGC/transmission lines, N-port/PTC/
+transform, compiled schematics, full explain tables, inventory, extrapolation
+authorization/evidence, selector-dependent objective-unit expansion, Julia NFC
+parity, and HB remain explicit fail-fast behavior.
+
+For a Plan containing an `AffineMap`, dev4 rejects any nonempty extrapolation
+authorization before request creation; it does not create partial extrapolation
+evidence.
 :::
 
 ## Contract scope
@@ -1244,6 +1254,11 @@ graph and deterministic lowering are fixed in
 [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd),
 while distributed-line parsing and expansion are fixed in
 [RLGC, Q2D, and Pi Expansion](implementation/rlgc-q2d-and-pi-expansion.qmd).
+
+In the `dev4` slice, `run.explain()` materializes expanded branch rows,
+`omitted-as-zero` labels, and derived mutual-inductance mappings. Terminal
+receipts bind the sealed Plan, request, and exact runtime identities; they do
+not duplicate those compiler-row diagnostics as a second evidence schema.
 
 A logical Port record includes its identity, role, reference impedance,
 node/coordinate attachment, and one-Port-per-node evidence. Direct records

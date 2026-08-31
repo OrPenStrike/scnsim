@@ -1,8 +1,8 @@
-"""Closed canonical bytes and evidence helpers for the executable dev3 slice.
+"""Closed canonical bytes and evidence helpers for the executable dev4 slice.
 
 This module is deliberately not a generic schema engine.  The shipped JSON
 Schema is the field authority; these helpers own the bytes that Python writes
-and the narrow primitive Direct envelopes that Python can read in dev3.
+for primitive/Composite Plans and the Direct envelopes retained from dev3.
 """
 
 from __future__ import annotations
@@ -13,20 +13,22 @@ import csv
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from importlib import import_module
-from importlib.metadata import PackageNotFoundError, distribution
+from importlib.metadata import PackageNotFoundError, distribution, distributions
 from io import StringIO
 from itertools import product
 from pathlib import Path
+import inspect
 import json
 import math
 import os
 import re
 import struct
+import tokenize
 import subprocess
 import unicodedata
+from urllib.parse import unquote, urlparse
 
 from .errors import EvidenceIntegrityError, SCNSimValidationError
-from .errors import ScaffoldUnavailableError
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -365,7 +367,7 @@ def internal_node_id(endpoints: Iterable[Mapping[str, object]]) -> str:
 
 def _component_key(component: Mapping[str, object]) -> tuple[str, ...]:
     path = component.get("component_path")
-    if not isinstance(path, Sequence) or isinstance(path, (str, bytes)):
+    if not isinstance(path, Sequence) or isinstance(path, (str, bytes)) or not path:
         raise _validation("component snapshot requires component_path")
     return tuple(_identifier(item, field="component_path") for item in path)
 
@@ -381,8 +383,8 @@ def _sort_id_maps(values: Iterable[Mapping[str, object]], *, key: str = "id") ->
 def canonical_plan_document(snapshot: Mapping[str, object]) -> dict[str, object]:
     """Close the primitive/full-V1 Plan ordering before computing its hash.
 
-    The dev3 compiler accepts primitive realizations only; this encoder retains
-    full schema ordering so a later slice does not alter Plan identity bytes.
+    The dev4 compiler accepts primitive and recursive Composite realizations;
+    this encoder closes their shared full-V1 Plan identity ordering.
     """
 
     document = dict(snapshot)
@@ -421,54 +423,316 @@ def canonical_plan_document(snapshot: Mapping[str, object]) -> dict[str, object]
     return canonical_value(document)  # type: ignore[return-value]
 
 
-def _canonical_component(component: Mapping[str, object]) -> dict[str, object]:
+def _canonical_component(
+    component: Mapping[str, object], *, parent_path: tuple[str, ...] = ()
+) -> dict[str, object]:
+    """Close one snapshot and turn its local paths into Plan-relative paths."""
+
     result = dict(component)
-    path = _component_key(result)
+    local_path = _component_key(result)
+    path = local_path if parent_path and local_path[:len(parent_path)] == parent_path else parent_path + local_path
     result["component_path"] = list(path)
-    result["parameter_bindings"] = _sort_id_maps(_iter_mappings(result.get("parameter_bindings"), "parameter_bindings"))
-    result["inductive_branches"] = _sort_id_maps(_iter_mappings(result.get("inductive_branches"), "inductive_branches"))
+    result["parameter_bindings"] = _canonical_bound_parameters(
+        _iter_mappings(result.get("parameter_bindings"), "parameter_bindings"),
+        path=path,
+        parent_path=parent_path,
+        local_path=local_path,
+    )
+    result["inductive_branches"] = _canonical_inductive_branches(
+        _iter_mappings(result.get("inductive_branches"), "inductive_branches"),
+        path=path,
+        parent_path=parent_path,
+        local_path=local_path,
+    )
+    pins = [_identifier(pin, field="pin_order") for pin in _sequence(result.get("pin_order"), "pin_order")]
+    if not pins or len(set(pins)) != len(pins):
+        raise _validation("component pin declaration order must be unique and nonempty")
+    result["pin_order"] = pins
     realization = result.get("realization")
     if isinstance(realization, Mapping) and realization.get("kind") == "composite":
-        nested = dict(realization)
-        nested["children"] = [_canonical_component(item) for item in _iter_mappings(nested.get("children"), "children")]
+        nested = _canonical_composite_realization(
+            realization, path=path, parent_path=parent_path, local_path=local_path
+        )
+        nested["children"] = [
+            _canonical_component(item, parent_path=path)
+            for item in _iter_mappings(nested.get("children"), "children")
+        ]
         nested["children"].sort(key=_component_key)
         if len({_component_key(item) for item in nested["children"]}) != len(nested["children"]):
             raise _validation("nested component paths must be unique")
-        nested["private_nodes"] = [
-            {**dict(node), "endpoints": canonical_endpoints(_iter_mappings(dict(node).get("endpoints"), "private node endpoints"))}
-            for node in _iter_mappings(nested.get("private_nodes"), "private_nodes")
-        ]
-        nested["private_nodes"].sort(key=lambda node: _identifier(node.get("id"), field="private_node.id"))
-        if len({_identifier(node.get("id"), field="private_node.id") for node in nested["private_nodes"]}) != len(nested["private_nodes"]):
-            raise _validation("private node IDs must be unique")
-        nested["grounded_endpoints"] = canonical_endpoints(_iter_mappings(nested.get("grounded_endpoints"), "grounded_endpoints")) if nested.get("grounded_endpoints") else []
-        nested["couplings"] = _sort_id_maps(_iter_mappings(nested.get("couplings"), "couplings"))
-        nested["public_pin_map"] = _sort_id_maps(
-            _iter_mappings(nested.get("public_pin_map"), "public_pin_map"), key="public_id"
-        )
-        nested["public_coordinate_map"] = _sort_id_maps(
-            _iter_mappings(nested.get("public_coordinate_map"), "public_coordinate_map"), key="public_id"
-        )
-        nested["public_inductive_branch_map"] = _sort_id_maps(
-            _iter_mappings(nested.get("public_inductive_branch_map"), "public_inductive_branch_map"), key="public_id"
-        )
-        parameter_maps = [
-            dict(item) for item in _iter_mappings(nested.get("public_parameter_maps"), "public_parameter_maps")
-        ]
-        for parameter_map in parameter_maps:
-            consumers = [
-                dict(item) for item in _iter_mappings(parameter_map.get("consumers"), "parameter consumers")
-            ]
-            consumers.sort(key=lambda item: _parameter_ref_key(item.get("target")))
-            if len({_parameter_ref_key(item.get("target")) for item in consumers}) != len(consumers):
-                raise _validation("parameter consumer targets must be unique")
-            parameter_map["consumers"] = consumers
-        parameter_maps.sort(key=lambda item: _parameter_ref_key(item.get("parameter")))
-        if len({_parameter_ref_key(item.get("parameter")) for item in parameter_maps}) != len(parameter_maps):
-            raise _validation("public parameter maps must be unique")
-        nested["public_parameter_maps"] = parameter_maps
         result["realization"] = nested
+    elif isinstance(realization, Mapping):
+        result["realization"] = _canonical_primitive_realization(
+            realization, path=path, parent_path=parent_path, local_path=local_path
+        )
+    else:
+        raise _validation("component snapshot realization must be an object")
     return result
+
+
+def _canonical_composite_realization(
+    realization: Mapping[str, object], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> dict[str, object]:
+    required = {
+        "kind", "public_parameters", "children", "private_nodes", "grounded_endpoints",
+        "couplings", "public_pin_map", "public_coordinate_map", "public_parameter_maps",
+        "public_inductive_branch_map",
+    }
+    if set(realization) != required:
+        raise _validation("composite realization fields do not match identity-v1")
+    nested = dict(realization)
+    declarations = [dict(item) for item in _iter_mappings(nested["public_parameters"], "public_parameters")]
+    public_ids = [_identifier(item.get("id"), field="public_parameter.id") for item in declarations]
+    if len(set(public_ids)) != len(public_ids):
+        raise _validation("public parameter declaration order must be unique")
+    nested["public_parameters"] = declarations  # Declaration order is public API.
+    private_nodes: list[dict[str, object]] = []
+    for node in _iter_mappings(nested["private_nodes"], "private_nodes"):
+        entry = dict(node)
+        if set(entry) != {"id", "endpoints"}:
+            raise _validation("private node fields are invalid")
+        entry["id"] = _identifier(entry["id"], field="private_node.id")
+        entry["endpoints"] = _canonical_endpoints_at(
+            _iter_mappings(entry["endpoints"], "private node endpoints"),
+            path=path, parent_path=parent_path, local_path=local_path,
+        )
+        private_nodes.append(entry)
+    private_nodes.sort(key=lambda node: node["id"])
+    if len({node["id"] for node in private_nodes}) != len(private_nodes):
+        raise _validation("private node IDs must be unique")
+    nested["private_nodes"] = private_nodes
+    grounded = _iter_mappings(nested["grounded_endpoints"], "grounded_endpoints")
+    nested["grounded_endpoints"] = _canonical_endpoints_at(
+        grounded, path=path, parent_path=parent_path, local_path=local_path,
+    ) if grounded else []
+    nested["couplings"] = _canonical_couplings(
+        _iter_mappings(nested["couplings"], "couplings"),
+        path=path, parent_path=parent_path, local_path=local_path,
+    )
+    private_by_id = {node["id"]: node for node in private_nodes}
+    nested["public_pin_map"] = _canonical_public_node_maps(
+        _iter_mappings(nested["public_pin_map"], "public_pin_map"),
+        private_by_id=private_by_id,
+        coordinate=False,
+    )
+    nested["public_coordinate_map"] = _canonical_public_node_maps(
+        _iter_mappings(nested["public_coordinate_map"], "public_coordinate_map"),
+        private_by_id=private_by_id,
+        coordinate=True,
+        grounded=nested["grounded_endpoints"],
+    )
+    branches: list[dict[str, object]] = []
+    for mapping in _iter_mappings(nested["public_inductive_branch_map"], "public_inductive_branch_map"):
+        entry = dict(mapping)
+        if set(entry) != {"public_id", "target"}:
+            raise _validation("public inductive branch map fields are invalid")
+        entry["public_id"] = _identifier(entry["public_id"], field="public_id")
+        entry["target"] = _rebase_branch_ref(entry["target"], path=path, parent_path=parent_path, local_path=local_path)
+        branches.append(entry)
+    branches.sort(key=lambda item: item["public_id"])
+    if len({item["public_id"] for item in branches}) != len(branches):
+        raise _validation("public inductive branch IDs must be unique")
+    nested["public_inductive_branch_map"] = branches
+    maps: list[dict[str, object]] = []
+    for parameter_map in _iter_mappings(nested["public_parameter_maps"], "public_parameter_maps"):
+        entry = dict(parameter_map)
+        if set(entry) != {"parameter", "consumers"}:
+            raise _validation("public parameter map fields are invalid")
+        entry["parameter"] = _rebase_parameter_ref(entry["parameter"], path=path, parent_path=parent_path, local_path=local_path)
+        consumers: list[dict[str, object]] = []
+        for consumer in _iter_mappings(entry["consumers"], "parameter consumers"):
+            target = dict(consumer)
+            if set(target) != {"target", "binding"}:
+                raise _validation("parameter consumer fields are invalid")
+            target["target"] = _rebase_parameter_ref(target["target"], path=path, parent_path=parent_path, local_path=local_path)
+            target["binding"] = _canonical_binding(target["binding"], path=path, parent_path=parent_path, local_path=local_path)
+            consumers.append(target)
+        consumers.sort(key=lambda item: _parameter_ref_key(item["target"]))
+        if len({_parameter_ref_key(item["target"]) for item in consumers}) != len(consumers):
+            raise _validation("parameter consumer targets must be unique")
+        entry["consumers"] = consumers
+        maps.append(entry)
+    maps.sort(key=lambda item: _parameter_ref_key(item["parameter"]))
+    if len({_parameter_ref_key(item["parameter"]) for item in maps}) != len(maps):
+        raise _validation("public parameter maps must be unique")
+    nested["public_parameter_maps"] = maps
+    return nested
+
+
+def _canonical_public_node_maps(
+    mappings: Iterable[Mapping[str, object]], *, private_by_id: Mapping[object, Mapping[str, object]],
+    coordinate: bool, grounded: Sequence[Mapping[str, object]] = (),
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    grounded_keys = {(tuple(item["component_path"]), item["pin_id"]) for item in grounded}
+    for mapping in mappings:
+        entry = dict(mapping)
+        if set(entry) != {"public_id", "private_node_id"}:
+            raise _validation("public node map fields are invalid")
+        local_id = _identifier(entry["public_id"], field="public_id")
+        private_id = _identifier(entry["private_node_id"], field="private_node_id")
+        node = private_by_id.get(private_id)
+        if node is None:
+            raise _validation("public node map targets an unknown private node", private_node_id=private_id)
+        if coordinate and any((tuple(endpoint["component_path"]), endpoint["pin_id"]) in grounded_keys for endpoint in node["endpoints"]):
+            raise _validation("a public coordinate cannot target the canonical ground", public_id=local_id)
+        # Coordinate IDs are already sealed Plan-node identities.  They may be
+        # a dotted coordinate-only promotion or an explicit shared outer node.
+        entry["public_id"] = local_id
+        entry["private_node_id"] = private_id
+        result.append(entry)
+    result.sort(key=lambda item: item["public_id"])
+    if len({item["public_id"] for item in result}) != len(result):
+        raise _validation("public node IDs must be unique")
+    if len({item["private_node_id"] for item in result}) != len(result):
+        raise _validation("public node maps cannot alias one private node")
+    return result
+
+
+def _canonical_primitive_realization(
+    realization: Mapping[str, object], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> dict[str, object]:
+    result = dict(realization)
+    if not isinstance(result.get("kind"), str):
+        raise _validation("primitive realization needs a kind")
+    for key, value in tuple(result.items()):
+        if key != "kind" and isinstance(value, Mapping) and value.get("kind") in {"constant", "identity", "affine"}:
+            result[key] = _canonical_binding(value, path=path, parent_path=parent_path, local_path=local_path)
+    return result
+
+
+def _canonical_bound_parameters(
+    bindings: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for binding in bindings:
+        entry = dict(binding)
+        if set(entry) != {"id", "binding"}:
+            raise _validation("bound parameter fields are invalid")
+        entry["id"] = _identifier(entry["id"], field="id")
+        entry["binding"] = _canonical_binding(entry["binding"], path=path, parent_path=parent_path, local_path=local_path)
+        result.append(entry)
+    result.sort(key=lambda item: item["id"])
+    if len({item["id"] for item in result}) != len(result):
+        raise _validation("canonical identifiers must be unique", field="id")
+    return result
+
+
+def _canonical_inductive_branches(
+    branches: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for branch in branches:
+        entry = dict(branch)
+        if set(entry) != {"id", "positive_endpoint", "negative_endpoint", "inductance"}:
+            raise _validation("inductive branch fields are invalid")
+        entry["id"] = _identifier(entry["id"], field="id")
+        entry["positive_endpoint"] = _rebase_endpoint(entry["positive_endpoint"], path=path, parent_path=parent_path, local_path=local_path)
+        entry["negative_endpoint"] = _rebase_endpoint(entry["negative_endpoint"], path=path, parent_path=parent_path, local_path=local_path)
+        entry["inductance"] = _canonical_binding(entry["inductance"], path=path, parent_path=parent_path, local_path=local_path)
+        result.append(entry)
+    result.sort(key=lambda item: item["id"])
+    if len({item["id"] for item in result}) != len(result):
+        raise _validation("canonical identifiers must be unique", field="id")
+    return result
+
+
+def _canonical_couplings(
+    couplings: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for coupling in couplings:
+        entry = dict(coupling)
+        if set(entry) != {"id", "branch_a", "branch_b", "coupling_coefficient", "derived_mutual_inductance"}:
+            raise _validation("mutual coupling fields are invalid")
+        entry["id"] = _identifier(entry["id"], field="id")
+        entry["branch_a"] = _rebase_branch_ref(entry["branch_a"], path=path, parent_path=parent_path, local_path=local_path)
+        entry["branch_b"] = _rebase_branch_ref(entry["branch_b"], path=path, parent_path=parent_path, local_path=local_path)
+        result.append(entry)
+    result.sort(key=lambda item: item["id"])
+    if len({item["id"] for item in result}) != len(result):
+        raise _validation("coupling IDs must be unique")
+    return result
+
+
+def _canonical_binding(
+    binding: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> dict[str, object]:
+    result = dict(_mapping(binding, "parameter binding"))
+    kind = result.get("kind")
+    fields = {
+        "constant": {"kind", "value"},
+        "identity": {"kind", "input"},
+        "affine": {"kind", "input", "slope", "intercept", "support"},
+    }.get(kind)
+    if fields is None or set(result) != fields:
+        raise _validation("parameter binding fields are invalid")
+    if kind != "constant":
+        result["input"] = _rebase_parameter_ref(result["input"], path=path, parent_path=parent_path, local_path=local_path)
+    return result
+
+
+def _canonical_endpoints_at(
+    endpoints: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
+) -> list[dict[str, object]]:
+    encoded = [_rebase_endpoint(endpoint, path=path, parent_path=parent_path, local_path=local_path) for endpoint in endpoints]
+    encoded.sort(key=lambda item: (tuple(item["component_path"]), item["pin_id"]))
+    if len({(tuple(item["component_path"]), item["pin_id"]) for item in encoded}) != len(encoded):
+        raise _validation("node endpoints must be unique")
+    return encoded
+
+
+def _rebase_endpoint(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
+    endpoint = _endpoint(_mapping(value, "endpoint"))
+    endpoint["component_path"] = _rebase_path(endpoint["component_path"], path=path, parent_path=parent_path, local_path=local_path)
+    return endpoint
+
+
+def _rebase_parameter_ref(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
+    reference = _mapping(value, "parameter_ref")
+    if set(reference) != {"component_path", "parameter_id"}:
+        raise _validation("parameter ref fields are invalid")
+    return {
+        "component_path": _rebase_path(reference["component_path"], path=path, parent_path=parent_path, local_path=local_path),
+        "parameter_id": _identifier(reference["parameter_id"], field="parameter_id"),
+    }
+
+
+def _rebase_branch_ref(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
+    reference = _mapping(value, "inductive_branch_ref")
+    if set(reference) != {"component_path", "branch_id"}:
+        raise _validation("inductive branch ref fields are invalid")
+    return {
+        "component_path": _rebase_path(reference["component_path"], path=path, parent_path=parent_path, local_path=local_path),
+        "branch_id": _identifier(reference["branch_id"], field="branch_id"),
+    }
+
+
+def _rebase_path(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> list[str]:
+    raw = _component_path(value)
+    if len(raw) == 1 and parent_path and raw[0] == parent_path[-1] == path[-1]:
+        raise _validation("one-segment component path is ambiguous between current and parent")
+    if parent_path and raw[:len(parent_path)] == parent_path:
+        return list(raw)
+    if raw[:len(local_path)] == local_path:
+        return list(path + raw[len(local_path):])
+    if len(raw) == 1 and raw[0] == path[-1]:
+        return list(path)
+    if len(raw) == 1 and parent_path and raw[0] == parent_path[-1]:
+        return list(parent_path)
+    return list(path + raw)
+
+
+def _component_path(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or not value:
+        raise _validation("component path must be nonempty segments")
+    return tuple(_identifier(segment, field="component_path") for segment in value)
+
+
+def _sequence(value: object, field: str) -> Sequence[object]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise _validation("expected array", field=field)
+    return value
 
 
 def _canonical_node(node: Mapping[str, object]) -> dict[str, object]:
@@ -857,37 +1121,93 @@ def _zarr_datasets(files: Mapping[str, Path]) -> list[str]:
     return present
 
 
-def catalog_source_record(obj_or_class: object) -> dict[str, object]:
-    """Return the reserved portable provenance record for built-in components.
+def catalog_source_record(
+    obj_or_class: object, *, factory: object | None = None
+) -> dict[str, object]:
+    """Capture one catalog-wide portable source identity.
 
-    The private implementation class is only used to recognize the singleton;
-    it is intentionally absent from the returned semantic identity.
+    ``factory`` remains an authoring call-site compatibility input; it never
+    enters the returned record because the component snapshot owns the invoked
+    factory name.
     """
 
     subject = obj_or_class if isinstance(obj_or_class, type) else type(obj_or_class)
-    if getattr(subject, "__module__", None) != "scnsim.authoring" or getattr(subject, "__name__", None) != "_BuiltinComponents":
-        raise ScaffoldUnavailableError(
-            "custom catalog provenance is not executable until the Composite slice",
-            stage="catalog_identity",
-            evidence={"module": getattr(subject, "__module__", None)},
+    if getattr(subject, "__module__", None) == "scnsim.authoring" and getattr(subject, "__name__", None) == "_BuiltinComponents":
+        return _builtin_catalog_source()
+    records = [_custom_catalog_source(candidate, factory=factory) for candidate in _catalog_lineage(subject)]
+    record = records[-1]
+    record["source_sha256"] = sha256_hex({
+        "schema": "scnsim.catalog_lineage_source",
+        "schema_version": 1,
+        "classes": records,
+    })
+    return record
+
+
+def _custom_catalog_source(subject: type[object], *, factory: object | None) -> dict[str, object]:
+    module_name = _catalog_module_name(subject)
+    qualified_class = _catalog_qualified_class(subject)
+    identity = {
+        "catalog_id": f"{module_name}:{qualified_class}",
+        "catalog_kind": "custom",
+        "module": module_name,
+        "qualified_class": qualified_class,
+    }
+    module = import_module(module_name)
+    source_path = _module_source_path(module)
+    if source_path is not None:
+        package = _distribution_owning(source_path, module_name)
+        if package is not None:
+            if _editable_distribution(package):
+                package_root = _package_root(module_name, source_path)
+                if package_root is None:
+                    raise _validation("editable custom catalog must be inside a Python package")
+                return _editable_catalog(identity, package_root)
+            return _wheel_catalog(identity, package)
+        return {
+            **identity,
+            "source_kind": "module_source",
+            "source_sha256": sha256(_normalized_source_bytes(source_path)).hexdigest(),
+        }
+    return {
+        **identity,
+        "source_kind": "notebook_source",
+        "source_sha256": sha256(_notebook_source_bytes(subject, factory)).hexdigest(),
+    }
+
+
+def _catalog_lineage(subject: type[object]) -> list[type[object]]:
+    lineage = [
+        candidate for candidate in reversed(subject.__mro__)
+        if candidate is not object and not (
+            candidate.__module__ == "scnsim.authoring" and candidate.__name__ == "Library"
         )
+    ]
+    if not lineage or lineage[-1] is not subject:
+        raise _validation("catalog class does not have a closed Library lineage")
+    return lineage
+
+
+def _builtin_catalog_source() -> dict[str, object]:
+    """Return the reserved provenance record for the public singleton."""
+
     try:
         package = distribution("scnsim")
     except PackageNotFoundError as error:
         raise _validation("installed SCNSim distribution metadata is unavailable") from error
-    direct_url = package.read_text("direct_url.json")
-    if direct_url:
-        try:
-            direct = json.loads(direct_url)
-        except json.JSONDecodeError as error:
-            raise _validation("SCNSim direct_url metadata is invalid") from error
-        directory_info = direct.get("dir_info") if isinstance(direct, Mapping) else None
-        if isinstance(directory_info, Mapping) and bool(directory_info.get("editable", False)):
-            return _editable_builtin_catalog(package.version)
-    return _wheel_builtin_catalog(package)
+    identity = {
+        "catalog_id": "scnsim.components",
+        "catalog_kind": "builtin",
+        "module": "scnsim",
+        "public_symbol": "components",
+    }
+    if _editable_distribution(package):
+        package_root = Path(import_module("scnsim").__file__).resolve().parent
+        return _editable_catalog(identity, package_root)
+    return _wheel_catalog(identity, package)
 
 
-def _wheel_builtin_catalog(package: object) -> dict[str, object]:
+def _wheel_catalog(identity: Mapping[str, object], package: object) -> dict[str, object]:
     record = package.read_text("RECORD")  # type: ignore[union-attr]
     if record is None:
         raise _validation("installed wheel lacks RECORD provenance")
@@ -942,10 +1262,7 @@ def _wheel_builtin_catalog(package: object) -> dict[str, object]:
     if record_self_rows != 1:
         raise _validation("wheel RECORD must contain exactly one empty self row")
     return {
-        "catalog_id": "scnsim.components",
-        "catalog_kind": "builtin",
-        "module": "scnsim",
-        "public_symbol": "components",
+        **identity,
         "source_kind": "wheel_record",
         "source_sha256": sha256_hex({"schema": "scnsim.wheel_record", "schema_version": 2, "rows": rows}),
         "distribution": _normalize_distribution_name(package.metadata["Name"]),  # type: ignore[union-attr]
@@ -953,37 +1270,40 @@ def _wheel_builtin_catalog(package: object) -> dict[str, object]:
     }
 
 
-def _editable_builtin_catalog(version: str) -> dict[str, object]:
-    package_root = Path(import_module("scnsim").__file__).resolve().parent
+def _editable_catalog(identity: Mapping[str, object], package_root: Path) -> dict[str, object]:
     git_root = _git_output(package_root, "rev-parse", "--show-toplevel")
     commit = _git_output(package_root, "rev-parse", "HEAD")
-    source_rows = _source_tree_manifest(package_root)
-    status = _git_output(package_root, "status", "--porcelain=v1", "--no-renames", "--untracked-files=all")
+    source_rows = _source_tree_manifest(package_root, Path(git_root))
+    status = _git_output_bytes(package_root, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")
     overlay: list[dict[str, object]] = []
-    for line in status.splitlines():
-        if len(line) < 4:
+    for record in status.split(b"\0"):
+        if not record:
+            continue
+        if len(record) < 4 or record[2:3] != b" ":
             raise _validation("Git status output is malformed")
-        path = line[3:]
-        candidate = Path(git_root, path)
+        raw_path = record[3:]
         try:
-            relative = candidate.resolve(strict=False).relative_to(package_root).as_posix()
+            changed_path = raw_path.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise _validation("Git status path is not UTF-8") from error
+        candidate = Path(git_root, changed_path)
+        try:
+            relative = candidate.absolute().relative_to(package_root).as_posix()
         except ValueError:
             continue
-        entry: dict[str, object] = {"status": line[:2], "path": relative_path(relative)}
+        if _excluded_source_path(relative):
+            continue
+        entry: dict[str, object] = {"status": record[:2].decode("ascii"), "path": relative_path(relative)}
         if candidate.is_file() and not candidate.is_symlink():
             entry["sha256"] = sha256(candidate.read_bytes()).hexdigest()
         overlay.append(entry)
     overlay.sort(key=lambda entry: (entry["path"], entry["status"]))
     return {
-        "catalog_id": "scnsim.components",
-        "catalog_kind": "builtin",
-        "module": "scnsim",
-        "public_symbol": "components",
+        **identity,
         "source_kind": "editable_git",
         "source_sha256": sha256_hex({"schema": "scnsim.package_source", "schema_version": 1, "files": source_rows}),
         "git_commit": _sha256_or_git(commit),
         "dirty_overlay_sha256": sha256_hex({"schema": "scnsim.git_overlay", "schema_version": 1, "entries": overlay}),
-        # editable Git schema intentionally has no distribution/version fields.
     }
 
 
@@ -996,19 +1316,199 @@ def _git_output(cwd: Path, *args: str) -> str:
     return completed.stdout.rstrip("\n")
 
 
-def _source_tree_manifest(package_root: Path) -> list[dict[str, object]]:
+def _git_output_bytes(cwd: Path, *args: str) -> bytes:
+    completed = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, check=False)
+    if completed.returncode != 0:
+        raise _validation("editable catalog requires a readable Git repository", stderr=completed.stderr.decode(errors="replace").strip())
+    return completed.stdout
+
+
+def _source_tree_manifest(package_root: Path, git_root: Path) -> list[dict[str, object]]:
+    modes = _git_file_modes(git_root)
     rows: list[dict[str, object]] = []
     for path in package_root.rglob("*"):
         if path.is_symlink():
             raise _validation("editable package source contains a symlink")
-        if path.is_file() and "__pycache__" not in path.parts:
+        relative = path.relative_to(package_root).as_posix()
+        if path.is_file() and not _excluded_source_path(relative):
+            git_relative = path.relative_to(git_root).as_posix()
             rows.append({
-                "path": relative_path(path.relative_to(package_root).as_posix()),
-                "mode": "regular",
+                "path": relative_path(relative),
+                "mode": modes.get(git_relative, _filesystem_git_mode(path)),
                 "sha256": sha256(path.read_bytes()).hexdigest(),
             })
     rows.sort(key=lambda row: row["path"])
     return rows
+
+
+def _git_file_modes(git_root: Path) -> dict[str, str]:
+    output = _git_output_bytes(git_root, "ls-files", "-s", "-z")
+    modes: dict[str, str] = {}
+    for record in output.split(b"\0"):
+        if not record:
+            continue
+        try:
+            prefix, raw_path = record.split(b"\t", 1)
+            mode, _object_id, stage = prefix.decode("ascii").split(" ")
+            path = raw_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as error:
+            raise _validation("Git index output is malformed") from error
+        if stage != "0" or mode not in {"100644", "100755"}:
+            raise _validation("catalog source has an unsupported Git file mode", mode=mode)
+        modes[path] = mode
+    return modes
+
+
+def _filesystem_git_mode(path: Path) -> str:
+    return "100755" if path.stat().st_mode & 0o111 else "100644"
+
+
+def _excluded_source_path(value: str) -> bool:
+    parts = value.split("/")
+    return "__pycache__" in parts or any(part in {".git", ".hg", ".svn", ".pytest_cache", ".mypy_cache", "build", "dist"} or part.endswith(".egg-info") for part in parts) or value.endswith((".pyc", ".pyo"))
+
+
+def _catalog_module_name(subject: type[object]) -> str:
+    module = getattr(subject, "__module__", None)
+    if not isinstance(module, str) or not module or module == "__main__":
+        return "__main__" if module == "__main__" else _raise_catalog_identity("catalog class has no portable module name")
+    return _nfc(module, field="catalog_module")
+
+
+def _catalog_qualified_class(subject: type[object]) -> str:
+    qualified = getattr(subject, "__qualname__", None)
+    if not isinstance(qualified, str) or not qualified or "<locals>" in qualified:
+        raise _validation("catalog class has no portable qualified name")
+    return _nfc(qualified, field="qualified_class")
+
+
+def _raise_catalog_identity(message: str) -> object:
+    raise _validation(message)
+
+
+def _module_source_path(module: object) -> Path | None:
+    raw_path = getattr(module, "__file__", None)
+    if not isinstance(raw_path, str) or raw_path.startswith("<"):
+        return None
+    path = Path(raw_path)
+    if path.suffix != ".py" or path.is_symlink() or not path.is_file():
+        raise _validation("custom catalog module must have a readable regular Python source file")
+    return path.resolve()
+
+
+def _distribution_owning(source_path: Path, module_name: str) -> object | None:
+    matches: list[object] = []
+    for candidate in distributions():
+        files = candidate.files
+        if files is not None:
+            for file in files:
+                located = Path(candidate.locate_file(file))
+                if located.exists() and located.resolve() == source_path:
+                    matches.append(candidate)
+                    break
+            else:
+                root = _editable_distribution_root(candidate, module_name)
+                if root is not None:
+                    try:
+                        source_path.relative_to(root)
+                    except ValueError:
+                        continue
+                    matches.append(candidate)
+        else:
+            root = _editable_distribution_root(candidate, module_name)
+            if root is not None:
+                try:
+                    source_path.relative_to(root)
+                except ValueError:
+                    continue
+                matches.append(candidate)
+    if len(matches) > 1:
+        raise _validation("custom catalog source belongs to multiple installed distributions")
+    return matches[0] if matches else None
+
+
+def _editable_distribution(package: object) -> bool:
+    direct_url = package.read_text("direct_url.json")  # type: ignore[union-attr]
+    if not direct_url:
+        return False
+    try:
+        direct = json.loads(direct_url)
+    except json.JSONDecodeError as error:
+        raise _validation("catalog direct_url metadata is invalid") from error
+    info = direct.get("dir_info") if isinstance(direct, Mapping) else None
+    return isinstance(info, Mapping) and bool(info.get("editable", False))
+
+
+def _editable_distribution_root(package: object, module_name: str) -> Path | None:
+    if not _editable_distribution(package):
+        return None
+    top_level = package.read_text("top_level.txt")  # type: ignore[union-attr]
+    if top_level is None or module_name.split(".", 1)[0] not in {line.strip() for line in top_level.splitlines()}:
+        return None
+    direct_url = package.read_text("direct_url.json")  # type: ignore[union-attr]
+    direct = json.loads(direct_url)
+    url = direct.get("url") if isinstance(direct, Mapping) else None
+    parsed = urlparse(url) if isinstance(url, str) else None
+    if parsed is None or parsed.scheme != "file":
+        return None
+    try:
+        return Path(unquote(parsed.path)).resolve(strict=True)
+    except OSError as error:
+        raise _validation("editable catalog source root is unreadable") from error
+
+
+def _package_root(module_name: str, source_path: Path) -> Path | None:
+    parts = module_name.split(".")
+    if module_name == "__main__" or not parts:
+        return None
+    directory = source_path.parent
+    for _ in range(len(parts) - (1 if source_path.name == "__init__.py" else 2)):
+        directory = directory.parent
+    return directory if (directory / "__init__.py").is_file() else None
+
+
+def _normalized_source_bytes(path: Path) -> bytes:
+    try:
+        with tokenize.open(path) as source:
+            text = source.read()
+    except (OSError, SyntaxError, UnicodeError) as error:
+        raise _validation("custom catalog source cannot be decoded", path=str(path)) from error
+    return unicodedata.normalize("NFC", text.replace("\r\n", "\n").replace("\r", "\n")).encode("utf-8")
+
+
+def _notebook_source_bytes(subject: type[object], _factory: object | None = None) -> bytes:
+    """Close the complete custom Library declaration visible in a notebook."""
+
+    classes: list[dict[str, str]] = []
+    factories: list[dict[str, str]] = []
+    try:
+        for candidate in _catalog_lineage(subject):
+            classes.append({
+                "qualified_class": _catalog_qualified_class(candidate),
+                "source": _normalized_notebook_source(inspect.getsource(candidate)),
+            })
+            for name, descriptor in candidate.__dict__.items():
+                if name.startswith("_"):
+                    continue
+                function = descriptor.__func__ if isinstance(descriptor, (classmethod, staticmethod)) else descriptor
+                if inspect.isfunction(function):
+                    factories.append({
+                        "qualified_class": _catalog_qualified_class(candidate),
+                        "name": _identifier(name, field="factory"),
+                        "source": _normalized_notebook_source(inspect.getsource(inspect.unwrap(function))),
+                    })
+    except (OSError, TypeError) as error:
+        raise _validation("notebook catalog source is unavailable") from error
+    return canonical_json_bytes({
+        "schema": "scnsim.notebook_catalog_source",
+        "schema_version": 1,
+        "classes": classes,
+        "factories": factories,
+    })
+
+
+def _normalized_notebook_source(source: str) -> str:
+    return unicodedata.normalize("NFC", inspect.cleandoc(source).replace("\r\n", "\n").replace("\r", "\n"))
 
 
 def _normalize_distribution_name(name: str) -> str:

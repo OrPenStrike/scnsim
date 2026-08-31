@@ -7,8 +7,8 @@ subtitle: "Public behavior and the design that will implement it"
 ## CONVERGING authority
 
 These pages describe the current SCNSim V1 candidate. They do not claim Human
-acceptance, stabilization, or release. The `1.0.0.dev3` candidate implements
-the Lessons 1–5 slice; later slices remain fail-fast until their reviewed
+acceptance, stabilization, or release. The `1.0.0.dev4` candidate implements
+the Lessons 1–8 slice; later slices remain fail-fast until their reviewed
 implementations replace the corresponding unavailable paths.
 :::
 

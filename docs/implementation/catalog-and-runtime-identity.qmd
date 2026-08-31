@@ -47,7 +47,10 @@ path, Git file mode, and current file bytes beneath the catalog's Python package
 root. The dirty-overlay digest covers modified, deleted, and untracked
 non-ignored files relative to the recorded commit; cache/build/VCS metadata is
 excluded. Clean trees use the SHA-256 of the empty canonical overlay. Notebook
-source hashes the class and invoked factory definitions in definition order.
+source hashes the base-to-derived `Library` class definitions and every public
+factory definition in declaration order. The invoked factory remains a
+separate component-snapshot field, so catalog provenance does not depend on
+which factory happened to be called first.
 
 An ordinary imported source module uses `module_source` only when no installed
 wheel or editable-install identity owns it. SCNSim obtains the defining regular
