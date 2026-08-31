@@ -112,7 +112,7 @@ function parameter_values(request)::Dict{String,Float64}
     return values
 end
 
-function resolve_binding(binding, values::Dict{String,Float64})::Float64
+function resolve_binding(binding, values::Dict{String,Float64}; context_kind::String = "compile")::Float64
     item = plain(binding)
     kind = item["kind"]
     if kind == "constant"
@@ -124,7 +124,12 @@ function resolve_binding(binding, values::Dict{String,Float64})::Float64
     elseif kind == "affine"
         key = ref_key(item["input"])
         haskey(values, key) || fail("execution", "compiler_invariant", "compile", "compile", "missing resolved affine input")
-        return quantity_value(item["slope"]) * values[key] + quantity_value(item["intercept"])
+        support = item["support"]
+        length(support) == 2 || fail("execution", "compiler_invariant", "compile", "compile", "affine support must have two bounds")
+        lower = quantity_value(support[1]); upper = quantity_value(support[2]); input = values[key]
+        lower <= input <= upper ||
+            fail("execution", "invalid_candidate_physical_parameter", "affine_support", context_kind, "affine input is outside its declared support")
+        return quantity_value(item["slope"]) * input + quantity_value(item["intercept"])
     end
     fail("execution", "compiler_invariant", "compile", "compile", "unknown parameter binding kind")
 end
@@ -179,63 +184,365 @@ function branch_incidence(component, endpoint_to_node, node_index)::Vector{Float
     return b
 end
 
+component_path(component) = String.(component["component_path"])
+component_key(component) = join(component_path(component), "\u001f")
+endpoint_at(path::Vector{String}, pin) = endpoint_key(Dict("component_path" => path, "pin_id" => String(pin)))
+qualified_node(path::Vector{String}, id) = join(path, "\u001f") * "\u001e" * String(id)
+
+"""A leaf in the sealed data-only expansion; no Python factory is executable here."""
+struct ExpandedInductor
+    id::String
+    incidence::Vector{Float64}
+    value::Float64
+end
+
+function binding_value(component, parameter_id::String, binding, values::Dict{String,Float64}; context_kind::String = "compile")::Float64
+    public_reference = Dict("component_path" => component["component_path"], "parameter_id" => parameter_id)
+    key = ref_key(public_reference)
+    return haskey(values, key) ? values[key] : resolve_binding(binding, values; context_kind = context_kind)
+end
+
+function binding_for(component, parameter_id::String, realization)
+    haskey(realization, parameter_id) && return realization[parameter_id]
+    for entry in get(component, "parameter_bindings", Any[])
+        entry["id"] == parameter_id && return entry["binding"]
+    end
+    fail("execution", "compiler_invariant", "compile", "compile", "sealed component is missing parameter binding $(parameter_id)")
+end
+
+function component_incidence(component, endpoint_to_node::Dict{String,String}, node_index::Dict{String,Int})
+    pins = component["pin_order"]
+    length(pins) == 2 || fail("execution", "compiler_invariant", "compile", "compile", "expanded primitive must have exactly two ordered pins")
+    path = component_path(component)
+    left = endpoint_at(path, pins[1]); right = endpoint_at(path, pins[2])
+    haskey(endpoint_to_node, left) || fail("execution", "compiler_invariant", "compile", "compile", "expanded terminal_1 is unbound")
+    haskey(endpoint_to_node, right) || fail("execution", "compiler_invariant", "compile", "compile", "expanded terminal_2 is unbound")
+    b = zeros(Float64, length(node_index))
+    endpoint_to_node[left] != "ground" && (b[node_index[endpoint_to_node[left]]] += 1.0)
+    endpoint_to_node[right] != "ground" && (b[node_index[endpoint_to_node[right]]] -= 1.0)
+    return b
+end
+
 """Compile the sealed primitive snapshot. Ports remain outside intrinsic C/K/G."""
-function compile_primitive(plan_value, values::Dict{String,Float64})::CompiledPrimitive
+function compile_primitive(plan_value, values::Dict{String,Float64}; context_kind::String = "compile")::CompiledPrimitive
+    return compile_recursive(plan_value, values; context_kind = context_kind)
+end
+
+branch_key(reference) = join(String.(plain(reference)["component_path"]), "\u001f") * "\u001e" * String(plain(reference)["branch_id"])
+
+function composite_child(container, endpoint)
+    path = String.(endpoint["component_path"])
+    matches = [child for child in container["realization"]["children"] if component_path(child) == path]
+    length(matches) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "Composite endpoint does not resolve to one immediate child")
+    return only(matches)
+end
+
+function composite_private_node(realization, private_id::String)
+    matches = [node for node in realization["private_nodes"] if String(node["id"]) == private_id]
+    length(matches) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "Composite public map does not resolve to one private node")
+    return only(matches)
+end
+
+function expand_private_endpoint!(leaves::Vector{Dict{String,Any}}, container, endpoint, ancestry::Set{String})
+    key = endpoint_key(endpoint)
+    key in ancestry && fail("execution", "compiler_invariant", "compile", "compile", "Composite private-node expansion is cyclic or duplicates an endpoint")
+    push!(ancestry, key)
+    child = composite_child(container, endpoint)
+    realization = child["realization"]
+    if String(realization["kind"]) != "composite"
+        push!(leaves, Dict{String,Any}("component_path" => String.(endpoint["component_path"]), "pin_id" => String(endpoint["pin_id"])))
+    else
+        mappings = [item for item in realization["public_pin_map"] if String(item["public_id"]) == String(endpoint["pin_id"])]
+        length(mappings) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "Composite child endpoint lacks one public-pin map")
+        private_node = composite_private_node(realization, String(only(mappings)["private_node_id"]))
+        for nested_endpoint in private_node["endpoints"]
+            expand_private_endpoint!(leaves, child, nested_endpoint, ancestry)
+        end
+    end
+    delete!(ancestry, key)
+    return nothing
+end
+
+function expanded_internal_node_id(container, private_node)::String
+    leaves = Dict{String,Any}[]
+    for endpoint in private_node["endpoints"]
+        expand_private_endpoint!(leaves, container, endpoint, Set{String}())
+    end
+    sort!(leaves; by = endpoint -> (Tuple(String.(endpoint["component_path"])), String(endpoint["pin_id"])))
+    any(endpoint_key(leaves[index - 1]) == endpoint_key(leaves[index]) for index in 2:length(leaves)) &&
+        fail("execution", "compiler_invariant", "compile", "compile", "Composite private-node expansion duplicates a leaf endpoint")
+    return "internal-" * sha256_hex(canonical_bytes(Dict(
+        "schema" => "scnsim.internal_node",
+        "schema_version" => 1,
+        "endpoints" => leaves,
+    )))
+end
+
+function recursive_nodes!(nodes::Vector{String}, component; top_level::Bool)
+    realization = component["realization"]
+    String(realization["kind"]) == "composite" || return nothing
+    path = component_path(component)
+    coordinate_targets = top_level ? Dict{String,String}(String(item["private_node_id"]) => String(item["public_id"])
+        for item in realization["public_coordinate_map"]) : Dict{String,String}()
+    pin_targets = Set(String(item["private_node_id"]) for item in realization["public_pin_map"])
+    for private_node in realization["private_nodes"]
+        id = String(private_node["id"])
+        id in pin_targets && continue
+        push!(nodes, get(coordinate_targets, id, expanded_internal_node_id(component, private_node)))
+    end
+    for child in realization["children"]
+        recursive_nodes!(nodes, child; top_level = false)
+    end
+    return nothing
+end
+
+function recursive_parameter_values!(values::Dict{String,Float64}, component,
+    mapped_targets::Set{String}, context_kind::String)
+    for entry in component["parameter_bindings"]
+        key = ref_key(Dict("component_path" => component["component_path"], "parameter_id" => entry["id"]))
+        haskey(values, key) && continue
+        values[key] = resolve_binding(entry["binding"], values; context_kind = context_kind)
+    end
+    realization = component["realization"]
+    String(realization["kind"]) == "composite" || return nothing
+    for mapping in realization["public_parameter_maps"]
+        source = ref_key(mapping["parameter"])
+        haskey(values, source) || fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter map has no resolved source")
+        for consumer in mapping["consumers"]
+            target = ref_key(consumer["target"])
+            target in mapped_targets && fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter map duplicates a consumer target")
+            push!(mapped_targets, target)
+            mapped = resolve_binding(consumer["binding"], values; context_kind = context_kind)
+            if haskey(values, target)
+                f64_hex(values[target]) == f64_hex(mapped) ||
+                    fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter map conflicts with an existing resolved target")
+            else
+                values[target] = mapped
+            end
+        end
+    end
+    for child in realization["children"]
+        recursive_parameter_values!(values, child, mapped_targets, context_kind)
+    end
+    return nothing
+end
+
+function recursive_parameter_values(plan, request_values::Dict{String,Float64}; context_kind::String = "compile")
+    values = copy(request_values)
+    mapped_targets = Set{String}()
+    for component in plan["components"]
+        recursive_parameter_values!(values, component, mapped_targets, context_kind)
+    end
+    return values
+end
+
+recursive_baselines(plan) = recursive_parameter_values(plan, Dict{String,Float64}())
+
+function find_component_by_path!(matches::Vector{Any}, component, path::Vector{String})
+    component_path(component) == path && push!(matches, component)
+    realization = component["realization"]
+    String(realization["kind"]) == "composite" || return nothing
+    for child in realization["children"]
+        find_component_by_path!(matches, child, path)
+    end
+    return nothing
+end
+
+function lower_branch_reference(plan, reference; ancestry::Set{String} = Set{String}())
+    item = plain(reference); key = branch_key(item)
+    key in ancestry && fail("execution", "compiler_invariant", "compile", "compile", "Composite public inductive branch map is cyclic")
+    push!(ancestry, key)
+    path = String.(item["component_path"])
+    matches = Any[]
+    for component in plan["components"]
+        find_component_by_path!(matches, component, path)
+    end
+    length(matches) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "inductive branch reference does not resolve to one sealed component")
+    component = only(matches); realization = component["realization"]
+    if String(realization["kind"]) == "composite"
+        branch_maps = [mapping for mapping in realization["public_inductive_branch_map"] if String(mapping["public_id"]) == String(item["branch_id"])]
+        length(branch_maps) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "Composite public inductive branch map does not resolve to one target")
+        result = lower_branch_reference(plan, only(branch_maps)["target"]; ancestry = ancestry)
+        delete!(ancestry, key)
+        return result
+    end
+    branches = [branch for branch in component["inductive_branches"] if String(branch["id"]) == String(item["branch_id"])]
+    length(branches) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "inductive branch reference does not resolve to one leaf branch")
+    delete!(ancestry, key)
+    return Dict("component_path" => path, "branch_id" => String(item["branch_id"]))
+end
+
+function recursive_incidence(positive, negative, endpoint_to_node::Dict{String,String}, node_index::Dict{String,Int})
+    left = endpoint_key(positive); right = endpoint_key(negative)
+    haskey(endpoint_to_node, left) || fail("execution", "compiler_invariant", "compile", "compile", "expanded positive inductive endpoint is unbound")
+    haskey(endpoint_to_node, right) || fail("execution", "compiler_invariant", "compile", "compile", "expanded negative inductive endpoint is unbound")
+    b = zeros(Float64, length(node_index))
+    endpoint_to_node[left] != "ground" && (b[node_index[endpoint_to_node[left]]] += 1.0)
+    endpoint_to_node[right] != "ground" && (b[node_index[endpoint_to_node[right]]] -= 1.0)
+    return b
+end
+
+function recursive_leaf!(component, endpoint_to_node, node_index, values, capacitors, resistors, inductors, rows, context_kind::String)
+    realization = component["realization"]; kind = String(realization["kind"])
+    path = component_path(component); pins = component["pin_order"]
+    b = component_incidence(component, endpoint_to_node, node_index)
+    function record!(row_kind, value, unit, dimensionality, incidence = b; omitted_as_zero::Bool = false)
+        push!(rows, Dict{String,Any}("component_path" => path, "kind" => row_kind,
+            "terminal_1_to_terminal_2" => pins, "incidence_f64" => f64_hex.(incidence),
+            "value" => quantity(value, unit, dimensionality), "omitted_as_zero" => omitted_as_zero))
+    end
+    if kind == "capacitor" || kind == "resistor"
+        parameter = kind == "capacitor" ? "capacitance" : "resistance"
+        value = binding_value(component, parameter, binding_for(component, parameter, realization), values; context_kind = context_kind)
+        isfinite(value) && value > 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "primitive R/C value must be finite and strictly positive")
+        kind == "capacitor" ? push!(capacitors, (b, value)) : push!(resistors, (b, value))
+        record!(kind, value, kind == "capacitor" ? "farad" : "ohm", kind == "capacitor" ? "capacitance" : "resistance")
+    elseif kind == "josephson_junction"
+        lj = binding_value(component, "josephson_inductance", binding_for(component, "josephson_inductance", realization), values; context_kind = context_kind)
+        cj = binding_value(component, "junction_capacitance", binding_for(component, "junction_capacitance", realization), values; context_kind = context_kind)
+        isfinite(lj) && lj > 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "L_J0 must be finite and strictly positive")
+        isfinite(cj) && cj >= 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "Cj must be finite and nonnegative")
+        push!(inductors, ExpandedInductor(component_key(component) * "\u001e" * "self", b, lj)); record!("josephson_inductance", lj, "henry", "inductance")
+        if cj == 0.0
+            record!("junction_capacitance", cj, "farad", "capacitance"; omitted_as_zero = true)
+        else
+            push!(capacitors, (b, cj)); record!("junction_capacitance", cj, "farad", "capacitance")
+        end
+    elseif kind == "inductor"
+        # The canonical branch list is the orientation authority; no drawing-derived sign exists.
+        for branch in component["inductive_branches"]
+            value = binding_value(component, "inductance", branch["inductance"], values; context_kind = context_kind)
+            isfinite(value) && value > 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "inductance must be finite and strictly positive")
+            branch_incidence = recursive_incidence(branch["positive_endpoint"], branch["negative_endpoint"], endpoint_to_node, node_index)
+            push!(inductors, ExpandedInductor(branch_key(Dict("component_path" => component["component_path"], "branch_id" => branch["id"])), branch_incidence, value))
+            record!("inductor", value, "henry", "inductance", branch_incidence)
+        end
+    else
+        fail("capability", "scaffold_unavailable", "compile", "compile", "sealed component realization is outside the dev4 recursive Direct compiler")
+    end
+end
+
+function recursive_expand!(component, endpoint_to_node, node_index, values, capacitors, resistors, inductors, rows, couplings, context_kind::String; top_level::Bool)
+    realization = component["realization"]
+    String(realization["kind"]) != "composite" && return recursive_leaf!(component, endpoint_to_node, node_index, values, capacitors, resistors, inductors, rows, context_kind)
+    path = component_path(component); local_nodes = Dict{String,String}()
+    for node in realization["private_nodes"]
+        local_nodes[String(node["id"])] = expanded_internal_node_id(component, node)
+    end
+    for mapping in realization["public_pin_map"]
+        private_id = String(mapping["private_node_id"]); haskey(local_nodes, private_id) || fail("execution", "compiler_invariant", "compile", "compile", "Composite public pin map targets no private node")
+        public_endpoint = endpoint_at(path, mapping["public_id"])
+        haskey(endpoint_to_node, public_endpoint) || fail("execution", "compiler_invariant", "compile", "compile", "Composite public pin is unbound")
+        local_nodes[private_id] = endpoint_to_node[public_endpoint]
+    end
+    if top_level
+        for mapping in realization["public_coordinate_map"]
+            private_id = String(mapping["private_node_id"]); haskey(local_nodes, private_id) || fail("execution", "compiler_invariant", "compile", "compile", "Composite public coordinate map targets no private node")
+            local_nodes[private_id] = String(mapping["public_id"])
+        end
+    end
+    child_endpoints = Dict{String,String}()
+    for node in realization["private_nodes"]
+        for endpoint in node["endpoints"]
+            key = endpoint_key(endpoint); haskey(child_endpoints, key) && fail("execution", "compiler_invariant", "compile", "compile", "Composite child endpoint belongs to multiple private nodes")
+            child_endpoints[key] = local_nodes[String(node["id"])]
+        end
+    end
+    for endpoint in realization["grounded_endpoints"]
+        key = endpoint_key(endpoint); haskey(child_endpoints, key) && fail("execution", "compiler_invariant", "compile", "compile", "Composite grounded endpoint also belongs to a private node")
+        child_endpoints[key] = "ground"
+    end
+    for child in realization["children"]
+        recursive_expand!(child, child_endpoints, node_index, values, capacitors, resistors, inductors, rows, couplings, context_kind; top_level = false)
+    end
+    append!(couplings, realization["couplings"])
+    return nothing
+end
+
+function compile_recursive(plan_value, request_values::Dict{String,Float64}; context_kind::String = "compile")::CompiledPrimitive
     plan = plain(plan_value)
-    get(plan, "schema", nothing) == "scnsim.plan" || fail("execution", "compiler_invariant", "compile", "plan schema discriminator is invalid")
-    components = sort!(copy(plan["components"]); by = item -> join(String.(item["component_path"]), "\u001f"))
-    all(item["realization"]["kind"] in ("resistor", "capacitor", "inductor") for item in components) ||
-        fail("capability", "scaffold_unavailable", "compile", "compile", "dev3 compiler accepts only primitive R/L/C snapshots")
-    nodes = sort!(String[item["node_id"] for item in plan["nodes"]])
-    isempty(nodes) && fail("execution", "compiler_invariant", "compile", "primitive plan has no non-reference node")
-    node_index = Dict(node => index for (index, node) in enumerate(nodes))
-    endpoint_to_node = endpoint_nodes(plan)
-    n = length(nodes)
-    C = zeros(Float64, n, n)
-    K = zeros(Float64, n, n)
-    G = zeros(Float64, n, n)
-    branch_rows = Dict{String,Any}[]
-    for component in components
-        b = branch_incidence(component, endpoint_to_node, node_index)
-        realization = component["realization"]
-        kind = realization["kind"]
-        raw = if kind == "capacitor"
-            primitive_value(component, "capacitance", realization["capacitance"], values)
-        elseif kind == "inductor"
-            primitive_value(component, "inductance", realization["inductance"], values)
-        else
-            primitive_value(component, "resistance", realization["resistance"], values)
-        end
-        isfinite(raw) && raw > 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", "optimization_candidate", "primitive R/L/C values must be finite and strictly positive")
-        stamp = b * transpose(b)
-        if kind == "capacitor"
-            C .+= raw .* stamp
-        elseif kind == "inductor"
-            K .+= (1.0 / raw) .* stamp
-        else
-            G .+= (1.0 / raw) .* stamp
-        end
-        push!(branch_rows, Dict{String,Any}(
-            "component_path" => component["component_path"],
-            "kind" => kind,
-            "terminal_1_to_terminal_2" => component["pin_order"],
-            "incidence_f64" => f64_hex.(b),
-            "value" => quantity(raw,
-                kind == "capacitor" ? "farad" : kind == "inductor" ? "henry" : "ohm",
-                kind == "capacitor" ? "capacitance" : kind == "inductor" ? "inductance" : "resistance"),
+    get(plan, "schema", nothing) == "scnsim.plan" || fail("execution", "compiler_invariant", "compile", "compile", "plan schema discriminator is invalid")
+    values = recursive_parameter_values(plan, request_values; context_kind = context_kind)
+    nodes = String[item["node_id"] for item in plan["nodes"]]
+    for component in plan["components"]; recursive_nodes!(nodes, component; top_level = true); end
+    nodes = unique(sort!(nodes)); isempty(nodes) && fail("execution", "compiler_invariant", "compile", "compile", "sealed Plan has no non-reference node")
+    node_index = Dict(node => index for (index, node) in enumerate(nodes)); endpoint_to_node = endpoint_nodes(plan)
+    capacitors = Tuple{Vector{Float64},Float64}[]; resistors = Tuple{Vector{Float64},Float64}[]; inductors = ExpandedInductor[]; rows = Dict{String,Any}[]; couplings = Any[]
+    for component in plan["components"]
+        recursive_expand!(component, endpoint_to_node, node_index, values, capacitors, resistors, inductors, rows, couplings, context_kind; top_level = true)
+    end
+    append!(couplings, plan["couplings"])
+    n = length(nodes); C = zeros(Float64, n, n); G = zeros(Float64, n, n)
+    for (b, value) in capacitors; C .+= value .* (b * transpose(b)); end
+    for (b, value) in resistors; G .+= (1.0 / value) .* (b * transpose(b)); end
+    locations = Dict(item.id => index for (index, item) in enumerate(inductors))
+    edges = Tuple{Int,Int,Float64}[]; resolved_pairs = Set{Tuple{Int,Int}}()
+    for coupling in couplings
+        left = branch_key(lower_branch_reference(plan, coupling["branch_a"])); right = branch_key(lower_branch_reference(plan, coupling["branch_b"]))
+        haskey(locations, left) && haskey(locations, right) || fail("execution", "compiler_invariant", "compile", "compile", "mutual coupling references unknown expanded branch")
+        i = locations[left]; j = locations[right]; i != j || fail("execution", "compiler_invariant", "compile", "compile", "mutual coupling cannot self-couple a branch")
+        pair = minmax(i, j); pair in resolved_pairs &&
+            fail("execution", "compiler_invariant", "compile", "compile", "mutual couplings duplicate one resolved physical branch pair")
+        push!(resolved_pairs, pair)
+        k = quantity_value(coupling["coupling_coefficient"]); isfinite(k) && abs(k) < 1.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "mutual coupling coefficient must satisfy abs(k) < 1")
+        mutual = k * sqrt(inductors[i].value * inductors[j].value)
+        push!(edges, (i, j, mutual))
+        push!(rows, Dict{String,Any}(
+            "kind" => "mutual_inductance",
+            "coupling_id" => String(coupling["id"]),
+            "branch_a" => coupling["branch_a"],
+            "branch_b" => coupling["branch_b"],
+            "coupling_coefficient" => quantity(k, "dimensionless", "dimensionless"),
+            "derived_mutual_inductance" => quantity(mutual, "henry", "inductance"),
+            "omitted_as_zero" => mutual == 0.0,
         ))
     end
-    ports = plan["ports"]
-    length(ports) == 1 || fail("validation", "port_realizability", "compile", "compile", "dev3 Direct requires exactly one logical Port")
-    port = ports[1]
-    # A raw nonloading probe is still a matched physical load. PTC is deferred
-    # beyond dev3, so it receives exactly the same raw selected-network stamp.
-    port["role"] in ("terminated", "nonloading_probe") ||
-        fail("validation", "port_realizability", "compile", "compile", "dev3 Direct requires a terminated or raw nonloading-probe Port")
+    K = zeros(Float64, n, n)
+    neighbors = [Int[] for _ in inductors]
+    for (i, j, _) in edges
+        push!(neighbors[i], j); push!(neighbors[j], i)
+    end
+    visited = falses(length(inductors))
+    for start in eachindex(inductors)
+        visited[start] && continue
+        group = Int[]; pending = [start]; visited[start] = true
+        while !isempty(pending)
+            index = pop!(pending); push!(group, index)
+            for neighbor in neighbors[index]
+                visited[neighbor] && continue
+                visited[neighbor] = true; push!(pending, neighbor)
+            end
+        end
+        if length(group) == 1
+            branch = inductors[only(group)]
+            K .+= (1.0 / branch.value) .* (branch.incidence * transpose(branch.incidence))
+            continue
+        end
+        local_index = Dict(member => index for (index, member) in enumerate(group))
+        L = zeros(Float64, length(group), length(group))
+        for (index, member) in enumerate(group); L[index, index] = inductors[member].value; end
+        for (i, j, mutual) in edges
+            haskey(local_index, i) && haskey(local_index, j) || continue
+            left = local_index[i]; right = local_index[j]
+            L[left, right] = mutual; L[right, left] = mutual
+        end
+        factor = try
+            cholesky(Symmetric(L); check = true)
+        catch
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "complete reciprocal inductance matrix is not positive definite")
+        end
+        B = hcat((inductors[index].incidence for index in group)...)
+        reciprocal = factor \ transpose(B)
+        residual = backward_residual(L, reciprocal, transpose(B))
+        isfinite(residual) && residual <= tau(length(group)) ||
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "reciprocal inductance solve exceeded normalized backward-residual contract")
+        K .+= B * reciprocal
+    end
+    ports = plan["ports"]; length(ports) == 1 || fail("validation", "port_realizability", "compile", "compile", "dev3 Direct requires exactly one logical Port")
+    port = ports[1]; port["role"] in ("terminated", "nonloading_probe") || fail("validation", "port_realizability", "compile", "compile", "dev3 Direct requires a terminated or raw nonloading-probe Port")
     haskey(node_index, String(port["node_id"])) || fail("execution", "compiler_invariant", "compile", "compile", "Port node is absent from compiled basis")
-    z0 = quantity_value(port["reference_impedance"])
-    isfinite(z0) && z0 > 0.0 || fail("execution", "compiler_invariant", "compile", "compile", "Port reference impedance must be finite and positive")
-    return CompiledPrimitive(nodes, C, K, G, branch_rows, String(port["port_id"]), node_index[String(port["node_id"])], z0)
+    z0 = quantity_value(port["reference_impedance"]); isfinite(z0) && z0 > 0.0 || fail("execution", "compiler_invariant", "compile", "compile", "Port reference impedance must be finite and positive")
+    return CompiledPrimitive(nodes, C, K, G, rows, String(port["port_id"]), node_index[String(port["node_id"])], z0)
 end
 
 tau(n::Int) = 256.0 * (n + 1) * EPS64
@@ -244,7 +551,7 @@ function finite_matrix(value)
     return all(isfinite, real.(value)) && all(isfinite, imag.(value))
 end
 
-function backward_residual(A::AbstractMatrix{ComplexF64}, X, B)::Float64
+function backward_residual(A::AbstractMatrix, X, B)::Float64
     numerator = norm(A * X - B, Inf)
     denominator = norm(abs.(A) * abs.(X) + abs.(B), Inf)
     (!isfinite(numerator) || !isfinite(denominator)) && return Inf
@@ -699,13 +1006,13 @@ function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, requ
     hint = quantity_value(spec["root_hint"])
     baseline_values = plan_parameter_values(plan)
     candidate_values = parameter_values(request)
-    baseline_compiled = compile_primitive(plan, baseline_values)
+    baseline_compiled = compile_primitive(plan, baseline_values; context_kind = "direct_quantity")
     baseline_root, baseline_slope = diagonal_root(baseline_compiled, String(spec["coordinate"]), hint)
     if same_parameter_values(baseline_values, candidate_values)
         omega, slope = baseline_root, baseline_slope
     else
         selector = Dict{String,Any}("spec" => spec)
-        omega = root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root, selector)
+        omega = root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root, selector; context_kind = "direct_quantity")
         slope = root_certificate(compiled, omega, String(spec["coordinate"])).fp
     end
     scalars = Dict{String,Any}(
@@ -795,8 +1102,9 @@ function run_terminal(request_path::String, staging::String)
         fail("evidence", "evidence_integrity", "optimization_replay", "attempt", "resume ledger hash is malformed")
     try
         request["runtime_semantic"]["julia_version"] == "1.12.6" || error("request runtime identity has wrong Julia version")
-        compiled = compile_primitive(plan, parameter_values(request))
         operation = request["operation"]
+        compile_context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
+        compiled = compile_primitive(plan, parameter_values(request); context_kind = compile_context)
         if operation == "solve_direct"
             solve_direct(request, compiled, request_sha, attempt_sha, staging)
         elseif operation == "evaluate_direct"
@@ -826,31 +1134,59 @@ function f64_matrix_evidence(matrix::Matrix{Float64})
     return Dict("shape" => [size(matrix, 1), size(matrix, 2)], "row_major_f64" => values)
 end
 
-function baseline_bindings(plan, compiled::CompiledPrimitive)
+function resolved_bindings(plan, resolved::Dict{String,Float64})
     values = Dict{String,Any}[]
     for component in plan["components"]
         realization = component["realization"]
-        kind = realization["kind"]
-        kind in ("capacitor", "inductor", "resistor") || continue
-        parameter = kind == "capacitor" ? "capacitance" : kind == "inductor" ? "inductance" : "resistance"
-        value = resolve_binding(realization[parameter], Dict{String,Float64}())
-        push!(values, Dict{String,Any}(
-            "parameter" => Dict("component_path" => component["component_path"], "parameter_id" => parameter),
-            "value" => quantity(value,
-                kind == "capacitor" ? "farad" : kind == "inductor" ? "henry" : "ohm",
-                kind == "capacitor" ? "capacitance" : kind == "inductor" ? "inductance" : "resistance"),
-        ))
+        for entry in component["parameter_bindings"]
+            parameter = String(entry["id"])
+            key = ref_key(Dict("component_path" => component["component_path"], "parameter_id" => parameter))
+            haskey(resolved, key) || continue
+            envelope = if String(realization["kind"]) == "composite"
+                declarations = [item for item in realization["public_parameters"] if String(item["id"]) == parameter]
+                length(declarations) == 1 || fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter declaration is missing or ambiguous")
+                declaration = only(declarations)
+                haskey(declaration, "spec") && haskey(declaration, "baseline") ||
+                    fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter declaration lacks exact unit evidence")
+                spec = declaration["spec"]
+                baseline = declaration["baseline"]
+                for field in ("si_unit", "dimensionality")
+                    haskey(spec, field) && haskey(baseline, field) && spec[field] == baseline[field] ||
+                        fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter unit evidence is inconsistent")
+                end
+                baseline
+            else
+                binding = entry["binding"]
+                binding["kind"] == "constant" && haskey(binding, "value") ||
+                    fail("execution", "compiler_invariant", "compile", "compile", "primitive public baseline is not a canonical constant quantity")
+                binding["value"]
+            end
+            haskey(envelope, "si_unit") && haskey(envelope, "dimensionality") ||
+                fail("execution", "compiler_invariant", "compile", "compile", "public baseline quantity lacks unit evidence")
+            push!(values, Dict{String,Any}(
+                "parameter" => Dict("component_path" => component["component_path"], "parameter_id" => parameter),
+                "value" => quantity(resolved[key], String(envelope["si_unit"]), String(envelope["dimensionality"])),
+            ))
+        end
     end
+    sort!(values; by = item -> ref_key(item["parameter"]))
     return values
 end
 
-function preflight(plan_path::String)
+function preflight(plan_path::String, request_path::String)
     plan_bytes = read(plan_path)
+    plan_sha = sha256_hex(plan_bytes)
     plan = plain(JSON3.read(String(plan_bytes)))
-    values = Dict{String,Float64}()
-    # A pure compile preflight has no request ParameterSet. Primitive baseline bindings
-    # are constants in the sealed snapshot; identities correctly fail as request-bound.
-    compiled = compile_primitive(plan, values)
+    request = plain(JSON3.read(read(request_path, String)))
+    get(request, "schema", nothing) == "scnsim.request" ||
+        fail("execution", "compiler_invariant", "preflight", "compile", "preflight request schema is invalid")
+    request["plan_sha256"] == plan_sha ||
+        fail("execution", "compiler_invariant", "preflight", "compile", "preflight request does not bind the supplied Plan")
+    operation = String(request["operation"])
+    context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
+    request_values = parameter_values(request)
+    resolved = recursive_parameter_values(plan, request_values; context_kind = context)
+    compiled = compile_primitive(plan, request_values; context_kind = context)
     load = zeros(Float64, length(compiled.nodes), length(compiled.nodes))
     load[compiled.port_index, compiled.port_index] = 1.0 / compiled.reference_impedance
     runtime_path = normpath(joinpath(@__DIR__, "..", "runtime.json"))
@@ -858,12 +1194,12 @@ function preflight(plan_path::String)
     return Dict{String,Any}(
         "schema" => "scnsim.preflight",
         "schema_version" => 1,
-        "plan_sha256" => sha256_hex(plan_bytes),
+        "plan_sha256" => plan_sha,
         "runtime" => runtime,
-        "baseline_bindings" => baseline_bindings(plan, compiled),
+        "resolved_bindings" => resolved_bindings(plan, resolved),
         "node_order" => compiled.nodes,
         "matrix_order" => "canonical_node_id",
-        "primitive_branch_rows" => compiled.branch_rows,
+        "expanded_branch_rows" => compiled.branch_rows,
         "c_matrix" => f64_matrix_evidence(compiled.C),
         "k_matrix" => f64_matrix_evidence(compiled.K),
         "g_matrix" => f64_matrix_evidence(compiled.G),
@@ -875,7 +1211,7 @@ function preflight(plan_path::String)
             "selected_network_steps" => ["intrinsic_CKG", "port_load_BY0BT", "source_boundary", "power_wave_deembedding"],
         ),
         "root_preflight" => Dict("supported" => "single_retained_coordinate", "algorithm_id" => runtime["algorithm_ids"]["diagonal_root"]),
-        "optimization_preflight" => Dict("supported" => "primitive_diagonal_root_frequency_or_linewidth", "algorithm_id" => runtime["algorithm_ids"]["optimization"]),
+        "optimization_preflight" => Dict("supported" => "diagonal_root_frequency_or_linewidth", "algorithm_id" => runtime["algorithm_ids"]["optimization"]),
     )
 end
 
@@ -1057,7 +1393,7 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
     key = root_selector_key(selector)
     root = get!(roots, key) do
         same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-            root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector)
+            root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; context_kind = "optimization_candidate")
     end
     projection = selector["projection"]
     if projection == "frequency"
@@ -1074,19 +1410,10 @@ function same_parameter_values(left::Dict{String,Float64}, right::Dict{String,Fl
 end
 
 function plan_parameter_values(plan)::Dict{String,Float64}
-    values = Dict{String,Float64}()
-    for component in plan["components"]
-        realization = component["realization"]
-        kind = realization["kind"]
-        kind in ("capacitor", "inductor", "resistor") || continue
-        parameter = kind == "capacitor" ? "capacitance" : kind == "inductor" ? "inductance" : "resistance"
-        key = join(String.(component["component_path"]), "\u001f") * "\u001e" * parameter
-        values[key] = resolve_binding(realization[parameter], Dict{String,Float64}())
-    end
-    return values
+    return recursive_baselines(plan)
 end
 
-function root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root::ComplexF64, selector)
+function root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root::ComplexF64, selector; context_kind::String = "direct_quantity")
     spec = selector["spec"]
     coordinate = String(spec["coordinate"])
     hint = quantity_value(spec["root_hint"])
@@ -1102,7 +1429,7 @@ function root_with_continuation(plan, request, baseline_values, candidate_values
     function advance(left_t::Float64, left_root::ComplexF64, right_t::Float64, depth::Int)::ComplexF64
         right_values = values_at(right_t)
         try
-            return diagonal_root(compile_primitive(plan, right_values), coordinate, hint; start = left_root)[1]
+            return diagonal_root(compile_primitive(plan, right_values; context_kind = context_kind), coordinate, hint; start = left_root)[1]
         catch error
             error isa BackendFailure || rethrow()
             # Continuation repairs only a Newton-resolution failure. Structural
@@ -1119,7 +1446,7 @@ function root_with_continuation(plan, request, baseline_values, candidate_values
 end
 
 function objective_outcome(plan, request, baseline_values, values, baseline_roots)
-    compiled = compile_primitive(plan, values)
+    compiled = compile_primitive(plan, values; context_kind = "optimization_candidate")
     components = Any[]
     total = 0.0
     roots = Dict{String,ComplexF64}()

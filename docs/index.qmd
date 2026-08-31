@@ -10,11 +10,10 @@ use it.
 
 ::: {.callout-warning title="Candidate package" appearance="simple"}
 SCNSim remains `CONVERGING`. The course expresses the intended native V1 API,
-and `1.0.0.dev3` implements the Lessons 1–5 primitive Direct, root,
-optimization, evidence, and report path. Lessons 6–13 physical and execution
-surfaces remain explicit fail-fast APIs until their named V1 slices land; the
-empty `Library()`/`help()` inspection introduced in Lesson 6 remains inert and
-available by design.
+and `1.0.0.dev4` implements the Lessons 1–8 Direct, root, optimization,
+evidence, report, Library, and Composite path. Lessons 9–13 physical and
+execution surfaces remain explicit fail-fast APIs until their named V1 slices
+land.
 :::
 
 ## Author and analyze

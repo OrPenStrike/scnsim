@@ -1350,6 +1350,41 @@ def _verify_request_document(
             _verify_optimization_selector_coordinates(spec, retained)
 
 
+def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
+    """Return Runtime's sealed coordinate order and its public selection set."""
+
+    nodes = plan.get("nodes")
+    components = plan.get("components")
+    if not isinstance(nodes, list) or not isinstance(components, list):
+        raise _integrity("Sealed Plan coordinate inventory is malformed.")
+    order: list[str] = []
+    public: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, dict) or not isinstance(node.get("node_id"), str) or not node["node_id"]:
+            raise _integrity("Sealed Plan node inventory is malformed.")
+        order.append(node["node_id"])
+        if node.get("visibility") in {"public", "port_promoted"}:
+            public.add(node["node_id"])
+
+    def visit(component: object) -> None:
+        if not isinstance(component, dict):
+            raise _integrity("Sealed Plan Component inventory is malformed.")
+        realization = component.get("realization")
+        if not isinstance(realization, dict) or realization.get("kind") != "composite":
+            return
+        coordinates = realization.get("public_coordinate_map")
+        if not isinstance(coordinates, list):
+            raise _integrity("Composite coordinate inventory is malformed.")
+        for record in coordinates:
+            if not isinstance(record, dict) or not isinstance(record.get("public_id"), str) or not record["public_id"]:
+                raise _integrity("Composite public-coordinate map is malformed.")
+            public.add(record["public_id"])
+
+    for component in components:
+        visit(component)
+    return list(dict.fromkeys(order + sorted(public))), public
+
+
 def _verify_direct_request(
     request: Mapping[str, object],
     plan: Mapping[str, object] | None = None,
@@ -1377,9 +1412,8 @@ def _verify_direct_request(
     _valid_sha(original.get("compiled_graph_sha256"))
     coordinates = original.get("coordinate_order")
     ports = original.get("port_order")
-    plan_nodes = plan.get("nodes") if plan is not None else None
     plan_ports = plan.get("ports") if plan is not None else None
-    expected_coordinates = [node.get("node_id") for node in plan_nodes if isinstance(node, dict)] if isinstance(plan_nodes, list) else coordinates
+    expected_coordinates = _plan_coordinates(plan)[0] if plan is not None else coordinates
     expected_ports = [port.get("port_id") for port in plan_ports if isinstance(port, dict)] if isinstance(plan_ports, list) else ports
     if (
         not isinstance(coordinates, list)
@@ -1427,15 +1461,13 @@ def _verify_retained_request(request: Mapping[str, object], plan: Mapping[str, o
         raise _integrity("Retained request View is malformed.")
     original = lineage.get("original")
     retain = lineage.get("retain")
-    nodes = plan.get("nodes")
     ports = plan.get("ports")
-    if not isinstance(nodes, list) or not isinstance(ports, list) or len(ports) != 1:
+    if not isinstance(ports, list) or len(ports) != 1:
         raise _integrity("Dev3 retained request Plan is not one-Port.")
-    node_order = [node.get("node_id") for node in nodes if isinstance(node, dict)]
+    node_order, public_coordinates = _plan_coordinates(plan)
     port_order = [port.get("port_id") for port in ports if isinstance(port, dict)]
     if (
-        len(node_order) != len(nodes)
-        or any(not isinstance(item, str) or not item for item in node_order)
+        not node_order
         or len(port_order) != 1
         or not isinstance(original, dict)
         or set(original) != {"type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable"}
@@ -1465,12 +1497,10 @@ def _verify_retained_request(request: Mapping[str, object], plan: Mapping[str, o
     if not isinstance(retained, list) or len(retained) != 1 or not isinstance(retained[0], str):
         raise _integrity("Dev3 retain() must name exactly one coordinate.")
     coordinate = retained[0]
-    node = next((item for item in nodes if isinstance(item, dict) and item.get("node_id") == coordinate), None)
     if (
         set(retain) != fields
         or retain.get("type") != "retain"
-        or node is None
-        or node.get("visibility") not in {"public", "port_promoted"}
+        or coordinate not in public_coordinates
         or retain.get("eliminated_coordinates") != [item for item in node_order if item != coordinate]
         or retain.get("output_coordinate_order") != retained
         or lineage.get("terminal_coordinates") != retained
@@ -1751,6 +1781,14 @@ def _finite_f64(value: object) -> bool:
     )
 
 
+def _canonical_quantity_roles() -> frozenset[tuple[str, str]]:
+    """Reuse the identity schema's closed SI-unit/dimensionality vocabulary."""
+
+    from ._canonical import _UNITS
+
+    return frozenset(_UNITS.items())
+
+
 def _verify_parameter_set_document(value: object, *, require_empty_authorization: bool = False) -> None:
     if not isinstance(value, dict) or set(value) != {"type", "bindings", "allow_extrapolation"} or value.get("type") != "parameter_set":
         raise _integrity("ParameterSet envelope is open or malformed.")
@@ -1759,11 +1797,7 @@ def _verify_parameter_set_document(value: object, *, require_empty_authorization
     if not isinstance(bindings, list) or not isinstance(authorizations, list):
         raise _integrity("ParameterSet arrays are malformed.")
     keys: list[tuple[tuple[str, ...], str]] = []
-    units = {
-        ("farad", "capacitance"),
-        ("henry", "inductance"),
-        ("ohm", "resistance"),
-    }
+    units = _canonical_quantity_roles()
     for binding in bindings:
         if not isinstance(binding, dict) or set(binding) != {"parameter", "value"}:
             raise _integrity("ParameterSet binding is open or malformed.")

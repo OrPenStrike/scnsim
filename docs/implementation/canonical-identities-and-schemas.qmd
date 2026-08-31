@@ -42,6 +42,7 @@ For the full-V1 Plan schema, that rule is mechanical rather than inferred:
 | `catalog_sources` | ascending `catalog_id` |
 | `components` and nested `children` | ascending lexicographic `component_path` segment array |
 | component `parameter_bindings` and `inductive_branches` | ascending declared `id` |
+| Composite `public_parameters` | factory declaration order |
 | Composite `public_pin_map`, `public_coordinate_map`, and `public_inductive_branch_map` | ascending `public_id` |
 | Composite `public_parameter_maps`; each map's `consumers` | ascending public `(component_path, parameter_id)`; ascending target `(component_path, parameter_id)` |
 | component `pin_order` | Library-schema declaration order |
@@ -138,7 +139,10 @@ Plan, Ref/View lineage, Direct quantity, optimization, HB, Result, inventory,
 attempt, artifact, and receipt surface described by the Contract. It is
 deliberately broader than the first executable `dev3` slice: a later-slice
 discriminator remains fail-fast until its runtime slice arrives, but reaching
-`dev4` through `dev6` does not require inventing another schema version.
+`dev4` through `dev6` does not require inventing another schema version. The
+`dev4` candidate now consumes the Composite realization, including its
+declaration-ordered `public_parameters`; later-slice discriminators remain
+fail-fast until their runtime slice arrives.
 Unknown or post-V1 discriminators never fall through to a generic map.
 
 JSON Schema enforces each envelope's shape. Cross-document semantic validation

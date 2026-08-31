@@ -729,10 +729,12 @@ def run_preflight(
     prepared: PreparedRuntime,
     *,
     plan_path: str | os.PathLike[str],
+    request_path: str | os.PathLike[str],
 ) -> Mapping[str, object]:
-    """Compile one temp-backed baseline plan without request/attempt evidence."""
+    """Compile one temp-backed bound request without attempt evidence."""
 
     plan = _require_absolute_file(plan_path, label="preflight plan")
+    request = _require_absolute_file(request_path, label="preflight request")
     with packaged_julia_resources() as (project, entrypoint, runtime):
         expected_version = _runtime_version(runtime)
         if prepared.julia_version != expected_version:
@@ -750,6 +752,8 @@ def run_preflight(
             str(entrypoint),
             "--preflight",
             str(plan),
+            "--request",
+            str(request),
         ]
         try:
             completed = subprocess.run(

@@ -9,9 +9,11 @@ toc-depth: 3
 
 This page is the single current candidate authority for SCNSim V1 component
 authoring. Primitive R/L/C authoring and the Lessons 1–5 execution boundary are
-implemented in the `1.0.0.dev3` candidate. Composite, RLGC, coupling, and later
-component surfaces remain fail-fast; no V1 scope is yet accepted, stabilized,
-or released.
+implemented in the `1.0.0.dev3` candidate. The `1.0.0.dev4` candidate implements
+custom Libraries, complete Composite snapshots, recursive primitive expansion,
+and mutual-coupling snapshots for Lessons 6–8. RLGC/transmission lines and later
+component surfaces remain explicit fail-fast behavior; no V1 scope is yet accepted,
+stabilized, or released.
 :::
 
 ## Contract scope
@@ -146,8 +148,10 @@ capacitance = capacitor.parameter("capacitance")
 
 A composite may contain primitive children, but child IDs and child parameters
 are inspection evidence, not automatically a consumer API. The factory must
-deliberately expose every supported `ParameterRef`. This keeps refactoring an
-internal expansion from silently changing Notebook contracts.
+deliberately expose every supported `ParameterRef`. Composite public-parameter
+IDs are unique and retain their factory declaration order; that order is part of
+the frozen snapshot and Plan identity. This keeps refactoring an internal
+expansion from silently changing Notebook contracts.
 
 Custom libraries use `scnsim.units` and declare the same pin,
 public-parameter, provenance, and lowering evidence. V1 does not add a second
@@ -926,8 +930,10 @@ replacement or synthetic bias-dependent inductance is permitted.
 
 Exact-zero declared terms may be omitted from backend rows only with their
 component path, value, and `omitted-as-zero` evidence preserved for compiled
-inspection and receipts. The same rule applies to a zero derived mutual term:
-it never becomes an unrecorded disappearance. Signed branch orientation,
+inspection. The terminal receipt binds the sealed Plan and exact runtime
+identity instead of duplicating compiler-row diagnostics. The same rule applies
+to a zero derived mutual term: it never becomes an unrecorded disappearance.
+Signed branch orientation,
 `M = k * sqrt(L1 * L2)`, and complete reciprocal positive-definite inductance
 validation remain the existing public coupling contract, not new tolerances.
 The implementation-facing recursive row order and evidence maps are defined in
@@ -968,9 +974,10 @@ M = k * sqrt(L1 * L2)
 
 `k` must be finite and dimensionless with `abs(k) < 1`. It is the only public
 mutual-coupling input in V1; the consumer cannot provide an independent `M`
-that might disagree with the two bound self inductances. Each receipt records
+that might disagree with the two bound self inductances. `run.explain()` records
 branch orientations, `L1`, `L2`, `k`, derived `M`, and the exact backend
-mapping.
+mapping; terminal receipts bind the sealed request and runtime identities
+without copying that preflight table.
 
 For more than two coupled inductive branches, every pairwise `abs(k) < 1`
 check is only necessary. Preflight assembles the complete reciprocal
@@ -1090,8 +1097,9 @@ writing the workspace. For component authoring it shows:
 - coupled branch orientations, bound `L1` and `L2`, signed `k`, derived `M`,
   and backend mapping.
 
-The same facts are sealed into terminal receipts. Inspection text is not a
-second schema or a substitute for the machine-readable evidence.
+The sealed Plan/request/receipt chain binds the declarations and exact runtime
+identity. `run.explain()` materializes the expanded rows for inspection without
+creating a second durable receipt schema.
 
 ## Failure contract
 
@@ -1146,8 +1154,8 @@ declared branch permits it; negative or non-finite values are not.
 
 ## Known V1 limits
 
-- Component factories and sketches on this page are contracts, not an
-  installable implementation.
+- Primitive and Composite factories through the `dev4` slice are installable;
+  RLGC, transmission-line, and HB sketches remain later-slice contracts.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded

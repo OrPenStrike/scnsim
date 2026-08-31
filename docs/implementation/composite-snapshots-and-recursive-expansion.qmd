@@ -4,7 +4,8 @@ subtitle: "How does a custom Python factory become one portable finite physical 
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The
+**Status:** `CONVERGING` implementation design and `1.0.0.dev4` candidate
+implementation. The
 [Component Authoring Contract](../component-authoring.qmd#composite-snapshot-boundary)
 owns the public `CompositePlan` and `ComponentInstance` behavior; this page
 fixes the maintainer mechanism that realizes it.
@@ -63,7 +64,7 @@ The snapshot records the following exact data before Plan sealing:
 | Child hierarchy | Each child `component_path`, catalog/factory schema identity, ordered pin schema, public parameters, and either primitive leaf data or a nested snapshot. |
 | Private topology | Every private node, its complete endpoint set of `(component_path, pin)`, and every unexposed child endpoint. |
 | Canonical ground | The complete set of grounded endpoints; each local `ground()` group is retained in the diagram projection with its endpoint-derived identity. |
-| Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to its `ParameterSpec`/baseline/binding consumers, and public inductive-branch ID to one oriented expanded branch. |
+| Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to its `ParameterSpec`/baseline/binding consumers, and public inductive-branch ID to one oriented expanded branch. Public parameters retain the factory declaration order; map-like surfaces remain canonically sorted. |
 | Binding graph | Each child physical slot is a constant, public-parameter identity, or declarative `AffineMap`; every repeated consumer remains a separate fan-out edge. |
 
 No child pin, node, coordinate, parameter, or inductive branch becomes public by

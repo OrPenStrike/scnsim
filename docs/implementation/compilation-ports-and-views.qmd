@@ -50,12 +50,13 @@ performs the documented de-embedding. This prevents the Port reference
 impedance from becoming a DUT resistor.
 
 `run.explain()` uses this compile product to show deterministic rows and maps
-without solving. In the Lessons 1–5 slice its presentation contains only the
-supported evidence: Plan/request/runtime identity and bound parameters; ordered
-nodes and primitive rows; C/K/G; Port `B`, `Y0`, load and selected-network
+without solving. In the Lessons 1–8 slice its presentation contains only the
+supported evidence: Plan/request/runtime identity and bound parameters;
+Composite hierarchy and public maps; ordered nodes and expanded leaf rows;
+C/K/G; Port `B`, `Y0`, load and selected-network
 steps; Ref lineage and retained/eliminated coordinates; Direct grid or root
 preflight; and, for optimization, variables, unit maps, objectives, expanded
-scales, budget, seed, and algorithm IDs. It omits unsupported Composite,
+scales, budget, seed, and algorithm IDs. It omits unsupported RLGC,
 PTC/transform, N-port, and HB sections instead of printing fabricated `N/A`
 rows.
 

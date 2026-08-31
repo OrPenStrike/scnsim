@@ -12,10 +12,10 @@ running Direct, harmonic-balance, and optimization workflows. It owns the
 circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
-> **Status:** `CONVERGING`. Version `1.0.0.dev3` is the first executable V1
-> candidate: Lessons 1–5 implement primitive authoring, Direct analysis,
-> retained diagonal-root evaluation, optimization, durable evidence, and
-> reports. Later V1 slices remain explicit fail-fast surfaces.
+> **Status:** `CONVERGING`. Version `1.0.0.dev4` is the executable V1
+> candidate: Lessons 1–8 implement primitive analysis, optimization, durable
+> evidence, reusable Libraries, and Composite expansion. Later V1 slices
+> remain explicit fail-fast surfaces.
 
 ## Install for development
 
@@ -42,8 +42,8 @@ uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-Primitive R/L/C authoring and the Lessons 1–5 Runtime path are executable.
-Composite, RLGC, PTC/transform, expanded Direct, inventory, and HB operations
+Primitive and Composite authoring plus the Lessons 1–8 Runtime path are
+executable. RLGC, PTC/transform, expanded Direct, inventory, and HB operations
 continue to raise `ScaffoldUnavailableError` until their named V1 slices land.
 
 ## Read the documentation

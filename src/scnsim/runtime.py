@@ -1,8 +1,8 @@
 """Plan-bound execution, exact request identity, and typed Result reconstruction.
 
-The dev3 candidate implements the primitive Lessons 1--5 path.  Every later
-V1 surface remains importable but fails explicitly instead of returning a
-partial or fabricated result.
+The dev4 candidate extends the one-Port Lessons 1--5 path through sealed
+Composite public parameters and coordinates.  Every later V1 surface remains
+importable but fails explicitly instead of returning a partial result.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import platform
 import signal
 import shutil
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from hashlib import sha256
 from html import escape
@@ -146,6 +146,63 @@ def _coordinate_id(value: str | ElectricNodeRef | CoordinateRef) -> str:
     raise TypeError("coordinate must be a public SCNSim coordinate handle or ID")
 
 
+def _parameter_key(parameter: ParameterRef) -> tuple[tuple[str, ...], str]:
+    """Return the canonical key shared by primitive and Composite parameters."""
+
+    reference = parameter._canonical_ref()
+    path = reference.get("component_path")
+    identifier = reference.get("parameter_id")
+    if (
+        not isinstance(path, Sequence)
+        or isinstance(path, (str, bytes))
+        or not path
+        or not all(isinstance(part, str) and part for part in path)
+        or not isinstance(identifier, str)
+        or not identifier
+    ):
+        raise TypeError("ParameterRef has no canonical SCNSim parameter identity")
+    return tuple(path), identifier
+
+
+def _plan_has_affine_binding(value: object) -> bool:
+    """Recognize affine expansion without interpreting its unimplemented support."""
+
+    if isinstance(value, Mapping):
+        return value.get("kind") == "affine" or any(
+            _plan_has_affine_binding(item) for item in value.values()
+        )
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return any(_plan_has_affine_binding(item) for item in value)
+    return False
+
+
+def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
+    """Collect public node and Composite-coordinate identities from one seal."""
+
+    coordinates = {
+        node["node_id"]
+        for node in plan["nodes"]
+        if node["visibility"] in {"public", "port_promoted"}
+    }
+
+    def visit(component: Mapping[str, object]) -> None:
+        realization = component.get("realization")
+        if not isinstance(realization, Mapping) or realization.get("kind") != "composite":
+            return
+        for record in realization.get("public_coordinate_map", ()):
+            if not isinstance(record, Mapping) or not isinstance(record.get("public_id"), str):
+                raise CompilerInvariantError(
+                    "Composite public-coordinate map is malformed",
+                    stage="plan_seal",
+                )
+            coordinates.add(record["public_id"])
+    for component in plan["components"]:
+        if not isinstance(component, Mapping):
+            raise CompilerInvariantError("Plan component is malformed", stage="plan_seal")
+        visit(component)
+    return tuple(sorted(coordinates))
+
+
 def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
     if isinstance(value, QuantitySelector):
         return (value,)
@@ -158,7 +215,7 @@ def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
         if selectors:
             return selectors
     raise InvalidOptimizationSpec(
-        "dev3 objectives require diagonal-root selectors or their QuantitySum",
+        "dev4 objectives require diagonal-root selectors or their QuantitySum",
         stage="spec_validation",
     )
 
@@ -166,7 +223,7 @@ def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
 class ReductionPipeline:
     """An immutable ordered declaration of analysis-view reductions.
 
-    dev3 executes the terminal single-coordinate ``retain()`` step.  PTC,
+    dev4 executes the terminal single-coordinate ``retain()`` step.  PTC,
     paired transforms, and multi-coordinate retain stay explicit later-slice
     capabilities.
     """
@@ -253,6 +310,8 @@ class CircuitRun:
         "_original",
         "_runtime_base",
         "_parameter_lookup",
+        "_public_coordinates",
+        "_affine_plan",
     )
 
     def __init__(
@@ -272,10 +331,12 @@ class CircuitRun:
         self._plan_sha256 = sha256_hex(self._plan_bytes)
         self._runtime_base = _runtime_identity_base()
         self._parameter_lookup = {
-            (component.id, parameter.id): parameter
+            _parameter_key(parameter): parameter
             for component in self._plan.components
             for parameter in component._parameters.values()
         }
+        self._public_coordinates = frozenset(_plan_public_coordinates(self._plan_document))
+        self._affine_plan = _plan_has_affine_binding(self._plan_document)
         original = self._original_lineage()
         self._binding = bind_workspace(
             workspace,
@@ -292,11 +353,14 @@ class CircuitRun:
         return self._original
 
     def _original_lineage(self) -> dict[str, object]:
-        node_order = [node["node_id"] for node in self._plan_document["nodes"]]
+        node_order = list(dict.fromkeys(
+            [node["node_id"] for node in self._plan_document["nodes"]]
+            + sorted(self._public_coordinates)
+        ))
         port_order = [port["port_id"] for port in self._plan_document["ports"]]
         if len(port_order) != 1:
             raise PortRealizabilityError(
-                "dev3 CircuitRun requires exactly one logical Port",
+                "dev4 CircuitRun requires exactly one logical Port",
                 stage="plan_seal",
                 evidence={"type": "failure_evidence", "operation": "workspace_bind", "context_kind": "workspace"},
             )
@@ -329,21 +393,16 @@ class CircuitRun:
 
     def _derive_view(self, pipeline: ReductionPipeline) -> NetworkViewRef:
         if pipeline._retained is None:
-            raise ValueError("a dev3 derived View requires terminal retain()")
+            raise ValueError("a dev4 derived View requires terminal retain()")
         if len(pipeline._retained) != 1:
             unavailable("multi-coordinate ReductionPipeline.retain")
         value = pipeline._retained[0]
-        coordinate = _coordinate_id(value)
+        coordinate = self._coordinate_id(value)
         if isinstance(value, ElectricNodeRef) and value._plan is not self._plan:
             raise ValueError("retained node belongs to another Plan")
-        public = {
-            node["node_id"]
-            for node in self._plan_document["nodes"]
-            if node["visibility"] in {"public", "port_promoted"}
-        }
-        if coordinate not in public:
+        if coordinate not in self._public_coordinates:
             raise ValueError("retain() accepts only a Public Plan coordinate")
-        nodes = [node["node_id"] for node in self._plan_document["nodes"]]
+        nodes = list(self._original._lineage["original"]["coordinate_order"])
         eliminated = [node for node in nodes if node != coordinate]
         port_records = list(self._plan_document["ports"])
         ports = [port["port_id"] for port in port_records]
@@ -489,7 +548,7 @@ class CircuitRun:
         *,
         parameters: ParameterSet | None = None,
     ) -> DirectSolveResult | HBBatchResult:
-        """Execute Direct in dev3; HB remains an explicit dev6 fail-fast surface."""
+        """Execute one-Port Direct in dev4; HB remains an explicit dev6 fail-fast surface."""
 
         if isinstance(spec, HBSolveSpec):
             unavailable("CircuitRun.solve(HBSolveSpec)")
@@ -614,8 +673,14 @@ class CircuitRun:
         prepared = prepare_runtime()
         with tempfile.TemporaryDirectory(prefix="scnsim-explain-") as temporary:
             plan_path = Path(temporary) / "plan.json"
+            request_path = Path(temporary) / "request.json"
             plan_path.write_bytes(self._plan_bytes)
-            compiled = run_preflight(prepared, plan_path=plan_path.resolve())
+            request_path.write_bytes(canonical_json_bytes(request))
+            compiled = run_preflight(
+                prepared,
+                plan_path=plan_path.resolve(),
+                request_path=request_path.resolve(),
+            )
         return _verified_result(
             ExplanationResult,
             evidence={
@@ -625,6 +690,9 @@ class CircuitRun:
                 "ref_lineage": request["ref_lineage"],
                 "parameters": request["parameters"],
                 "spec": request["spec"],
+                "component_hierarchy": self._plan_document["components"],
+                "plan_nodes": self._plan_document["nodes"],
+                "grounded_endpoints": self._plan_document["grounded_endpoints"],
                 "compiled": compiled,
             },
         )
@@ -697,7 +765,14 @@ class CircuitRun:
         if not isinstance(ref, NetworkViewRef) or ref._run is not self:
             raise ValueError("NetworkViewRef belongs to another CircuitRun")
 
-    def _validate_dev3_request(
+    def _coordinate_id(self, value: str | ElectricNodeRef | CoordinateRef) -> str:
+        """Resolve a Composite handle to its sealed physical Plan coordinate."""
+
+        if isinstance(value, CoordinateRef):
+            return self._plan._resolve_coordinate(value)
+        return _coordinate_id(value)
+
+    def _validate_dev4_request(
         self,
         operation: str,
         ref: NetworkViewRef,
@@ -713,12 +788,12 @@ class CircuitRun:
                     evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_response"},
                 )
             if ref is not self._original:
-                unavailable("dev3 Direct solve on a derived Port-realizable View")
+                unavailable("dev4 Direct solve on a derived Port-realizable View")
             if len(self._plan.ports) != 1:
                 unavailable("N-port Direct response")
             return
         if isinstance(spec, DiagonalRootSpec):
-            if len(ref._retained) != 1 or ref._retained[0] != _coordinate_id(spec.coordinate):
+            if len(ref._retained) != 1 or ref._retained[0] != self._coordinate_id(spec.coordinate):
                 raise PortRealizabilityError(
                     "DiagonalRootSpec coordinate must equal the retained View coordinate",
                     stage="preflight",
@@ -728,7 +803,7 @@ class CircuitRun:
         if len(ref._retained) != 1:
             unavailable("CircuitRun.optimize on non-single-retained View")
         active = {
-            (variable.parameter.component_id, variable.parameter.id): variable.parameter
+            _parameter_key(variable.parameter): variable.parameter
             for variable in spec.variables
         }
         for key, parameter in active.items():
@@ -738,7 +813,7 @@ class CircuitRun:
                     stage="spec_validation",
                 )
         for parameter in spec.allow_extrapolation:
-            key = (parameter.component_id, parameter.id)
+            key = _parameter_key(parameter)
             if active.get(key) is not parameter:
                 raise InvalidOptimizationSpec(
                     "optimization extrapolation authorization must name an active Plan parameter",
@@ -747,8 +822,8 @@ class CircuitRun:
         for objective in spec.objectives:
             for selector in _quantity_selectors(objective.quantity):
                 if not isinstance(selector.spec, DiagonalRootSpec):
-                    unavailable("dev3 optimization selector")
-                if _coordinate_id(selector.spec.coordinate) != ref._retained[0]:
+                    unavailable("dev4 optimization selector")
+                if self._coordinate_id(selector.spec.coordinate) != ref._retained[0]:
                     raise InvalidOptimizationSpec(
                         "optimization selector coordinate must equal the retained View",
                         stage="spec_validation",
@@ -761,13 +836,13 @@ class CircuitRun:
         if not isinstance(supplied, ParameterSet):
             raise TypeError("parameters must be ParameterSet or None")
         for parameter, value in supplied.values.items():
-            key = (parameter.component_id, parameter.id)
+            key = _parameter_key(parameter)
             current = self._parameter_lookup.get(key)
             if current is not parameter:
                 raise ValueError("ParameterSet contains a parameter from another Plan")
             baselines[current] = value
         for parameter in supplied.allow_extrapolation:
-            key = (parameter.component_id, parameter.id)
+            key = _parameter_key(parameter)
             if self._parameter_lookup.get(key) is not parameter:
                 raise ValueError("ParameterSet extrapolation authorization belongs to another Plan")
         return ParameterSet(baselines, allow_extrapolation=supplied.allow_extrapolation)
@@ -779,10 +854,15 @@ class CircuitRun:
         spec: DirectSolveSpec | DiagonalRootSpec | OptimizationSpec,
         parameters: ParameterSet | None,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
-        self._validate_dev3_request(operation, ref, spec)
+        self._validate_dev4_request(operation, ref, spec)
         resolved = self._complete_parameters(parameters)
+        if self._affine_plan and (
+            resolved.allow_extrapolation
+            or isinstance(spec, OptimizationSpec) and spec.allow_extrapolation
+        ):
+            unavailable("AffineMap allow_extrapolation")
         try:
-            encoded_spec = _encode_spec(spec, resolved)
+            encoded_spec = _encode_spec(spec, resolved, coordinate_id=self._coordinate_id)
             source_units = self._source_units(spec, resolved)
         except InvalidOptimizationSpec:
             raise
@@ -1057,12 +1137,14 @@ class CircuitRun:
 
         for component in self._plan.components:
             for parameter in component._parameters.values():
-                add(f"plan.{component.id}.{parameter.id}", parameter.baseline, parameter.unit)
+                path, identifier = _parameter_key(parameter)
+                add(f"plan.{'.'.join(path)}.{identifier}", parameter.baseline, parameter.unit)
         for port in self._plan.ports:
             add(f"plan.port.{port.id}.reference_impedance", port.reference_impedance, "ohm")
         for parameter, value in parameters.values.items():
+            path, identifier = _parameter_key(parameter)
             add(
-                f"request.parameter.{parameter.component_id}.{parameter.id}",
+                f"request.parameter.{'.'.join(path)}.{identifier}",
                 value,
                 parameter.unit,
             )
@@ -1167,16 +1249,16 @@ class CircuitRun:
                 ),
                 ledger=ledger,
             )
-        raise EvidenceIntegrityError("verified Result kind is outside dev3", stage="result_decode", evidence={"result_kind": kind})
+        raise EvidenceIntegrityError("verified Result kind is outside dev4", stage="result_decode", evidence={"result_kind": kind})
 
     def _decode_parameter_set(self, record: Mapping[str, object]) -> ParameterSet:
         values: dict[ParameterRef, object] = {}
         for binding in record["bindings"]:
             reference = binding["parameter"]
             path = reference["component_path"]
-            if len(path) != 1:
-                raise EvidenceIntegrityError("dev3 winner parameter path is not primitive", stage="result_decode")
-            parameter = self._parameter_lookup.get((path[0], reference["parameter_id"]))
+            if not isinstance(path, Sequence) or isinstance(path, (str, bytes)):
+                raise EvidenceIntegrityError("winner parameter path is malformed", stage="result_decode")
+            parameter = self._parameter_lookup.get((tuple(path), reference["parameter_id"]))
             if parameter is None:
                 raise EvidenceIntegrityError("winner parameter is absent from sealed Plan", stage="result_decode")
             values[parameter] = quantity_from_envelope(binding["value"], registry=units.registry)
@@ -1215,27 +1297,38 @@ def _frequency_grid(value: object) -> list[dict[str, str]]:
     return [quantity_envelope(units.registry.Quantity(float(item), "hertz"), si_unit="hertz", registry=units.registry) for item in magnitudes]
 
 
-def _encode_root(spec: DiagonalRootSpec) -> dict[str, object]:
+def _encode_root(
+    spec: DiagonalRootSpec,
+    *,
+    coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
+) -> dict[str, object]:
     return {
         "type": "diagonal_root",
-        "coordinate": _coordinate_id(spec.coordinate),
+        "coordinate": coordinate_id(spec.coordinate),
         "root_hint": quantity_envelope(spec.root_hint, si_unit="hertz", registry=units.registry),
     }
 
 
-def _encode_scalar_expression(value: object) -> dict[str, object]:
+def _encode_scalar_expression(
+    value: object,
+    *,
+    coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
+) -> dict[str, object]:
     if isinstance(value, QuantitySelector):
         if not isinstance(value.spec, DiagonalRootSpec):
-            unavailable("dev3 CostObjective quantity")
+            unavailable("dev4 CostObjective quantity")
         return {
             "type": value.type,
-            "spec": _encode_root(value.spec),
+            "spec": _encode_root(value.spec, coordinate_id=coordinate_id),
             "projection": value.projection,
         }
     if isinstance(value, QuantitySum):
         return {
             "type": "quantity_sum",
-            "terms": [_encode_scalar_expression(term) for term in value.terms],
+            "terms": [
+                _encode_scalar_expression(term, coordinate_id=coordinate_id)
+                for term in value.terms
+            ],
         }
     raise InvalidOptimizationSpec(
         "objective quantity must be a supported scalar expression",
@@ -1243,11 +1336,16 @@ def _encode_scalar_expression(value: object) -> dict[str, object]:
     )
 
 
-def _encode_spec(spec: DirectSolveSpec | DiagonalRootSpec | OptimizationSpec, parameters: ParameterSet) -> dict[str, object]:
+def _encode_spec(
+    spec: DirectSolveSpec | DiagonalRootSpec | OptimizationSpec,
+    parameters: ParameterSet,
+    *,
+    coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
+) -> dict[str, object]:
     if isinstance(spec, DirectSolveSpec):
         return {"type": "direct_solve", "frequencies": _frequency_grid(spec.frequencies), "traces": []}
     if isinstance(spec, DiagonalRootSpec):
-        return _encode_root(spec)
+        return _encode_root(spec, coordinate_id=coordinate_id)
     variables: list[dict[str, object]] = []
     for variable in spec.variables:
         parameter = variable.parameter
@@ -1317,7 +1415,10 @@ def _encode_spec(spec: DirectSolveSpec | DiagonalRootSpec | OptimizationSpec, pa
         objectives.append(
             {
                 "id": objective.id,
-                "quantity": _encode_scalar_expression(objective.quantity),
+                "quantity": _encode_scalar_expression(
+                    objective.quantity,
+                    coordinate_id=coordinate_id,
+                ),
                 "target": target,
                 "weight_f64": float64_hex(weight),
                 "resolved_scale": quantity_envelope(scale_value, si_unit="hertz", registry=units.registry),
