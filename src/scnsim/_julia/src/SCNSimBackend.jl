@@ -1352,18 +1352,26 @@ function realized_ref_lineage(compiled::CompiledPrimitive, lazy)
         # channel map.  A transform can be a quantity-only coordinate map.
         temporary = terminal_view(compiled, Dict("original" => item["original"], "ptc" => realized_ptc,
             "transforms" => vcat(transforms_out, [Dict("input_coordinates" => pair, "output_coordinates" => [common, differential], "weights_f64" => [f64_hex(alpha), f64_hex(beta)])]),
-            "retain" => nothing, "terminal_coordinates" => output))
+            "retain" => Dict("retained_coordinates" => output), "terminal_coordinates" => output))
         matrices, _, _ = view_boundary_evidence(temporary)
+        reconstruction = if temporary.port_realizable
+            boundary = selected_boundary(temporary)
+            backward_residual(boundary.Dk, boundary.Dk, boundary.Rk)
+        else
+            0.0
+        end
         refs, excluded_refs = cap_branch_partition(working, li::Int, ri::Int)
         isempty(refs) && fail("validation", "port_realizability", "transform_pair", "compile", "transform external cut has no capacitance branch provenance")
         evidence_payload = Dict("schema" => "scnsim.transform_pair_evidence", "schema_version" => 1,
             "input_coordinates" => pair, "weights_f64" => [f64_hex(alpha), f64_hex(beta)], "output_coordinate_order" => output,
-            "included_external_cut_branches" => refs, "excluded_direct_mutual_branches" => excluded_refs)
+            "included_external_cut_branches" => refs, "excluded_direct_mutual_branches" => excluded_refs,
+            "reference_matrix" => matrices["r"], "principal_root" => matrices["d"],
+            "reconstruction_residual_f64" => f64_hex(reconstruction))
         push!(transforms_out, Dict("type" => "transform_pair", "input_coordinates" => pair,
             "weights_f64" => [f64_hex(alpha), f64_hex(beta)], "differential_id" => differential, "common_id" => common,
             "included_external_cut_branches" => refs, "excluded_direct_mutual_branches" => excluded_refs,
             "reference_matrix" => matrices["r"], "principal_root" => matrices["d"],
-            "reconstruction_residual_f64" => f64_hex(0.0), "output_coordinate_order" => output,
+            "reconstruction_residual_f64" => f64_hex(reconstruction), "output_coordinate_order" => output,
             "evidence_sha256" => sha256_hex(canonical_bytes(evidence_payload))))
         working = apply_lineage_transforms(working, Dict("transforms" => Any[Dict("input_coordinates" => pair, "output_coordinates" => [common, differential])]))
         current_names = output
