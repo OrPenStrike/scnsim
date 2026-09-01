@@ -1,9 +1,9 @@
 """SCNSim — Superconducting Circuit Network Simulation.
 
 This package is a ``CONVERGING`` V1 candidate. Primitive authoring, reusable
-Composite authoring, advanced Direct analysis, optimization, durable evidence,
-and report assembly implement Lessons 1--11. HB/dev6 surfaces stay importable
-but fail explicitly until their candidate implementation lands.
+Composite authoring, accepted advanced Direct analysis, optimization, durable
+evidence, and report assembly implement Lessons 1--11. HB/dev6 surfaces form
+the current Full V1 candidate.
 
 Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
 with :class:`CircuitRun` plus a model package supplied by your team if you only

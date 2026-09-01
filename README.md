@@ -13,8 +13,9 @@ circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
 > **Status:** `STABILIZED` for the dev4 reusable-composition scope taught in
-> Lessons 6–8. The dev3 execution scope and dev5 Lessons 9–11 candidate remain
-> `CONVERGING`; HB execution remains explicit fail-fast work for dev6.
+> Lessons 6–8 and `ACCEPTED` for the dev5 Lessons 9–11 Direct scope. The dev3
+> execution scope and dev6 Full V1 HB candidate remain `CONVERGING`; dev5
+> stabilization is deferred until Full V1 is accepted and integrated.
 
 ## Install for development
 

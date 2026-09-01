@@ -8,8 +8,9 @@ subtitle: "Public behavior and the design that will implement it"
 
 The Library, Composite, recursive-expansion, and mutual-coupling scope taught
 in Lessons 6–8 is `STABILIZED`. Standalone dev3 execution semantics and the
-dev5 Lessons 9–11 candidate remain `CONVERGING`; dev6 and unavailable later
-paths continue to fail fast. No development slice is a release claim.
+dev6 Full V1 HB scope remain `CONVERGING`; the dev5 Lessons 9–11 Direct scope
+is Human-`ACCEPTED` with stabilization deferred. No development slice is a
+release claim.
 :::
 
 ## Public contracts

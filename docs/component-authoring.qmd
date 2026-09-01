@@ -5,7 +5,7 @@ toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Stabilized dev4 and candidate dev5 scope
+## Stabilized dev4 and accepted dev5 scope
 
 This page is the stabilized authority for the SCNSim `1.0.0.dev4` component
 authoring slice. Primitive R/L/C authoring and the Lessons 1–5 execution
@@ -13,7 +13,8 @@ boundary are implemented in dev3. Dev4 implements
 custom Libraries, complete Composite snapshots, recursive primitive expansion,
 and mutual-coupling snapshots for Lessons 6–8. Durable tests and validation
 now bind that accepted scope. The RLGC/transmission-line authoring taught in
-Lesson 9 is the `CONVERGING` dev5 candidate; HB authoring remains later work.
+Lesson 9 is the Human-`ACCEPTED` dev5 scope with stabilization deferred; HB
+authoring remains the `CONVERGING` dev6 scope.
 :::
 
 ## Contract scope

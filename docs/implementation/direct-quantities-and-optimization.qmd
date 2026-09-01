@@ -4,7 +4,7 @@ subtitle: "How are typed quantities evaluated without Python candidate callbacks
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` dev5 candidate implementation.
+**Status:** Human-`ACCEPTED` dev5 implementation; stabilization deferred.
 
 ## Build one labeled Direct operator
 

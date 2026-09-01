@@ -22,5 +22,5 @@ kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. In the
 `1.0.0.dev4`, the reusable-composition behavior taught in Lessons 6–8 is
 `STABILIZED`; the standalone dev3 execution scope remains `CONVERGING`, as do
-the dev5 Lessons 9–11 candidate. Lessons 12–13 remain explicit fail-fast
-surfaces.
+the dev6 Full V1 HB candidate. The dev5 Lessons 9–11 Direct scope is
+Human-`ACCEPTED` with stabilization deferred.
