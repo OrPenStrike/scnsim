@@ -9,7 +9,7 @@ execute:
 **Learn:** carry ordered N×N RLGC data into a deterministic π ladder.
 **Run:** author one two-trace line.
 **Inspect:** every compiled section without scalarizing mutual terms.
-**Status:** `CONVERGING` scaffold.
+**Status:** `CONVERGING` dev5 candidate.
 :::
 
 ## Bind matrices to conductor order
@@ -46,8 +46,9 @@ for conductor in coupled_rlgc.conductors:
 
 An AEDT export is an alternative source for the same carrier:
 `load_q2d_rlgc(path, reference_conductor="ground", conductor_map=...)`.
-The loader preserves full matrices, extraction frequency, labels, +z, and
-content hash; it does not interpolate or run AEDT.
+The loader preserves full matrices, extraction frequency, labels, the caller's
+asserted +z convention, and content hash; it does not infer direction,
+interpolate, or run AEDT.
 
 ## Audit the expanded π sections
 

@@ -4,7 +4,7 @@ subtitle: "How does one compiled Plan yield an ordered Direct or HB observation 
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The public view, PTC, and
+**Status:** `CONVERGING` dev5 candidate implementation. The public view, PTC, and
 terminal-capability contracts in
 [V1 Runtime Contract](../v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
 remain authoritative. This page fixes the immutable lineage and selected-network

@@ -14,18 +14,18 @@ Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
 Dev4 additionally implements custom Libraries, complete
 Composite snapshots, declaration-ordered public parameters, recursive
 primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
-RLGC/transmission lines, N-port/PTC/
-transform, compiled schematics, full explain tables, inventory, extrapolation
-authorization/evidence, selector-dependent objective-unit expansion, Julia NFC
-parity, and HB remain explicit fail-fast behavior.
+The dev5 candidate implements RLGC/transmission lines, N-port/PTC/transform,
+compiled schematics, inventory, extrapolation authorization/evidence, expanded
+Direct quantities and selector-dependent objective units for Lessons 9–11.
+HB remains explicit dev6 fail-fast behavior.
 
 Stabilization is limited to the dev4-owned Lessons 6–8 behavior named above.
-The standalone dev3 Direct/root/optimization scope and the later Direct and HB
-sections remain `CONVERGING`; none becomes accepted by being documented here.
+The standalone dev3 Direct/root/optimization scope, dev5 Direct additions, and
+the later HB sections remain `CONVERGING`; none becomes accepted by being
+documented here.
 
-For a Plan containing an `AffineMap`, dev4 rejects any nonempty extrapolation
-authorization before request creation; it does not create partial extrapolation
-evidence.
+For a Plan containing an `AffineMap`, dev5 applies the declared authorization
+and records each authorized out-of-support consumer as extrapolation evidence.
 :::
 
 ## Contract scope
@@ -333,12 +333,11 @@ of that same result and never launch another solve.
 abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 `HBSolveSpec` directly.
 
-The first executable candidate deliberately supports the smallest complete
-subset: `DirectSolveSpec` on `run.original` for exactly one logical Port and no
-named traces. Other valid V1 views, N-port responses, and trace declarations
-remain public contract but raise `ScaffoldUnavailableError` until their named
-implementation slice. This limitation never permits returning an incomplete
-one-Port S/Y/Z Result.
+The dev5 candidate supports `DirectSolveSpec` on every final View that proves
+its ordered terminal basis is Port-realizable. It publishes the complete
+finite N-port S/Y/Z matrices once, then projects any declared named traces from
+that same result. A non-realizable final View fails closed rather than
+returning an incomplete or fabricated wave response.
 
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
 quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for

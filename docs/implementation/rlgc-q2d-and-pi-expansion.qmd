@@ -4,7 +4,7 @@ subtitle: "How does one frozen N-conductor extraction become an auditable physic
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The public RLGC contract in
+**Status:** `CONVERGING` dev5 candidate implementation. The public RLGC contract in
 [Component Authoring](../component-authoring.qmd#general-rlgc) remains the
 authoritative API. This page fixes the loader and compiler mechanics; it does
 not turn one extraction into broadband or convergence evidence.
@@ -39,9 +39,10 @@ Inductance Matrix
 Resistance Matrix
 ```
 
-Primary blocks occur in that C/G/L/R order. Supplemental native coupling or
-Spice blocks may appear between them, but can neither replace a primary block
-nor contribute values. A primary block contains one CSV header whose first
+Primary blocks occur in that C/G/L/R order. The native supplemental blocks
+`Capacitance Matrix Coupling Coefficient` and `Spice Capacitance Matrix` may
+appear between them, but can neither replace a primary block nor contribute
+values; every other title fails closed. A primary block contains one CSV header whose first
 field is empty and whose remaining fields are nonempty, unique native labels;
 then exactly one row for every header label, in the same order, with the row
 label in the first field and one finite decimal value per column. All four

@@ -5,15 +5,15 @@ toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Stabilized dev4 contract
+## Stabilized dev4 and candidate dev5 scope
 
 This page is the stabilized authority for the SCNSim `1.0.0.dev4` component
 authoring slice. Primitive R/L/C authoring and the Lessons 1–5 execution
 boundary are implemented in dev3. Dev4 implements
 custom Libraries, complete Composite snapshots, recursive primitive expansion,
 and mutual-coupling snapshots for Lessons 6–8. Durable tests and validation
-now bind that accepted scope. RLGC/transmission lines and later component surfaces remain
-explicit fail-fast behavior.
+now bind that accepted scope. The RLGC/transmission-line authoring taught in
+Lesson 9 is the `CONVERGING` dev5 candidate; HB authoring remains later work.
 :::
 
 ## Contract scope
@@ -426,8 +426,9 @@ coupled_rlgc = load_q2d_rlgc(
 `conductor_map` must name every extracted signal conductor exactly once and be
 bijective. It changes public labels only: it cannot reorder rows, discard a
 conductor, select a diagonal, or remove mutual terms. SCNSim parses exactly one
-primary C, G, L, and R block with identical source order; optional Spice or
-coupling-output blocks never replace those matrices. It preserves native
+primary C, G, L, and R block with identical source order; the supported native
+Spice-capacitance or capacitance-coupling blocks never replace those matrices.
+It preserves native
 labels/order, units, extraction frequency, file-content SHA-256, canonical
 values, and the fixed producer convention
 `aedt_q2d_xy_cross_section_positive_z`.
@@ -1154,8 +1155,8 @@ declared branch permits it; negative or non-finite values are not.
 
 ## Known V1 limits
 
-- Primitive and Composite factories through the `dev4` slice are installable;
-  RLGC, transmission-line, and HB sketches remain later-slice contracts.
+- Primitive, Composite, RLGC, and transmission-line factories through dev5 are
+  installable candidates; HB sketches remain a later-slice contract.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded

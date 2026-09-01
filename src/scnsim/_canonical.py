@@ -1,8 +1,8 @@
-"""Closed canonical bytes and evidence helpers for the executable dev4 slice.
+"""Closed canonical bytes and evidence helpers for the executable dev5 slice.
 
 This module is deliberately not a generic schema engine.  The shipped JSON
 Schema is the field authority; these helpers own the bytes that Python writes
-for primitive/Composite Plans and the Direct envelopes retained from dev3.
+for primitive/Composite Plans and the closed dev5 Direct envelopes.
 """
 
 from __future__ import annotations
@@ -57,12 +57,22 @@ _UNITS: dict[str, str] = {
     "dimensionless": "dimensionless",
 }
 
-_DEV3_ALGORITHMS = {
+_DIRECT_ALGORITHMS = {
     "solve_direct": "scnsim.direct_response.v1",
-    "evaluate_direct": "scnsim.diagonal_root.newton32.v1",
     "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2",
 }
-_DEV3_RESULTS = {"direct_response", "diagonal_root", "optimization"}
+_EVALUATION_ALGORITHMS = {
+    "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+    "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
+    "transfer_zero": "scnsim.transfer_zero.newton32.v1",
+    "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
+    "response_element": "scnsim.response_element.v1",
+    "operator": "scnsim.direct_operator.v1",
+}
+_DIRECT_RESULTS = frozenset({
+    "direct_response", "diagonal_root", "hybridized_pole", "transfer_zero",
+    "residue_normalized_coupling", "response_element", "operator", "optimization",
+})
 
 
 def _validation(message: str, **evidence: object) -> SCNSimValidationError:
@@ -262,8 +272,13 @@ def _coherent_magnitude(value: object, converted: object, si_unit: str) -> objec
         source_factor = value._REGISTRY.get_base_units(value._units)[0]  # type: ignore[union-attr]
         target_factor = 1 if si_unit == "dimensionless" else value._REGISTRY.get_base_units(si_unit)[0]  # type: ignore[union-attr]
         return float(Decimal(str(value.magnitude)) * Decimal(str(source_factor)) / Decimal(str(target_factor)))  # type: ignore[union-attr]
-    except (AttributeError, InvalidOperation, ValueError, TypeError, ZeroDivisionError):
-        return magnitude
+    except (AttributeError, InvalidOperation, ValueError, TypeError, ZeroDivisionError) as error:
+        raise _validation(
+            "quantity cannot be converted to coherent SI without a binary64 fallback",
+            source_magnitude=str(getattr(value, "magnitude", "<unavailable>")),
+            source_unit=str(getattr(value, "units", "<unavailable>")),
+            target_unit=si_unit,
+        ) from error
 
 
 def quantity_from_envelope(value: Mapping[str, object], *, registry: object) -> object:
@@ -383,7 +398,7 @@ def _sort_id_maps(values: Iterable[Mapping[str, object]], *, key: str = "id") ->
 def canonical_plan_document(snapshot: Mapping[str, object]) -> dict[str, object]:
     """Close the primitive/full-V1 Plan ordering before computing its hash.
 
-    The dev4 compiler accepts primitive and recursive Composite realizations;
+    The compiler accepts primitive, recursive Composite, and RLGC realizations;
     this encoder closes their shared full-V1 Plan identity ordering.
     """
 
@@ -803,22 +818,32 @@ def canonical_request_document(
     parameters: Mapping[str, object],
     runtime_semantic: Mapping[str, object],
 ) -> dict[str, object]:
-    """Build the exact closed dev3 request envelope."""
+    """Build the exact closed dev5 Direct request envelope.
+
+    The operation remains deliberately coarse: every scalar Direct evaluation
+    shares ``evaluate_direct`` while its closed Spec discriminator selects the
+    Human-defined algorithm identity.  This keeps the request envelope stable
+    without a second operation family.
+    """
 
     selected_operation = _nfc(operation, field="operation")
-    expected_algorithm = _DEV3_ALGORITHMS.get(selected_operation)
-    if expected_algorithm is None:
-        raise _validation("operation is outside the dev3 runtime", operation=selected_operation)
     runtime = dict(runtime_semantic)
-    if runtime.get("algorithm_id") != expected_algorithm:
-        raise _validation("request algorithm does not match operation", operation=selected_operation)
     spec_type = spec.get("type")
-    if selected_operation == "solve_direct" and spec_type != "direct_solve":
-        raise _validation("solve_direct requires direct_solve spec")
-    if selected_operation == "evaluate_direct" and spec_type != "diagonal_root":
-        raise _validation("dev3 evaluate_direct requires diagonal_root spec")
-    if selected_operation == "optimize_direct" and spec_type != "optimization":
-        raise _validation("optimize_direct requires optimization spec")
+    expected_algorithm = (
+        _EVALUATION_ALGORITHMS.get(str(spec_type))
+        if selected_operation == "evaluate_direct"
+        else _DIRECT_ALGORITHMS.get(selected_operation)
+    )
+    expected_spec = {
+        "solve_direct": "direct_solve",
+        "optimize_direct": "optimization",
+    }.get(selected_operation)
+    if expected_algorithm is None:
+        raise _validation("operation or Direct Spec is outside the dev5 runtime", operation=selected_operation, spec_type=spec_type)
+    if expected_spec is not None and spec_type != expected_spec:
+        raise _validation("operation requires a different Direct Spec", operation=selected_operation, spec_type=spec_type)
+    if runtime.get("algorithm_id") != expected_algorithm:
+        raise _validation("request algorithm does not match operation and Spec", operation=selected_operation, spec_type=spec_type)
     return canonical_value({
         "schema": "scnsim.request",
         "schema_version": 1,
@@ -916,14 +941,14 @@ def _utc(value: str) -> str:
 
 
 def canonical_result_document(document: Mapping[str, object]) -> dict[str, object]:
-    """Close the three receipt-backed result discriminators materialized in dev3."""
+    """Close receipt-backed Direct result discriminators materialized in dev5."""
 
     result = dict(document)
     result["schema"] = "scnsim.result"
     result["schema_version"] = 1
     kind = result.get("result_kind")
-    if kind not in _DEV3_RESULTS:
-        raise _validation("result discriminator is outside dev3", result_kind=kind)
+    if kind not in _DIRECT_RESULTS:
+        raise _validation("result discriminator is outside dev5 Direct", result_kind=kind)
     return canonical_value(result)  # type: ignore[return-value]
 
 

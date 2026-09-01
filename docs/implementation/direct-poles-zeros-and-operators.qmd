@@ -4,7 +4,7 @@ subtitle: "How does each typed Direct quantity bind one selected network and clo
 toc-depth: 3
 ---
 
-**Status:** `CONVERGING` implementation design.
+**Status:** `CONVERGING` dev5 candidate implementation.
 
 This page realizes the full public Direct quantity catalog. It does not change
 the definitions in the

@@ -13,8 +13,8 @@ circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
 > **Status:** `STABILIZED` for the dev4 reusable-composition scope taught in
-> Lessons 6–8. The standalone dev3 execution scope and the later dev5/dev6 V1
-> slices remain `CONVERGING`; unavailable later surfaces continue to fail fast.
+> Lessons 6–8. The dev3 execution scope and dev5 Lessons 9–11 candidate remain
+> `CONVERGING`; HB execution remains explicit fail-fast work for dev6.
 
 ## Install for development
 
@@ -41,9 +41,9 @@ uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-Primitive and Composite authoring plus the Lessons 1–8 Runtime path are
-executable. RLGC, PTC/transform, expanded Direct, inventory, and HB operations
-continue to raise `ScaffoldUnavailableError` until their named V1 slices land.
+Primitive, Composite, RLGC, PTC/transform, expanded Direct, optimization, and
+inventory paths through Lessons 1–11 are executable candidates. HB operations
+continue to raise `ScaffoldUnavailableError` until dev6 lands.
 
 ## Read the documentation
 

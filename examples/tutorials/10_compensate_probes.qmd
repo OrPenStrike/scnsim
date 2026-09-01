@@ -9,7 +9,7 @@ execute:
 **Learn:** remove evidenced probe loads without deleting Port identity.
 **Run:** derive one PTC network view.
 **Inspect:** selected load-state and topology evidence.
-**Status:** `CONVERGING` scaffold.
+**Status:** `CONVERGING` dev5 candidate.
 :::
 
 ## Compensate only declared probes
