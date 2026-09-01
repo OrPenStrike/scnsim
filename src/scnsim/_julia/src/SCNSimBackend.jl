@@ -1242,13 +1242,12 @@ function terminal_view(compiled::CompiledPrimitive, lineage)::RealizedView
     all(haskey(maps, name) for name in terminal) ||
         fail("validation", "port_realizability", "selected_network", "direct_response", "terminal View contains a non-public coordinate")
     selected_map = isempty(terminal) ? zeros(Float64, 0, p) : reduce(vcat, (reshape(maps[name], 1, :) for name in terminal))
-    indices = try
-        selected_coordinate_indices(working, terminal)
-    catch error
-        error isa BackendFailure || rethrow()
-        isempty(transforms) && rethrow()
-        Int[]
-    end
+    # Without retain(), a transformed Direct View returns to the declared
+    # logical-Port boundary.  Those Port rows live in selected_map and need
+    # not select individual transformed nodes.  Every coordinate-selected
+    # View still proves node presence and uniqueness fail-closed.
+    indices = !isempty(transforms) && get(item, "retain", nothing) === nothing ?
+        Int[] : selected_coordinate_indices(working, terminal)
     # A retained subset of uniquely Port-bound coordinates is a generalized
     # wave boundary.  Omitted logical Ports remain in the matched-load
     # projector, so selected rows—not the full original Port count—govern

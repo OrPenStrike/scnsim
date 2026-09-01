@@ -272,8 +272,13 @@ def _coherent_magnitude(value: object, converted: object, si_unit: str) -> objec
         source_factor = value._REGISTRY.get_base_units(value._units)[0]  # type: ignore[union-attr]
         target_factor = 1 if si_unit == "dimensionless" else value._REGISTRY.get_base_units(si_unit)[0]  # type: ignore[union-attr]
         return float(Decimal(str(value.magnitude)) * Decimal(str(source_factor)) / Decimal(str(target_factor)))  # type: ignore[union-attr]
-    except (AttributeError, InvalidOperation, ValueError, TypeError, ZeroDivisionError):
-        return magnitude
+    except (AttributeError, InvalidOperation, ValueError, TypeError, ZeroDivisionError) as error:
+        raise _validation(
+            "quantity cannot be converted to coherent SI without a binary64 fallback",
+            source_magnitude=str(getattr(value, "magnitude", "<unavailable>")),
+            source_unit=str(getattr(value, "units", "<unavailable>")),
+            target_unit=si_unit,
+        ) from error
 
 
 def quantity_from_envelope(value: Mapping[str, object], *, registry: object) -> object:
