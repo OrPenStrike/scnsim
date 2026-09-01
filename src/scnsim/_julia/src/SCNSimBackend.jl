@@ -1187,12 +1187,13 @@ function terminal_view(compiled::CompiledPrimitive, lineage)::RealizedView
         maps[name] = index === nothing ? zeros(Float64, p) : vec(copy(base.B[index, :]))
     end
     # Raw terminal channels are logical Port IDs, while original coordinate
-    # names are physical Plan-node IDs.  Preserve both namespaces here: a
-    # logical Port maps to its sealed selector column, but it never becomes a
-    # physical node or an analysis coordinate.
+    # names are physical Plan-node IDs.  Keep the namespaces separate so a
+    # promoted node sharing its Port ID can be transformed without deleting
+    # the logical boundary selector.
+    logical_port_maps = Dict{String,Vector{Float64}}()
     for (column, port) in enumerate(base.port_ids)
         logical = zeros(Float64, p); logical[column] = 1.0
-        maps[port] = logical
+        logical_port_maps[port] = logical
     end
     current_names = copy(original_names)
     transforms = get(item, "transforms", Any[])
@@ -1239,9 +1240,10 @@ function terminal_view(compiled::CompiledPrimitive, lineage)::RealizedView
         # coordinates; raw Direct remains in declared logical-Port order.
         String.(item["original"]["port_order"])
     end
-    all(haskey(maps, name) for name in terminal) ||
+    terminal_maps = get(item, "retain", nothing) === nothing ? logical_port_maps : maps
+    all(haskey(terminal_maps, name) for name in terminal) ||
         fail("validation", "port_realizability", "selected_network", "direct_response", "terminal View contains a non-public coordinate")
-    selected_map = isempty(terminal) ? zeros(Float64, 0, p) : reduce(vcat, (reshape(maps[name], 1, :) for name in terminal))
+    selected_map = isempty(terminal) ? zeros(Float64, 0, p) : reduce(vcat, (reshape(terminal_maps[name], 1, :) for name in terminal))
     # Without retain(), a transformed Direct View returns to the declared
     # logical-Port boundary.  Those Port rows live in selected_map and need
     # not select individual transformed nodes.  Every coordinate-selected
