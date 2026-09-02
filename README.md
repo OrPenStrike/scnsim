@@ -12,10 +12,10 @@ running Direct, harmonic-balance, and optimization workflows. It owns the
 circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
-> **Status:** `STABILIZED` for the dev4 reusable-composition scope taught in
-> Lessons 6–8 and `ACCEPTED` for the dev5 Lessons 9–11 Direct scope. The dev3
-> execution scope and dev6 Full V1 HB candidate remain `CONVERGING`; dev5
-> stabilization is deferred until Full V1 is accepted and integrated.
+> **Status:** The complete dev1–dev6 Full V1 public semantics are
+> Human-`ACCEPTED`. Full V1 stabilization is in progress; the previously
+> stabilized dev4 Lessons 6–8 scope remains stabilized while the remaining
+> cross-slice durable tests are being added.
 
 ## Install for development
 
@@ -43,11 +43,11 @@ uv run python -c "from scnsim import CircuitPlan, components; help(components.ca
 ```
 
 Primitive, Composite, RLGC, PTC/transform, expanded Direct, optimization, and
-inventory paths through Lessons 1–13 are executable candidates. Lessons 12–13
-exercise the dev6 HB candidate: typed pump axes, drives, cases, truncation,
+inventory paths through Lessons 1–13 are the accepted Full V1 implementation. Lessons 12–13
+exercise the accepted HB scope: typed pump axes, drives, cases, truncation,
 per-case outcomes, exact resolution, and side-by-side Direct/HB presentation
-on independently declared grids. They do not imply Full V1 acceptance,
-stabilization, HB optimization, interpolation, or a SCQGate handoff.
+on independently declared grids. Acceptance does not imply stabilization,
+HB optimization, interpolation, release delivery, or a SCQGate handoff.
 
 ## Read the documentation
 

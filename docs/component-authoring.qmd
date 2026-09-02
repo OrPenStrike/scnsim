@@ -1,20 +1,17 @@
 ---
 title: "Component Authoring Contract"
-subtitle: "Candidate Library, RLGC, Composite, electric-node, logical-Port, and coupling semantics"
+subtitle: "Accepted Library, RLGC, Composite, electric-node, logical-Port, and coupling semantics"
 toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Stabilized dev4 and accepted dev5 scope
+## Human-accepted Full V1 scope
 
-This page is the stabilized authority for the SCNSim `1.0.0.dev4` component
-authoring slice. Primitive R/L/C authoring and the Lessons 1–5 execution
-boundary are implemented in dev3. Dev4 implements
-custom Libraries, complete Composite snapshots, recursive primitive expansion,
-and mutual-coupling snapshots for Lessons 6–8. Durable tests and validation
-now bind that accepted scope. The RLGC/transmission-line authoring taught in
-Lesson 9 is the Human-`ACCEPTED` dev5 scope with stabilization deferred; HB
-authoring remains the `CONVERGING` dev6 scope.
+This page is the Human-accepted authority for Full V1 component authoring.
+It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
+snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
+the HB declarations taught through Lesson 13. Cross-slice stabilization is in
+progress; the dev4 Lessons 6–8 authoring scope remains previously stabilized.
 :::
 
 ## Contract scope
@@ -1157,14 +1154,14 @@ declared branch permits it; negative or non-finite values are not.
 ## Known V1 limits
 
 - Primitive, Composite, RLGC, and transmission-line factories through dev5 are
-  installable candidates. HB is the separate `CONVERGING` dev6 candidate, not
+  installable components. HB is the accepted dev6 runtime path, not
   a second component catalog or topology model.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
   frequency. It does not verify a solver receipt, interpolate/extrapolate in
   frequency, or create a broadband line.
-- HB does not accept nonzero off-diagonal series R in the dev6 candidate;
+- HB does not accept nonzero off-diagonal series R in Full V1;
   Direct does.
 - Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
   has no arbitrary callback, expression tree, or calibration-table

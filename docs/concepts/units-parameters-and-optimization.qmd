@@ -3,9 +3,9 @@ title: "Units, Parameters, and Optimization"
 ---
 
 ::: {.callout-warning}
-## CONVERGING concept
+## Human-accepted Full V1 concept
 
-This page explains the current candidate design. It does not define units,
+This page explains the accepted Full V1 design. It does not define units,
 parameter schemas, objective formulas, optimizer controls, or failure
 behavior; the linked contracts remain the sole authority.
 :::

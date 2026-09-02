@@ -1,29 +1,22 @@
 ---
 title: "V1 Runtime Contract"
-subtitle: "Candidate execution, units, reduction, Result, and evidence semantics"
+subtitle: "Accepted execution, units, reduction, Result, and evidence semantics"
 toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Mixed lifecycle contract
+## Human-accepted Full V1 contract
 
 This document is the single current authority for SCNSim V1 runtime semantics.
-Only the accepted Library, Composite, recursive-expansion, and mutual-coupling
-scope taught in Lessons 6–8 is `STABILIZED`. The dev3 slice implements the
-Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
-Dev4 additionally implements custom Libraries, complete
-Composite snapshots, declaration-ordered public parameters, recursive
-primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
-The Human-accepted dev5 scope implements RLGC/transmission lines, N-port/PTC/transform,
-compiled schematics, inventory, extrapolation authorization/evidence, expanded
-Direct quantities and selector-dependent objective units for Lessons 9–11.
-The dev6 Full V1 HB implementation remains `CONVERGING` until its exact
-candidate is reviewed and accepted.
+The complete dev1–dev6 scope is Human-`ACCEPTED`: primitive and Composite
+authoring, Direct/root/CMA execution, RLGC and N-port selected networks,
+PTC/transform/retain, typed Direct quantities, workspace evidence, and the
+case-oriented JosephsonCircuits HB path taught through Lesson 13.
 
-Stabilization is limited to the dev4-owned Lessons 6–8 behavior named above.
-The standalone dev3 Direct/root/optimization scope and the dev6 HB sections
-remain `CONVERGING`. Dev5 is `ACCEPTED` but not `STABILIZED`; its durable tests
-are deferred by Human direction until Full V1 stabilization.
+Full V1 stabilization is in progress. The previously stabilized dev4 Lessons
+6–8 scope remains stabilized while durable tests are extended across the
+remaining accepted slices. This lifecycle state does not imply a release,
+main promotion, root pin, or consumer migration.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.

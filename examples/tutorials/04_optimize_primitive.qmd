@@ -9,7 +9,7 @@ execute:
 **Learn:** distinguish a component parameter from an active search variable.
 **Run:** tune the primitive capacitor toward 6.2 GHz.
 **Inspect:** the best ParameterSet and its explicit resonance readback.
-**Status:** `CONVERGING` dev3 candidate.
+**Status:** Human-`ACCEPTED` Full V1; stabilization in progress.
 :::
 
 ## Declare the search, not a new circuit

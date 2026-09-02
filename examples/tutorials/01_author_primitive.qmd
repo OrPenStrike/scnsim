@@ -9,7 +9,7 @@ execute:
 **Learn:** make components, nodes, ground, and one logical Port the physical authority.
 **Run:** author one reflective LC circuit.
 **Inspect:** its authoring schematic.
-**Status:** `CONVERGING` dev3 candidate.
+**Status:** Human-`ACCEPTED` Full V1; stabilization in progress.
 :::
 
 ## Assemble only the branches you mean

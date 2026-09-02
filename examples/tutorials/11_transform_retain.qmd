@@ -9,7 +9,7 @@ execute:
 **Learn:** derive common/differential coordinates before selecting a final view.
 **Run:** replay PTC, automatic pair transform, and retain in one lineage.
 **Inspect:** weights, basis, eliminated complement, and channel order.
-**Status:** Human-`ACCEPTED` dev5 scope; stabilization deferred.
+**Status:** Human-`ACCEPTED` Full V1; stabilization in progress.
 :::
 
 ## Derive one backend-neutral view

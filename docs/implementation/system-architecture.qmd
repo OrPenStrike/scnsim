@@ -4,7 +4,7 @@ subtitle: "Which layer owns each Runtime responsibility?"
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The
+**Status:** Human-`ACCEPTED` Full V1 implementation; stabilization in progress. The
 [public contracts](../contracts/index.qmd#public-contracts) remain authoritative.
 
 ## Keep the Notebook boundary in Python

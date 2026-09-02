@@ -20,7 +20,6 @@ Notebooks.
 Validation compares ordered semantic cells, explicit code IDs, source, and
 kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. In the
-`1.0.0.dev4`, the reusable-composition behavior taught in Lessons 6–8 is
-`STABILIZED`; the standalone dev3 execution scope remains `CONVERGING`, as do
-the dev6 Full V1 HB candidate. The dev5 Lessons 9–11 Direct scope is
-Human-`ACCEPTED` with stabilization deferred.
+`1.0.0.dev6` implements the Human-`ACCEPTED` Full V1 course taught in Lessons
+1–13. Cross-slice stabilization is in progress; Lessons 6–8 retain their
+previously stabilized status.

@@ -4,13 +4,12 @@ subtitle: "Public behavior and the design that will implement it"
 ---
 
 ::: {.callout-note appearance="simple"}
-## Mixed lifecycle authority
+## Full V1 lifecycle authority
 
-The Library, Composite, recursive-expansion, and mutual-coupling scope taught
-in Lessons 6–8 is `STABILIZED`. Standalone dev3 execution semantics and the
-dev6 Full V1 HB scope remain `CONVERGING`; the dev5 Lessons 9–11 Direct scope
-is Human-`ACCEPTED` with stabilization deferred. No development slice is a
-release claim.
+The complete dev1–dev6 Full V1 public semantics are Human-`ACCEPTED`.
+Cross-slice stabilization is in progress; the previously stabilized Lessons
+6–8 scope remains stabilized. Acceptance and stabilization are not release
+claims.
 :::
 
 ## Public contracts
