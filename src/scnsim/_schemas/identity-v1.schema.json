@@ -204,7 +204,13 @@
         },
         "values": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "$ref": "#/$defs/hbChannelLabel" },
+              { "$ref": "#/$defs/modeTuple" }
+            ]
+          }
         },
         "artifact_id": { "type": "string", "minLength": 1 },
         "request_field": { "const": "spec.frequencies" }
@@ -213,6 +219,20 @@
         { "required": ["values"], "not": { "anyOf": [{ "required": ["artifact_id"] }, { "required": ["request_field"] }] } },
         { "required": ["artifact_id"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["request_field"] }] } },
         { "required": ["request_field"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["artifact_id"] }] } }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["output_channel", "input_channel"] } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "$ref": "#/$defs/hbChannelLabel" } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "$ref": "#/$defs/modeTuple" } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "type": "string", "minLength": 1 } } } }
+        }
       ]
     },
     "fileArtifact": {
@@ -248,6 +268,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 5,
+          "prefixItems": [{ "type": "integer", "minimum": 0 }],
           "items": { "type": "integer", "minimum": 1 }
         },
         "chunks": {
@@ -292,6 +313,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 5,
+          "prefixItems": [{ "type": "integer", "minimum": 0 }],
           "items": { "type": "integer", "minimum": 1 }
         },
         "chunks": {
@@ -532,6 +554,21 @@
       "required": ["id", "sha256"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hbArtifactReference": {
+      "description": "Operation-specific HB receipt/outcome artifact reference. case_id and id are semantic; path locates bytes within this exact attempt; sha256 proves those bytes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "id", "path", "sha256"],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/identifier" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "path": {
+          "type": "string",
+          "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z|states|effective_source_vectors)\\.zarr$|^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.zarr$"
+        },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
     },
@@ -1913,6 +1950,7 @@
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
         "blas_vendor": { "type": "string", "minLength": 1 },
+        "fftw_threads": { "type": "integer", "minimum": 1 },
         "resume_ledger_sha256": { "$ref": "#/$defs/sha256" }
       },
       "allOf": [
@@ -1929,7 +1967,8 @@
               "anyOf": [
                 { "required": ["julia_threads"] },
                 { "required": ["blas_threads"] },
-                { "required": ["blas_vendor"] }
+                { "required": ["blas_vendor"] },
+                { "required": ["fftw_threads"] }
               ]
             }
           }
@@ -1952,7 +1991,8 @@
         "julia_version": { "type": "string", "minLength": 1 },
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
-        "blas_vendor": { "type": "string", "minLength": 1 }
+        "blas_vendor": { "type": "string", "minLength": 1 },
+        "fftw_threads": { "type": "integer", "minimum": 1 }
       }
     },
     "launchAuthorization": {
@@ -2302,7 +2342,7 @@
       ],
       "properties": {
         "pump_axes": { "type": "array", "items": { "$ref": "#/$defs/pumpAxis" } },
-        "operating_point_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbOperatingPointMode" } },
+        "operating_point_modes": { "type": "array", "items": { "$ref": "#/$defs/hbOperatingPointMode" } },
         "input_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
         "output_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
         "matrix_order": { "const": "port_major_mode_minor" },
@@ -2311,13 +2351,87 @@
     },
     "hbEffectiveSource": {
       "type": "object", "additionalProperties": false,
-      "required": ["drive_id", "mode", "coefficient", "injection_map_sha256"],
+      "required": ["drive_id", "mode", "coefficient", "generated_conjugate", "backend_binding", "injection_map_sha256"],
       "properties": {
         "drive_id": { "$ref": "#/$defs/identifier" },
         "mode": { "$ref": "#/$defs/modeTuple" },
         "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
+        "generated_conjugate": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "coefficient"],
+          "properties": {
+            "mode": { "$ref": "#/$defs/modeTuple" },
+            "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] }
+          }
+        },
+        "backend_binding": {
+          "type": "object", "additionalProperties": false,
+          "required": ["representative_mode", "representative_index", "coefficient", "coefficient_convention"],
+          "properties": {
+            "representative_mode": { "$ref": "#/$defs/modeTuple" },
+            "representative_index": { "type": "integer", "minimum": 0 },
+            "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
+            "coefficient_convention": { "const": "exp_plus_i_m_dot_omega_t_josephsoncircuits_source" }
+          }
+        },
         "injection_map_sha256": { "$ref": "#/$defs/sha256" }
       }
+    },
+    "hbTopologyEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allow_driven_ptc", "intrinsic_compiled_graph_sha256", "nonlinear_balance", "response_linearization"],
+      "properties": {
+        "allow_driven_ptc": { "type": "boolean" },
+        "intrinsic_compiled_graph_sha256": { "$ref": "#/$defs/sha256" },
+        "nonlinear_balance": {
+          "type": "object", "additionalProperties": false,
+          "required": ["load_state", "lineage_sha256"],
+          "properties": {
+            "load_state": { "const": "loaded" },
+            "lineage_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "response_linearization": {
+          "type": "object", "additionalProperties": false,
+          "required": ["load_state", "lineage_sha256"],
+          "properties": {
+            "load_state": { "enum": ["raw", "compensated"] },
+            "lineage_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "hbOperatingPointClosure": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "absolute_residual_f64", "relative_residual", "successful_disjunct"],
+          "properties": {
+            "status": { "const": "satisfied" },
+            "absolute_residual_f64": { "$ref": "#/$defs/f64" },
+            "relative_residual": {
+              "oneOf": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["status", "value_f64"],
+                  "properties": { "status": { "const": "value" }, "value_f64": { "$ref": "#/$defs/f64" } }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["status", "reason"],
+                  "properties": { "status": { "const": "not_applicable" }, "reason": { "const": "zero_state_norm" } }
+                }
+              ]
+            },
+            "successful_disjunct": { "enum": ["absolute", "relative", "both"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "reason"],
+          "properties": { "status": { "const": "not_applicable" }, "reason": { "const": "no_operating_point_lattice" } }
+        }
+      ]
     },
     "hbReconciliation": {
       "type": "object", "additionalProperties": false,
@@ -2333,13 +2447,25 @@
         "last_comparable_ancestor": { "$ref": "#/$defs/sha256" },
         "normalization": { "const": "backend_photon_flux_to_scnsim_power_wave" },
         "residual_f64": { "$ref": "#/$defs/f64" },
+        "coordinate_projection": {
+          "type": "object", "additionalProperties": false,
+          "required": ["shape", "values_f64"],
+          "properties": {
+            "shape": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }],
+              "items": false
+            },
+            "values_f64": { "type": "array", "items": { "$ref": "#/$defs/f64" } }
+          }
+        },
         "evidence_sha256": { "$ref": "#/$defs/sha256" }
       },
       "allOf": [
         {
           "if": { "properties": { "comparable": { "const": true } }, "required": ["comparable"] },
-          "then": { "required": ["residual_f64"], "properties": { "reason": { "type": "null" } } },
-          "else": { "not": { "required": ["residual_f64"] }, "properties": { "reason": { "type": "string" } } }
+          "then": { "required": ["residual_f64", "coordinate_projection"], "properties": { "reason": { "type": "null" } } },
+          "else": { "not": { "anyOf": [{ "required": ["residual_f64"] }, { "required": ["coordinate_projection"] }] }, "properties": { "reason": { "type": "string" } } }
         }
       ]
     },
@@ -2423,19 +2549,19 @@
             "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.zarr$" },
             "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.manifest\\.json$" },
             "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
             "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
             "chunk_policy": { "const": "single_complete_array_v1" },
             "datasets": {
               "minItems": 2, "maxItems": 2,
               "prefixItems": [
                 { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
                   "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
                   }
                 } } } },
                 { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
                   "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
                   }
                 } } } }
@@ -2465,19 +2591,19 @@
             "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.zarr$" },
             "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.manifest\\.json$" },
             "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
+            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
             "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
             "chunk_policy": { "const": "single_complete_array_v1" },
             "datasets": {
               "minItems": 2, "maxItems": 2,
               "prefixItems": [
                 { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
                   "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
                   }
                 } } } },
                 { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
                   "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
                   }
                 } } } }
@@ -2607,7 +2733,7 @@
           "type": "object", "additionalProperties": false,
           "required": [
             "case_ordinal", "case_id", "status", "bias_state", "pump_state",
-            "effective_sources", "artifacts", "traces", "reconciliation",
+            "effective_sources", "operating_point_closure", "artifacts", "traces", "reconciliation",
             "backend_normalization_evidence_sha256", "state_node_map"
           ],
           "properties": {
@@ -2617,6 +2743,7 @@
             "bias_state": { "enum": ["off", "on"] },
             "pump_state": { "enum": ["off", "on"] },
             "effective_sources": { "type": "array", "items": { "$ref": "#/$defs/hbEffectiveSource" } },
+            "operating_point_closure": { "$ref": "#/$defs/hbOperatingPointClosure" },
             "artifacts": { "$ref": "#/$defs/hbCaseArtifacts" },
             "traces": { "type": "array", "items": { "$ref": "#/$defs/hbTraceArtifact" } },
             "reconciliation": { "$ref": "#/$defs/hbReconciliation" },
@@ -2643,7 +2770,7 @@
     },
     "hbBatchResult": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "lattice", "truncation", "cases"],
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "lattice", "truncation", "topology_evidence", "cases"],
       "properties": {
         "schema": { "const": "scnsim.result" },
         "schema_version": { "const": 1 },
@@ -2652,6 +2779,7 @@
         "attempt_sha256": { "$ref": "#/$defs/sha256" },
         "lattice": { "$ref": "#/$defs/hbLattice" },
         "truncation": { "$ref": "#/$defs/hbTruncation" },
+        "topology_evidence": { "$ref": "#/$defs/hbTopologyEvidence" },
         "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbCaseOutcome" } }
       }
     },
@@ -2752,7 +2880,6 @@
             "eliminated_block_solve_failure",
             "root_slope_unresolved",
             "numerical_resolution_unresolved",
-            "hb_case_failure",
             "runtime_preparation",
             "backend_protocol",
             "result_unavailable",
@@ -2778,7 +2905,7 @@
           "then": { "properties": { "category": { "const": "validation" } } }
         },
         {
-          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "hb_case_failure", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
+          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
           "then": { "properties": { "category": { "const": "execution" } } }
         },
         {
@@ -3115,7 +3242,7 @@
         "result_sha256": { "$ref": "#/$defs/sha256" },
         "artifacts": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactLink" }
+          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
         },
         "evidence": { "$ref": "#/$defs/receiptEvidence" },
         "failure": { "$ref": "#/$defs/failure" },
@@ -3197,7 +3324,7 @@
         "interruption": { "$ref": "#/$defs/interruptionEvidence" },
         "artifacts": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactLink" }
+          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
         }
       },
       "allOf": [

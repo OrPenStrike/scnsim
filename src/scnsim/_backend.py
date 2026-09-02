@@ -34,6 +34,10 @@ from .errors import (
 _EXPECTED_JULIA_VERSION = "1.12.6"
 _SHA256_LENGTH = 64
 _THREAD_ENVIRONMENT = {
+    # JosephsonCircuits uses FFTW in the HB slice.  Keep the environment
+    # deterministic before Julia starts; the HB adapter independently sets
+    # and verifies the runtime count before it accepts a case.
+    "FFTW_NUM_THREADS": "1",
     "JULIA_NUM_THREADS": "1",
     "OPENBLAS_NUM_THREADS": "1",
     "OMP_NUM_THREADS": "1",
@@ -61,6 +65,7 @@ class BootstrapReady:
     julia_threads: int
     blas_threads: int
     blas_vendor: str
+    fftw_threads: int | None = None
 
 
 @dataclass(frozen=True)
@@ -428,6 +433,7 @@ def _validate_bootstrap(
     request_sha256: str,
     attempt_ordinal: int,
     expected_version: str,
+    hb_operation: bool,
 ) -> BootstrapReady:
     frame = _decode_canonical_line(raw, stage="bootstrap")
     required = {
@@ -439,9 +445,14 @@ def _validate_bootstrap(
         "julia_threads": 1,
         "blas_threads": 1,
     }
-    if set(frame) != {*required, "blas_vendor"} or any(
+    expected_fields = {*required, "blas_vendor"}
+    if hb_operation:
+        expected_fields.add("fftw_threads")
+    if set(frame) != expected_fields or any(
         frame.get(key) != value for key, value in required.items()
-    ) or not isinstance(frame.get("blas_vendor"), str) or not frame["blas_vendor"]:
+    ) or not isinstance(frame.get("blas_vendor"), str) or not frame["blas_vendor"] or (
+        hb_operation and frame.get("fftw_threads") != 1
+    ):
         raise BackendProtocolError(
             "child bootstrap evidence does not match the sealed launch",
             stage="bootstrap",
@@ -454,6 +465,7 @@ def _validate_bootstrap(
         julia_threads=1,
         blas_threads=1,
         blas_vendor=str(frame["blas_vendor"]),
+        fftw_threads=1 if hb_operation else None,
     )
 
 
@@ -572,6 +584,21 @@ def run_terminal(
         )
     request = _require_absolute_file(request_path, label="request")
     staging = _require_absolute_directory(staging_directory, label="staging")
+    try:
+        request_document = json.loads(request.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise BackendProtocolError(
+            "terminal launch could not read the sealed request operation",
+            stage="launch_arguments",
+            evidence={"request": str(request), "error": str(error)},
+        ) from error
+    if not isinstance(request_document, Mapping):
+        raise BackendProtocolError(
+            "terminal launch request is not an object",
+            stage="launch_arguments",
+            evidence={"request": str(request)},
+        )
+    hb_operation = request_document.get("operation") == "solve_hb"
     stdout_lines: queue.Queue[str | None] = queue.Queue()
     stdout_log: list[str] = []
     stderr_log: list[str] = []
@@ -637,6 +664,7 @@ def run_terminal(
                 request_sha256=request_sha256,
                 attempt_ordinal=attempt_ordinal,
                 expected_version=expected_version,
+                hb_operation=hb_operation,
             )
             attempt_sha256 = authorize(bootstrap)
             if not _is_sha256(attempt_sha256):

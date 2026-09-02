@@ -6,17 +6,21 @@ execute:
 ---
 
 ::: {.callout-note title="Lesson focus" appearance="simple"}
-**Learn:** solve the same selected network with Direct and pump-off HB.
-**Run:** materialize both response Results.
-**Inspect:** symmetric S/Y/Z surfaces and named-case lookup.
-**Status:** `CONVERGING` scaffold.
+**Learn:** solve one selected network through Direct and pump-off HB.
+**Run:** materialize two independent response Results.
+**Inspect:** each Result's S/Y/Z surface and named HB case.
+**Status:** `CONVERGING` dev6 candidate.
 :::
 
-## Solve the same view twice
+## Solve one view on two declared grids
 
 Direct and HB consume the same backend-neutral lineage. Their Specs differ
 because HB also declares axes, drives, cases, and truncation; their public
-selected-network S/Y/Z surfaces remain symmetric.
+selected-network S/Y/Z surfaces use the same selected-view convention. Their
+frequency grids are nevertheless independently declared request data: SCNSim
+does not manufacture a shared grid or interpolate one Result onto the other.
+The HB request retains its declared odd pump-drive mode through
+`four_wave_mixing=True`; its `pump_off` case still supplies no drive current.
 
 ```{python}
 #| id: solve-direct-and-hb
@@ -42,7 +46,7 @@ view = run.original.reduce(
     .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
     .retain("feedline_in", "feedline_out", "qubit.differential")
 )
-frequencies = [5.5, 6.0, 6.5] * u.GHz
+direct_frequencies = [5.5, 6.0, 6.5] * u.GHz
 direct_trace = SParameterTrace(
     id="transmission",
     input_port="feedline_in",
@@ -52,7 +56,7 @@ direct_trace = SParameterTrace(
 )
 direct = run.solve(
     view,
-    DirectSolveSpec(frequencies=frequencies, traces=(direct_trace,)),
+    DirectSolveSpec(frequencies=direct_frequencies, traces=(direct_trace,)),
 )
 
 pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
@@ -69,23 +73,25 @@ hb = run.solve(
     HBSolveSpec(
         pump_axes=(pump,),
         drives=(pump_drive,),
-        frequencies=frequencies,
+        frequencies=[5.4, 5.9, 6.4] * u.GHz,
         cases=(HBCaseSpec(id="pump_off", currents={}),),
         truncation=HBTruncation(
             pump_harmonics=(3,),
             modulation_harmonics=(1,),
             three_wave_mixing=False,
-            four_wave_mixing=False,
+            four_wave_mixing=True,
         ),
         traces=(hb_trace,),
     ),
 )
 ```
 
-## Compare only materialized Results
+## Present the materialized Results side by side
 
 Case lookup uses the user-declared ID. `magnitude` changes presentation only;
-it does not recompute, clip exact zeros, or interpolate either result.
+it does not recompute, clip exact zeros, interpolate either result, or derive a
+Direct/HB residual. This lesson presents two independently materialized Results,
+not a `compare()` operation.
 
 ```{python}
 #| id: compare-direct-and-hb
@@ -99,5 +105,10 @@ pump_off.y.view
 direct.z.view
 pump_off.z.view
 ```
+
+The two curves may share a figure only as separate, identity-bearing traces.
+Any numerical comparison belongs to an explicit downstream calculation on
+already materialized compatible quantities; V1 has no interpolation, grid
+alignment, peak matching, or Direct/HB comparison residual API.
 
 [Previous](12_prepare_hb.qmd) · [Course map](../../docs/index.qmd) · [Concept: selected-network symmetry](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network) · [Contract](../../docs/v1-runtime-contract.qmd)

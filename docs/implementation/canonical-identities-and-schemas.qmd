@@ -295,6 +295,22 @@ $\Phi^- = \varphi_0\operatorname{conj}(x_{\mathrm{JC}}^+)$ while
 reconciliation evidence only, and no second node-flux array is requested or
 published.
 
+HB `artifactReferences` use the closed four-field shape
+`{case_id, id, path, sha256}`. Their canonical sequence follows request case
+order; within a successful case, fixed roles are `s`, `y`, `z`,
+`backend_native_s`, `backend_native_z`, `states`, and
+`effective_source_vectors`, followed by declared traces in declaration order.
+The case ordinal, not a user case ID, appears in the attempt-relative path.
+`case_id + id + path` must be unique within an attempt; repeated SHA-256 values
+are allowed and never establish semantic identity. A failed case contributes no
+artifact reference and its reserved case directory must not exist.
+
+The result catalog is the semantic authority for every HB artifact's role,
+dtype, shape, axes, units, and channels. The corresponding manifest is the
+byte-tree integrity authority. Validation cross-checks catalog role/path/hash
+against the manifest and receipt chain, so a file name, local ID, or array
+position alone cannot relabel an artifact.
+
 For $M_p$ ordered operating-point modes and $N_n$ compiled node coordinates,
 both state datasets use axes `(pump_mode, node_coordinate)` and exact metadata:
 

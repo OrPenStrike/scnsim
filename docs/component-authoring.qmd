@@ -5,7 +5,7 @@ toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Stabilized dev4 and candidate dev5 scope
+## Stabilized dev4 and accepted dev5 scope
 
 This page is the stabilized authority for the SCNSim `1.0.0.dev4` component
 authoring slice. Primitive R/L/C authoring and the Lessons 1–5 execution
@@ -13,7 +13,8 @@ boundary are implemented in dev3. Dev4 implements
 custom Libraries, complete Composite snapshots, recursive primitive expansion,
 and mutual-coupling snapshots for Lessons 6–8. Durable tests and validation
 now bind that accepted scope. The RLGC/transmission-line authoring taught in
-Lesson 9 is the `CONVERGING` dev5 candidate; HB authoring remains later work.
+Lesson 9 is the Human-`ACCEPTED` dev5 scope with stabilization deferred; HB
+authoring remains the `CONVERGING` dev6 scope.
 :::
 
 ## Contract scope
@@ -1156,13 +1157,14 @@ declared branch permits it; negative or non-finite values are not.
 ## Known V1 limits
 
 - Primitive, Composite, RLGC, and transmission-line factories through dev5 are
-  installable candidates; HB sketches remain a later-slice contract.
+  installable candidates. HB is the separate `CONVERGING` dev6 candidate, not
+  a second component catalog or topology model.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
   frequency. It does not verify a solver receipt, interpolate/extrapolate in
   frequency, or create a broadband line.
-- HB does not accept nonzero off-diagonal series R in this V1 candidate;
+- HB does not accept nonzero off-diagonal series R in the dev6 candidate;
   Direct does.
 - Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
   has no arbitrary callback, expression tree, or calibration-table

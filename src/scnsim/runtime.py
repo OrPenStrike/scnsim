@@ -1,8 +1,8 @@
 """Plan-bound execution, exact request identity, and typed Result reconstruction.
 
 The dev5 candidate extends the accepted Composite path through RLGC, selected
-N-port Views, expanded Direct quantities, extrapolation, and inventory. HB
-execution remains an explicit dev6 fail-fast surface.
+N-port Views, expanded Direct quantities, extrapolation, and inventory. The
+dev6 candidate adds the public HB request and dispatch boundary.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from ._canonical import (
     canonical_plan_document,
     canonical_receipt_document,
     canonical_request_document,
+    complex_quantity_envelope,
     complex_quantity_from_envelope,
     float64_from_hex,
     float64_hex,
@@ -70,6 +71,7 @@ from .errors import (
     DirectResponseFormationError,
     EliminatedBlockSolveFailure,
     EvidenceIntegrityError,
+    HBCaseFailure,
     InvalidDiagonalRootHint,
     InvalidCandidatePhysicalParameter,
     InvalidOptimizationSpec,
@@ -82,11 +84,14 @@ from .errors import (
     UnsupportedSingularCapacitanceForDiagonalRootV1,
 )
 from .results import (
+    BiasState,
     DirectQuantityResult,
     DiagonalRootResult,
     DirectSolveResult,
     ExplanationResult,
     HBBatchResult,
+    HBCaseOutcome,
+    HBScatteringMatrixResult,
     InventoryResult,
     MatrixFamilyResult,
     MatrixView,
@@ -94,6 +99,8 @@ from .results import (
     OptimizationResult,
     OperatorPointResult,
     OperatorResult,
+    PumpState,
+    ReconciliationEvidence,
     ReportResult,
     ResultIdentity,
     ScatteringMatrixResult,
@@ -724,12 +731,11 @@ class CircuitRun:
         *,
         parameters: ParameterSet | None = None,
     ) -> DirectSolveResult | HBBatchResult:
-        """Execute the selected Direct N-port response; HB remains fail-fast."""
+        """Execute the selected Direct response or one shared-basis HB batch."""
 
-        if isinstance(spec, HBSolveSpec):
-            unavailable("CircuitRun.solve(HBSolveSpec)")
         self._require_ref(ref)
-        request, source_units, _ = self._materialized_request("solve_direct", ref, spec, parameters)
+        operation = "solve_hb" if isinstance(spec, HBSolveSpec) else "solve_direct"
+        request, source_units, _ = self._materialized_request(operation, ref, spec, parameters)
         return self._execute(request, source_units)
 
     @overload
@@ -815,6 +821,8 @@ class CircuitRun:
         self._require_ref(ref)
         if isinstance(spec, DirectSolveSpec):
             operation = "solve_direct"
+        elif isinstance(spec, HBSolveSpec):
+            operation = "solve_hb"
         elif isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
             operation = "evaluate_direct"
         elif isinstance(spec, OptimizationSpec):
@@ -844,11 +852,16 @@ class CircuitRun:
         """Compile and present request evidence without creating an attempt."""
 
         self._require_ref(ref)
-        if isinstance(spec, HBSolveSpec) or not isinstance(spec, (DirectSolveSpec, DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec, OptimizationSpec)):
+        if not isinstance(spec, (DirectSolveSpec, HBSolveSpec, DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec, OptimizationSpec)):
             unavailable(f"CircuitRun.explain({type(spec).__name__})")
         if isinstance(spec, OptimizationSpec) and parameters is not None:
             raise TypeError("parameters must be omitted for OptimizationSpec")
-        operation = "solve_direct" if isinstance(spec, DirectSolveSpec) else "evaluate_direct" if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)) else "optimize_direct"
+        operation = (
+            "solve_hb" if isinstance(spec, HBSolveSpec)
+            else "solve_direct" if isinstance(spec, DirectSolveSpec)
+            else "evaluate_direct" if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec))
+            else "optimize_direct"
+        )
         request, _, compiled = self._materialized_request(operation, ref, spec, parameters)
         if compiled is None:
             compiled = self._preflight(request)
@@ -919,6 +932,46 @@ class CircuitRun:
                     plt.close(figure)
                 encoded = base64.b64encode(output.getvalue()).decode("ascii")
                 sections.append(f'<h2>Direct response</h2><img alt="Direct S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">')
+            elif isinstance(result, HBBatchResult):
+                case_rows = "".join(
+                    "<tr>"
+                    f"<td>{escape(outcome.id)}</td>"
+                    f"<td>{'success' if outcome.succeeded else 'failure'}</td>"
+                    f"<td>{escape(outcome.bias_state.value) if outcome.succeeded else '&mdash;'}</td>"
+                    f"<td>{escape(outcome.pump_state.value) if outcome.succeeded else '&mdash;'}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.kind)}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.stage)}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(str(outcome.failure))}</td>"
+                    "</tr>"
+                    for outcome in result.cases.values()
+                )
+                section = (
+                    "<h2>HB batch</h2>"
+                    "<table><thead><tr><th>Case</th><th>Status</th><th>Bias</th><th>Pump</th>"
+                    "<th>Failure kind</th><th>Failure stage</th><th>Failure message</th></tr></thead>"
+                    f"<tbody>{case_rows}</tbody></table>"
+                )
+                if any(outcome.succeeded for outcome in result.cases.values()):
+                    figure = result.show(magnitude="db")
+                    from io import BytesIO
+                    import matplotlib.pyplot as plt
+
+                    output = BytesIO()
+                    try:
+                        import matplotlib as mpl
+
+                        with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
+                            figure.savefig(
+                                output,
+                                format="svg",
+                                bbox_inches="tight",
+                                metadata={"Date": None},
+                            )
+                    finally:
+                        plt.close(figure)
+                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                    section += f'<img alt="HB selected S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">'
+                sections.append(section)
             elif isinstance(result, DiagonalRootResult):
                 sections.append(
                     "<h2>Loaded root</h2><table><tbody>"
@@ -1058,6 +1111,35 @@ class CircuitRun:
             return
         raise InvalidOptimizationSpec("optimization selector is outside the Direct quantity catalog", stage="spec_validation")
 
+    def _validate_hb_request(self, ref: NetworkViewRef, spec: HBSolveSpec) -> None:
+        """Bind public HB declarations to this sealed Plan and selected View."""
+
+        if ref._lineage.get("port_realizable") is not True:
+            raise PortRealizabilityError(
+                "HB solve requires a Port-realizable final View",
+                stage="preflight",
+                evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
+            )
+        plan_ports = tuple(self._plan.ports)
+        for drive in spec.drives:
+            if not any(port is drive.at for port in plan_ports):
+                raise SCNSimValidationError(
+                    "HB CurrentDrive belongs to another Plan",
+                    stage="preflight",
+                    evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
+                )
+        channels = set(ref._lineage["terminal_coordinates"])
+        for trace in spec.traces:
+            if trace.input_port not in channels or trace.output_port not in channels:
+                raise PortRealizabilityError(
+                    "HB trace names a channel outside the selected View",
+                    stage="preflight",
+                    evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
+                )
+        # Driven-PTC authorization is decided by Julia preflight after exact
+        # oriented source-vector accumulation.  Comparing declaration scalars
+        # here would reject valid cancellation across distinct logical Ports.
+
     def _complete_parameters(self, supplied: ParameterSet | None) -> ParameterSet:
         baselines = {parameter: parameter.baseline for parameter in self._parameter_lookup.values()}
         if supplied is None:
@@ -1080,7 +1162,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet | None,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
         """Compatibility request encoder for the already-complete raw View."""
@@ -1092,7 +1174,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet | None,
     ) -> tuple[dict[str, object], list[dict[str, object]], Mapping[str, object] | None]:
         """Materialize one bound request before it can enter the workspace.
@@ -1103,7 +1185,7 @@ class CircuitRun:
         closed lineage is incorporated into the durable request identity.
         """
         preliminary, source_units = self._request_declaration(operation, ref, spec, parameters)
-        if _raw_view_lineage(ref._lineage):
+        if operation != "solve_hb" and _raw_view_lineage(ref._lineage):
             # Raw 0/1/N-port Direct has no candidate-dependent reduction
             # evidence.  Its sealed original lineage is already final and
             # preserves the accepted dev3/dev4 request path (including
@@ -1133,12 +1215,17 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet | None,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
         """Encode a read-only lazy View declaration without invoking Julia."""
 
-        self._validate_direct_request(operation, ref, spec)
+        if isinstance(spec, HBSolveSpec):
+            if operation != "solve_hb":
+                raise CompilerInvariantError("HB Spec has a non-HB operation", stage="request_encode")
+            self._validate_hb_request(ref, spec)
+        else:
+            self._validate_direct_request(operation, ref, spec)
         resolved = self._complete_parameters(parameters)
         if isinstance(spec, OptimizationSpec):
             # Request-level authorization is consumed only by compiler
@@ -1163,6 +1250,8 @@ class CircuitRun:
         semantic = dict(self._runtime_base)
         if operation == "solve_direct":
             semantic["algorithm_id"] = "scnsim.direct_response.v1"
+        elif operation == "solve_hb":
+            semantic["algorithm_id"] = "scnsim.hb_response.josephsoncircuits.v1"
         elif operation == "evaluate_direct":
             semantic["algorithm_id"] = {
                 "diagonal_root": "scnsim.diagonal_root.newton32.v1",
@@ -1175,7 +1264,7 @@ class CircuitRun:
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
         else:
-            raise CompilerInvariantError("Direct operation is outside the runtime", stage="request_encode")
+            raise CompilerInvariantError("operation is outside the runtime", stage="request_encode")
         preliminary = canonical_request_document(
             plan_sha256=self._plan_sha256,
             operation=operation,
@@ -1421,7 +1510,7 @@ class CircuitRun:
 
     def _source_units(
         self,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet,
     ) -> list[dict[str, object]]:
         evidence: list[dict[str, object]] = []
@@ -1441,7 +1530,12 @@ class CircuitRun:
                 if magnitude.ndim == 0
                 else units.registry.Quantity(float(magnitude.flat[0]), value.units)
             )
-            encoded = quantity_envelope(probe, si_unit=si_unit, registry=units.registry)
+            source_magnitude = getattr(probe, "magnitude", None)
+            encoded = (
+                complex_quantity_envelope(probe, si_unit=si_unit, registry=units.registry)
+                if isinstance(source_magnitude, complex) or getattr(getattr(source_magnitude, "dtype", None), "kind", None) == "c"
+                else quantity_envelope(probe, si_unit=si_unit, registry=units.registry)
+            )
             evidence.append(
                 {
                     "identity": identity,
@@ -1575,6 +1669,22 @@ class CircuitRun:
             )
         if isinstance(spec, DirectSolveSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
+        elif isinstance(spec, HBSolveSpec):
+            add(_source_unit_identity(scope="request_hb", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
+            for axis in spec.pump_axes:
+                add(_source_unit_identity(scope="request_hb", parameter_id=axis.id, field="pump_frequency"), axis.frequency, "hertz")
+            for case in spec.cases:
+                for drive in spec.drives:
+                    if drive in case.currents:
+                        add(
+                            _source_unit_identity(
+                                scope="request_hb",
+                                parameter_id=case.id,
+                                field=f"drive:{drive.id}:coefficient",
+                            ),
+                            case.currents[drive],
+                            "ampere",
+                        )
         elif isinstance(spec, DiagonalRootSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
         elif isinstance(spec, HybridizedPoleSpec):
@@ -1666,6 +1776,8 @@ class CircuitRun:
         )
         result = success.result
         kind = result["result_kind"]
+        if kind == "hb_batch":
+            return self._decode_hb_batch(identity, result, success.request, success.directory)
         if kind == "direct_response":
             arrays = result["array_catalog"]
             frequency = _read_zarr(success.directory, arrays["frequencies"], complex_values=False)
@@ -1844,7 +1956,223 @@ class CircuitRun:
                 ),
                 ledger=ledger,
             )
-        raise EvidenceIntegrityError("verified Result kind is outside dev5", stage="result_decode", evidence={"result_kind": kind})
+        raise EvidenceIntegrityError("verified Result kind is outside the runtime", stage="result_decode", evidence={"result_kind": kind})
+
+    def _decode_hb_batch(
+        self,
+        identity: ResultIdentity,
+        result: Mapping[str, object],
+        request: Mapping[str, object],
+        directory: Path,
+    ) -> HBBatchResult:
+        """Reconstruct one fully verified ordered HB case batch."""
+
+        raw_cases = result.get("cases")
+        topology_evidence = result.get("topology_evidence")
+        request_spec = request.get("spec")
+        declared = request_spec.get("cases") if isinstance(request_spec, Mapping) else None
+        if not isinstance(raw_cases, list) or not isinstance(declared, list) or len(raw_cases) != len(declared) or not isinstance(topology_evidence, Mapping):
+            raise EvidenceIntegrityError("HB batch cases disagree with the request", stage="result_decode")
+        outcomes: dict[str, HBCaseOutcome] = {}
+        for ordinal, (raw, declaration) in enumerate(zip(raw_cases, declared), 1):
+            if not isinstance(raw, Mapping) or not isinstance(declaration, Mapping):
+                raise EvidenceIntegrityError("HB case outcome is malformed", stage="result_decode")
+            case_id = declaration.get("id")
+            if raw.get("case_ordinal") != ordinal or raw.get("case_id") != case_id or not isinstance(case_id, str) or case_id in outcomes:
+                raise EvidenceIntegrityError("HB case ordering or identity is malformed", stage="result_decode")
+            effective_sources = _decode_hb_effective_sources(raw.get("effective_sources"))
+            status = raw.get("status")
+            if status == "failure":
+                failure = raw.get("failure")
+                if (
+                    not isinstance(failure, Mapping)
+                    or set(failure) != {"kind", "stage", "message", "evidence_sha256"}
+                    or failure.get("kind") != "hb_case_failure"
+                    or failure.get("stage") not in {"operating_point", "linearization", "response_formation"}
+                    or not isinstance(failure.get("message"), str)
+                    or not failure["message"]
+                    or not _is_sha256_text(failure.get("evidence_sha256"))
+                ):
+                    raise EvidenceIntegrityError("HB case failure is malformed", stage="result_decode")
+                outcome_failure = HBCaseFailure(
+                    failure["message"],
+                    stage=failure["stage"],
+                    evidence={"evidence_sha256": failure["evidence_sha256"]},
+                )
+                outcomes[case_id] = _verified_result(
+                    HBCaseOutcome,
+                    id=case_id,
+                    failure=outcome_failure,
+                    effective_sources=effective_sources,
+                    operating_point_closure=None,
+                    bias_state=None,
+                    pump_state=None,
+                    s=None,
+                    y=None,
+                    z=None,
+                    traces=None,
+                    states=None,
+                    state_node_map=None,
+                )
+                continue
+            if status != "success":
+                raise EvidenceIntegrityError("HB case status is malformed", stage="result_decode")
+            artifacts = raw.get("artifacts")
+            trace_artifacts = raw.get("traces")
+            reconciliation = raw.get("reconciliation")
+            state_node_map = raw.get("state_node_map")
+            operating_point_closure = raw.get("operating_point_closure")
+            if (
+                not isinstance(artifacts, Mapping)
+                or set(artifacts) != {"s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors"}
+                or not isinstance(trace_artifacts, list)
+                or not isinstance(reconciliation, Mapping)
+                or not isinstance(operating_point_closure, Mapping)
+                or not isinstance(state_node_map, list)
+                or not state_node_map
+            ):
+                raise EvidenceIntegrityError("successful HB case evidence is malformed", stage="result_decode")
+
+            frequency = _direct_request_frequencies(request)
+            frequencies = units.registry.Quantity(frequency, "hertz")
+            decoded_arrays = {
+                name: _read_zarr(directory, artifacts[name], complex_values=True)
+                for name in ("s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors")
+            }
+            if any(not np.all(np.isfinite(values)) for values in decoded_arrays.values()):
+                raise EvidenceIntegrityError("HB artifacts contain non-finite values", stage="result_decode")
+
+            def matrix_view(name: str, unit: str) -> MatrixView:
+                artifact = artifacts[name]
+                if not isinstance(artifact, Mapping):
+                    raise EvidenceIntegrityError("HB matrix catalog is malformed", stage="result_decode")
+                output_channels = _decode_hb_channel_axis(artifact, index=1, kind="output_channel")
+                input_channels = _decode_hb_channel_axis(artifact, index=2, kind="input_channel")
+                values = decoded_arrays[name]
+                if values.shape != (frequency.size, len(output_channels), len(input_channels)):
+                    raise EvidenceIntegrityError("HB matrix shape disagrees with its channel axes", stage="result_decode")
+                coordinates = tuple(artifact.get("coordinate_ids", ()))
+                if (
+                    not coordinates
+                    or any(not isinstance(item, str) or not item for item in coordinates)
+                    or len(set(coordinates)) != len(coordinates)
+                ):
+                    raise EvidenceIntegrityError("HB matrix coordinate identity is malformed", stage="result_decode")
+                loads = artifact.get("probe_load_state")
+                if not isinstance(loads, list):
+                    raise EvidenceIntegrityError("HB probe-load evidence is malformed", stage="result_decode")
+                probe_loads: dict[str, str] = {}
+                for item in loads:
+                    if not isinstance(item, Mapping) or set(item) != {"port_id", "state"} or item.get("state") not in {"raw", "compensated"}:
+                        raise EvidenceIntegrityError("HB probe-load evidence is malformed", stage="result_decode")
+                    port_id = item.get("port_id")
+                    if not isinstance(port_id, str) or not port_id or port_id in probe_loads:
+                        raise EvidenceIntegrityError("HB probe-load identity is malformed", stage="result_decode")
+                    probe_loads[port_id] = item["state"]
+                return _verified_result(
+                    MatrixView,
+                    matrix=units.registry.Quantity(values, unit),
+                    frequencies=frequencies,
+                    coordinates=coordinates,
+                    input_channels=input_channels,
+                    output_channels=output_channels,
+                    probe_loads=probe_loads,
+                )
+
+            selected_s = matrix_view("s", "dimensionless")
+            selected_y = matrix_view("y", "siemens")
+            selected_z = matrix_view("z", "ohm")
+            native_s = matrix_view("backend_native_s", "dimensionless")
+            # Native Z is durable evidence even though the public S surface owns
+            # only the native scattering view.
+            matrix_view("backend_native_z", "ohm")
+            recon = _decode_hb_reconciliation(reconciliation)
+            _verify_hb_reconciliation_projection(
+                reconciliation,
+                selected=np.asarray(selected_s.matrix.magnitude),
+                native=np.asarray(native_s.matrix.magnitude),
+            )
+            traces: dict[str, TraceResult] = {}
+            trace_declarations = request_spec.get("traces") if isinstance(request_spec, Mapping) else None
+            if not isinstance(trace_declarations, list) or len(trace_artifacts) != len(trace_declarations):
+                raise EvidenceIntegrityError("HB trace catalog disagrees with its request", stage="result_decode")
+            selected_matrix = np.asarray(selected_s.matrix.magnitude)
+            for artifact, declaration in zip(trace_artifacts, trace_declarations):
+                if not isinstance(artifact, Mapping):
+                    raise EvidenceIntegrityError("HB trace catalog is malformed", stage="result_decode")
+                identifier = artifact.get("id")
+                values = _read_zarr(directory, artifact, complex_values=True)
+                if (
+                    not isinstance(declaration, Mapping)
+                    or not isinstance(identifier, str)
+                    or not identifier
+                    or identifier != declaration.get("id")
+                    or identifier in traces
+                    or values.shape != (frequency.size,)
+                    or not np.all(np.isfinite(values))
+                ):
+                    raise EvidenceIntegrityError("HB trace artifact is malformed", stage="result_decode")
+                input_channel = (declaration.get("input_port"), tuple(declaration.get("input_mode", ())))
+                output_channel = (declaration.get("output_port"), tuple(declaration.get("output_mode", ())))
+                try:
+                    input_index = selected_s.input_channels.index(input_channel)
+                    output_index = selected_s.output_channels.index(output_channel)
+                except ValueError as error:
+                    raise EvidenceIntegrityError(
+                        "HB trace declaration is absent from the selected S basis",
+                        stage="result_decode",
+                    ) from error
+                projected = selected_matrix[:, output_index, input_index]
+                values_bits = np.ascontiguousarray(values).view(np.uint64)
+                projected_bits = np.ascontiguousarray(projected).view(np.uint64)
+                if not np.array_equal(values_bits, projected_bits):
+                    raise EvidenceIntegrityError(
+                        "HB trace artifact is not the bit-exact declared projection of selected S",
+                        stage="result_decode",
+                    )
+                traces[identifier] = _verified_result(
+                    TraceResult,
+                    frequencies=frequencies,
+                    value=units.registry.Quantity(values, "dimensionless"),
+                )
+            states = decoded_arrays["states"]
+            if states.ndim != 2 or states.shape[1] != len(state_node_map):
+                raise EvidenceIntegrityError("HB state evidence disagrees with state_node_map", stage="result_decode")
+            source_modes = _decode_hb_mode_axis(artifacts["effective_source_vectors"], kind="pump_mode")
+            source_vectors = decoded_arrays["effective_source_vectors"]
+            if source_vectors.ndim != 2 or source_vectors.shape[0] != len(source_modes):
+                raise EvidenceIntegrityError("HB effective-source vectors disagree with their mode axis", stage="result_decode")
+            active_rows = np.any(source_vectors != 0.0, axis=1)
+            derived_bias = any(active and not any(mode) for active, mode in zip(active_rows, source_modes))
+            derived_pump = any(active and any(mode) for active, mode in zip(active_rows, source_modes))
+            if raw.get("bias_state") != ("on" if derived_bias else "off") or raw.get("pump_state") != ("on" if derived_pump else "off"):
+                raise EvidenceIntegrityError("HB BiasState/PumpState disagrees with effective source vectors", stage="result_decode")
+            outcomes[case_id] = _verified_result(
+                HBCaseOutcome,
+                id=case_id,
+                failure=None,
+                effective_sources=effective_sources,
+                operating_point_closure=operating_point_closure,
+                bias_state=BiasState(raw["bias_state"]),
+                pump_state=PumpState(raw["pump_state"]),
+                s=_verified_result(
+                    HBScatteringMatrixResult,
+                    view=selected_s,
+                    backend_native=native_s,
+                    reconciliation=recon,
+                ),
+                y=_verified_result(MatrixFamilyResult, view=selected_y),
+                z=_verified_result(MatrixFamilyResult, view=selected_z),
+                traces=traces,
+                states=units.registry.Quantity(states, "weber"),
+                state_node_map=tuple(state_node_map),
+            )
+        return _verified_result(
+            HBBatchResult,
+            identity=identity,
+            cases=outcomes,
+            topology_evidence=topology_evidence,
+        )
 
     def _decode_parameter_set(self, record: Mapping[str, object]) -> ParameterSet:
         values: dict[ParameterRef, object] = {}
@@ -2003,6 +2331,250 @@ def _frequency_grid(value: object) -> list[dict[str, str]]:
     return [quantity_envelope(units.registry.Quantity(float(item), "hertz"), si_unit="hertz", registry=units.registry) for item in magnitudes]
 
 
+def _is_sha256_text(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _decode_hb_effective_sources(value: object) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(value, list):
+        raise EvidenceIntegrityError("HB effective-source evidence is malformed", stage="result_decode")
+    decoded: list[Mapping[str, object]] = []
+    identities: set[tuple[str, tuple[int, ...]]] = set()
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {
+            "drive_id", "mode", "coefficient", "generated_conjugate",
+            "backend_binding", "injection_map_sha256",
+        }:
+            raise EvidenceIntegrityError("HB effective-source evidence is malformed", stage="result_decode")
+        drive_id = item.get("drive_id")
+        mode = item.get("mode")
+        conjugate = item.get("generated_conjugate")
+        backend = item.get("backend_binding")
+        if (
+            not isinstance(drive_id, str)
+            or not drive_id
+            or not isinstance(mode, list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in mode)
+            or not isinstance(conjugate, Mapping)
+            or set(conjugate) != {"mode", "coefficient"}
+            or not isinstance(conjugate.get("mode"), list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in conjugate["mode"])
+            or not isinstance(backend, Mapping)
+            or set(backend) != {"representative_mode", "representative_index", "coefficient", "coefficient_convention"}
+            or not isinstance(backend.get("representative_mode"), list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in backend["representative_mode"])
+            or not isinstance(backend.get("representative_index"), int)
+            or isinstance(backend.get("representative_index"), bool)
+            or backend["representative_index"] < 0
+            or backend.get("coefficient_convention") != "exp_plus_i_m_dot_omega_t_josephsoncircuits_source"
+            or not _is_sha256_text(item.get("injection_map_sha256"))
+        ):
+            raise EvidenceIntegrityError("HB effective-source identity is malformed", stage="result_decode")
+        key = (drive_id, tuple(mode))
+        if key in identities:
+            raise EvidenceIntegrityError("HB effective-source identity is duplicated", stage="result_decode")
+        identities.add(key)
+        decoded.append(
+            {
+                "drive_id": drive_id,
+                "mode": tuple(mode),
+                "coefficient": complex_quantity_from_envelope(item["coefficient"], registry=units.registry),
+                "generated_conjugate": {
+                    "mode": tuple(conjugate["mode"]),
+                    "coefficient": complex_quantity_from_envelope(conjugate["coefficient"], registry=units.registry),
+                },
+                "backend_binding": {
+                    "representative_mode": tuple(backend["representative_mode"]),
+                    "representative_index": backend["representative_index"],
+                    "coefficient": complex_quantity_from_envelope(backend["coefficient"], registry=units.registry),
+                    "coefficient_convention": backend["coefficient_convention"],
+                },
+                "injection_map_sha256": item["injection_map_sha256"],
+            }
+        )
+    return tuple(decoded)
+
+
+def _decode_hb_channel_axis(
+    artifact: Mapping[str, object],
+    *,
+    index: int,
+    kind: str,
+) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    axes = artifact.get("axes")
+    if not isinstance(axes, list) or len(axes) != 3 or not isinstance(axes[index], Mapping):
+        raise EvidenceIntegrityError("HB matrix axes are malformed", stage="result_decode")
+    axis = axes[index]
+    values = axis.get("values")
+    if axis.get("kind") != kind or not isinstance(values, list) or not values:
+        raise EvidenceIntegrityError("HB matrix channel axis is malformed", stage="result_decode")
+    channels: list[tuple[str, tuple[int, ...]]] = []
+    for value in values:
+        if not isinstance(value, Mapping) or set(value) != {"coordinate", "mode"}:
+            raise EvidenceIntegrityError("HB matrix channel label is malformed", stage="result_decode")
+        coordinate = value.get("coordinate")
+        mode = value.get("mode")
+        if (
+            not isinstance(coordinate, str)
+            or not coordinate
+            or not isinstance(mode, list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in mode)
+        ):
+            raise EvidenceIntegrityError("HB matrix channel label is malformed", stage="result_decode")
+        channels.append((coordinate, tuple(mode)))
+    if len(set(channels)) != len(channels):
+        raise EvidenceIntegrityError("HB matrix channel labels are duplicated", stage="result_decode")
+    return tuple(channels)
+
+
+def _decode_hb_mode_axis(artifact: object, *, kind: str) -> tuple[tuple[int, ...], ...]:
+    if not isinstance(artifact, Mapping):
+        raise EvidenceIntegrityError("HB mode artifact is malformed", stage="result_decode")
+    axes = artifact.get("axes")
+    if not isinstance(axes, list) or not axes or not isinstance(axes[0], Mapping):
+        raise EvidenceIntegrityError("HB mode axis is malformed", stage="result_decode")
+    axis = axes[0]
+    values = axis.get("values")
+    if (
+        axis.get("kind") != kind
+        or not isinstance(values, list)
+        or (not values and kind != "pump_mode")
+    ):
+        raise EvidenceIntegrityError("HB mode axis is malformed", stage="result_decode")
+    modes: list[tuple[int, ...]] = []
+    for value in values:
+        if not isinstance(value, list) or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in value):
+            raise EvidenceIntegrityError("HB mode-axis tuple is malformed", stage="result_decode")
+        modes.append(tuple(value))
+    if len(set(modes)) != len(modes):
+        raise EvidenceIntegrityError("HB mode axis repeats a tuple", stage="result_decode")
+    return tuple(modes)
+
+
+def _decode_hb_reconciliation(value: Mapping[str, object]) -> ReconciliationEvidence:
+    comparable = value.get("comparable")
+    expected = {
+        "comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256",
+        *(("residual_f64", "coordinate_projection") if comparable is True else ()),
+    }
+    if (
+        isinstance(comparable, bool)
+        and set(value) == expected
+        and value.get("normalization") == "backend_photon_flux_to_scnsim_power_wave"
+        and _is_sha256_text(value.get("last_comparable_ancestor"))
+        and _is_sha256_text(value.get("evidence_sha256"))
+        and ((comparable and value.get("reason") is None) or (not comparable and value.get("reason") in {
+            "topology", "load_or_ptc", "reference_plane", "reference_matrix",
+            "signed_frequency_grid", "channel_basis", "normalization",
+        }))
+    ):
+        try:
+            residual = float64_from_hex(value["residual_f64"]) if comparable else None
+        except (TypeError, ValueError) as error:
+            raise EvidenceIntegrityError("HB reconciliation residual is malformed", stage="result_decode") from error
+        if residual is None or (math.isfinite(residual) and residual >= 0.0):
+            return _verified_result(
+                ReconciliationEvidence,
+                comparable=comparable,
+                reason=value.get("reason"),
+                last_comparable_ancestor=value["last_comparable_ancestor"],
+                residual=residual,
+                evidence_sha256=value["evidence_sha256"],
+            )
+    raise EvidenceIntegrityError("HB reconciliation evidence is malformed", stage="result_decode")
+
+
+def _verify_hb_reconciliation_projection(
+    evidence: Mapping[str, object],
+    *,
+    selected: np.ndarray,
+    native: np.ndarray,
+) -> None:
+    """Reproduce the comparable HB projection with a fixed scalar order."""
+
+    if evidence.get("comparable") is not True:
+        return
+    projection = evidence.get("coordinate_projection")
+    if not isinstance(projection, Mapping) or set(projection) != {"shape", "values_f64"}:
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode")
+    shape = projection.get("shape")
+    values = projection.get("values_f64")
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 2
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in shape)
+        or not isinstance(values, list)
+        or len(values) != shape[0] * shape[1]
+    ):
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode")
+    try:
+        q = np.asarray([float64_from_hex(value) for value in values], dtype=np.float64).reshape(tuple(shape))
+    except (TypeError, ValueError) as error:
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode") from error
+    rows, columns = shape
+    if (
+        selected.ndim != 3
+        or native.ndim != 3
+        or selected.shape[0] != native.shape[0]
+        or selected.shape[1] != selected.shape[2]
+        or native.shape[1] != native.shape[2]
+        or selected.shape[1] % rows != 0
+        or native.shape[1] % columns != 0
+        or selected.shape[1] // rows != native.shape[1] // columns
+    ):
+        raise EvidenceIntegrityError("HB reconciliation matrices disagree with their coordinate projection", stage="result_decode")
+    mode_count = selected.shape[1] // rows
+    residuals: list[float] = []
+    for frequency in range(selected.shape[0]):
+        projected = np.empty_like(selected[frequency])
+        for output_coordinate in range(rows):
+            for output_mode in range(mode_count):
+                output = output_coordinate * mode_count + output_mode
+                for input_coordinate in range(rows):
+                    for input_mode in range(mode_count):
+                        input_ = input_coordinate * mode_count + input_mode
+                        value = 0.0 + 0.0j
+                        for native_output in range(columns):
+                            for native_input in range(columns):
+                                value += (
+                                    q[output_coordinate, native_output]
+                                    * native[frequency, native_output * mode_count + output_mode, native_input * mode_count + input_mode]
+                                    * q[input_coordinate, native_input]
+                                )
+                        projected[output, input_] = value
+        numerator = max(
+            sum(abs(selected[frequency, row, column] - projected[row, column]) for column in range(projected.shape[1]))
+            for row in range(projected.shape[0])
+        )
+        denominator = max(
+            sum(abs(selected[frequency, row, column]) + abs(projected[row, column]) for column in range(projected.shape[1]))
+            for row in range(projected.shape[0])
+        )
+        residuals.append(
+            0.0
+            if denominator == 0.0 and numerator == 0.0
+            else math.inf
+            if denominator == 0.0
+            else numerator / denominator
+        )
+    residual = max(residuals)
+    if not math.isfinite(residual) or float64_hex(residual) != evidence.get("residual_f64"):
+        raise EvidenceIntegrityError("HB reconciliation residual does not reproduce selected S from backend-native S", stage="result_decode")
+
+
+def _frequency_anchor_envelope(value: object) -> dict[str, str]:
+    """Preserve an authored complex seed, including an explicit ``x + 0j``."""
+
+    magnitude = getattr(value, "magnitude", None)
+    authored_complex = isinstance(magnitude, complex) or getattr(getattr(magnitude, "dtype", None), "kind", None) == "c"
+    encoder = complex_quantity_envelope if authored_complex else quantity_envelope
+    return encoder(value, si_unit="hertz", registry=units.registry)
+
+
 def _encode_root(
     spec: DiagonalRootSpec,
     *,
@@ -2051,12 +2623,12 @@ def _encode_direct_quantity(
         return {
             "type": "hybridized_pole",
             "coordinates": [coordinate_id(value) for value in spec.coordinates],
-            "anchor": quantity_envelope(spec.anchor, si_unit="hertz", registry=units.registry),
+            "anchor": _frequency_anchor_envelope(spec.anchor),
         }
     if isinstance(spec, TransferZeroSpec):
         return {
             "type": "transfer_zero",
-            "anchor": quantity_envelope(spec.anchor, si_unit="hertz", registry=units.registry),
+            "anchor": _frequency_anchor_envelope(spec.anchor),
             "family": spec.family,
             "input_coordinate": coordinate_id(spec.input_coordinate),
             "output_coordinate": coordinate_id(spec.output_coordinate),
@@ -2082,7 +2654,7 @@ def _encode_direct_quantity(
 
 
 def _encode_spec(
-    spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+    spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
     parameters: ParameterSet,
     *,
     coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
@@ -2092,6 +2664,53 @@ def _encode_spec(
             "type": "direct_solve",
             "frequencies": _frequency_grid(spec.frequencies),
             "traces": [dict(trace._canonical_record()) for trace in spec.traces],
+        }
+    if isinstance(spec, HBSolveSpec):
+        return {
+            "type": "hb_solve",
+            "pump_axes": [
+                {
+                    "id": axis.id,
+                    "frequency": quantity_envelope(axis.frequency, si_unit="hertz", registry=units.registry),
+                }
+                for axis in spec.pump_axes
+            ],
+            "drives": [
+                {
+                    "id": drive.id,
+                    "port_id": drive.at.id,
+                    "mode": list(drive.mode),
+                    "orientation": "port_node_to_reference",
+                }
+                for drive in spec.drives
+            ],
+            "frequencies": _frequency_grid(spec.frequencies),
+            "cases": [
+                {
+                    "id": case.id,
+                    "currents": [
+                        {
+                            "drive_id": drive.id,
+                            "coefficient": complex_quantity_envelope(
+                                case.currents[drive], si_unit="ampere", registry=units.registry,
+                            ),
+                            "coefficient_convention": "exp_minus_i_m_dot_omega_t_fourier_coefficient",
+                        }
+                        for drive in spec.drives
+                        if drive in case.currents
+                    ],
+                }
+                for case in spec.cases
+            ],
+            "truncation": {
+                "pump_harmonics": list(spec.truncation.pump_harmonics),
+                "modulation_harmonics": list(spec.truncation.modulation_harmonics),
+                "max_intermodulation_order": spec.truncation.max_intermodulation_order,
+                "three_wave_mixing": spec.truncation.three_wave_mixing,
+                "four_wave_mixing": spec.truncation.four_wave_mixing,
+            },
+            "traces": [dict(trace._canonical_record()) for trace in spec.traces],
+            "allow_driven_ptc": spec.allow_driven_ptc,
         }
     if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
         return _encode_direct_quantity(spec, coordinate_id=coordinate_id)
@@ -2232,6 +2851,9 @@ def _attempt_document(
     }
     if ready is not None:
         document.update({"julia_threads": ready.julia_threads, "blas_threads": ready.blas_threads, "blas_vendor": ready.blas_vendor})
+        fftw_threads = getattr(ready, "fftw_threads", None)
+        if fftw_threads is not None:
+            document["fftw_threads"] = fftw_threads
     if resume_ledger_sha is not None:
         document["resume_ledger_sha256"] = resume_ledger_sha
     return document
@@ -2245,7 +2867,7 @@ def _failure_record(error: SCNSimError, operation: object, request_sha: str, att
         "message": str(error),
         "evidence": {
             "type": "failure_evidence",
-            "operation": operation if operation in {"solve_direct", "evaluate_direct", "optimize_direct"} else "backend_protocol",
+            "operation": operation if operation in {"solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"} else "backend_protocol",
             "context_kind": "protocol",
             "request_sha256": request_sha,
             "attempt_sha256": attempt_sha,
@@ -2424,6 +3046,7 @@ def _validate_success_staging(
         raise BackendProtocolError("result.json is not canonical", stage="outcome")
     expected_kind = (
         "direct_response" if request.get("operation") == "solve_direct"
+        else "hb_batch" if request.get("operation") == "solve_hb"
         else "optimization" if request.get("operation") == "optimize_direct"
         else request.get("spec", {}).get("type")
         if request.get("operation") == "evaluate_direct" and isinstance(request.get("spec"), Mapping)
@@ -2444,6 +3067,11 @@ def _validate_success_staging(
             "unused_evaluations", "ledger_artifacts",
         }
         if expected_kind == "optimization"
+        else {
+            "schema", "schema_version", "result_kind", "request_sha256",
+            "attempt_sha256", "lattice", "truncation", "topology_evidence", "cases",
+        }
+        if expected_kind == "hb_batch"
         else None
     )
     if (
@@ -2464,14 +3092,47 @@ def _validate_success_staging(
         plan,
     )
     catalogs: list[Mapping[str, object]] = []
-    if expected_kind != "optimization":
+    if expected_kind == "hb_batch":
+        expected_links: list[dict[str, object]] = []
+        cases = result.get("cases")
+        if not isinstance(cases, list):
+            raise BackendProtocolError("HB result has no ordered case catalog", stage="outcome")
+        for case in cases:
+            if not isinstance(case, Mapping):
+                raise BackendProtocolError("HB result case catalog is malformed", stage="outcome")
+            if case.get("status") == "failure":
+                continue
+            artifacts = case.get("artifacts")
+            traces = case.get("traces")
+            case_id = case.get("case_id")
+            if not isinstance(case_id, str) or not isinstance(artifacts, Mapping) or not isinstance(traces, list):
+                raise BackendProtocolError("HB success artifact catalog is malformed", stage="outcome")
+            ordered = [artifacts[name] for name in ("s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors")]
+            ordered.extend(traces)
+            for artifact in ordered:
+                if not isinstance(artifact, Mapping):
+                    raise BackendProtocolError("HB success artifact catalog is malformed", stage="outcome")
+                catalogs.append(artifact)
+                expected_links.append(
+                    {
+                        "case_id": case_id,
+                        "id": artifact.get("id"),
+                        "path": artifact.get("path"),
+                        "sha256": artifact.get("sha256"),
+                    }
+                )
+        if outcome.get("artifacts") != expected_links:
+            raise BackendProtocolError("HB outcome artifact inventory does not match result.json", stage="outcome")
+        _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
+    elif expected_kind != "optimization":
         catalogs.extend(result["array_catalog"].values())
     else:
         catalogs.extend(result["ledger_artifacts"])
-    expected_links = [{"id": artifact["id"], "sha256": artifact["sha256"]} for artifact in catalogs]
-    if outcome.get("artifacts") != expected_links or len({item["id"] for item in expected_links}) != len(expected_links):
-        raise BackendProtocolError("outcome artifact inventory does not match result.json", stage="outcome")
-    _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
+    if expected_kind != "hb_batch":
+        expected_links = [{"id": artifact["id"], "sha256": artifact["sha256"]} for artifact in catalogs]
+        if outcome.get("artifacts") != expected_links or len({item["id"] for item in expected_links}) != len(expected_links):
+            raise BackendProtocolError("outcome artifact inventory does not match result.json", stage="outcome")
+        _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
     if expected_kind == "optimization":
         _verify_generation_artifacts(
             staging,

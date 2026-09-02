@@ -9,7 +9,7 @@ execute:
 **Learn:** carry ordered N×N RLGC data into a deterministic π ladder.
 **Run:** author one two-trace line.
 **Inspect:** every compiled section without scalarizing mutual terms.
-**Status:** `CONVERGING` dev5 candidate.
+**Status:** Human-`ACCEPTED` dev5 scope; stabilization deferred.
 :::
 
 ## Bind matrices to conductor order

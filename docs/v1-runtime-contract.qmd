@@ -14,15 +14,16 @@ Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
 Dev4 additionally implements custom Libraries, complete
 Composite snapshots, declaration-ordered public parameters, recursive
 primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
-The dev5 candidate implements RLGC/transmission lines, N-port/PTC/transform,
+The Human-accepted dev5 scope implements RLGC/transmission lines, N-port/PTC/transform,
 compiled schematics, inventory, extrapolation authorization/evidence, expanded
 Direct quantities and selector-dependent objective units for Lessons 9–11.
-HB remains explicit dev6 fail-fast behavior.
+The dev6 Full V1 HB implementation remains `CONVERGING` until its exact
+candidate is reviewed and accepted.
 
 Stabilization is limited to the dev4-owned Lessons 6–8 behavior named above.
-The standalone dev3 Direct/root/optimization scope, dev5 Direct additions, and
-the later HB sections remain `CONVERGING`; none becomes accepted by being
-documented here.
+The standalone dev3 Direct/root/optimization scope and the dev6 HB sections
+remain `CONVERGING`. Dev5 is `ACCEPTED` but not `STABILIZED`; its durable tests
+are deferred by Human direction until Full V1 stabilization.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -1537,6 +1538,14 @@ boundary. A real hybrid/zero anchor initializes a real angular frequency, while
 a complex anchor preserves both declared components under the $2\pi$
 conversion. An anchor is a Newton-basin initializer, never a nearest-root
 instruction.
+
+`frequencyAnchor` keeps that distinction in the exact request bytes. A plain
+real Quantity encodes as `quantity_f64`; a Python complex Quantity, including
+one whose imaginary component is exactly `0`, encodes as
+`complex_quantity_f64` with independently canonical real and imaginary SI
+bits. Both forms retain the declared source-unit provenance in the receipt.
+There is no lossy real fallback, compatibility alias, or implicit removal of a
+zero imaginary component.
 `TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
 generic cofactor/minor object is not part of the V1 scaffold. The Spec also
 requires its selected transfer denominator to
@@ -2073,6 +2082,14 @@ assert dc_pump_a_low.pump_state is PumpState.ON
 assert dc_two_tone.pump_state is PumpState.ON
 ```
 
+`hb.topology_evidence` is the immutable request-global record of the loaded
+nonlinear balance and raw or PTC-compensated response lineage. Each successful
+case separately exposes `operating_point_closure`, including the exact
+absolute/relative residual evidence and successful disjunct (or the closed
+no-operating-lattice not-applicable reason). A failed case has no success-only
+closure record; its failure identity instead binds stage, message, ordinal,
+case ID, and the complete effective-source evidence.
+
 `HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
 classification on each successful outcome, not an alternate lookup key. `BiasState`
 independently records effective all-zero-mode drive. A case whose declared
@@ -2159,6 +2176,12 @@ S_k=\mathcal Q_{k,\mathrm{out}}
 S_{\mathrm{native,pw}}
 \mathcal Q_{k,\mathrm{in}}^T.
 $$
+
+Comparable evidence preserves the unreplicated physical $Q_k$ in deterministic
+row-major form and binds it to its Plan/View producer identity. Receipt loading
+reconstructs the lifted projection and independently reproduces the selected S
+matrix and recorded residual; a self-consistent but forged residual string is
+not accepted.
 
 A plain subset of original Ports is therefore comparable by its principal
 submatrix when every omitted Port retains its native matched load. A PTC or

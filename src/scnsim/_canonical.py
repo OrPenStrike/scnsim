@@ -59,6 +59,7 @@ _UNITS: dict[str, str] = {
 
 _DIRECT_ALGORITHMS = {
     "solve_direct": "scnsim.direct_response.v1",
+    "solve_hb": "scnsim.hb_response.josephsoncircuits.v1",
     "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2",
 }
 _EVALUATION_ALGORITHMS = {
@@ -71,7 +72,7 @@ _EVALUATION_ALGORITHMS = {
 }
 _DIRECT_RESULTS = frozenset({
     "direct_response", "diagonal_root", "hybridized_pole", "transfer_zero",
-    "residue_normalized_coupling", "response_element", "operator", "optimization",
+    "residue_normalized_coupling", "response_element", "operator", "optimization", "hb_batch",
 })
 
 
@@ -266,12 +267,24 @@ def _coherent_magnitude(value: object, converted: object, si_unit: str) -> objec
     """
 
     magnitude = getattr(converted, "magnitude")
-    if getattr(magnitude, "ndim", 0) != 0 or isinstance(magnitude, complex):
+    if getattr(magnitude, "ndim", 0) != 0:
         return magnitude
     try:
         source_factor = value._REGISTRY.get_base_units(value._units)[0]  # type: ignore[union-attr]
         target_factor = 1 if si_unit == "dimensionless" else value._REGISTRY.get_base_units(si_unit)[0]  # type: ignore[union-attr]
-        return float(Decimal(str(value.magnitude)) * Decimal(str(source_factor)) / Decimal(str(target_factor)))  # type: ignore[union-attr]
+        factor = Decimal(str(source_factor)) / Decimal(str(target_factor))
+        source = value.magnitude  # type: ignore[union-attr]
+        scalar = complex(source)
+        if (
+            isinstance(source, complex)
+            or getattr(getattr(source, "dtype", None), "kind", None) == "c"
+            or scalar.imag != 0.0
+        ):
+            return complex(
+                float(Decimal(str(scalar.real)) * factor),
+                float(Decimal(str(scalar.imag)) * factor),
+            )
+        return float(Decimal(str(source)) * factor)
     except (AttributeError, InvalidOperation, ValueError, TypeError, ZeroDivisionError) as error:
         raise _validation(
             "quantity cannot be converted to coherent SI without a binary64 fallback",
@@ -836,12 +849,13 @@ def canonical_request_document(
     )
     expected_spec = {
         "solve_direct": "direct_solve",
+        "solve_hb": "hb_solve",
         "optimize_direct": "optimization",
     }.get(selected_operation)
     if expected_algorithm is None:
-        raise _validation("operation or Direct Spec is outside the dev5 runtime", operation=selected_operation, spec_type=spec_type)
+        raise _validation("operation or Spec is outside the runtime", operation=selected_operation, spec_type=spec_type)
     if expected_spec is not None and spec_type != expected_spec:
-        raise _validation("operation requires a different Direct Spec", operation=selected_operation, spec_type=spec_type)
+        raise _validation("operation requires a different Spec", operation=selected_operation, spec_type=spec_type)
     if runtime.get("algorithm_id") != expected_algorithm:
         raise _validation("request algorithm does not match operation and Spec", operation=selected_operation, spec_type=spec_type)
     return canonical_value({
@@ -941,14 +955,14 @@ def _utc(value: str) -> str:
 
 
 def canonical_result_document(document: Mapping[str, object]) -> dict[str, object]:
-    """Close receipt-backed Direct result discriminators materialized in dev5."""
+    """Close receipt-backed result discriminators materialized by the runtime."""
 
     result = dict(document)
     result["schema"] = "scnsim.result"
     result["schema_version"] = 1
     kind = result.get("result_kind")
     if kind not in _DIRECT_RESULTS:
-        raise _validation("result discriminator is outside dev5 Direct", result_kind=kind)
+        raise _validation("result discriminator is outside the runtime", result_kind=kind)
     return canonical_value(result)  # type: ignore[return-value]
 
 
@@ -1038,7 +1052,18 @@ def zarr_group_metadata_bytes() -> bytes:
 def zarr_array_metadata_bytes(*, shape: Sequence[int], chunks: Sequence[int]) -> bytes:
     """Return exact compact V2 Float64 C-order dataset metadata bytes."""
 
-    if not shape or len(shape) != len(chunks) or any(not isinstance(item, int) or item < 1 for item in (*shape, *chunks)):
+    if (
+        not shape
+        or len(shape) != len(chunks)
+        or any(
+            not isinstance(item, int)
+            or isinstance(item, bool)
+            or item < 0
+            or (item == 0 and index != 0)
+            for index, item in enumerate(shape)
+        )
+        or any(not isinstance(item, int) or isinstance(item, bool) or item < 1 for item in chunks)
+    ):
         raise _validation("invalid Zarr shape/chunks")
     return canonical_json_bytes({
         "chunks": list(chunks), "compressor": None, "dimension_separator": ".", "dtype": "<f8",

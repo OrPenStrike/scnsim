@@ -8,7 +8,7 @@ decoder hook used after workspace receipt/artifact verification.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, FrozenInstanceError, dataclass, field, fields
 from enum import Enum
 from html import escape
 from os import O_RDONLY, PathLike, fsync, link, open as os_open
@@ -70,7 +70,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         raise TypeError("_verified_result only constructs SCNSim result values")
     if cls is HBCaseOutcome:
         expected = {
-            "id", "failure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
+            "id", "failure", "effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
         }
         if set(values) != expected:
             raise TypeError("verified HBCaseOutcome fields mismatch")
@@ -80,14 +80,39 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
             raise ValueError("HB case id must be nonempty")
         if failure is not None and not isinstance(failure, HBCaseFailure):
             raise TypeError("HB failure must be HBCaseFailure")
-        required = ("bias_state", "pump_state", "s", "y", "z", "states")
+        required = ("operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map")
         if success != all(values[name] is not None for name in required):
             raise ValueError("HB success must provide every success-only surface")
+        if not success and any(values[name] is not None for name in required):
+            raise ValueError("HB failure must not retain success-only surfaces")
+        if not isinstance(values["effective_sources"], (tuple, list)):
+            raise TypeError("HB outcome effective_sources must be an ordered sequence")
         instance = object.__new__(cls)
         object.__setattr__(instance, "_id", values["id"])
         object.__setattr__(instance, "_failure", failure)
-        for name in ("bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
+        for name in ("effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
             object.__setattr__(instance, f"_{name}", _freeze(values[name]))
+        return instance
+    if cls is HBBatchResult:
+        if set(values) != {"identity", "cases", "topology_evidence"}:
+            raise TypeError("verified HBBatchResult fields mismatch")
+        identity, cases = values["identity"], values["cases"]
+        if not _is_verified_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
+            raise TypeError("verified HBBatchResult requires identity and nonempty cases")
+        materialized = dict(cases)
+        if any(
+            not isinstance(identifier, str)
+            or not identifier
+            or not isinstance(outcome, HBCaseOutcome)
+            or outcome.id != identifier
+            for identifier, outcome in materialized.items()
+        ):
+            raise TypeError("verified HBBatchResult cases are malformed")
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "identity", identity)
+        object.__setattr__(instance, "cases", MappingProxyType(materialized))
+        object.__setattr__(instance, "topology_evidence", _freeze(values["topology_evidence"]))
+        object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
         return instance
     expected = {item.name: item for item in fields(cls) if item.init}
     missing = set(expected) - set(values)
@@ -131,6 +156,7 @@ def _is_verified_analysis_result(value: object) -> bool:
             DirectQuantityResult,
             OperatorResult,
             OptimizationResult,
+            HBBatchResult,
         )
         and getattr(value, "_verified_result_token", None) is _VERIFIED_TOKEN
         and _is_verified_identity(getattr(value, "identity", None))
@@ -243,9 +269,10 @@ class ScatteringMatrixResult(MatrixFamilyResult):
         frequencies = np.asarray(self.view.frequencies.magnitude)
         figure, (upper, lower) = plt.subplots(2, 1, sharex=True)
         upper.plot(frequencies, shown_magnitude)
-        lower.plot(frequencies, np.angle(values))
+        phase = np.where(np.abs(values) == 0.0, np.nan, np.angle(values, deg=True))
+        lower.plot(frequencies, phase)
         upper.set_ylabel("|S| (dB)" if magnitude == "db" else "|S|")
-        lower.set_ylabel("phase (rad)")
+        lower.set_ylabel("phase (deg; exact zero undefined)")
         lower.set_xlabel("frequency")
         return figure
 
@@ -255,6 +282,8 @@ class ReconciliationEvidence:
     comparable: bool
     reason: str | None
     last_comparable_ancestor: str
+    residual: float | None
+    evidence_sha256: str
 
     def __init__(self) -> None:
         unavailable("ReconciliationEvidence construction")
@@ -380,12 +409,18 @@ class HBCaseOutcome(Result):
     """
 
     __slots__ = (
-        "_id", "_failure", "_bias_state", "_pump_state", "_s", "_y", "_z",
+        "_id", "_failure", "_effective_sources", "_operating_point_closure", "_bias_state", "_pump_state", "_s", "_y", "_z",
         "_traces", "_states", "_state_node_map",
     )
 
     def __init__(self) -> None:
         unavailable("HBCaseOutcome construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise FrozenInstanceError("cannot assign to field of immutable HBCaseOutcome")
+
+    def __delattr__(self, name: str) -> None:
+        raise FrozenInstanceError("cannot delete field of immutable HBCaseOutcome")
 
     @property
     def id(self) -> str:
@@ -398,6 +433,18 @@ class HBCaseOutcome(Result):
     @property
     def failure(self) -> HBCaseFailure | None:
         return self._failure
+
+    @property
+    def effective_sources(self) -> tuple[Mapping[str, object], ...]:
+        """Return the exact case drive evidence, including on failed cases."""
+
+        return tuple(_freeze(source) for source in self._effective_sources)
+
+    @property
+    def operating_point_closure(self) -> Mapping[str, object]:
+        """Return the verified nonlinear closure evidence for a successful case."""
+
+        return self._success(_freeze(self._operating_point_closure))  # type: ignore[return-value]
 
     def _success(self, value: object) -> object:
         if self._failure is not None:
@@ -436,16 +483,86 @@ class HBCaseOutcome(Result):
     def state_node_map(self) -> tuple[Mapping[str, object], ...]:
         return self._success(self._state_node_map)  # type: ignore[return-value]
 
+    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+        if self._failure is not None:
+            failure = self._failure
+            return HtmlPresentation(
+                f"<h3>HB case {escape(self.id)}</h3><p>failure: "
+                f"kind={escape(failure.kind)}; stage={escape(failure.stage)}; "
+                f"message={escape(str(failure))}</p>"
+            )
+        return self.s.show(magnitude=magnitude)
+
 
 @dataclass(frozen=True, slots=True)
 class HBBatchResult(AnalysisResult):
     cases: Mapping[str, HBCaseOutcome]
+    topology_evidence: Mapping[str, object]
 
     def __init__(self) -> None:
         unavailable("HBBatchResult construction")
 
     def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
-        return HtmlPresentation(f"<pre>HB cases: {escape(', '.join(self.cases))}</pre>")
+        if magnitude not in {"linear", "db"}:
+            raise ValueError("magnitude must be 'linear' or 'db'")
+        successes = tuple(outcome for outcome in self.cases.values() if outcome.succeeded)
+        failures = tuple(outcome for outcome in self.cases.values() if not outcome.succeeded)
+        if not successes:
+            rows = "".join(
+                f"<li>{escape(outcome.id)}: kind={escape(outcome.failure.kind)}; "
+                f"stage={escape(outcome.failure.stage)}; "
+                f"message={escape(str(outcome.failure))}</li>"
+                for outcome in failures
+            )
+            return HtmlPresentation(f"<h3>HB cases</h3><ul>{rows}</ul>")
+
+        import matplotlib.pyplot as plt
+
+        trace_ids = tuple(successes[0].traces)
+        if trace_ids:
+            panels: tuple[tuple[str, object], ...] = tuple((identifier, identifier) for identifier in trace_ids)
+        else:
+            view = successes[0].s.view
+            panels = tuple(
+                (
+                    f"S[{output_coordinate},{output_mode} <- {input_coordinate},{input_mode}]",
+                    (output_index, input_index),
+                )
+                for output_index, (output_coordinate, output_mode) in enumerate(view.output_channels)
+                for input_index, (input_coordinate, input_mode) in enumerate(view.input_channels)
+            )
+        figure, axes = plt.subplots(len(panels), 2, squeeze=False, sharex=True)
+        for (magnitude_axis, phase_axis), (panel_label, selector) in zip(axes, panels):
+            for outcome in successes:
+                if trace_ids:
+                    trace = outcome.traces[selector]  # type: ignore[index]
+                    frequency = np.asarray(trace.frequencies.magnitude)
+                    values = np.asarray(trace.value.magnitude)
+                else:
+                    frequency = np.asarray(outcome.s.view.frequencies.magnitude)
+                    output_index, input_index = selector  # type: ignore[misc]
+                    values = np.asarray(outcome.s.view.matrix.magnitude)[:, output_index, input_index]
+                shown = np.abs(values)
+                if magnitude == "db":
+                    shown = 20.0 * np.log10(shown)
+                phase = np.where(np.abs(values) == 0.0, np.nan, np.angle(values, deg=True))
+                magnitude_axis.plot(frequency, shown, label=outcome.id)
+                phase_axis.plot(frequency, phase, label=outcome.id)
+            magnitude_axis.set_ylabel(f"{panel_label} (dB)" if magnitude == "db" else panel_label)
+            phase_axis.set_ylabel("phase (deg; exact zero undefined)")
+            magnitude_axis.legend()
+            phase_axis.legend()
+        axes[-1, 0].set_xlabel("frequency")
+        axes[-1, 1].set_xlabel("frequency")
+        if failures:
+            figure.suptitle(
+                "failures: " + "; ".join(
+                    f"{outcome.id}: kind={outcome.failure.kind}, "
+                    f"stage={outcome.failure.stage}, message={outcome.failure}"
+                    for outcome in failures
+                )
+            )
+        return figure
 
 
 @dataclass(frozen=True, slots=True)

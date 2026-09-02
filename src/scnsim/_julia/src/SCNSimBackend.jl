@@ -2,6 +2,7 @@ module SCNSimBackend
 
 using CMAEvolutionStrategy
 using JSON3
+using JosephsonCircuits
 using LinearAlgebra
 using Random
 using SHA
@@ -797,6 +798,9 @@ function recursive_leaf!(component, endpoint_to_node, node_index, values, capaci
             branch_incidence = recursive_incidence(branch["positive_endpoint"], branch["negative_endpoint"], endpoint_to_node, node_index)
             push!(inductors, ExpandedInductor(branch_key(Dict("component_path" => component["component_path"], "branch_id" => branch["id"])), branch_incidence, value))
             record!("inductor", value, "henry", "inductance", branch_incidence)
+            # HB lowering needs the same sealed branch identity as mutual
+            # coupling; a drawing/name-derived association is not authority.
+            rows[end]["branch_id"] = String(branch["id"])
         end
     else
         fail("capability", "scaffold_unavailable", "compile", "compile", "sealed component realization is outside the recursive Direct compiler")
@@ -2009,6 +2013,41 @@ function write_success(staging::String, request, request_sha::String, attempt_sh
     write_bytes(joinpath(staging, "outcome.json"), canonical_bytes(outcome))
 end
 
+"""Write HB success with case-local artifact identities.
+
+HB has deliberately repeatable local roles (`s`, `states`, and so on) for
+each named case.  Its receipt/outcome therefore cannot use Direct's global
+`{id,sha256}` artifact inventory; the stable identity is case + role + path.
+"""
+function write_hb_success(staging::String, request, request_sha::String, attempt_sha::String, result)
+    result_path = joinpath(staging, "result.json")
+    write_bytes(result_path, canonical_bytes(result))
+    result_sha = file_sha256(result_path)
+    links = Any[]
+    for case in result["cases"]
+        get(case, "status", nothing) == "success" || continue
+        artifacts = case["artifacts"]
+        for role in ("s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors")
+            artifact = artifacts[role]
+            push!(links, Dict("case_id" => case["case_id"], "id" => artifact["id"], "path" => artifact["path"], "sha256" => artifact["sha256"]))
+        end
+        for artifact in case["traces"]
+            push!(links, Dict("case_id" => case["case_id"], "id" => artifact["id"], "path" => artifact["path"], "sha256" => artifact["sha256"]))
+        end
+    end
+    outcome = Dict{String,Any}(
+        "schema" => "scnsim.outcome",
+        "schema_version" => 1,
+        "request_sha256" => request_sha,
+        "attempt_sha256" => attempt_sha,
+        "runtime_semantic" => request["runtime_semantic"],
+        "status" => "success",
+        "result_sha256" => result_sha,
+        "artifacts" => links,
+    )
+    write_bytes(joinpath(staging, "outcome.json"), canonical_bytes(outcome))
+end
+
 function write_failure(staging::String, request, request_sha::String, attempt_sha::String, failure::BackendFailure)
     evidence = Dict{String,Any}(
         "type" => "failure_evidence",
@@ -2487,10 +2526,10 @@ function staging_ordinal(staging::String)::Int
     return parse(Int, match_value.captures[1])
 end
 
-function bootstrap_record(request_sha::String, ordinal::Int)
+function bootstrap_record(request, request_sha::String, ordinal::Int)
     version = string(VERSION)
     version == "1.12.6" || error("SCNSim backend must run under Julia 1.12.6")
-    return Dict{String,Any}(
+    record = Dict{String,Any}(
         "attempt_ordinal" => ordinal,
         "blas_threads" => BLAS.get_num_threads(),
         "blas_vendor" => string(BLAS.vendor()),
@@ -2500,9 +2539,16 @@ function bootstrap_record(request_sha::String, ordinal::Int)
         "schema" => "scnsim.bootstrap_ready",
         "schema_version" => 1,
     )
+    if get(request, "operation", nothing) == "solve_hb"
+        # HB is prepared before attempt allocation so the Python side can bind
+        # its one-thread FFTW evidence into attempt.json along with BLAS.
+        hb_require_runtime!()
+        record["fftw_threads"] = JosephsonCircuits.FFTW.get_num_threads()
+    end
+    return record
 end
 
-function read_authorization(request_sha::String, staging::String, ordinal::Int)
+function read_authorization(request, request_sha::String, staging::String, ordinal::Int)
     bytes = read(stdin)
     text = String(bytes)
     count(==('\n'), text) == 1 && endswith(text, "\n") || error("launch authorization must be one JSONL line followed by EOF")
@@ -2522,15 +2568,18 @@ function read_authorization(request_sha::String, staging::String, ordinal::Int)
     attempt["ordinal"] == ordinal || error("attempt ordinal mismatches staging directory")
     attempt["attempt_state"] == "launched" || error("attempt is not launched")
     attempt["julia_threads"] == 1 && attempt["blas_threads"] == 1 || error("attempt thread evidence violates dev3 policy")
+    if get(request, "operation", nothing) == "solve_hb"
+        get(attempt, "fftw_threads", nothing) == 1 || error("attempt FFTW thread evidence violates HB policy")
+    end
     return attempt_sha
 end
 
 function run_terminal(request_path::String, staging::String)
     request, request_sha, plan = read_request_and_plan(request_path)
     ordinal = staging_ordinal(staging)
-    println(canonical_json(bootstrap_record(request_sha, ordinal)))
+    println(canonical_json(bootstrap_record(request, request_sha, ordinal)))
     flush(stdout)
-    attempt_sha = read_authorization(request_sha, staging, ordinal)
+    attempt_sha = read_authorization(request, request_sha, staging, ordinal)
     # Python owns this envelope and its canonical encoder. The staged attempt
     # was already bound by the authorization hash, so only parse it here.
     attempt = canonical_document(joinpath(staging, "attempt.json"); require_backend_canonical = false)
@@ -2547,6 +2596,11 @@ function run_terminal(request_path::String, staging::String)
         compiled = view.compiled
         if operation == "solve_direct"
             solve_direct(request, view, request_sha, attempt_sha, staging)
+        elseif operation == "solve_hb"
+            # HB lowers from the raw recursive graph so Josephson rows and
+            # original B/R/M remain physical authority; `view` is the same
+            # realized selected-network lineage used by Direct.
+            solve_hb(request, plan, raw_compiled, view, request_sha, attempt_sha, staging)
         elseif operation == "evaluate_direct"
             kind = get(request["spec"], "type", nothing)
             if kind == "diagonal_root"
@@ -2657,9 +2711,12 @@ function preflight(plan_path::String, request_path::String)
     realized_lineage, view = realized_ref_lineage(raw_compiled, request["ref_lineage"])
     compiled = view.compiled
     load = port_load_admittance(compiled)
+    realized_request = deepcopy(request)
+    realized_request["ref_lineage"] = realized_lineage
+    hb_validation = operation == "solve_hb" ? hb_preflight(realized_request, plan, raw_compiled, view) : nothing
     runtime_path = normpath(joinpath(@__DIR__, "..", "runtime.json"))
     runtime = plain(JSON3.read(read(runtime_path, String)))
-    return Dict{String,Any}(
+    result = Dict{String,Any}(
         "schema" => "scnsim.preflight",
         "schema_version" => 1,
         "plan_sha256" => plan_sha,
@@ -2684,9 +2741,11 @@ function preflight(plan_path::String, request_path::String)
         "optimization_preflight" => Dict("supported" => "dev5_full_scalar_selector_catalog", "algorithm_id" => runtime["algorithm_ids"]["optimization"]),
         "direct_hb_capability" => Dict(
             "direct" => "full_rlgc_nport_selected_network",
-            "hb" => (has_offdiagonal_series_resistance(compiled) ? "unsupported_off_diagonal_series_resistance" : "scaffold_unavailable_dev6"),
+            "hb" => (has_offdiagonal_series_resistance(compiled) ? "unsupported_off_diagonal_series_resistance" : "josephsoncircuits_hb_candidate"),
         ),
     )
+    hb_validation === nothing || (result["hb_preflight"] = hb_validation)
+    return result
 end
 
 function f64_matrix_hash(matrix::AbstractMatrix{Float64})::String
@@ -3726,5 +3785,9 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
     write_success(staging, request, request_sha, attempt_sha, result, ledger_artifacts)
 end
 
+# The HB surface is deliberately included after the shared compiler, selected
+# network realization, artifact writer, and terminal protocol are defined.
+# It consumes those authorities; it does not create a second graph/runtime.
+include("hb.jl")
 
 end # module
