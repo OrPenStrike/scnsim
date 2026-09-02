@@ -198,7 +198,7 @@ def _advanced_direct_plan() -> tuple[CircuitPlan, object]:
     return plan, capacitor_a.parameter("capacitance")
 
 
-def _matched_zero_plan() -> CircuitPlan:
+def _matched_zero_plan() -> tuple[CircuitPlan, object]:
     plan = CircuitPlan(id="transfer_zero_stabilization")
     resistor = plan.add(components.resistor(id="resistor", resistance=50.0 * u.ohm))
     capacitor = plan.add(components.capacitor(id="capacitor", capacitance=80.0 * u.fF))
@@ -211,7 +211,7 @@ def _matched_zero_plan() -> CircuitPlan:
     )
     plan.ground(resistor.pin("terminal_2"), capacitor.pin("terminal_2"), inductor.pin("terminal_2"))
     plan.add_port(id="p", at=signal, role="terminated", reference_impedance=50.0 * u.ohm)
-    return plan
+    return plan, capacitor.parameter("capacitance")
 
 
 def _tau(order: int) -> float:
@@ -524,9 +524,39 @@ class Dev5ExtrapolationRuntimeTests(unittest.TestCase):
                 self.assertEqual(candidate["outcome"]["penalty"], "positive_infinity")
                 self.assertEqual(candidate["outcome"]["failure"]["kind"], "invalid_candidate_physical_parameter")
                 self.assertEqual(candidate["outcome"]["failure"]["stage"], "affine_support")
-                self.assertTrue(candidate["extrapolation_evidence"])
+                self.assertEqual(len(candidate["extrapolation_evidence"]), 2)
+                self.assertEqual(
+                    [row["consumer_target"]["component_path"] for row in candidate["extrapolation_evidence"]],
+                    [("mapped", "first"), ("mapped", "second")],
+                )
                 self.assertTrue(all(row["authorization_source"] == "none" for row in candidate["extrapolation_evidence"]))
             self.assertEqual(result.best.parameters.allow_extrapolation, ())
+
+            authorized = run.optimize(
+                view,
+                spec.with_variable_overrides(bounds={}, allow_extrapolation=(parameter,)),
+            )
+            authorized_candidates = [
+                candidate
+                for ledger in authorized.ledger
+                for candidate in ledger["candidates"]
+                if candidate["extrapolation_evidence"]
+            ]
+            self.assertTrue(authorized_candidates)
+            for candidate in authorized_candidates:
+                self.assertEqual(len(candidate["extrapolation_evidence"]), 2)
+                self.assertEqual(
+                    [row["consumer_target"]["component_path"] for row in candidate["extrapolation_evidence"]],
+                    [("mapped", "first"), ("mapped", "second")],
+                )
+                self.assertTrue(
+                    all(
+                        row["authorization_source"] == "optimization_spec"
+                        for row in candidate["extrapolation_evidence"]
+                    )
+                )
+                self.assertEqual(candidate["parameters"]["allow_extrapolation"], ())
+            self.assertEqual(authorized.best.parameters.allow_extrapolation, ())
 
 
 @unittest.skipUnless(
@@ -557,7 +587,7 @@ class Dev5DirectQuantityRuntimeTests(unittest.TestCase):
         cls.coupling = cls.circuit_run.evaluate(cls.view, cls.coupling_spec)
 
         cls._zero_temporary = TemporaryDirectory()
-        cls.zero_plan = _matched_zero_plan()
+        cls.zero_plan, cls.zero_parameter = _matched_zero_plan()
         cls.zero_run = CircuitRun(plan=cls.zero_plan, workspace=Path(cls._zero_temporary.name))
         cls.zero_spec = TransferZeroSpec(
             anchor=6.3 * u.GHz,
@@ -640,6 +670,62 @@ class Dev5DirectQuantityRuntimeTests(unittest.TestCase):
         self.assertEqual(self.zero.frequency.to("hertz").magnitude, actual_omega.real / (2.0 * math.pi))
         self.assertNotEqual(complex(self.zero.denominator.to("dimensionless").magnitude), 0.0j)
         self.assertNotEqual(complex(self.zero.numerator_slope.to("dimensionless").magnitude), 0.0j)
+
+    def test_cma_executes_every_accepted_selector_branch(self) -> None:
+        advanced_objectives = (
+            CostObjective(id="pole_frequency", quantity=self.pole_spec.frequency, target=self.pole.frequency, weight=1.0 * u.dimensionless),
+            CostObjective(id="pole_linewidth", quantity=self.pole_spec.linewidth, target=self.pole.linewidth, scale=1.0 * u.Hz, weight=1.0 * u.dimensionless),
+            CostObjective(id="coupling", quantity=self.coupling_spec.magnitude, target=self.coupling.magnitude, weight=1.0 * u.dimensionless),
+            CostObjective(id="response_magnitude", quantity=self.response_spec.magnitude, target=self.response.magnitude, weight=1.0 * u.dimensionless),
+            CostObjective(id="response_real", quantity=self.response_spec.real, target=self.response.real, scale=1.0 * u.uS, weight=1.0 * u.dimensionless),
+            CostObjective(id="response_imag", quantity=self.response_spec.imag, target=self.response.imag, weight=1.0 * u.dimensionless),
+        )
+        advanced = self.circuit_run.optimize(
+            self.view,
+            OptimizationSpec(
+                variables=(OptimizationVariable(parameter=self.parameter, bounds=(79.5 * u.fF, 80.5 * u.fF)),),
+                objectives=advanced_objectives,
+                optimizer=CMAESSpec(seed=29, max_evaluations=5),
+            ),
+        )
+        advanced_successes = [
+            candidate
+            for ledger in advanced.ledger
+            for candidate in ledger["candidates"]
+            if candidate["outcome"]["status"] == "success"
+        ]
+        self.assertTrue(advanced_successes)
+        for candidate in advanced_successes:
+            self.assertEqual(
+                [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
+                [objective.id for objective in advanced_objectives],
+            )
+        self.assertTrue(np.isfinite(advanced.best.cost))
+
+        zero_objectives = (
+            CostObjective(id="zero_frequency", quantity=self.zero_spec.frequency, target=self.zero.frequency, weight=1.0 * u.dimensionless),
+        )
+        zero = self.zero_run.optimize(
+            self.zero_run.original,
+            OptimizationSpec(
+                variables=(OptimizationVariable(parameter=self.zero_parameter, bounds=(79.5 * u.fF, 80.5 * u.fF)),),
+                objectives=zero_objectives,
+                optimizer=CMAESSpec(seed=31, max_evaluations=5),
+            ),
+        )
+        zero_successes = [
+            candidate
+            for ledger in zero.ledger
+            for candidate in ledger["candidates"]
+            if candidate["outcome"]["status"] == "success"
+        ]
+        self.assertTrue(zero_successes)
+        for candidate in zero_successes:
+            self.assertEqual(
+                [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
+                ["zero_frequency"],
+            )
+        self.assertTrue(np.isfinite(zero.best.cost))
 
 
 if __name__ == "__main__":

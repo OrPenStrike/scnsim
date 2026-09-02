@@ -105,7 +105,7 @@ topology, coordinate names, Direct operators, reductions, or public consumer
 contracts.
 
 SCNSim has no previously accepted or delivered Unit or Runtime API to migrate.
-This document records the accepted dev4 contract in place. It does not
+This document records the Human-accepted Full V1 contract in place. It does not
 supersede, mutate, redirect, or provide compatibility for the legacy
 Workbench. Reusable implementation may later be transplanted only from the
 exact public handoff with its Git provenance.

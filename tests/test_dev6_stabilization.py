@@ -72,6 +72,22 @@ def _one_port_jj() -> tuple[CircuitPlan, object]:
     return plan, port
 
 
+def _one_port_transfer_zero() -> CircuitPlan:
+    plan = CircuitPlan(id="complex_transfer_zero_stabilization")
+    resistor = plan.add(components.resistor(id="resistor", resistance=50.0 * u.ohm))
+    capacitor = plan.add(components.capacitor(id="capacitor", capacitance=80.0 * u.fF))
+    inductor = plan.add(components.inductor(id="inductor", inductance=8.0 * u.nH))
+    signal = plan.net(
+        resistor.pin("terminal_1"),
+        capacitor.pin("terminal_1"),
+        inductor.pin("terminal_1"),
+        id="p",
+    )
+    plan.ground(resistor.pin("terminal_2"), capacitor.pin("terminal_2"), inductor.pin("terminal_2"))
+    plan.add_port(id="p", at=signal, role="terminated", reference_impedance=50.0 * u.ohm)
+    return plan
+
+
 def _hb_dc_spec(port: object, cases: tuple[tuple[str, object | None], ...]) -> HBSolveSpec:
     pump = PumpAxis(id="pump", frequency=6.0 * u.GHz)
     drive = CurrentDrive(id="dc", at=port, mode=(0,))
@@ -106,12 +122,13 @@ def _floating_probe_plan() -> tuple[CircuitPlan, object, object, object, object,
     feed = plan.add(components.capacitor(id="feed", capacitance=35.0 * u.fF))
     coupler = plan.add(components.capacitor(id="coupler", capacitance=4.0 * u.fF))
     qubit = plan.add(
-        components.floating_parallel_linear_lc_resonator(
+        components.floating_parallel_single_junction_resonator(
             id="qubit",
             terminal_1_to_reference_capacitance=45.0 * u.fF,
             terminal_2_to_reference_capacitance=42.0 * u.fF,
             terminal_mutual_capacitance=16.0 * u.fF,
-            inductance=7.0 * u.nH,
+            josephson_inductance=7.0 * u.nH,
+            junction_capacitance=2.0 * u.fF,
         )
     )
     input_node = plan.net(feed.pin("terminal_1"))
@@ -431,15 +448,28 @@ println(nameof(typeof(propagated)))
     "set SCNSIM_RUN_JULIA_TESTS=1 to run packaged Julia complex-anchor regressions",
 )
 class Dev6ComplexAnchorRuntimeTests(unittest.TestCase):
-    def test_explicit_complex_zero_anchor_executes_and_resolves(self) -> None:
+    def test_nonzero_imaginary_complex_anchors_execute_and_resolve(self) -> None:
         with TemporaryDirectory() as workspace:
             run = CircuitRun(plan=_two_coordinate_plan(), workspace=Path(workspace))
             view = run.original.reduce(ReductionPipeline().retain("a", "b"))
-            spec = HybridizedPoleSpec(coordinates=("a", "b"), anchor=(6.0 + 0.0j) * u.GHz)
+            spec = HybridizedPoleSpec(coordinates=("a", "b"), anchor=(6.0 - 1.0e-12j) * u.GHz)
             result = run.evaluate(view, spec)
             self.assertTrue(np.isfinite(result.frequency.to("hertz").magnitude))
             self.assertTrue(np.isfinite(result.linewidth.to("hertz").magnitude))
             self.assertEqual(run.resolve(view, spec).identity, result.identity)
+
+        with TemporaryDirectory() as workspace:
+            zero_run = CircuitRun(plan=_one_port_transfer_zero(), workspace=Path(workspace))
+            zero_spec = TransferZeroSpec(
+                anchor=(6.3 - 0.05j) * u.GHz,
+                family="S",
+                input_coordinate="p",
+                output_coordinate="p",
+            )
+            zero = zero_run.evaluate(zero_run.original, zero_spec)
+            self.assertTrue(np.isfinite(zero.frequency.to("hertz").magnitude))
+            self.assertNotEqual(complex(zero.denominator.to("dimensionless").magnitude), 0.0j)
+            self.assertEqual(zero_run.resolve(zero_run.original, zero_spec).identity, zero.identity)
 
 
 @unittest.skipUnless(
@@ -688,6 +718,13 @@ print(json.dumps(result.identity.__dict__ if hasattr(result.identity, '__dict__'
                 ),
                 allow_driven_ptc=True,
             )
+            explanation = run.explain(view, hb_spec)
+            nonlinear_rows = [
+                row
+                for row in explanation.evidence["compiled"]["expanded_branch_rows"]
+                if row["kind"] == "josephson_inductance"
+            ]
+            self.assertEqual(len(nonlinear_rows), 1)
             hb = run.solve(view, hb_spec)
             outcome = hb.cases["driven"]
             self.assertTrue(outcome.succeeded)
