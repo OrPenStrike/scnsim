@@ -9,7 +9,7 @@ execute:
 **Learn:** make components, nodes, ground, and one logical Port the physical authority.
 **Run:** author one reflective LC circuit.
 **Inspect:** its authoring schematic.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; presentation theme `CONVERGING` candidate.
 :::
 
 ## Assemble only the branches you mean
@@ -66,15 +66,20 @@ local ground bus.
 
 ```{python}
 #| id: show-authoring-schematic
-from scnsim import CircuitDiagramSpec
+from scnsim import CircuitDiagramSpec, Theme
 
 diagram = plan.render_schematic(
-    CircuitDiagramSpec(show_parameter_values=True)
+    CircuitDiagramSpec(
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+    )
 )
 diagram.show()
 ```
 
-SCNSim returns a real Schemdraw authoring diagram here. It remains
-presentation of the authored Plan—not numerical evidence and not a solver run.
+SCNSim returns a real Schemdraw authoring diagram here. `Theme.AUTO` gives its
+Notebook rich display a light fallback plus an adaptive light/dark SVG; direct
+static saving uses the light fallback. The diagram remains presentation of the
+authored Plan—not numerical evidence and not a solver run.
 
 [Course map](../../docs/index.qmd) · [Next: prepare and solve a Direct response](02_solve_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)

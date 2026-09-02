@@ -1530,6 +1530,7 @@ def _draw_compiled_ladders(
     compiled: Mapping[str, object],
     *,
     color: str,
+    background: str,
     show_values: bool,
 ) -> float:
     """Draw each recursively compiled transmission line from preflight rows."""
@@ -1629,7 +1630,7 @@ def _draw_compiled_ladders(
                         f"{station}: {record['compiled_node_id']} [{record['attachment']}; "
                         f"L={half_shunt(record['left_half_shunt'])}; R={half_shunt(record['right_half_shunt'])}]"
                     )
-                    drawing.add(elm.Dot(open=True, color=color).at((x, y)).label(provenance, loc="top", color=color))
+                    drawing.add(elm.Dot(open=True, color=color, fill=background).at((x, y)).label(provenance, loc="top", color=color))
                     drawing.add(elm.Line(color=color).endpoints((x - 0.22, y), (x + 0.22, y)))
                     c_text = matrix_text(record.get("compiled_capacitance_total"))
                     g_text = matrix_text(record.get("compiled_conductance_total"))
@@ -1659,7 +1660,7 @@ def _draw_compiled_ladders(
                             f"[{record['attachment']}; L={half_shunt(record['left_half_shunt'])}; "
                             f"R={half_shunt(record['right_half_shunt'])}]"
                         )
-                        drawing.add(elm.Dot(open=True, color=color).at((x, y)).label(provenance, loc="left", color=color))
+                        drawing.add(elm.Dot(open=True, color=color, fill=background).at((x, y)).label(provenance, loc="left", color=color))
                     first = stations[(station, conductors[0])]
                     label = f"station {station}  C/G matrix"
                     if show_values:
@@ -1967,22 +1968,29 @@ class CircuitPlan:
         self._validate_complete()
         from .results import CircuitDiagramResult, _verified_result
         from .specs import CircuitDiagramSpec
+        from .presentation import _palette, _themed_drawing
 
         spec = CircuitDiagramSpec() if spec is None else spec
+        if not isinstance(spec, CircuitDiagramSpec):
+            raise TypeError("render_schematic() requires CircuitDiagramSpec")
         try:
-            import schemdraw
             import schemdraw.elements as elm
         except ImportError as exc:
             raise RuntimeError("Schemdraw is required for authoring schematics") from exc
-        color = "#111827" if spec.theme != "dark" else "#f8fafc"
+        palette = _palette(spec.theme)
+        color = palette.foreground
+        background = palette.background
         if spec.representation == "compiled":
             from .runtime import _compiled_schematic_evidence
 
             compiled = _compiled_schematic_evidence(self)
-            drawing = schemdraw.Drawing(show=False, transparent=True)
-            drawing.config(unit=1.0, color=color, lw=1.2, fontsize=8)
+            drawing = _themed_drawing(spec.theme)
+            drawing.config(unit=1.0, color=color, bgcolor=background, lw=1.2, fontsize=8)
             legend_y = _draw_compiled_ladders(
-                drawing, compiled, color=color,
+                drawing,
+                compiled,
+                color=color,
+                background=background,
                 show_values=spec.show_parameter_values,
             )
             for index, line in enumerate(
@@ -1998,14 +2006,14 @@ class CircuitPlan:
             return _verified_result(
                 CircuitDiagramResult, drawing=drawing, representation="compiled"
             )
-        drawing = schemdraw.Drawing(show=False, transparent=True)
-        drawing.config(unit=2.5, color=color, lw=1.8, fontsize=11)
+        drawing = _themed_drawing(spec.theme)
+        drawing.config(unit=2.5, color=color, bgcolor=background, lw=1.8, fontsize=11)
         node_y = {id(node): 3.0 * (index + 1) for index, node in enumerate(self._nodes)}
         rail_end = 3.0 * (len(self._components) + 1)
         for node in self._nodes:
             y = node_y[id(node)]
             drawing.add(elm.Line(color=color).endpoints((-1.0, y), (rail_end, y)))
-            drawing.add(elm.Dot(open=True, color=color).at((-1.0, y)).label(node.id, loc="left", color=color))
+            drawing.add(elm.Dot(open=True, color=color, fill=background).at((-1.0, y)).label(node.id, loc="left", color=color))
         ground_y = 0.0
         drawing.add(elm.Line(color=color).endpoints((-1.0, ground_y), (rail_end, ground_y)))
         for index, component in enumerate(self._components, start=1):
@@ -2042,7 +2050,7 @@ class CircuitPlan:
         for port in self._ports:
             y = node_y[id(port.node._node)]
             drawing.add(
-                elm.Dot(open=True, color=color)
+                elm.Dot(open=True, color=color, fill=background)
                 .at((rail_end, y))
                 .label(f"{port.id} ({port.reference_impedance:~P})", loc="right", color=color)
             )

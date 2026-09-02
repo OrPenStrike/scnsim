@@ -9,7 +9,7 @@ execute:
 **Learn:** separate HB axes, possible drives, named cases, and finite truncation.
 **Run:** solve one exact pump-off HB batch and resolve it without a retry.
 **Inspect:** selected S/Y/Z, case state, and any typed per-case outcome.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; presentation theme `CONVERGING` candidate.
 :::
 
 ## Declare the experiment without driving it
@@ -37,6 +37,7 @@ from scnsim import (
     PumpAxis,
     ReductionPipeline,
     SParameterTrace,
+    Theme,
     units as u,
 )
 
@@ -89,20 +90,27 @@ run.explain(view, hb_spec).show()
 ```{python}
 #| id: solve-pump-off-hb
 hb = run.solve(view, hb_spec)
-hb.show()
+hb.show(theme=Theme.DARK)
 
 pump_off = hb.cases["pump_off"]
 if pump_off.succeeded:
     pump_off.s.view
     pump_off.y.view
     pump_off.z.view
-    pump_off.traces["transmission"].show(magnitude="db")
+    pump_off.traces["transmission"].show(
+        magnitude="db",
+        theme=Theme.DARK,
+    )
     pump_off.states
     pump_off.state_node_map
 else:
     # A valid numerical failure remains an addressable, typed case outcome.
     pump_off.failure
 ```
+
+The fixed dark palette applies equally to the successful-case figure and to a
+partial/all-failure HTML summary. It changes no case order, trace data, or
+receipt identity.
 
 `HBBatchResult.cases` is declared-case order and read-only. A partially
 successful or all-numerical-failure batch is still a verified reusable Result:

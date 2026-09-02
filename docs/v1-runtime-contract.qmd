@@ -18,6 +18,10 @@ documentation, implementation, durable cross-slice tests, and validation
 agree. This lifecycle state does not imply a release, main promotion, root
 pin, or consumer migration.
 
+The separate adaptive presentation-theme scope is a `CONVERGING` candidate.
+It changes only how already-materialized diagrams, figures, and reports choose
+colors; it does not reopen Full V1 numerical, workspace, or identity semantics.
+
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
 :::
@@ -369,8 +373,10 @@ state on the Run.
 Presentation is never another action:
 
 ```python
-direct.s.show(magnitude="db")
-direct.traces["transmission"].show(magnitude="db")
+from scnsim import Theme
+
+direct.s.show(magnitude="db", theme=Theme.AUTO)
+direct.traces["transmission"].show(magnitude="db", theme=Theme.DARK)
 readout.show()
 ```
 
@@ -404,7 +410,7 @@ direct = run.solve(view, direct_spec)
 root = run.evaluate(view, root_spec)
 
 report = run.build_report(
-    ReportSpec(inputs=(direct, root))
+    ReportSpec(inputs=(direct, root), theme=Theme.AUTO)
 )
 ```
 
@@ -2189,10 +2195,10 @@ residual.
 Batch display supports both declared traces and complete-matrix inspection:
 
 ```python
-hb.show()                         # magnitude="linear"
-hb.show(magnitude="db")
-hb.cases["dc_pump_a_low"].show()
-hb.cases["dc_pump_a_low"].s.show(magnitude="db")
+hb.show(theme=Theme.AUTO)  # magnitude="linear"
+hb.show(magnitude="db", theme=Theme.DARK)
+hb.cases["dc_pump_a_low"].show(theme=Theme.LIGHT)
+hb.cases["dc_pump_a_low"].s.show(magnitude="db", theme=Theme.AUTO)
 ```
 
 When traces are declared, `hb.show()` creates one panel per trace and overlays
@@ -2239,11 +2245,11 @@ Reports name every source rather than selecting a latest result:
 
 ```python
 direct_report = run.build_report(
-    ReportSpec(inputs=(direct, evaluated))
+    ReportSpec(inputs=(direct, evaluated), theme=Theme.AUTO)
 )
 
 report = run.build_report(
-    ReportSpec(inputs=(direct, hb))
+    ReportSpec(inputs=(direct, hb), theme=Theme.DARK)
 )
 ```
 
@@ -2260,6 +2266,11 @@ exists. It refuses overwrite, writes atomically, and returns a `Path`. The
 single self-contained HTML embeds plots, summary tables, and every
 source identity, but not complete large raw arrays, workspace links,
 timestamps, or inferred PASS/FAIL claims.
+
+`ReportSpec.theme` accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK`.
+The report body, tables, and embedded Direct/HB SVG share that one theme.
+`AUTO` uses self-contained `prefers-color-scheme` rules with a readable light
+fallback; explicit themes stay fixed regardless of host UI.
 
 An invalid suffix raises `ValueError`, a missing parent raises
 `FileNotFoundError`, and an existing target raises `FileExistsError`; other
@@ -2281,15 +2292,26 @@ automatic light/dark theme selection, and IDs without parameter values. The
 explicit surface is:
 
 ```python
+from scnsim import CircuitDiagramSpec, Theme
+
 diagram = plan.render_schematic(
     CircuitDiagramSpec(
         representation="authoring",  # or "compiled"
-        theme="auto",                # or "light" / "dark"
+        theme=Theme.AUTO,             # or Theme.LIGHT / Theme.DARK
         show_parameter_values=True,
     )
 )
 diagram.show()
 ```
+
+Raw strings and all other non-`Theme` values raise `TypeError` before a
+diagram, numerical figure, or report is rendered. In Notebook rich display,
+`Theme.AUTO` supplies self-contained SVG/HTML with a light fallback and a
+`prefers-color-scheme: dark` override that changes foreground and background
+together. `Theme.LIGHT` and `Theme.DARK` are fixed and self-contained. Direct
+`Drawing.save()` and `Figure.savefig()` preserve explicit themes, while
+`Theme.AUTO` always writes the portable light fallback. Theme choice never
+enters Plan, request, Result, receipt, artifact, or workspace identity.
 
 The `authoring` representation draws the semantic components, Public nodes,
 logical Ports, canonical ground, anonymous junctions, and declared connections.

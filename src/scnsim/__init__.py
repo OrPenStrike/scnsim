@@ -58,6 +58,7 @@ from .errors import (
     WorkspaceVersioningDowngradeForbidden,
 )
 from .io import load_q2d_rlgc
+from .presentation import Theme
 from .results import (
     AnalysisResult,
     BiasState,
@@ -193,6 +194,7 @@ __all__ = [
     "ScaffoldUnavailableError",
     "ScatteringMatrixResult",
     "TraceResult",
+    "Theme",
     "TransferZeroSpec",
     "UnsupportedRuntimePlatformError",
     "UnsupportedSingularCapacitanceForDiagonalRootV1",

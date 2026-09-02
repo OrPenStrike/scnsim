@@ -7,7 +7,6 @@ dev6 candidate adds the public HB request and dispatch boundary.
 
 from __future__ import annotations
 
-import base64
 import json
 import math
 import platform
@@ -83,6 +82,7 @@ from .errors import (
     ScaffoldUnavailableError,
     UnsupportedSingularCapacitanceForDiagonalRootV1,
 )
+from .presentation import _figure_data_uri, _report_html
 from .results import (
     BiasState,
     DirectQuantityResult,
@@ -913,25 +913,17 @@ class CircuitRun:
         sections: list[str] = []
         for result in spec.inputs:
             if isinstance(result, DirectSolveResult):
-                figure = result.s.show(magnitude="db")
-                from io import BytesIO
+                figure = result.s.show(magnitude="db", theme=spec.theme)
                 import matplotlib.pyplot as plt
 
-                output = BytesIO()
                 try:
-                    import matplotlib as mpl
-
-                    with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
-                        figure.savefig(
-                            output,
-                            format="svg",
-                            bbox_inches="tight",
-                            metadata={"Date": None},
-                        )
+                    data_uri = _figure_data_uri(figure, spec.theme)
                 finally:
                     plt.close(figure)
-                encoded = base64.b64encode(output.getvalue()).decode("ascii")
-                sections.append(f'<h2>Direct response</h2><img alt="Direct S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">')
+                sections.append(
+                    '<h2>Direct response</h2><img alt="Direct S magnitude and phase" '
+                    f'src="{data_uri}">'
+                )
             elif isinstance(result, HBBatchResult):
                 case_rows = "".join(
                     "<tr>"
@@ -952,25 +944,17 @@ class CircuitRun:
                     f"<tbody>{case_rows}</tbody></table>"
                 )
                 if any(outcome.succeeded for outcome in result.cases.values()):
-                    figure = result.show(magnitude="db")
-                    from io import BytesIO
+                    figure = result.show(magnitude="db", theme=spec.theme)
                     import matplotlib.pyplot as plt
 
-                    output = BytesIO()
                     try:
-                        import matplotlib as mpl
-
-                        with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
-                            figure.savefig(
-                                output,
-                                format="svg",
-                                bbox_inches="tight",
-                                metadata={"Date": None},
-                            )
+                        data_uri = _figure_data_uri(figure, spec.theme)
                     finally:
                         plt.close(figure)
-                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
-                    section += f'<img alt="HB selected S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">'
+                    section += (
+                        '<img alt="HB selected S magnitude and phase" '
+                        f'src="{data_uri}">'
+                    )
                 sections.append(section)
             elif isinstance(result, DiagonalRootResult):
                 sections.append(
@@ -989,11 +973,11 @@ class CircuitRun:
                     f"<p>Cost: {escape(str(result.best.cost))}</p><ul>{bindings}</ul>"
                 )
         embedded = "".join(sections)
-        html = (
-            "<!doctype html><html><head><meta charset=\"utf-8\"><title>SCNSim report</title></head><body>"
+        body = (
             "<h1>SCNSim report</h1><table><thead><tr><th>Plan</th><th>Request</th><th>Attempt</th><th>Result</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table>{embedded}</body></html>"
+            f"<tbody>{rows}</tbody></table>{embedded}"
         )
+        html = _report_html(body, spec.theme)
         return _verified_result(ReportResult, html=html, inputs=spec.inputs)
 
     def _require_ref(self, ref: NetworkViewRef) -> None:

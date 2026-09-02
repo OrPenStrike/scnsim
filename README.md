@@ -14,7 +14,8 @@ responsibilities.
 
 > **Status:** `STABILIZED` Full V1. The complete dev1–dev6 public semantics
 > are Human-`ACCEPTED`, and their documentation, implementation, durable
-> cross-slice tests, and validation agree. This is not a release claim.
+> cross-slice tests, and validation agree. The adaptive presentation-theme
+> API is a separate `CONVERGING` candidate. This is not a release claim.
 
 ## Install for development
 

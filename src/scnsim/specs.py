@@ -23,6 +23,7 @@ from ._canonical import _identifier
 from ._scaffold import unavailable
 from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
 from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec
+from .presentation import Theme, _require_theme
 from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_result
 
 
@@ -1011,12 +1012,19 @@ class ReportSpec:
     """Choose exact existing Analysis Results for a pure derived report."""
 
     inputs: tuple[AnalysisResult, ...]
+    theme: Theme = Theme.AUTO
 
-    def __init__(self, *, inputs: Sequence[AnalysisResult]) -> None:
+    def __init__(
+        self,
+        *,
+        inputs: Sequence[AnalysisResult],
+        theme: Theme = Theme.AUTO,
+    ) -> None:
         checked = tuple(inputs)
         if not checked or not all(_is_verified_analysis_result(item) for item in checked):
             raise TypeError("ReportSpec.inputs must be nonempty AnalysisResult values")
         object.__setattr__(self, "inputs", checked)
+        object.__setattr__(self, "theme", _require_theme(theme))
 
 
 def _canonical_value(value: object) -> object:
@@ -1027,21 +1035,21 @@ def _canonical_value(value: object) -> object:
 @dataclass(frozen=True, slots=True)
 class CircuitDiagramSpec:
     representation: Literal["authoring", "compiled"] = "authoring"
-    theme: Literal["auto", "light", "dark"] = "auto"
+    theme: Theme = Theme.AUTO
     show_parameter_values: bool = False
 
     def __init__(
         self,
         *,
         representation: Literal["authoring", "compiled"] = "authoring",
-        theme: Literal["auto", "light", "dark"] = "auto",
+        theme: Theme = Theme.AUTO,
         show_parameter_values: bool = False,
     ) -> None:
         object.__setattr__(self, "representation", representation)
-        object.__setattr__(self, "theme", theme)
+        object.__setattr__(self, "theme", _require_theme(theme))
         object.__setattr__(self, "show_parameter_values", show_parameter_values)
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        if self.representation not in {"authoring", "compiled"} or self.theme not in {"auto", "light", "dark"}:
-            raise ValueError("invalid diagram representation or theme")
+        if self.representation not in {"authoring", "compiled"}:
+            raise ValueError("invalid diagram representation")
