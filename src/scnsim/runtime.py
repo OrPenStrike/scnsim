@@ -932,6 +932,46 @@ class CircuitRun:
                     plt.close(figure)
                 encoded = base64.b64encode(output.getvalue()).decode("ascii")
                 sections.append(f'<h2>Direct response</h2><img alt="Direct S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">')
+            elif isinstance(result, HBBatchResult):
+                case_rows = "".join(
+                    "<tr>"
+                    f"<td>{escape(outcome.id)}</td>"
+                    f"<td>{'success' if outcome.succeeded else 'failure'}</td>"
+                    f"<td>{escape(outcome.bias_state.value) if outcome.succeeded else '&mdash;'}</td>"
+                    f"<td>{escape(outcome.pump_state.value) if outcome.succeeded else '&mdash;'}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.kind)}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.stage)}</td>"
+                    f"<td>{'&mdash;' if outcome.succeeded else escape(str(outcome.failure))}</td>"
+                    "</tr>"
+                    for outcome in result.cases.values()
+                )
+                section = (
+                    "<h2>HB batch</h2>"
+                    "<table><thead><tr><th>Case</th><th>Status</th><th>Bias</th><th>Pump</th>"
+                    "<th>Failure kind</th><th>Failure stage</th><th>Failure message</th></tr></thead>"
+                    f"<tbody>{case_rows}</tbody></table>"
+                )
+                if any(outcome.succeeded for outcome in result.cases.values()):
+                    figure = result.show(magnitude="db")
+                    from io import BytesIO
+                    import matplotlib.pyplot as plt
+
+                    output = BytesIO()
+                    try:
+                        import matplotlib as mpl
+
+                        with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
+                            figure.savefig(
+                                output,
+                                format="svg",
+                                bbox_inches="tight",
+                                metadata={"Date": None},
+                            )
+                    finally:
+                        plt.close(figure)
+                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+                    section += f'<img alt="HB selected S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">'
+                sections.append(section)
             elif isinstance(result, DiagonalRootResult):
                 sections.append(
                     "<h2>Loaded root</h2><table><tbody>"
