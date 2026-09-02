@@ -4,7 +4,7 @@ subtitle: "How does root_hint initialize one reproducible loaded-root procedure?
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The physical quantity remains
+**Status:** `STABILIZED` Full V1 implementation. The physical quantity remains
 defined by the [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog);
 this page fixes only its V1 numerical realization.
 

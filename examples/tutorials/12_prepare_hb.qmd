@@ -9,7 +9,7 @@ execute:
 **Learn:** separate HB axes, possible drives, named cases, and finite truncation.
 **Run:** solve one exact pump-off HB batch and resolve it without a retry.
 **Inspect:** selected S/Y/Z, case state, and any typed per-case outcome.
-**Status:** `CONVERGING` dev6 candidate.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Declare the experiment without driving it

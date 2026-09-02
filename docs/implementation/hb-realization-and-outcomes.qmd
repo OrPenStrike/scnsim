@@ -4,7 +4,7 @@ subtitle: "How does one fixed nonlinear realization produce auditable selected-n
 toc-depth: 3
 ---
 
-**Status:** `CONVERGING` implementation design.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Bind one backend and one numerical policy
 

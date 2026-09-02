@@ -9,7 +9,7 @@ execute:
 **Learn:** aggregate explicit Results and reload an exact request after restart.
 **Run:** build a report, then resolve the same quantity request.
 **Inspect:** durable request/Result identity rather than “latest.”
-**Status:** `CONVERGING` dev3 candidate.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Report only Results you already hold

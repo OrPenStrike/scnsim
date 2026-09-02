@@ -4,7 +4,7 @@ subtitle: "How does verified evidence become a Python-facing presentation?"
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Separate materialized values from analysis evidence
 

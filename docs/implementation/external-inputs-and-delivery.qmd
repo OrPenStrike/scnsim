@@ -4,12 +4,12 @@ subtitle: "What may be reused, parsed, and implemented first?"
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Parse one native Q2D artifact
 
-`load_q2d_rlgc()` will parse SCGSim's public AEDT 2024.2 combined `CG, RL`
-export directly. The candidate carrier contains one exact header and one primary
+`load_q2d_rlgc()` parses SCGSim's public AEDT 2024.2 combined `CG, RL`
+export directly. The carrier contains one exact header and one primary
 Capacitance, Conductance, Inductance, and Resistance matrix block with source
 labels, units, extraction frequency, and original order. SCNSim validates the
 complete conductor map and records a content hash.
@@ -54,14 +54,15 @@ hashes explain mechanics only; they do not transfer acceptance or consumers.
 
 ## Deliver executable behavior in slices
 
-The current public V1 documentation candidate is complete in scope: it contains
-the Contract and Concept set plus all 13 ordered QMD/IPYNB lesson pairs. That is
-a design-completeness statement, not a claim that runtime behavior is already
-implemented, accepted, stabilized, integrated, or released.
+The public V1 documentation and integrated runtime are complete in the
+Human-accepted dev1–dev6 scope. All 13 ordered QMD/IPYNB lesson pairs exercise
+that implementation. Full V1 is `STABILIZED`; acceptance, stabilization, and
+integration do not imply release.
 
-Runtime implementation follows four independently reviewable slices. Each
-development version names the integrated runtime candidate for that row; it
-does not change the `CONVERGING` semantic state by itself.
+Runtime implementation followed four independently reviewed and integrated
+slices. Each development version identifies the implementation introduced by
+that row; the current Full V1 acceptance covers their combined public
+semantics.
 
 | Runtime slice | Executable scope | Behavior postponed by this slice |
 |---|---|---|
@@ -70,17 +71,12 @@ does not change the `CONVERGING` semantic state by itself.
 | `1.0.0.dev5` — Advanced native Direct, Lessons 9–11 | general RLGC and strict native Q2D ingestion, N-trace pi expansion, named/N-Port selected networks, PTC compensation, retained-coordinate transforms, compiled expanded-graph schematic, `inventory()`, immutable model-default/consumer-override bounds with request-local extrapolation evidence, every remaining documented Direct quantity family, and the full scalar selector catalog: diagonal-root and hybridized-pole frequency/linewidth, transfer-zero frequency, residue-normalized-coupling magnitude, and response-element magnitude/real/imag; `QuantitySum` remains `CostObjective`-only | Full V1 HB and Direct/HB comparison taught in Lessons 12–13; selector and override expansion reuses the `dev3` CMA replay, ledger, cache, winner, and retry semantics without changing CMA numerics |
 | `1.0.0.dev6` — Full V1 HB, Lessons 12–13 | pump axes, named drives and cases, truncation and mixing, JosephsonCircuits realization, selected-network/PTC adaptation, per-case partial outcomes, HB quantities and presentation/evidence, and Direct/HB comparison on independently declared grids | None within the current public V1; any later feature requires a separately converged contract |
 
-The `dev4` compiler expands Composite snapshots only into backend-neutral
-intrinsic C/K/G rows and branch evidence. It does not extend the `dev3`
-scalar `port_index`/`Z0` representation into a second Port model. RLGC,
-arbitrary Plan Port counts with operation-level capability checks, the canonical
-selected-network law, PTC/transform/retain projection, compiled schematics,
-full explain tables, inventory, extrapolation authorization/evidence,
-selector-dependent objective-unit expansion, and `PortNetworkResult`
-classification remain explicit fail-fast surfaces for later slices. Julia NFC
-parity and HB are also not part of `dev4`. A Plan containing an `AffineMap`
-rejects any nonempty extrapolation authorization before request creation; dev4
-does not create partial extrapolation evidence.
+The `dev4` compiler introduced backend-neutral intrinsic C/K/G expansion.
+Dev5 extended that same compiler and Port authority with RLGC, N-port
+`B/R/M`, PTC/transform/retain, compiled schematics, inventory, extrapolation
+evidence, and the expanded Direct catalog. Dev6 extended the same request,
+selected-network, workspace, and receipt authorities with HB; no second Port,
+topology, schema, optimizer, or workspace model remains reachable.
 
 The `dev3` slice implements the exact
 [identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json),
@@ -89,10 +85,10 @@ and [diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
 Each later slice extends those same authorities rather than introducing a
 parallel schema, workspace, or fallback runtime.
 
-Within each integrated slice, only behavior named in that row's postponed
-column remains fail-fast with `ScaffoldUnavailableError`; earlier rows do not
-regress. The postponed behavior is already designed in the current public
-documentation and is not an unspecified or placeholder success path. Durable
-tests begin only after the Human accepts the corresponding semantics.
+The final row has no postponed behavior inside the accepted Full V1 scope.
+Explicit limitations such as HB optimization, implicit grid interpolation,
+public numerical knobs, release delivery, and the SCQGate quantization handoff
+remain outside it. Durable stabilization tests freeze only the accepted
+behavior above.
 
 [Back to the Contract map](../contracts/index.qmd)

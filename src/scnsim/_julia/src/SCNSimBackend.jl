@@ -140,7 +140,8 @@ end
 
 function resolve_binding(binding, values::Dict{String,Float64}; context_kind::String = "compile",
         authorized::Set{String} = Set{String}(), extrapolation_evidence::Union{Nothing,Vector{Any}} = nothing,
-        consumer_target = nothing, authorization_source::String = "none")::Float64
+        consumer_target = nothing, authorization_source::String = "none",
+        fail_unauthorized::Bool = true)::Float64
     item = plain(binding)
     kind = item["kind"]
     if kind == "constant"
@@ -166,7 +167,9 @@ function resolve_binding(binding, values::Dict{String,Float64}; context_kind::St
                 "distance" => quantity(distance, String(support[1]["si_unit"]), String(support[1]["dimensionality"])),
                 "authorization_source" => (key in authorized ? authorization_source : "none"),
             ))
-            key in authorized || fail("execution", "invalid_candidate_physical_parameter", "affine_support", context_kind, "affine input is outside its declared support")
+            if fail_unauthorized && !(key in authorized)
+                fail("execution", "invalid_candidate_physical_parameter", "affine_support", context_kind, "affine input is outside its declared support")
+            end
         end
         return quantity_value(item["slope"]) * input + quantity_value(item["intercept"])
     end
@@ -533,13 +536,15 @@ function validate_composite_maps!(component)
 end
 
 function recursive_parameter_values!(values::Dict{String,Float64}, component,
-    mapped_targets::Set{String}, context_kind::String, authorized::Set{String}, extrapolation_evidence::Union{Nothing,Vector{Any}}, authorization_source::String)
+    mapped_targets::Set{String}, context_kind::String, authorized::Set{String}, extrapolation_evidence::Union{Nothing,Vector{Any}},
+    authorization_source::String, fail_unauthorized::Bool)
     for entry in component["parameter_bindings"]
         key = ref_key(Dict("component_path" => component["component_path"], "parameter_id" => entry["id"]))
         haskey(values, key) && continue
         values[key] = resolve_binding(entry["binding"], values; context_kind = context_kind, authorized = authorized,
             extrapolation_evidence = extrapolation_evidence,
-            consumer_target = Dict("component_path" => component["component_path"], "parameter_id" => entry["id"]), authorization_source = authorization_source)
+            consumer_target = Dict("component_path" => component["component_path"], "parameter_id" => entry["id"]), authorization_source = authorization_source,
+            fail_unauthorized = fail_unauthorized)
     end
     realization = component["realization"]
     String(realization["kind"]) == "composite" || return nothing
@@ -551,7 +556,8 @@ function recursive_parameter_values!(values::Dict{String,Float64}, component,
             target in mapped_targets && fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter map duplicates a consumer target")
             push!(mapped_targets, target)
             mapped = resolve_binding(consumer["binding"], values; context_kind = context_kind, authorized = authorized,
-                extrapolation_evidence = extrapolation_evidence, consumer_target = consumer["target"], authorization_source = authorization_source)
+                extrapolation_evidence = extrapolation_evidence, consumer_target = consumer["target"], authorization_source = authorization_source,
+                fail_unauthorized = fail_unauthorized)
             if haskey(values, target)
                 f64_hex(values[target]) == f64_hex(mapped) ||
                     fail("execution", "compiler_invariant", "compile", "compile", "Composite public parameter map conflicts with an existing resolved target")
@@ -561,18 +567,20 @@ function recursive_parameter_values!(values::Dict{String,Float64}, component,
         end
     end
     for child in realization["children"]
-        recursive_parameter_values!(values, child, mapped_targets, context_kind, authorized, extrapolation_evidence, authorization_source)
+        recursive_parameter_values!(values, child, mapped_targets, context_kind, authorized, extrapolation_evidence,
+            authorization_source, fail_unauthorized)
     end
     return nothing
 end
 
 function recursive_parameter_values(plan, request_values::Dict{String,Float64}; context_kind::String = "compile",
         authorized::Set{String} = Set{String}(), extrapolation_evidence::Union{Nothing,Vector{Any}} = nothing,
-        authorization_source::String = "none")
+        authorization_source::String = "none", fail_unauthorized::Bool = true)
     values = copy(request_values)
     mapped_targets = Set{String}()
     for component in plan["components"]
-        recursive_parameter_values!(values, component, mapped_targets, context_kind, authorized, extrapolation_evidence, authorization_source)
+        recursive_parameter_values!(values, component, mapped_targets, context_kind, authorized, extrapolation_evidence,
+            authorization_source, fail_unauthorized)
     end
     return values
 end
@@ -2704,7 +2712,8 @@ function preflight(plan_path::String, request_path::String)
     operation = String(request["operation"])
     context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
     request_values = parameter_values(request)
-    resolved = recursive_parameter_values(plan, request_values; context_kind = context)
+    resolved = recursive_parameter_values(plan, request_values; context_kind = context,
+        authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
     raw_compiled = compile_primitive(plan, request_values; context_kind = context,
         authorized = parameter_set_authorizations(request), authorization_source = "parameter_set",
         emit_audit = true)
@@ -3533,6 +3542,15 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
     end
     extrapolation_evidence = Any[]
     try
+        recursive_parameter_values(plan, values; context_kind = "optimization_candidate",
+            authorized = optimization_authorizations(request), extrapolation_evidence = extrapolation_evidence,
+            authorization_source = "optimization_spec", fail_unauthorized = false)
+        if any(row -> row["authorization_source"] == "none", extrapolation_evidence)
+            sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), ref_key(row["consumer_target"])))
+            fail("execution", "invalid_candidate_physical_parameter", "affine_support", "optimization_candidate",
+                "affine input is outside its declared support")
+        end
+        empty!(extrapolation_evidence)
         cost, components, extrapolation_evidence = objective_outcome(plan, request, baseline_values, values, baseline_roots;
             extrapolation_evidence = extrapolation_evidence)
         outcome = Dict{String,Any}(

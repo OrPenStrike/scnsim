@@ -9,7 +9,7 @@ execute:
 **Learn:** remove evidenced probe loads without deleting Port identity.
 **Run:** derive one PTC network view.
 **Inspect:** selected load-state and topology evidence.
-**Status:** Human-`ACCEPTED` dev5 scope; stabilization deferred.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Compensate only declared probes

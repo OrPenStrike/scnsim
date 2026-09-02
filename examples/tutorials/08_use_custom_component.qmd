@@ -9,7 +9,7 @@ execute:
 **Learn:** treat custom and built-in factories as equal component producers.
 **Run:** wire the reusable LC into an outer `CircuitPlan`.
 **Inspect:** the authoring-level component boundary.
-**Status:** `STABILIZED` dev4 Lessons 6–8 scope.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Compose the reusable subsystem

@@ -1,29 +1,22 @@
 ---
 title: "V1 Runtime Contract"
-subtitle: "Candidate execution, units, reduction, Result, and evidence semantics"
+subtitle: "Accepted execution, units, reduction, Result, and evidence semantics"
 toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Mixed lifecycle contract
+## Human-accepted Full V1 contract
 
 This document is the single current authority for SCNSim V1 runtime semantics.
-Only the accepted Library, Composite, recursive-expansion, and mutual-coupling
-scope taught in Lessons 6–8 is `STABILIZED`. The dev3 slice implements the
-Lessons 1–5 primitive Direct, root, optimization, workspace, and report path.
-Dev4 additionally implements custom Libraries, complete
-Composite snapshots, declaration-ordered public parameters, recursive
-primitive expansion, and mutual-coupling snapshots for Lessons 6–8.
-The Human-accepted dev5 scope implements RLGC/transmission lines, N-port/PTC/transform,
-compiled schematics, inventory, extrapolation authorization/evidence, expanded
-Direct quantities and selector-dependent objective units for Lessons 9–11.
-The dev6 Full V1 HB implementation remains `CONVERGING` until its exact
-candidate is reviewed and accepted.
+The complete dev1–dev6 scope is Human-`ACCEPTED`: primitive and Composite
+authoring, Direct/root/CMA execution, RLGC and N-port selected networks,
+PTC/transform/retain, typed Direct quantities, workspace evidence, and the
+case-oriented JosephsonCircuits HB path taught through Lesson 13.
 
-Stabilization is limited to the dev4-owned Lessons 6–8 behavior named above.
-The standalone dev3 Direct/root/optimization scope and the dev6 HB sections
-remain `CONVERGING`. Dev5 is `ACCEPTED` but not `STABILIZED`; its durable tests
-are deferred by Human direction until Full V1 stabilization.
+The complete dev1–dev6 Full V1 runtime scope is `STABILIZED`: its accepted
+documentation, implementation, durable cross-slice tests, and validation
+agree. This lifecycle state does not imply a release, main promotion, root
+pin, or consumer migration.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -78,11 +71,11 @@ stated above:
 | How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
 | How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
-| How will maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
+| How do maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
 
-Partial HB case failure and Direct/HB grid comparison now have explicit
-contracts below. This candidate does not leave either behavior to backend or
-implementation convenience.
+Partial HB case failure and Direct/HB grid comparison have explicit contracts
+below. The stabilized implementation does not leave either behavior to backend
+or implementation convenience.
 
 ## Product and lifecycle boundary
 
@@ -112,7 +105,7 @@ topology, coordinate names, Direct operators, reductions, or public consumer
 contracts.
 
 SCNSim has no previously accepted or delivered Unit or Runtime API to migrate.
-This document records the accepted dev4 contract in place. It does not
+This document records the Human-accepted Full V1 contract in place. It does not
 supersede, mutate, redirect, or provide compatibility for the legacy
 Workbench. Reusable implementation may later be transplanted only from the
 exact public handoff with its Git provenance.
@@ -334,7 +327,7 @@ of that same result and never launch another solve.
 abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 `HBSolveSpec` directly.
 
-The dev5 candidate supports `DirectSolveSpec` on every final View that proves
+The stabilized Full V1 runtime supports `DirectSolveSpec` on every final View that proves
 its ordered terminal basis is Port-realizable. It publishes the complete
 finite N-port S/Y/Z matrices once, then projects any declared named traces from
 that same result. A non-realizable final View fails closed rather than
@@ -1988,7 +1981,7 @@ operator is ill-conditioned. Multiplying an entire equation by a scalar also
 does not change its condition number.
 
 SCNSim therefore does not expose a `ScalingSpec`, ScalingOptimizer, mutable
-scale state, or automatic coordinate equilibration in this V1 candidate.
+scale state, or automatic coordinate equilibration in Full V1.
 Direct and Schur implementations must:
 
 - use factorization/linear solves rather than an explicit inverse;

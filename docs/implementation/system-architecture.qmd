@@ -4,7 +4,7 @@ subtitle: "Which layer owns each Runtime responsibility?"
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The
+**Status:** `STABILIZED` Full V1 implementation. The
 [public contracts](../contracts/index.qmd#public-contracts) remain authoritative.
 
 ## Keep the Notebook boundary in Python
@@ -36,14 +36,13 @@ Notebook
 `run.explain()` and a compiled schematic may use the same Julia compile
 preflight, but neither launches a solver nor writes the evidence workspace.
 
-## Add dependencies only when their slice becomes executable
+## Keep the runtime dependency boundary explicit
 
-The first executable candidate adds Pint, NumPy, JuliaPkg, Zarr, Matplotlib,
-and Schemdraw to Python. Its internal Julia project uses JSON3,
-CMAEvolutionStrategy, and Julia standard libraries. JosephsonCircuits is added
-only with the HB slice, so earlier candidates do not pay for or imply an unused
-backend. These are design inputs, not current package metadata; this complete
-design checkpoint changes no lockfile.
+The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Matplotlib, and Schemdraw
+in Python. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
+JosephsonCircuits, and Julia standard libraries. The lockfile and committed
+Julia project/Manifest are the executable dependency authority; this page
+explains their ownership boundary rather than defining alternate versions.
 
 V1 deliberately does not add Pydantic, a database, a web service, a distributed
 runner, JuliaCall, or a persistent daemon. Canonical files, one child process,

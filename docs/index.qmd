@@ -8,12 +8,10 @@ Follow the course in order. Each page answers one user question with one focused
 operation and inspection. If an API has not been taught, the course does not
 use it.
 
-::: {.callout-note title="Mixed lifecycle scope" appearance="simple"}
-The Library, Composite, and recursive-expansion behavior taught in Lessons
-6–8 is `STABILIZED`. Lessons 1–5 remain the `CONVERGING` dev3 execution
-candidate. Lessons 9–11 are the Human-`ACCEPTED` dev5 Direct scope with
-stabilization deferred; Lessons 12–13 are the `CONVERGING` dev6 Full V1 HB
-candidate.
+::: {.callout-note title="Full V1 lifecycle" appearance="simple"}
+The complete dev1–dev6 public semantics taught in Lessons 1–13 are
+Human-`ACCEPTED` and `STABILIZED`. Their documentation, implementation,
+durable cross-slice tests, and validation agree. This is not a release claim.
 :::
 
 ## Author and analyze

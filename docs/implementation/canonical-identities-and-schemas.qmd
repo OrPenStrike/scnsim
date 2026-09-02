@@ -4,7 +4,7 @@ subtitle: "Which bytes name a Plan, request, attempt, Result, and receipt?"
 toc-depth: 2
 ---
 
-**Status:** `CONVERGING` implementation design. The
+**Status:** `STABILIZED` Full V1 implementation. The
 [machine-readable V1 schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json) is the
 field-and-type authority for this page.
 
@@ -136,13 +136,11 @@ to log the later caller's equivalent spelling.
 
 The bundle is the one closed full-V1 envelope set for every public component,
 Plan, Ref/View lineage, Direct quantity, optimization, HB, Result, inventory,
-attempt, artifact, and receipt surface described by the Contract. It is
-deliberately broader than the first executable `dev3` slice: a later-slice
-discriminator remains fail-fast until its runtime slice arrives, but reaching
-`dev4` through `dev6` does not require inventing another schema version. The
-`dev4` candidate now consumes the Composite realization, including its
-declaration-ordered `public_parameters`; later-slice discriminators remain
-fail-fast until their runtime slice arrives.
+attempt, artifact, and receipt surface described by the Contract. It was
+deliberately broader than the first executable `dev3` slice, which allowed
+`dev4` through `dev6` to arrive without another schema version. The stabilized
+runtime consumes every Full V1 discriminator, including the Composite
+realization and its declaration-ordered `public_parameters`.
 Unknown or post-V1 discriminators never fall through to a generic map.
 
 JSON Schema enforces each envelope's shape. Cross-document semantic validation

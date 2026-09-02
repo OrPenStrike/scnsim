@@ -4,7 +4,7 @@ subtitle: "How does one frozen N-conductor extraction become an auditable physic
 toc-depth: 2
 ---
 
-**Status:** Human-`ACCEPTED` dev5 implementation; stabilization deferred. The public RLGC contract in
+**Status:** `STABILIZED` Full V1 implementation. The public RLGC contract in
 [Component Authoring](../component-authoring.qmd#general-rlgc) remains the
 authoritative API. This page fixes the loader and compiler mechanics; it does
 not turn one extraction into broadband or convergence evidence.

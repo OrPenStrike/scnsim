@@ -3,9 +3,9 @@ title: "Requests, Execution, and Result Ownership"
 ---
 
 ::: {.callout-warning}
-## CONVERGING concept
+## Human-accepted Full V1 concept
 
-This page explains the current candidate design. It does not define request
+This page explains the accepted Full V1 design. It does not define request
 signatures, receipt contents, workspace validation, or failure behavior; the
 linked Runtime Contract remains the sole authority.
 :::
