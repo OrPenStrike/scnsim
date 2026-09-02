@@ -19,6 +19,8 @@ because HB also declares axes, drives, cases, and truncation; their public
 selected-network S/Y/Z surfaces use the same selected-view convention. Their
 frequency grids are nevertheless independently declared request data: SCNSim
 does not manufacture a shared grid or interpolate one Result onto the other.
+The HB request retains its declared odd pump-drive mode through
+`four_wave_mixing=True`; its `pump_off` case still supplies no drive current.
 
 ```{python}
 #| id: solve-direct-and-hb
@@ -77,7 +79,7 @@ hb = run.solve(
             pump_harmonics=(3,),
             modulation_harmonics=(1,),
             three_wave_mixing=False,
-            four_wave_mixing=False,
+            four_wave_mixing=True,
         ),
         traces=(hb_trace,),
     ),

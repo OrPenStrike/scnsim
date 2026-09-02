@@ -2711,9 +2711,12 @@ function preflight(plan_path::String, request_path::String)
     realized_lineage, view = realized_ref_lineage(raw_compiled, request["ref_lineage"])
     compiled = view.compiled
     load = port_load_admittance(compiled)
+    realized_request = deepcopy(request)
+    realized_request["ref_lineage"] = realized_lineage
+    hb_validation = operation == "solve_hb" ? hb_preflight(realized_request, plan, raw_compiled, view) : nothing
     runtime_path = normpath(joinpath(@__DIR__, "..", "runtime.json"))
     runtime = plain(JSON3.read(read(runtime_path, String)))
-    return Dict{String,Any}(
+    result = Dict{String,Any}(
         "schema" => "scnsim.preflight",
         "schema_version" => 1,
         "plan_sha256" => plan_sha,
@@ -2741,6 +2744,8 @@ function preflight(plan_path::String, request_path::String)
             "hb" => (has_offdiagonal_series_resistance(compiled) ? "unsupported_off_diagonal_series_resistance" : "josephsoncircuits_hb_candidate"),
         ),
     )
+    hb_validation === nothing || (result["hb_preflight"] = hb_validation)
+    return result
 end
 
 function f64_matrix_hash(matrix::AbstractMatrix{Float64})::String

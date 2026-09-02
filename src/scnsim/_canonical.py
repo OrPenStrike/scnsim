@@ -1052,7 +1052,18 @@ def zarr_group_metadata_bytes() -> bytes:
 def zarr_array_metadata_bytes(*, shape: Sequence[int], chunks: Sequence[int]) -> bytes:
     """Return exact compact V2 Float64 C-order dataset metadata bytes."""
 
-    if not shape or len(shape) != len(chunks) or any(not isinstance(item, int) or item < 1 for item in (*shape, *chunks)):
+    if (
+        not shape
+        or len(shape) != len(chunks)
+        or any(
+            not isinstance(item, int)
+            or isinstance(item, bool)
+            or item < 0
+            or (item == 0 and index != 0)
+            for index, item in enumerate(shape)
+        )
+        or any(not isinstance(item, int) or isinstance(item, bool) or item < 1 for item in chunks)
+    ):
         raise _validation("invalid Zarr shape/chunks")
     return canonical_json_bytes({
         "chunks": list(chunks), "compressor": None, "dimension_separator": ".", "dtype": "<f8",

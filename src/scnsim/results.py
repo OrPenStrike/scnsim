@@ -70,7 +70,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         raise TypeError("_verified_result only constructs SCNSim result values")
     if cls is HBCaseOutcome:
         expected = {
-            "id", "failure", "effective_sources", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
+            "id", "failure", "effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
         }
         if set(values) != expected:
             raise TypeError("verified HBCaseOutcome fields mismatch")
@@ -80,7 +80,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
             raise ValueError("HB case id must be nonempty")
         if failure is not None and not isinstance(failure, HBCaseFailure):
             raise TypeError("HB failure must be HBCaseFailure")
-        required = ("bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map")
+        required = ("operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map")
         if success != all(values[name] is not None for name in required):
             raise ValueError("HB success must provide every success-only surface")
         if not success and any(values[name] is not None for name in required):
@@ -90,14 +90,14 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         instance = object.__new__(cls)
         object.__setattr__(instance, "_id", values["id"])
         object.__setattr__(instance, "_failure", failure)
-        for name in ("effective_sources", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
+        for name in ("effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
             object.__setattr__(instance, f"_{name}", _freeze(values[name]))
         return instance
     if cls is HBBatchResult:
-        if set(values) != {"identity", "cases"}:
+        if set(values) != {"identity", "cases", "topology_evidence"}:
             raise TypeError("verified HBBatchResult fields mismatch")
         identity, cases = values["identity"], values["cases"]
-        if not _is_verified_identity(identity) or not isinstance(cases, Mapping) or not cases:
+        if not _is_verified_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
             raise TypeError("verified HBBatchResult requires identity and nonempty cases")
         materialized = dict(cases)
         if any(
@@ -111,6 +111,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         instance = object.__new__(cls)
         object.__setattr__(instance, "identity", identity)
         object.__setattr__(instance, "cases", MappingProxyType(materialized))
+        object.__setattr__(instance, "topology_evidence", _freeze(values["topology_evidence"]))
         object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
         return instance
     expected = {item.name: item for item in fields(cls) if item.init}
@@ -408,7 +409,7 @@ class HBCaseOutcome(Result):
     """
 
     __slots__ = (
-        "_id", "_failure", "_effective_sources", "_bias_state", "_pump_state", "_s", "_y", "_z",
+        "_id", "_failure", "_effective_sources", "_operating_point_closure", "_bias_state", "_pump_state", "_s", "_y", "_z",
         "_traces", "_states", "_state_node_map",
     )
 
@@ -437,19 +438,13 @@ class HBCaseOutcome(Result):
     def effective_sources(self) -> tuple[Mapping[str, object], ...]:
         """Return the exact case drive evidence, including on failed cases."""
 
-        # Pint scalar quantities are mutable through ``ito`` even when their
-        # containing mapping is read-only.  Receipt-backed evidence therefore
-        # returns fresh quantity values rather than exposing the frozen
-        # decoder-owned objects.
-        return tuple(
-            MappingProxyType(
-                {
-                    **dict(source),
-                    "coefficient": source["coefficient"].copy(),
-                }
-            )
-            for source in self._effective_sources
-        )
+        return tuple(_freeze(source) for source in self._effective_sources)
+
+    @property
+    def operating_point_closure(self) -> Mapping[str, object]:
+        """Return the verified nonlinear closure evidence for a successful case."""
+
+        return self._success(_freeze(self._operating_point_closure))  # type: ignore[return-value]
 
     def _success(self, value: object) -> object:
         if self._failure is not None:
@@ -502,6 +497,7 @@ class HBCaseOutcome(Result):
 @dataclass(frozen=True, slots=True)
 class HBBatchResult(AnalysisResult):
     cases: Mapping[str, HBCaseOutcome]
+    topology_evidence: Mapping[str, object]
 
     def __init__(self) -> None:
         unavailable("HBBatchResult construction")

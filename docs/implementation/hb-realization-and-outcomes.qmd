@@ -126,7 +126,9 @@ $$
 
 The absolute comparison is non-strict and the relative comparison is strict.
 Both residuals and the successful disjunct are evidence. Upstream warnings do
-not waive this check.
+not waive this check. The verified public success outcome exposes this record
+as `operating_point_closure`; the batch exposes the request-global loaded versus
+response-linearization split as `topology_evidence`.
 
 If a Ref contains PTC and any case has an effective DC or AC drive, preflight
 rejects the request unless `allow_driven_ptc=True`. With that explicit approval,
@@ -186,8 +188,11 @@ When it is comparable, `reconciliation.residual_f64` is only the normalized
 per-frequency infinity residual of the backend-native-to-selected
 reconstruction, with the maximum retained across the HB grid. It is diagnostic
 evidence, not an acceptance or solver gate, and is never a Direct/HB comparison
-residual. Different Direct and HB grids remain independently declared and are
-shown side by side without interpolation.
+residual. The record also carries the exact row-major physical-coordinate
+projection and the identity of the Plan/View producer from which it came;
+receipt verification reproduces the selected S matrix and residual from that
+projection and the backend-native artifact. Different Direct and HB grids
+remain independently declared and are shown side by side without interpolation.
 
 ## Normalize operating-point state evidence
 

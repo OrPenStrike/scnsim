@@ -1096,21 +1096,9 @@ class CircuitRun:
                     stage="preflight",
                     evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
                 )
-        if ref._lineage.get("ptc") is not None and not spec.allow_driven_ptc:
-            effective: dict[tuple[str, tuple[int, ...]], complex] = {}
-            for case in spec.cases:
-                effective.clear()
-                for drive in spec.drives:
-                    current = case.currents.get(drive)
-                    if current is not None:
-                        key = (drive.at.id, drive.mode)
-                        effective[key] = effective.get(key, 0j) + complex(current.to("ampere").magnitude)
-                if any(value != 0j for value in effective.values()):
-                    raise SCNSimValidationError(
-                        "a driven HB request through PTC requires allow_driven_ptc=True",
-                        stage="preflight",
-                        evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
-                    )
+        # Driven-PTC authorization is decided by Julia preflight after exact
+        # oriented source-vector accumulation.  Comparing declaration scalars
+        # here would reject valid cancellation across distinct logical Ports.
 
     def _complete_parameters(self, supplied: ParameterSet | None) -> ParameterSet:
         baselines = {parameter: parameter.baseline for parameter in self._parameter_lookup.values()}
@@ -1940,9 +1928,10 @@ class CircuitRun:
         """Reconstruct one fully verified ordered HB case batch."""
 
         raw_cases = result.get("cases")
+        topology_evidence = result.get("topology_evidence")
         request_spec = request.get("spec")
         declared = request_spec.get("cases") if isinstance(request_spec, Mapping) else None
-        if not isinstance(raw_cases, list) or not isinstance(declared, list) or len(raw_cases) != len(declared):
+        if not isinstance(raw_cases, list) or not isinstance(declared, list) or len(raw_cases) != len(declared) or not isinstance(topology_evidence, Mapping):
             raise EvidenceIntegrityError("HB batch cases disagree with the request", stage="result_decode")
         outcomes: dict[str, HBCaseOutcome] = {}
         for ordinal, (raw, declaration) in enumerate(zip(raw_cases, declared), 1):
@@ -1975,6 +1964,7 @@ class CircuitRun:
                     id=case_id,
                     failure=outcome_failure,
                     effective_sources=effective_sources,
+                    operating_point_closure=None,
                     bias_state=None,
                     pump_state=None,
                     s=None,
@@ -1991,11 +1981,13 @@ class CircuitRun:
             trace_artifacts = raw.get("traces")
             reconciliation = raw.get("reconciliation")
             state_node_map = raw.get("state_node_map")
+            operating_point_closure = raw.get("operating_point_closure")
             if (
                 not isinstance(artifacts, Mapping)
                 or set(artifacts) != {"s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors"}
                 or not isinstance(trace_artifacts, list)
                 or not isinstance(reconciliation, Mapping)
+                or not isinstance(operating_point_closure, Mapping)
                 or not isinstance(state_node_map, list)
                 or not state_node_map
             ):
@@ -2055,6 +2047,11 @@ class CircuitRun:
             # only the native scattering view.
             matrix_view("backend_native_z", "ohm")
             recon = _decode_hb_reconciliation(reconciliation)
+            _verify_hb_reconciliation_projection(
+                reconciliation,
+                selected=np.asarray(selected_s.matrix.magnitude),
+                native=np.asarray(native_s.matrix.magnitude),
+            )
             traces: dict[str, TraceResult] = {}
             trace_declarations = request_spec.get("traces") if isinstance(request_spec, Mapping) else None
             if not isinstance(trace_declarations, list) or len(trace_artifacts) != len(trace_declarations):
@@ -2086,7 +2083,9 @@ class CircuitRun:
                         stage="result_decode",
                     ) from error
                 projected = selected_matrix[:, output_index, input_index]
-                if not np.array_equal(values.view(np.uint64), projected.view(np.uint64)):
+                values_bits = np.ascontiguousarray(values).view(np.uint64)
+                projected_bits = np.ascontiguousarray(projected).view(np.uint64)
+                if not np.array_equal(values_bits, projected_bits):
                     raise EvidenceIntegrityError(
                         "HB trace artifact is not the bit-exact declared projection of selected S",
                         stage="result_decode",
@@ -2113,6 +2112,7 @@ class CircuitRun:
                 id=case_id,
                 failure=None,
                 effective_sources=effective_sources,
+                operating_point_closure=operating_point_closure,
                 bias_state=BiasState(raw["bias_state"]),
                 pump_state=PumpState(raw["pump_state"]),
                 s=_verified_result(
@@ -2127,7 +2127,12 @@ class CircuitRun:
                 states=units.registry.Quantity(states, "weber"),
                 state_node_map=tuple(state_node_map),
             )
-        return _verified_result(HBBatchResult, identity=identity, cases=outcomes)
+        return _verified_result(
+            HBBatchResult,
+            identity=identity,
+            cases=outcomes,
+            topology_evidence=topology_evidence,
+        )
 
     def _decode_parameter_set(self, record: Mapping[str, object]) -> ParameterSet:
         values: dict[ParameterRef, object] = {}
@@ -2300,15 +2305,32 @@ def _decode_hb_effective_sources(value: object) -> tuple[Mapping[str, object], .
     decoded: list[Mapping[str, object]] = []
     identities: set[tuple[str, tuple[int, ...]]] = set()
     for item in value:
-        if not isinstance(item, Mapping) or set(item) != {"drive_id", "mode", "coefficient", "injection_map_sha256"}:
+        if not isinstance(item, Mapping) or set(item) != {
+            "drive_id", "mode", "coefficient", "generated_conjugate",
+            "backend_binding", "injection_map_sha256",
+        }:
             raise EvidenceIntegrityError("HB effective-source evidence is malformed", stage="result_decode")
         drive_id = item.get("drive_id")
         mode = item.get("mode")
+        conjugate = item.get("generated_conjugate")
+        backend = item.get("backend_binding")
         if (
             not isinstance(drive_id, str)
             or not drive_id
             or not isinstance(mode, list)
             or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in mode)
+            or not isinstance(conjugate, Mapping)
+            or set(conjugate) != {"mode", "coefficient"}
+            or not isinstance(conjugate.get("mode"), list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in conjugate["mode"])
+            or not isinstance(backend, Mapping)
+            or set(backend) != {"representative_mode", "representative_index", "coefficient", "coefficient_convention"}
+            or not isinstance(backend.get("representative_mode"), list)
+            or any(not isinstance(entry, int) or isinstance(entry, bool) for entry in backend["representative_mode"])
+            or not isinstance(backend.get("representative_index"), int)
+            or isinstance(backend.get("representative_index"), bool)
+            or backend["representative_index"] < 0
+            or backend.get("coefficient_convention") != "exp_plus_i_m_dot_omega_t_josephsoncircuits_source"
             or not _is_sha256_text(item.get("injection_map_sha256"))
         ):
             raise EvidenceIntegrityError("HB effective-source identity is malformed", stage="result_decode")
@@ -2321,6 +2343,16 @@ def _decode_hb_effective_sources(value: object) -> tuple[Mapping[str, object], .
                 "drive_id": drive_id,
                 "mode": tuple(mode),
                 "coefficient": complex_quantity_from_envelope(item["coefficient"], registry=units.registry),
+                "generated_conjugate": {
+                    "mode": tuple(conjugate["mode"]),
+                    "coefficient": complex_quantity_from_envelope(conjugate["coefficient"], registry=units.registry),
+                },
+                "backend_binding": {
+                    "representative_mode": tuple(backend["representative_mode"]),
+                    "representative_index": backend["representative_index"],
+                    "coefficient": complex_quantity_from_envelope(backend["coefficient"], registry=units.registry),
+                    "coefficient_convention": backend["coefficient_convention"],
+                },
                 "injection_map_sha256": item["injection_map_sha256"],
             }
         )
@@ -2367,7 +2399,11 @@ def _decode_hb_mode_axis(artifact: object, *, kind: str) -> tuple[tuple[int, ...
         raise EvidenceIntegrityError("HB mode axis is malformed", stage="result_decode")
     axis = axes[0]
     values = axis.get("values")
-    if axis.get("kind") != kind or not isinstance(values, list) or not values:
+    if (
+        axis.get("kind") != kind
+        or not isinstance(values, list)
+        or (not values and kind != "pump_mode")
+    ):
         raise EvidenceIntegrityError("HB mode axis is malformed", stage="result_decode")
     modes: list[tuple[int, ...]] = []
     for value in values:
@@ -2383,7 +2419,7 @@ def _decode_hb_reconciliation(value: Mapping[str, object]) -> ReconciliationEvid
     comparable = value.get("comparable")
     expected = {
         "comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256",
-        *(('residual_f64',) if comparable is True else ()),
+        *(("residual_f64", "coordinate_projection") if comparable is True else ()),
     }
     if (
         isinstance(comparable, bool)
@@ -2410,6 +2446,84 @@ def _decode_hb_reconciliation(value: Mapping[str, object]) -> ReconciliationEvid
                 evidence_sha256=value["evidence_sha256"],
             )
     raise EvidenceIntegrityError("HB reconciliation evidence is malformed", stage="result_decode")
+
+
+def _verify_hb_reconciliation_projection(
+    evidence: Mapping[str, object],
+    *,
+    selected: np.ndarray,
+    native: np.ndarray,
+) -> None:
+    """Reproduce the comparable HB projection with a fixed scalar order."""
+
+    if evidence.get("comparable") is not True:
+        return
+    projection = evidence.get("coordinate_projection")
+    if not isinstance(projection, Mapping) or set(projection) != {"shape", "values_f64"}:
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode")
+    shape = projection.get("shape")
+    values = projection.get("values_f64")
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 2
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in shape)
+        or not isinstance(values, list)
+        or len(values) != shape[0] * shape[1]
+    ):
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode")
+    try:
+        q = np.asarray([float64_from_hex(value) for value in values], dtype=np.float64).reshape(tuple(shape))
+    except (TypeError, ValueError) as error:
+        raise EvidenceIntegrityError("HB reconciliation coordinate projection is malformed", stage="result_decode") from error
+    rows, columns = shape
+    if (
+        selected.ndim != 3
+        or native.ndim != 3
+        or selected.shape[0] != native.shape[0]
+        or selected.shape[1] != selected.shape[2]
+        or native.shape[1] != native.shape[2]
+        or selected.shape[1] % rows != 0
+        or native.shape[1] % columns != 0
+        or selected.shape[1] // rows != native.shape[1] // columns
+    ):
+        raise EvidenceIntegrityError("HB reconciliation matrices disagree with their coordinate projection", stage="result_decode")
+    mode_count = selected.shape[1] // rows
+    residuals: list[float] = []
+    for frequency in range(selected.shape[0]):
+        projected = np.empty_like(selected[frequency])
+        for output_coordinate in range(rows):
+            for output_mode in range(mode_count):
+                output = output_coordinate * mode_count + output_mode
+                for input_coordinate in range(rows):
+                    for input_mode in range(mode_count):
+                        input_ = input_coordinate * mode_count + input_mode
+                        value = 0.0 + 0.0j
+                        for native_output in range(columns):
+                            for native_input in range(columns):
+                                value += (
+                                    q[output_coordinate, native_output]
+                                    * native[frequency, native_output * mode_count + output_mode, native_input * mode_count + input_mode]
+                                    * q[input_coordinate, native_input]
+                                )
+                        projected[output, input_] = value
+        numerator = max(
+            sum(abs(selected[frequency, row, column] - projected[row, column]) for column in range(projected.shape[1]))
+            for row in range(projected.shape[0])
+        )
+        denominator = max(
+            sum(abs(selected[frequency, row, column]) + abs(projected[row, column]) for column in range(projected.shape[1]))
+            for row in range(projected.shape[0])
+        )
+        residuals.append(
+            0.0
+            if denominator == 0.0 and numerator == 0.0
+            else math.inf
+            if denominator == 0.0
+            else numerator / denominator
+        )
+    residual = max(residuals)
+    if not math.isfinite(residual) or float64_hex(residual) != evidence.get("residual_f64"):
+        raise EvidenceIntegrityError("HB reconciliation residual does not reproduce selected S from backend-native S", stage="result_decode")
 
 
 def _frequency_anchor_envelope(value: object) -> dict[str, str]:
@@ -2915,7 +3029,7 @@ def _validate_success_staging(
         if expected_kind == "optimization"
         else {
             "schema", "schema_version", "result_kind", "request_sha256",
-            "attempt_sha256", "lattice", "truncation", "cases",
+            "attempt_sha256", "lattice", "truncation", "topology_evidence", "cases",
         }
         if expected_kind == "hb_batch"
         else None

@@ -18,6 +18,7 @@ import uuid
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from itertools import product
 from pathlib import Path
 from typing import Any
 
@@ -1915,6 +1916,103 @@ def _valid_mode_tuple(value: object, rank: int) -> bool:
     )
 
 
+def _hb_operating_lattice_is_vacuous(spec: Mapping[str, object]) -> bool:
+    """Reproduce the pinned JC empty operating-basis condition from the request.
+
+    This delegates to the full pinned ordering reconstruction below, so its
+    vacuity rule cannot drift from the actual RFFT/parity/crop construction.
+    """
+
+    return not _hb_declared_modes_from_spec(spec, response=False)
+
+
+def _hb_declared_modes_from_spec(spec: Mapping[str, object], *, response: bool) -> list[list[int]]:
+    """Mirror the pinned JC 0.5.4 Fourier construction and its ordering.
+
+    The receipt does not merely attest that a returned set fits the requested
+    bounds.  `calcfreqsrdft`/`calcfreqsdft`, `truncfreqs`, and (for the
+    operating basis) `removeconjfreqs` determine the ordered public channel
+    basis.  Reconstructing it here closes result reuse against a backend that
+    has silently permuted an otherwise valid lattice.
+    """
+
+    axes = spec.get("pump_axes")
+    truncation = spec.get("truncation")
+    drives = spec.get("drives")
+    if not isinstance(axes, list) or not isinstance(truncation, Mapping) or not isinstance(drives, list):
+        raise _integrity("HB request cannot reproduce its pinned JC lattice.")
+    rank = len(axes)
+    limits_key = "modulation_harmonics" if response else "pump_harmonics"
+    limits = truncation.get(limits_key)
+    if (
+        not isinstance(limits, list)
+        or len(limits) != rank
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in limits)
+        or not isinstance(truncation.get("three_wave_mixing"), bool)
+        or not isinstance(truncation.get("four_wave_mixing"), bool)
+    ):
+        raise _integrity("HB request has an invalid JC lattice truncation.")
+    crop = truncation.get("max_intermodulation_order")
+    if crop is not None and (not isinstance(crop, int) or isinstance(crop, bool) or crop < 0):
+        raise _integrity("HB request has an invalid JC intermodulation crop.")
+    declared_dc = any(
+        isinstance(drive, Mapping)
+        and isinstance(drive.get("mode"), list)
+        and len(drive["mode"]) == rank
+        and all(value == 0 for value in drive["mode"])
+        for drive in drives
+    )
+    if rank == 0:
+        # This is SCNSim's documented private JC adapter: the backend uses an
+        # inert `(0,)`, while the public rank-zero basis is `()`.
+        return [[]] if response or declared_dc else []
+
+    # Julia CartesianIndices is column-major: the first pump axis advances
+    # first.  Iterate reversed Python products to preserve that exact order.
+    dimensions = [2 * limit + 1 for limit in limits] if response else [limits[0] + 1, *[2 * limit + 1 for limit in limits[1:]]]
+    modes: list[tuple[int, ...]] = []
+    for reversed_indices in product(*(range(1, dimension + 1) for dimension in reversed(dimensions))):
+        indices = tuple(reversed(reversed_indices))
+        mode = tuple(
+            index - 1 if index <= limit + 1 else -dimension + index - 1
+            for index, limit, dimension in zip(indices, limits, dimensions)
+        )
+        absolute_order = sum(abs(value) for value in mode)
+        criterion = (
+            (response and all(value == 0 for value in mode))
+            or ((truncation["four_wave_mixing"] if response else truncation["three_wave_mixing"]) and absolute_order > 0 and absolute_order % 2 == 0)
+            or ((truncation["three_wave_mixing"] if response else truncation["four_wave_mixing"]) and absolute_order % 2 == 1)
+            or (not response and declared_dc and all(value == 0 for value in mode))
+        )
+        if criterion and (sum(value != 0 for value in mode) == 1 or crop is None or absolute_order <= crop):
+            modes.append(mode)
+    if response:
+        return [list(mode) for mode in modes]
+
+    # `removeconjfreqs` removes the lexicographically greater coordinate of
+    # every JC-conjugate pair and retains original Cartesian order.
+    nw = tuple(dimensions)
+    nt = (2 * nw[0] - 1, *nw[1:])
+    removed: set[tuple[int, ...]] = set()
+    for reversed_indices in product(*(range(1, dimension + 1) for dimension in reversed(nw))):
+        coordinate = tuple(reversed(reversed_indices))
+        target = tuple((length - (index - 1)) % length + 1 for index, length in zip(coordinate, nt))
+        if coordinate != target and all(index <= dimension for index, dimension in zip(target, nw)):
+            removed.add(max(coordinate, target))
+    retained: list[list[int]] = []
+    for reversed_indices in product(*(range(1, dimension + 1) for dimension in reversed(nw))):
+        coordinate = tuple(reversed(reversed_indices))
+        if coordinate in removed:
+            continue
+        mode = tuple(
+            index - 1 if index <= limit + 1 else -dimension + index - 1
+            for index, limit, dimension in zip(coordinate, limits, dimensions)
+        )
+        if mode in modes:
+            retained.append(list(mode))
+    return retained
+
+
 def _verify_v1_evaluation_spec(
     spec: object,
     terminal: list[str],
@@ -2716,7 +2814,7 @@ def _verify_hb_batch_result(
     """
 
     common = {"schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256"}
-    expected = common | {"lattice", "truncation", "cases"}
+    expected = common | {"lattice", "truncation", "topology_evidence", "cases"}
     if set(result) != expected:
         raise _integrity("HB batch Result envelope is open or incomplete.")
     spec = request.get("spec")
@@ -2731,34 +2829,77 @@ def _verify_hb_batch_result(
     }
     if not isinstance(lattice, dict) or set(lattice) != lattice_fields or lattice.get("pump_axes") != spec.get("pump_axes") or lattice.get("matrix_order") != "port_major_mode_minor":
         raise _integrity("HB lattice evidence is malformed or disagrees with its request.")
-    _valid_sha(lattice.get("tuple_frequency_collision_check_sha256"))
+    from ._canonical import float64_hex
+
     pump_rank = len(spec.get("pump_axes", []))
-    for field, frequency_grid in (("operating_point_modes", False), ("input_modes", True), ("output_modes", True)):
+    pump_axes = spec.get("pump_axes")
+    frequencies = spec.get("frequencies")
+    if not isinstance(pump_axes, list) or not isinstance(frequencies, list):
+        raise _integrity("HB request cannot reproduce its lattice frequencies.")
+    pump_frequencies = [_f64_value(axis["frequency"]["si_value_f64"]) for axis in pump_axes]
+    response_frequencies = [_f64_value(frequency["si_value_f64"]) for frequency in frequencies]
+    vacuous_operating_lattice = _hb_operating_lattice_is_vacuous(spec)
+    for field, is_response_lattice in (("operating_point_modes", False), ("input_modes", True), ("output_modes", True)):
         modes = lattice.get(field)
-        if not isinstance(modes, list) or not modes:
+        if not isinstance(modes, list):
+            raise _integrity("HB lattice is missing an ordered mode basis.", field=field)
+        expected_modes = _hb_declared_modes_from_spec(spec, response=is_response_lattice)
+        if field == "operating_point_modes" and vacuous_operating_lattice:
+            if modes:
+                raise _integrity("HB operating lattice is nonempty for a vacuous pinned JC basis.")
+            continue
+        if not modes:
             raise _integrity("HB lattice is missing an ordered mode basis.", field=field)
         seen: set[tuple[int, ...]] = set()
-        for item in modes:
-            keys = {"mode", "signed_frequency", "order"} if not frequency_grid else {"mode", "signed_frequency_grid", "order"}
-            if not isinstance(item, dict) or set(item) != keys or not _valid_mode_tuple(item.get("mode"), pump_rank) or not isinstance(item.get("order"), int) or isinstance(item.get("order"), bool) or item["order"] < 0:
+        for order, item in enumerate(modes):
+            keys = {"mode", "signed_frequency", "order"} if not is_response_lattice else {"mode", "signed_frequency_grid", "order"}
+            if not isinstance(item, dict) or set(item) != keys or not _valid_mode_tuple(item.get("mode"), pump_rank) or item.get("order") != order:
                 raise _integrity("HB lattice mode row is malformed.", field=field)
             mode = tuple(item["mode"])
             if mode in seen:
                 raise _integrity("HB lattice repeats a mode tuple.", field=field)
             seen.add(mode)
-            values = item.get("signed_frequency_grid") if frequency_grid else [item.get("signed_frequency")]
-            if not isinstance(values, list) or (frequency_grid and len(values) != len(spec.get("frequencies", []))):
+        if [item["mode"] for item in modes] != expected_modes:
+            raise _integrity("HB lattice mode order disagrees with pinned JosephsonCircuits construction.", field=field)
+        _verify_hb_lattice_injectivity(modes, response=is_response_lattice, field=field)
+        for item in modes:
+            mode = tuple(item["mode"])
+            values = item.get("signed_frequency_grid") if is_response_lattice else [item.get("signed_frequency")]
+            expected_values = (
+                [frequency + sum((float(coefficient) * pump for coefficient, pump in zip(mode, pump_frequencies)), 0.0) for frequency in response_frequencies]
+                if is_response_lattice else [sum((float(coefficient) * pump for coefficient, pump in zip(mode, pump_frequencies)), 0.0)]
+            )
+            if not isinstance(values, list) or len(values) != len(expected_values):
                 raise _integrity("HB lattice frequency evidence is malformed.", field=field)
-            for value in values:
+            for value, expected_value in zip(values, expected_values):
                 _verify_quantity_role(value, complex_value=False, unit="hertz", dimensionality="inverse_time")
-                if frequency_grid and _f64_value(value["si_value_f64"]) == 0.0:
+                if value["si_value_f64"] != float64_hex(expected_value):
+                    raise _integrity("HB lattice signed frequency disagrees with its sealed axes.", field=field)
+                if is_response_lattice and expected_value == 0.0:
                     raise _integrity("HB response lattice contains a zero-frequency sideband.", field=field)
+    input_modes = lattice["input_modes"]
+    if lattice.get("output_modes") != input_modes:
+        raise _integrity("HB input and output response lattices disagree.")
+    collision_entries = [
+        {"mode": row["mode"], "frequency": value["si_value_f64"]}
+        for row in input_modes
+        for value in row["signed_frequency_grid"]
+    ]
+    expected_collision = _sha256(_canonical_bytes({
+        "schema": "scnsim.hb_tuple_frequency_collision", "schema_version": 1,
+        "entries": collision_entries,
+    }))
+    if lattice.get("tuple_frequency_collision_check_sha256") != expected_collision:
+        raise _integrity("HB tuple-frequency collision evidence disagrees with the sealed lattice.")
     cases = result.get("cases")
     declared_cases = spec.get("cases")
     if not isinstance(cases, list) or not isinstance(declared_cases, list) or len(cases) != len(declared_cases):
         raise _integrity("HB Result case inventory disagrees with its declaration.")
-    terminal, _ = _verify_v1_lineage(request.get("ref_lineage"), plan)
     lineage = request.get("ref_lineage")
+    if not isinstance(lineage, Mapping):
+        raise _integrity("HB batch Result has no realized View lineage.")
+    terminal, _ = _verify_v1_lineage(lineage, plan)
+    _verify_hb_topology_evidence(result.get("topology_evidence"), spec, lineage)
     original = lineage.get("original") if isinstance(lineage, Mapping) else None
     native_ports = _identifiers(original.get("port_order"), field="HB original Port order", nonempty=False) if isinstance(original, Mapping) else []
     original_coordinates = _identifiers(
@@ -2767,8 +2908,6 @@ def _verify_hb_batch_result(
     plan_ports = plan.get("ports")
     if not isinstance(plan_ports, list):
         raise _integrity("HB sealed Plan has no Port inventory.")
-    from ._canonical import f64_hex
-
     expected_injection_sha256: dict[str, str] = {}
     for port in plan_ports:
         if (
@@ -2787,12 +2926,13 @@ def _verify_hb_batch_result(
                     "schema": "scnsim.hb_injection_map",
                     "schema_version": 1,
                     "port_id": port["port_id"],
-                    "incidence_f64": [f64_hex(item) for item in incidence],
+                    "incidence_f64": [float64_hex(item) for item in incidence],
                 }
             )
         )
     expected_probe = _expected_probe_load_state(lineage)
     native_probe = [{"port_id": port, "state": "raw"} for port in native_ports]
+    operating_modes = [item["mode"] for item in lattice["operating_point_modes"]]
     for ordinal, (outcome, declared) in enumerate(zip(cases, declared_cases), 1):
         if not isinstance(outcome, dict) or not isinstance(declared, dict) or outcome.get("case_ordinal") != ordinal or outcome.get("case_id") != declared.get("id"):
             raise _integrity("HB Result cases are not declaration ordered.")
@@ -2802,6 +2942,7 @@ def _verify_hb_batch_result(
             spec=spec,
             declared_case=declared,
             expected_injection_sha256=expected_injection_sha256,
+            operating_modes=operating_modes,
         )
         status = outcome.get("status")
         if status == "failure":
@@ -2810,19 +2951,40 @@ def _verify_hb_batch_result(
             failure = outcome.get("failure")
             if not isinstance(failure, dict) or set(failure) != {"kind", "stage", "message", "evidence_sha256"} or failure.get("kind") != "hb_case_failure" or failure.get("stage") not in {"operating_point", "linearization", "response_formation"} or not isinstance(failure.get("message"), str) or not failure["message"]:
                 raise _integrity("HB case failure is malformed.")
-            _valid_sha(failure.get("evidence_sha256"))
+            expected_failure_evidence = _sha256(
+                _canonical_bytes(
+                    {
+                        "schema": "scnsim.hb_case_failure",
+                        "schema_version": 1,
+                        "case_ordinal": ordinal,
+                        "case_id": declared["id"],
+                        "stage": failure["stage"],
+                        "message": failure["message"],
+                        "effective_sources": outcome["effective_sources"],
+                    }
+                )
+            )
+            if failure.get("evidence_sha256") != expected_failure_evidence:
+                raise _integrity("HB case failure evidence disagrees with its sealed outcome.")
             continue
         if status != "success":
             raise _integrity("HB case has an unknown terminal status.")
         success_fields = {
             "case_ordinal", "case_id", "status", "bias_state", "pump_state",
-            "effective_sources", "artifacts", "traces", "reconciliation",
+            "effective_sources", "operating_point_closure", "artifacts", "traces", "reconciliation",
             "backend_normalization_evidence_sha256", "state_node_map",
         }
         if set(outcome) != success_fields or outcome.get("bias_state") not in {"off", "on"} or outcome.get("pump_state") not in {"off", "on"}:
             raise _integrity("Successful HB outcome is open or malformed.")
-        _valid_sha(outcome.get("backend_normalization_evidence_sha256"))
-        _verify_hb_reconciliation(outcome.get("reconciliation"))
+        expected_normalization_evidence = _sha256(
+            _canonical_bytes(
+                {"normalization": "backend_photon_flux_to_scnsim_power_wave"}
+            )
+        )
+        if outcome.get("backend_normalization_evidence_sha256") != expected_normalization_evidence:
+            raise _integrity("HB backend normalization evidence is not reproducible.")
+        _verify_hb_operating_point_closure(outcome.get("operating_point_closure"), operating_modes)
+        _verify_hb_reconciliation(outcome.get("reconciliation"), lineage)
         _verify_hb_state_node_map(outcome.get("state_node_map"))
         _verify_hb_case_catalog(
             outcome.get("artifacts"), outcome.get("traces"), ordinal,
@@ -2838,6 +3000,7 @@ def _verify_hb_effective_sources(
     spec: Mapping[str, object],
     declared_case: Mapping[str, object],
     expected_injection_sha256: Mapping[str, str],
+    operating_modes: list[list[int]],
 ) -> None:
     drives = spec.get("drives")
     bindings = declared_case.get("currents")
@@ -2848,8 +3011,10 @@ def _verify_hb_effective_sources(
         if not isinstance(binding, Mapping) or not isinstance(binding.get("drive_id"), str) or binding["drive_id"] in by_drive:
             raise _integrity("HB case current declaration is malformed.")
         by_drive[binding["drive_id"]] = binding
+    from ._canonical import float64_hex
+
     for source, drive in zip(value, drives):
-        if not isinstance(source, dict) or set(source) != {"drive_id", "mode", "coefficient", "injection_map_sha256"} or not isinstance(source.get("drive_id"), str) or _IDENTIFIER.fullmatch(source["drive_id"]) is None or not _valid_mode_tuple(source.get("mode"), pump_rank):
+        if not isinstance(source, dict) or set(source) != {"drive_id", "mode", "coefficient", "generated_conjugate", "backend_binding", "injection_map_sha256"} or not isinstance(source.get("drive_id"), str) or _IDENTIFIER.fullmatch(source["drive_id"]) is None or not _valid_mode_tuple(source.get("mode"), pump_rank):
             raise _integrity("HB effective-source row is malformed.")
         if not isinstance(drive, Mapping) or source.get("drive_id") != drive.get("id") or source.get("mode") != drive.get("mode"):
             raise _integrity("HB effective sources are not in drive declaration order.")
@@ -2861,6 +3026,53 @@ def _verify_hb_effective_sources(
                 raise _integrity("An omitted HB current did not materialize as exact zero.")
         elif coefficient != binding.get("coefficient"):
             raise _integrity("HB effective-source coefficient disagrees with its case declaration.")
+        source_mode = list(source["mode"])
+        inverse_mode = [-value for value in source_mode]
+        is_dc = all(value == 0 for value in source_mode)
+        expected_generated = (
+            {"mode": source_mode, "coefficient": coefficient}
+            if is_dc else {
+                "mode": inverse_mode,
+                "coefficient": {
+                    "type": "complex_quantity_f64",
+                    "real_si_f64": coefficient["real_si_f64"],
+                    "imag_si_f64": float64_hex(-_f64_value(coefficient["imag_si_f64"])),
+                    "si_unit": "ampere",
+                    "dimensionality": "current",
+                },
+            }
+        )
+        if source.get("generated_conjugate") != expected_generated:
+            raise _integrity("HB generated conjugate disagrees with its declared coefficient.")
+        if is_dc:
+            expected_representative = [0] if pump_rank == 0 else source_mode
+            backend_coefficient = coefficient
+        elif source_mode in operating_modes:
+            expected_representative = source_mode
+            backend_coefficient = {
+                "type": "complex_quantity_f64",
+                "real_si_f64": coefficient["real_si_f64"],
+                "imag_si_f64": float64_hex(-_f64_value(coefficient["imag_si_f64"])),
+                "si_unit": "ampere",
+                "dimensionality": "current",
+            }
+        elif inverse_mode in operating_modes:
+            expected_representative = inverse_mode
+            backend_coefficient = coefficient
+        else:
+            raise _integrity("HB source mode and its generated conjugate are absent from the operating lattice.")
+        try:
+            representative_index = operating_modes.index(source_mode if pump_rank == 0 else expected_representative)
+        except ValueError as error:
+            raise _integrity("HB source representative is absent from the operating lattice.") from error
+        expected_backend = {
+            "representative_mode": expected_representative,
+            "representative_index": representative_index,
+            "coefficient": backend_coefficient,
+            "coefficient_convention": "exp_plus_i_m_dot_omega_t_josephsoncircuits_source",
+        }
+        if source.get("backend_binding") != expected_backend:
+            raise _integrity("HB backend source binding disagrees with the sealed case and lattice.")
         expected_injection = expected_injection_sha256.get(str(drive.get("port_id")))
         if expected_injection is None or source.get("injection_map_sha256") != expected_injection:
             raise _integrity("HB effective-source injection map disagrees with the sealed compiler basis.")
@@ -2868,18 +3080,255 @@ def _verify_hb_effective_sources(
         raise _integrity("HB case current names a drive absent from effective sources.")
 
 
-def _verify_hb_reconciliation(value: object) -> None:
+def _verify_hb_lattice_injectivity(
+    modes: list[object], *, response: bool, field: str,
+) -> None:
+    """Reject a non-injective tuple/frequency channel basis by exact bits."""
+
+    if response:
+        grid_length: int | None = None
+        for item in modes:
+            grid = item.get("signed_frequency_grid") if isinstance(item, Mapping) else None
+            if not isinstance(grid, list):
+                raise _integrity("HB response lattice frequency grid is malformed.", field=field)
+            if grid_length is None:
+                grid_length = len(grid)
+            elif len(grid) != grid_length:
+                raise _integrity("HB response lattice frequency grids disagree in length.", field=field)
+        if grid_length is None:
+            raise _integrity("HB response lattice has no mode rows.", field=field)
+        for frequency_ordinal in range(grid_length):
+            seen_frequencies: set[str] = set()
+            for item in modes:
+                grid = item["signed_frequency_grid"]
+                frequency = grid[frequency_ordinal]
+                if not isinstance(frequency, Mapping) or not isinstance(frequency.get("si_value_f64"), str):
+                    raise _integrity("HB response lattice frequency evidence is malformed.", field=field)
+                bits = frequency["si_value_f64"]
+                if bits in seen_frequencies:
+                    raise _integrity("HB response lattice has a duplicate signed frequency at one declared grid ordinal.", field=field)
+                seen_frequencies.add(bits)
+        return
+    seen_frequencies: set[str] = set()
+    for item in modes:
+        frequency = item.get("signed_frequency") if isinstance(item, Mapping) else None
+        if not isinstance(frequency, Mapping) or not isinstance(frequency.get("si_value_f64"), str):
+            raise _integrity("HB operating lattice frequency evidence is malformed.", field=field)
+        bits = frequency["si_value_f64"]
+        if bits in seen_frequencies:
+            raise _integrity("HB operating lattice has a duplicate signed frequency.", field=field)
+        seen_frequencies.add(bits)
+
+
+def _verify_hb_topology_evidence(
+    value: object,
+    spec: Mapping[str, object],
+    lineage: Mapping[str, object],
+) -> None:
+    """Bind HB's loaded nonlinear and selected response topologies to one View."""
+
+    original = lineage.get("original")
+    if not isinstance(original, Mapping):
+        raise _integrity("HB topology evidence has no original compiler lineage.")
+    intrinsic = _valid_sha(original.get("compiled_graph_sha256"))
+    full_lineage = _valid_sha(lineage.get("lineage_sha256"))
+    balance_lineage = _hb_lineage_prefix_sha(lineage, "load_or_ptc")
+    expected = {
+        "allow_driven_ptc": spec.get("allow_driven_ptc"),
+        "intrinsic_compiled_graph_sha256": intrinsic,
+        "nonlinear_balance": {
+            "load_state": "loaded",
+            "lineage_sha256": balance_lineage,
+        },
+        "response_linearization": {
+            "load_state": "compensated" if lineage.get("ptc") is not None else "raw",
+            "lineage_sha256": full_lineage,
+        },
+    }
+    if value != expected:
+        raise _integrity("HB topology evidence disagrees with its sealed View and driven-PTC authorization.")
+
+
+def _verify_hb_operating_point_closure(value: object, operating_modes: list[list[int]]) -> None:
+    """Verify the fixed HB residual disjunction or the exact vacuous exception."""
+
+    if not operating_modes:
+        if value != {"status": "not_applicable", "reason": "no_operating_point_lattice"}:
+            raise _integrity("Vacuous HB operating lattice has the wrong closure evidence.")
+        return
+    if not isinstance(value, Mapping) or set(value) != {
+        "status", "absolute_residual_f64", "relative_residual", "successful_disjunct",
+    } or value.get("status") != "satisfied":
+        raise _integrity("HB operating-point closure is malformed.")
+    absolute = value.get("absolute_residual_f64")
+    if not _finite_f64(absolute) or _f64_value(absolute) < 0.0:
+        raise _integrity("HB operating-point absolute residual is malformed.")
+    absolute_passes = _f64_value(absolute) <= 1.0e-8
+    relative = value.get("relative_residual")
+    relative_passes = False
+    if isinstance(relative, Mapping) and set(relative) == {"status", "value_f64"} and relative.get("status") == "value":
+        relative_value = relative.get("value_f64")
+        if not _finite_f64(relative_value) or _f64_value(relative_value) < 0.0:
+            raise _integrity("HB operating-point relative residual is malformed.")
+        relative_passes = _f64_value(relative_value) < 1.0e-8
+    elif not (
+        isinstance(relative, Mapping)
+        and relative == {"status": "not_applicable", "reason": "zero_state_norm"}
+    ):
+        raise _integrity("HB operating-point relative residual is malformed.")
+    disjunct = value.get("successful_disjunct")
+    expected_disjunct = (
+        "both" if absolute_passes and relative_passes
+        else "absolute" if absolute_passes
+        else "relative" if relative_passes
+        else None
+    )
+    if disjunct != expected_disjunct:
+        raise _integrity("HB operating-point closure does not satisfy the fixed residual disjunction.")
+
+
+def _verify_hb_reconciliation(value: object, lineage: Mapping[str, object]) -> None:
     fields = {"comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256"}
-    if not isinstance(value, dict) or not fields.issubset(value) or not set(value).issubset(fields | {"residual_f64"}) or not isinstance(value.get("comparable"), bool) or value.get("normalization") != "backend_photon_flux_to_scnsim_power_wave":
+    if not isinstance(value, dict) or not fields.issubset(value) or not set(value).issubset(fields | {"residual_f64", "coordinate_projection"}) or not isinstance(value.get("comparable"), bool) or value.get("normalization") != "backend_photon_flux_to_scnsim_power_wave":
         raise _integrity("HB reconciliation evidence is malformed.")
     _valid_sha(value.get("last_comparable_ancestor")); _valid_sha(value.get("evidence_sha256"))
     comparable = value["comparable"]
+    expected_reason = _hb_reconciliation_reason(lineage)
+    expected_ancestor = _hb_lineage_prefix_sha(lineage, expected_reason)
+    if value.get("last_comparable_ancestor") != expected_ancestor:
+        raise _integrity("HB reconciliation ancestor does not bind the actual lineage prefix.")
     if comparable:
         residual = value.get("residual_f64")
-        if value.get("reason") is not None or not _finite_f64(residual) or _f64_value(residual) < 0.0:
+        projection = _verify_hb_coordinate_projection(value.get("coordinate_projection"), lineage)
+        if expected_reason is not None or value.get("reason") is not None or not _finite_f64(residual) or _f64_value(residual) < 0.0:
             raise _integrity("Comparable HB reconciliation lacks its normalized residual.")
-    elif "residual_f64" in value or value.get("reason") not in {"topology", "load_or_ptc", "reference_plane", "reference_matrix", "signed_frequency_grid", "channel_basis", "normalization"}:
-        raise _integrity("Incomparable HB reconciliation is malformed.")
+        expected_evidence = _sha256(_canonical_bytes({
+            "coordinate_producer_sha256": _hb_coordinate_producer_sha(lineage),
+            "coordinate_projection": projection,
+            "residual_f64": residual,
+        }))
+        if value.get("evidence_sha256") != expected_evidence:
+            raise _integrity("HB comparable reconciliation evidence does not bind its coordinate producer and residual.")
+    else:
+        if "residual_f64" in value or "coordinate_projection" in value or value.get("reason") != expected_reason:
+            raise _integrity("Incomparable HB reconciliation is malformed.")
+        expected_evidence = _sha256(_canonical_bytes({
+            "reason": expected_reason,
+            "last_comparable_ancestor": expected_ancestor,
+        }))
+        if value.get("evidence_sha256") != expected_evidence:
+            raise _integrity("HB incomparable reconciliation evidence does not bind its reason and lineage prefix.")
+
+
+def _hb_reconciliation_reason(lineage: Mapping[str, object]) -> str | None:
+    original = lineage.get("original")
+    retain = lineage.get("retain")
+    ptc = lineage.get("ptc")
+    transforms = lineage.get("transforms")
+    if not isinstance(original, Mapping) or not isinstance(transforms, list):
+        raise _integrity("HB reconciliation cannot reconstruct its lineage.")
+    ports = _identifiers(original.get("port_order"), field="HB reconciliation original Ports", nonempty=False)
+    plain_port_subset = (
+        isinstance(retain, Mapping)
+        and ptc is None
+        and not transforms
+        and isinstance(retain.get("retained_coordinates"), list)
+        and all(value in ports for value in retain["retained_coordinates"])
+    )
+    if ptc is not None:
+        return "load_or_ptc"
+    if transforms:
+        return "reference_plane"
+    if retain is not None and not plain_port_subset:
+        return "channel_basis"
+    return None
+
+
+def _hb_lineage_prefix_sha(lineage: Mapping[str, object], reason: str | None) -> str:
+    """Rebuild Julia's longest-comparable canonical lineage prefix exactly."""
+
+    original = lineage.get("original")
+    if not isinstance(original, Mapping):
+        raise _integrity("HB reconciliation lineage has no original step.")
+    if reason is None or reason in {"reference_matrix", "normalization", "signed_frequency_grid"}:
+        return _valid_sha(lineage.get("lineage_sha256"))
+    terminal = _identifiers(original.get("port_order"), field="HB reconciliation original Ports", nonempty=False)
+    prefix: dict[str, object] = {
+        "type": "network_view_lineage",
+        "original": dict(original),
+        "ptc": lineage.get("ptc") if reason in {"reference_plane", "channel_basis"} else None,
+        "transforms": list(lineage.get("transforms", [])) if reason == "channel_basis" else [],
+        "retain": None,
+        "terminal_coordinates": terminal,
+        "port_realizable": original.get("port_realizable"),
+    }
+    prefix["lineage_sha256"] = _sha256(_canonical_bytes(prefix))
+    return str(prefix["lineage_sha256"])
+
+
+def _hb_coordinate_producer_sha(lineage: Mapping[str, object]) -> str:
+    """Return the sealed source identity of a comparable selected Port map."""
+
+    retain = lineage.get("retain")
+    if isinstance(retain, Mapping):
+        q_matrix = retain.get("q_matrix")
+        if not isinstance(q_matrix, Mapping):
+            raise _integrity("HB comparable retain lineage has no Q-matrix evidence.")
+        return _valid_sha(q_matrix.get("sha256"))
+    original = lineage.get("original")
+    if not isinstance(original, Mapping):
+        raise _integrity("HB comparable lineage has no original mapping identity.")
+    return _valid_sha(original.get("compiled_graph_sha256"))
+
+
+def _verify_hb_coordinate_projection(value: object, lineage: Mapping[str, object]) -> dict[str, object]:
+    """Bind the response-side Q row map to its selected and native bases."""
+
+    if not isinstance(value, Mapping) or set(value) != {"shape", "values_f64"}:
+        raise _integrity("HB comparable reconciliation has no closed coordinate projection.")
+    shape = value.get("shape")
+    bits = value.get("values_f64")
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 2
+        or any(not isinstance(size, int) or isinstance(size, bool) or size < 1 for size in shape)
+        or not isinstance(bits, list)
+        or len(bits) != shape[0] * shape[1]
+        or any(not _finite_f64(item) for item in bits)
+    ):
+        raise _integrity("HB comparable coordinate projection shape or values are malformed.")
+    from ._canonical import float64_hex
+
+    if any(float64_hex(_f64_value(item)) != item for item in bits):
+        raise _integrity("HB comparable coordinate projection has noncanonical Float64 values.")
+    original = lineage.get("original")
+    if not isinstance(original, Mapping):
+        raise _integrity("HB comparable reconciliation has no original View basis.")
+    ports = _identifiers(original.get("port_order"), field="HB comparable original Ports", nonempty=False)
+    retain = lineage.get("retain")
+    terminal = _identifiers(lineage.get("terminal_coordinates"), field="HB comparable terminal coordinates")
+    expected_shape = [len(terminal), len(ports)]
+    if shape != expected_shape:
+        raise _integrity("HB comparable coordinate projection does not span its selected and original Port bases.")
+    normalized = {"shape": list(shape), "values_f64": list(bits)}
+    if retain is None:
+        expected_identity = [float64_hex(1.0 if row == column else 0.0) for row in range(len(ports)) for column in range(len(ports))]
+        if terminal != ports or normalized != {"shape": [len(ports), len(ports)], "values_f64": expected_identity}:
+            raise _integrity("HB comparable original Port projection is not the canonical identity.")
+        return normalized
+    if not isinstance(retain, Mapping):
+        raise _integrity("HB comparable retain projection has malformed lineage.")
+    q_matrix = retain.get("q_matrix")
+    if not isinstance(q_matrix, Mapping) or q_matrix.get("rows") != shape[0] or q_matrix.get("columns") != shape[1]:
+        raise _integrity("HB comparable projection disagrees with retain Q-matrix dimensions.")
+    values = [
+        [_f64_value(bits[row * shape[1] + column]) for column in range(shape[1])]
+        for row in range(shape[0])
+    ]
+    expected_q = _lineage_matrix("q", values, "port_realizable")
+    if q_matrix.get("sha256") != expected_q["sha256"]:
+        raise _integrity("HB comparable projection does not reproduce retain Q-matrix evidence.")
+    return normalized
 
 
 def _verify_hb_state_node_map(value: object) -> None:
@@ -2975,7 +3424,7 @@ def _verify_hb_catalog_artifact(
     if not isinstance(artifact, dict):
         raise _integrity("HB artifact catalog entry is malformed.", artifact_id=role)
     base = {"id", "path", "sha256", "media_type", "file_manifest", "dtype", "shape", "chunks", "complex_storage", "group_metadata", "datasets", "axes", "unit", "dimensionality", "chunk_policy"}
-    matrix = role in {"s", "y", "z", "backend_native_s", "backend_native_z"}
+    matrix = not trace and role in {"s", "y", "z", "backend_native_s", "backend_native_z"}
     expected_fields = base | ({"coordinate_ids", "probe_load_state", "output_channels", "input_channels"} if matrix else set())
     if set(artifact) != expected_fields or artifact.get("id") != role or artifact.get("media_type") != "application/vnd+zarr-v2" or artifact.get("group_metadata") != {"zarr_format": 2}:
         raise _integrity("HB artifact catalog entry has the wrong semantic role.", artifact_id=role)
@@ -2987,7 +3436,14 @@ def _verify_hb_catalog_artifact(
     _valid_sha(artifact.get("sha256"))
     shape = artifact.get("shape")
     chunks = artifact.get("chunks")
-    if not isinstance(shape, list) or not isinstance(chunks, list) or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in [*shape, *chunks]):
+    allow_empty_leading = not trace and role in {"states", "effective_source_vectors"}
+    if (
+        not isinstance(shape, list)
+        or not isinstance(chunks, list)
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in shape)
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in chunks)
+        or any(value == 0 and (not allow_empty_leading or index != 0) for index, value in enumerate(shape))
+    ):
         raise _integrity("HB artifact has invalid shape or chunks.", artifact_id=role)
     if matrix:
         if len(shape) != 3 or len(chunks) != 3 or chunks != [min(shape[0], 1024), shape[1], shape[2]] or artifact.get("dtype") != "complex128" or artifact.get("complex_storage") != "paired_float64_real_imag" or artifact.get("chunk_policy") != "frequency_slab_full_matrix_v1":
@@ -3036,7 +3492,8 @@ def _verify_hb_catalog_artifact(
                 raise _integrity("HB trace artifact storage is malformed.", artifact_id=role)
             expected_axes = [{"id": "frequency", "kind": "frequency", "request_field": "spec.frequencies"}]
         else:
-            if len(shape) != 2 or len(chunks) != 2 or chunks != shape or artifact.get("unit") != ("weber" if is_state else "ampere") or artifact.get("dimensionality") != ("magnetic_flux" if is_state else "current") or artifact.get("chunk_policy") != "single_complete_array_v1":
+            expected_chunks = [max(1, shape[0]), shape[1]] if len(shape) == 2 else None
+            if len(shape) != 2 or len(chunks) != 2 or shape[1] < 1 or chunks != expected_chunks or artifact.get("unit") != ("weber" if is_state else "ampere") or artifact.get("dimensionality") != ("magnetic_flux" if is_state else "current") or artifact.get("chunk_policy") != "single_complete_array_v1":
                 raise _integrity("HB state/source artifact storage is malformed.", artifact_id=role)
             axes = artifact.get("axes")
             if not isinstance(axes, list) or len(axes) != 2 or not all(isinstance(axis, dict) for axis in axes) or axes[0].get("kind") != "pump_mode" or axes[1].get("kind") != "node_coordinate":

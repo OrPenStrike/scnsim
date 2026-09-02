@@ -838,7 +838,7 @@ class HBTruncation:
 
 @dataclass(frozen=True, slots=True)
 class SParameterTrace:
-    """Name a selected-matrix S projection for Direct; HB use remains dev6-only."""
+    """Name one selected-matrix S projection for Direct or HB."""
 
     id: str
     input_port: str

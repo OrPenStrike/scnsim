@@ -18,6 +18,8 @@ execute:
 a coefficient could be applied; the case owns its actual current. Omitting the
 drive from `currents={}` materializes exact zero, so this named case is pump
 off even though the request schema can support a later driven case.
+`four_wave_mixing=True` retains the declared odd `(1,)` pump drive mode in the
+request-global lattice; it does not create a nonzero current for this case.
 
 `SParameterTrace` names one ordered input/output projection of the complete HB
 response. Its mode tuples select Fourier-lattice channels rather than creating
@@ -57,7 +59,7 @@ hb_spec = HBSolveSpec(
         pump_harmonics=(3,),
         modulation_harmonics=(1,),
         three_wave_mixing=False,
-        four_wave_mixing=False,
+        four_wave_mixing=True,
     ),
     traces=(
         SParameterTrace(
@@ -161,7 +163,7 @@ hb_spec_after_restart = HBSolveSpec(
         pump_harmonics=(3,),
         modulation_harmonics=(1,),
         three_wave_mixing=False,
-        four_wave_mixing=False,
+        four_wave_mixing=True,
     ),
     traces=(
         SParameterTrace(

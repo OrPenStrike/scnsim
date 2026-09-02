@@ -2082,6 +2082,14 @@ assert dc_pump_a_low.pump_state is PumpState.ON
 assert dc_two_tone.pump_state is PumpState.ON
 ```
 
+`hb.topology_evidence` is the immutable request-global record of the loaded
+nonlinear balance and raw or PTC-compensated response lineage. Each successful
+case separately exposes `operating_point_closure`, including the exact
+absolute/relative residual evidence and successful disjunct (or the closed
+no-operating-lattice not-applicable reason). A failed case has no success-only
+closure record; its failure identity instead binds stage, message, ordinal,
+case ID, and the complete effective-source evidence.
+
 `HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
 classification on each successful outcome, not an alternate lookup key. `BiasState`
 independently records effective all-zero-mode drive. A case whose declared
@@ -2168,6 +2176,12 @@ S_k=\mathcal Q_{k,\mathrm{out}}
 S_{\mathrm{native,pw}}
 \mathcal Q_{k,\mathrm{in}}^T.
 $$
+
+Comparable evidence preserves the unreplicated physical $Q_k$ in deterministic
+row-major form and binds it to its Plan/View producer identity. Receipt loading
+reconstructs the lifted projection and independently reproduces the selected S
+matrix and recorded residual; a self-consistent but forged residual string is
+not accepted.
 
 A plain subset of original Ports is therefore comparable by its principal
 submatrix when every omitted Port retains its native matched load. A PTC or
