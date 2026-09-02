@@ -1538,6 +1538,14 @@ boundary. A real hybrid/zero anchor initializes a real angular frequency, while
 a complex anchor preserves both declared components under the $2\pi$
 conversion. An anchor is a Newton-basin initializer, never a nearest-root
 instruction.
+
+`frequencyAnchor` keeps that distinction in the exact request bytes. A plain
+real Quantity encodes as `quantity_f64`; a Python complex Quantity, including
+one whose imaginary component is exactly `0`, encodes as
+`complex_quantity_f64` with independently canonical real and imaginary SI
+bits. Both forms retain the declared source-unit provenance in the receipt.
+There is no lossy real fallback, compatibility alias, or implicit removal of a
+zero imaginary component.
 `TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
 generic cofactor/minor object is not part of the V1 scaffold. The Spec also
 requires its selected transfer denominator to

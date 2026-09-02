@@ -204,7 +204,13 @@
         },
         "values": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "$ref": "#/$defs/hbChannelLabel" },
+              { "$ref": "#/$defs/modeTuple" }
+            ]
+          }
         },
         "artifact_id": { "type": "string", "minLength": 1 },
         "request_field": { "const": "spec.frequencies" }
@@ -213,6 +219,20 @@
         { "required": ["values"], "not": { "anyOf": [{ "required": ["artifact_id"] }, { "required": ["request_field"] }] } },
         { "required": ["artifact_id"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["request_field"] }] } },
         { "required": ["request_field"], "not": { "anyOf": [{ "required": ["values"] }, { "required": ["artifact_id"] }] } }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["output_channel", "input_channel"] } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "$ref": "#/$defs/hbChannelLabel" } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "$ref": "#/$defs/modeTuple" } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] },
+          "then": { "properties": { "values": { "items": { "type": "string", "minLength": 1 } } } }
+        }
       ]
     },
     "fileArtifact": {
@@ -532,6 +552,21 @@
       "required": ["id", "sha256"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "hbArtifactReference": {
+      "description": "Operation-specific HB receipt/outcome artifact reference. case_id and id are semantic; path locates bytes within this exact attempt; sha256 proves those bytes.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "id", "path", "sha256"],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/identifier" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "path": {
+          "type": "string",
+          "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z|states|effective_source_vectors)\\.zarr$|^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.zarr$"
+        },
         "sha256": { "$ref": "#/$defs/sha256" }
       }
     },
@@ -1913,6 +1948,7 @@
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
         "blas_vendor": { "type": "string", "minLength": 1 },
+        "fftw_threads": { "type": "integer", "minimum": 1 },
         "resume_ledger_sha256": { "$ref": "#/$defs/sha256" }
       },
       "allOf": [
@@ -1929,7 +1965,8 @@
               "anyOf": [
                 { "required": ["julia_threads"] },
                 { "required": ["blas_threads"] },
-                { "required": ["blas_vendor"] }
+                { "required": ["blas_vendor"] },
+                { "required": ["fftw_threads"] }
               ]
             }
           }
@@ -1952,7 +1989,8 @@
         "julia_version": { "type": "string", "minLength": 1 },
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
-        "blas_vendor": { "type": "string", "minLength": 1 }
+        "blas_vendor": { "type": "string", "minLength": 1 },
+        "fftw_threads": { "type": "integer", "minimum": 1 }
       }
     },
     "launchAuthorization": {
@@ -2752,7 +2790,6 @@
             "eliminated_block_solve_failure",
             "root_slope_unresolved",
             "numerical_resolution_unresolved",
-            "hb_case_failure",
             "runtime_preparation",
             "backend_protocol",
             "result_unavailable",
@@ -2778,7 +2815,7 @@
           "then": { "properties": { "category": { "const": "validation" } } }
         },
         {
-          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "hb_case_failure", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
+          "if": { "properties": { "kind": { "enum": ["direct_response_formation", "invalid_candidate_physical_parameter", "compiler_invariant", "eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "runtime_preparation", "backend_protocol"] } }, "required": ["kind"] },
           "then": { "properties": { "category": { "const": "execution" } } }
         },
         {
@@ -3115,7 +3152,7 @@
         "result_sha256": { "$ref": "#/$defs/sha256" },
         "artifacts": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactLink" }
+          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
         },
         "evidence": { "$ref": "#/$defs/receiptEvidence" },
         "failure": { "$ref": "#/$defs/failure" },
@@ -3197,7 +3234,7 @@
         "interruption": { "$ref": "#/$defs/interruptionEvidence" },
         "artifacts": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactLink" }
+          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
         }
       },
       "allOf": [

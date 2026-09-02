@@ -764,6 +764,7 @@ class WorkspaceBinding:
         request_document = _load_canonical(request_path)
         plan_document = _load_canonical(self.leaf / "plan.json")
         _verify_request_document(request_document, self.plan_sha256, plan_document)
+        is_hb = request_document.get("operation") == "solve_hb"
         attempt_path = directory / "attempt.json"
         receipt_path = directory / "receipt.json"
         attempt = _load_canonical(attempt_path)
@@ -790,6 +791,8 @@ class WorkspaceBinding:
         }
         if state == "launched":
             attempt_fields.update({"julia_threads", "blas_threads", "blas_vendor"})
+            if is_hb:
+                attempt_fields.add("fftw_threads")
         if attempt.get("resume_ledger_sha256") is not None:
             attempt_fields.add("resume_ledger_sha256")
         if set(attempt) != attempt_fields:
@@ -805,7 +808,11 @@ class WorkspaceBinding:
         if state == "launched":
             if any(not isinstance(attempt.get(key), int) or attempt[key] < 1 for key in ("julia_threads", "blas_threads")) or not isinstance(attempt.get("blas_vendor"), str) or not attempt["blas_vendor"]:
                 raise _integrity("Launched attempt lacks child runtime evidence.", attempt=str(directory))
-        elif any(key in attempt for key in ("julia_threads", "blas_threads", "blas_vendor")):
+            if is_hb and attempt.get("fftw_threads") != 1:
+                raise _integrity("HB launched attempt lacks fixed FFTW thread evidence.", attempt=str(directory))
+            if not is_hb and "fftw_threads" in attempt:
+                raise _integrity("Direct launched attempt must not claim HB FFTW evidence.", attempt=str(directory))
+        elif any(key in attempt for key in ("julia_threads", "blas_threads", "blas_vendor", "fftw_threads")):
             raise _integrity("Allocated attempt must not claim child runtime evidence.", attempt=str(directory))
         attempt_sha256 = _sha256(_canonical_bytes(attempt))
         resume = attempt.get("resume_ledger_sha256")
@@ -914,7 +921,11 @@ class WorkspaceBinding:
                 or outcome_document.get("runtime_semantic") != request_document.get("runtime_semantic")
             ):
                 raise _integrity("Outcome envelope does not match its receipt.", attempt=str(directory))
-            _compare_artifacts(outcome_document.get("artifacts"), receipt.get("artifacts"))
+            _compare_artifacts(
+                outcome_document.get("artifacts"),
+                receipt.get("artifacts"),
+                operation=request_document.get("operation"),
+            )
         elif outcome_path.exists():
             raise _integrity("An unlinked outcome.json is not authoritative evidence.", attempt=str(directory))
         if outcome == "success":
@@ -929,6 +940,7 @@ class WorkspaceBinding:
                 raise _integrity("Success receipt result hash does not match result bytes.", attempt=str(directory))
             expected_result_kind = (
                 "direct_response" if request_document.get("operation") == "solve_direct"
+                else "hb_batch" if request_document.get("operation") == "solve_hb"
                 else "optimization" if request_document.get("operation") == "optimize_direct"
                 else request_document.get("spec", {}).get("type") if request_document.get("operation") == "evaluate_direct" and isinstance(request_document.get("spec"), dict)
                 else None
@@ -1494,6 +1506,7 @@ def _verify_request_document(
     runtime = request.get("runtime_semantic")
     algorithms = {
         "solve_direct": {"direct_solve": "scnsim.direct_response.v1"},
+        "solve_hb": {"hb_solve": "scnsim.hb_response.josephsoncircuits.v1"},
         "evaluate_direct": {
             "diagonal_root": "scnsim.diagonal_root.newton32.v1",
             "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
@@ -1527,6 +1540,10 @@ def _verify_request_document(
     terminal, port_realizable = _verify_v1_lineage(request.get("ref_lineage"), plan)
     if operation == "solve_direct":
         _verify_v1_direct_spec(spec, terminal, port_realizable)
+    elif operation == "solve_hb":
+        original = request["ref_lineage"].get("original") if isinstance(request["ref_lineage"], Mapping) else None
+        logical_ports = _identifiers(original.get("port_order"), field="HB original Port order", nonempty=False) if isinstance(original, Mapping) else []
+        _verify_v1_hb_spec(spec, terminal, port_realizable, logical_ports)
     elif operation == "evaluate_direct":
         _verify_v1_evaluation_spec(spec, terminal, port_realizable)
     else:
@@ -1794,6 +1811,108 @@ def _verify_v1_direct_spec(spec: object, terminal: list[str], port_realizable: b
         ):
             raise _integrity("Direct trace declaration is malformed.")
         trace_ids.add(trace["id"])
+
+
+def _verify_v1_hb_spec(
+    spec: object,
+    terminal: list[str],
+    port_realizable: bool,
+    logical_ports: list[str],
+) -> None:
+    """Close the declared HB request before workspace evidence is allocated.
+
+    Lattice realization remains Julia-owned, but a sealed request must already
+    bind a complete, unique authoring declaration to a port-realizable View.
+    """
+
+    if not port_realizable:
+        raise _integrity("HB S/Y/Z request is not Port-realizable.")
+    expected = {
+        "type", "pump_axes", "drives", "frequencies", "cases", "truncation",
+        "traces", "allow_driven_ptc",
+    }
+    if not isinstance(spec, dict) or set(spec) != expected or spec.get("type") != "hb_solve":
+        raise _integrity("HB solve Spec is malformed.")
+    axes = spec.get("pump_axes")
+    drives = spec.get("drives")
+    cases = spec.get("cases")
+    traces = spec.get("traces")
+    frequencies = spec.get("frequencies")
+    truncation = spec.get("truncation")
+    if not isinstance(axes, list) or not isinstance(drives, list) or not isinstance(cases, list) or not cases or not isinstance(traces, list) or not isinstance(frequencies, list) or not frequencies or not isinstance(truncation, dict) or not isinstance(spec.get("allow_driven_ptc"), bool):
+        raise _integrity("HB solve Spec has incomplete declarations.")
+    axis_ids: set[str] = set()
+    for axis in axes:
+        if not isinstance(axis, dict) or set(axis) != {"id", "frequency"} or not isinstance(axis.get("id"), str) or _IDENTIFIER.fullmatch(axis["id"]) is None or axis["id"] in axis_ids:
+            raise _integrity("HB pump-axis declaration is malformed.")
+        _verify_quantity_role(axis.get("frequency"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+        if _f64_value(axis["frequency"]["si_value_f64"]) <= 0.0:
+            raise _integrity("HB pump-axis frequency is not strictly positive.")
+        axis_ids.add(axis["id"])
+    previous = 0.0
+    for frequency in frequencies:
+        _verify_quantity_role(frequency, complex_value=False, unit="hertz", dimensionality="inverse_time")
+        value = _f64_value(frequency["si_value_f64"])
+        if value <= previous:
+            raise _integrity("HB response frequency grid is not strictly positive and increasing.")
+        previous = value
+    drive_ids: set[str] = set()
+    for drive in drives:
+        if (
+            not isinstance(drive, dict)
+            or set(drive) != {"id", "port_id", "mode", "orientation"}
+            or not isinstance(drive.get("id"), str)
+            or _IDENTIFIER.fullmatch(drive["id"]) is None
+            or drive["id"] in drive_ids
+            or drive.get("port_id") not in logical_ports
+            or drive.get("orientation") != "port_node_to_reference"
+            or not _valid_mode_tuple(drive.get("mode"), len(axis_ids))
+        ):
+            raise _integrity("HB current-drive declaration is malformed.")
+        drive_ids.add(drive["id"])
+    case_ids: set[str] = set()
+    for case in cases:
+        if not isinstance(case, dict) or set(case) != {"id", "currents"} or not isinstance(case.get("id"), str) or _IDENTIFIER.fullmatch(case["id"]) is None or case["id"] in case_ids or not isinstance(case.get("currents"), list):
+            raise _integrity("HB case declaration is malformed.")
+        current_ids: set[str] = set()
+        for current in case["currents"]:
+            if (
+                not isinstance(current, dict)
+                or set(current) != {"drive_id", "coefficient", "coefficient_convention"}
+                or current.get("drive_id") not in drive_ids
+                or current["drive_id"] in current_ids
+                or current.get("coefficient_convention") != "exp_minus_i_m_dot_omega_t_fourier_coefficient"
+            ):
+                raise _integrity("HB case current binding is malformed.")
+            _verify_quantity_role(current.get("coefficient"), complex_value=True, unit="ampere", dimensionality="current")
+            current_ids.add(current["drive_id"])
+        case_ids.add(case["id"])
+    expected_truncation = {"pump_harmonics", "modulation_harmonics", "max_intermodulation_order", "three_wave_mixing", "four_wave_mixing"}
+    if set(truncation) != expected_truncation or not isinstance(truncation.get("pump_harmonics"), list) or not isinstance(truncation.get("modulation_harmonics"), list) or len(truncation["pump_harmonics"]) != len(axis_ids) or len(truncation["modulation_harmonics"]) != len(axis_ids) or any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in [*truncation["pump_harmonics"], *truncation["modulation_harmonics"]]) or (truncation.get("max_intermodulation_order") is not None and (not isinstance(truncation["max_intermodulation_order"], int) or isinstance(truncation["max_intermodulation_order"], bool) or truncation["max_intermodulation_order"] < 0)) or not isinstance(truncation.get("three_wave_mixing"), bool) or not isinstance(truncation.get("four_wave_mixing"), bool):
+        raise _integrity("HB truncation declaration is malformed.")
+    trace_ids: set[str] = set()
+    for trace in traces:
+        if (
+            not isinstance(trace, dict)
+            or set(trace) != {"id", "input_port", "input_mode", "output_port", "output_mode"}
+            or not isinstance(trace.get("id"), str)
+            or _IDENTIFIER.fullmatch(trace["id"]) is None
+            or trace["id"] in trace_ids
+            or trace.get("input_port") not in terminal
+            or trace.get("output_port") not in terminal
+            or not _valid_mode_tuple(trace.get("input_mode"), len(axis_ids))
+            or not _valid_mode_tuple(trace.get("output_mode"), len(axis_ids))
+        ):
+            raise _integrity("HB trace declaration is malformed.")
+        trace_ids.add(trace["id"])
+
+
+def _valid_mode_tuple(value: object, rank: int) -> bool:
+    return bool(
+        isinstance(value, list)
+        and len(value) == rank
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
+    )
 
 
 def _verify_v1_evaluation_spec(
@@ -2355,7 +2474,6 @@ def _verify_failure_document(value: object, operation: object) -> None:
         "eliminated_block_solve_failure": "execution",
         "root_slope_unresolved": "execution",
         "numerical_resolution_unresolved": "execution",
-        "hb_case_failure": "execution",
         "runtime_preparation": "execution",
         "backend_protocol": "execution",
         "result_unavailable": "evidence",
@@ -2396,6 +2514,7 @@ def _verify_result_document(
     spec = request.get("spec")
     kind = (
         "direct_response" if request.get("operation") == "solve_direct"
+        else "hb_batch" if request.get("operation") == "solve_hb"
         else "optimization" if request.get("operation") == "optimize_direct"
         else spec.get("type") if request.get("operation") == "evaluate_direct" and isinstance(spec, dict)
         else None
@@ -2409,7 +2528,9 @@ def _verify_result_document(
         or result.get("attempt_sha256") != attempt_sha256
     ):
         raise _integrity("Result envelope does not match its request and attempt.")
-    if kind == "direct_response":
+    if kind == "hb_batch":
+        _verify_hb_batch_result(result, request, plan)
+    elif kind == "direct_response":
         if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("scalar_catalog") != {}:
             raise _integrity("Direct Result envelope is open or has scalar payloads.")
         catalog = result.get("array_catalog")
@@ -2578,7 +2699,366 @@ def _verify_result_document(
             ):
                 raise _integrity("Optimization ledger catalog entry is open or malformed.")
     else:
-        raise _integrity("Result operation is outside the Direct runtime.")
+        raise _integrity("Result operation is outside the supported runtime.")
+
+
+def _verify_hb_batch_result(
+    result: Mapping[str, object],
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+) -> None:
+    """Verify the case-local HB Result catalog before receipt promotion.
+
+    HB artifacts are semantic catalog records on successful cases.  Their
+    manifest hashes attest only to the byte trees; receipt links retain the
+    case-local semantic key so repeated role names in separate cases cannot
+    collapse into a global artifact namespace.
+    """
+
+    common = {"schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256"}
+    expected = common | {"lattice", "truncation", "cases"}
+    if set(result) != expected:
+        raise _integrity("HB batch Result envelope is open or incomplete.")
+    spec = request.get("spec")
+    if not isinstance(spec, dict):
+        raise _integrity("HB batch Result has no solve Spec.")
+    if result.get("truncation") != spec.get("truncation"):
+        raise _integrity("HB Result truncation disagrees with its request.")
+    lattice = result.get("lattice")
+    lattice_fields = {
+        "pump_axes", "operating_point_modes", "input_modes", "output_modes",
+        "matrix_order", "tuple_frequency_collision_check_sha256",
+    }
+    if not isinstance(lattice, dict) or set(lattice) != lattice_fields or lattice.get("pump_axes") != spec.get("pump_axes") or lattice.get("matrix_order") != "port_major_mode_minor":
+        raise _integrity("HB lattice evidence is malformed or disagrees with its request.")
+    _valid_sha(lattice.get("tuple_frequency_collision_check_sha256"))
+    pump_rank = len(spec.get("pump_axes", []))
+    for field, frequency_grid in (("operating_point_modes", False), ("input_modes", True), ("output_modes", True)):
+        modes = lattice.get(field)
+        if not isinstance(modes, list) or not modes:
+            raise _integrity("HB lattice is missing an ordered mode basis.", field=field)
+        seen: set[tuple[int, ...]] = set()
+        for item in modes:
+            keys = {"mode", "signed_frequency", "order"} if not frequency_grid else {"mode", "signed_frequency_grid", "order"}
+            if not isinstance(item, dict) or set(item) != keys or not _valid_mode_tuple(item.get("mode"), pump_rank) or not isinstance(item.get("order"), int) or isinstance(item.get("order"), bool) or item["order"] < 0:
+                raise _integrity("HB lattice mode row is malformed.", field=field)
+            mode = tuple(item["mode"])
+            if mode in seen:
+                raise _integrity("HB lattice repeats a mode tuple.", field=field)
+            seen.add(mode)
+            values = item.get("signed_frequency_grid") if frequency_grid else [item.get("signed_frequency")]
+            if not isinstance(values, list) or (frequency_grid and len(values) != len(spec.get("frequencies", []))):
+                raise _integrity("HB lattice frequency evidence is malformed.", field=field)
+            for value in values:
+                _verify_quantity_role(value, complex_value=False, unit="hertz", dimensionality="inverse_time")
+                if frequency_grid and _f64_value(value["si_value_f64"]) == 0.0:
+                    raise _integrity("HB response lattice contains a zero-frequency sideband.", field=field)
+    cases = result.get("cases")
+    declared_cases = spec.get("cases")
+    if not isinstance(cases, list) or not isinstance(declared_cases, list) or len(cases) != len(declared_cases):
+        raise _integrity("HB Result case inventory disagrees with its declaration.")
+    terminal, _ = _verify_v1_lineage(request.get("ref_lineage"), plan)
+    lineage = request.get("ref_lineage")
+    original = lineage.get("original") if isinstance(lineage, Mapping) else None
+    native_ports = _identifiers(original.get("port_order"), field="HB original Port order", nonempty=False) if isinstance(original, Mapping) else []
+    original_coordinates = _identifiers(
+        original.get("coordinate_order"), field="HB original coordinate order"
+    ) if isinstance(original, Mapping) else []
+    plan_ports = plan.get("ports")
+    if not isinstance(plan_ports, list):
+        raise _integrity("HB sealed Plan has no Port inventory.")
+    from ._canonical import f64_hex
+
+    expected_injection_sha256: dict[str, str] = {}
+    for port in plan_ports:
+        if (
+            not isinstance(port, Mapping)
+            or not isinstance(port.get("port_id"), str)
+            or not isinstance(port.get("node_id"), str)
+            or port["port_id"] in expected_injection_sha256
+            or port["node_id"] not in original_coordinates
+        ):
+            raise _integrity("HB sealed Port cannot reproduce its compiler injection map.")
+        incidence = [0.0] * len(original_coordinates)
+        incidence[original_coordinates.index(port["node_id"])] = 1.0
+        expected_injection_sha256[port["port_id"]] = _sha256(
+            _canonical_bytes(
+                {
+                    "schema": "scnsim.hb_injection_map",
+                    "schema_version": 1,
+                    "port_id": port["port_id"],
+                    "incidence_f64": [f64_hex(item) for item in incidence],
+                }
+            )
+        )
+    expected_probe = _expected_probe_load_state(lineage)
+    native_probe = [{"port_id": port, "state": "raw"} for port in native_ports]
+    for ordinal, (outcome, declared) in enumerate(zip(cases, declared_cases), 1):
+        if not isinstance(outcome, dict) or not isinstance(declared, dict) or outcome.get("case_ordinal") != ordinal or outcome.get("case_id") != declared.get("id"):
+            raise _integrity("HB Result cases are not declaration ordered.")
+        _verify_hb_effective_sources(
+            outcome.get("effective_sources"),
+            pump_rank,
+            spec=spec,
+            declared_case=declared,
+            expected_injection_sha256=expected_injection_sha256,
+        )
+        status = outcome.get("status")
+        if status == "failure":
+            if set(outcome) != {"case_ordinal", "case_id", "status", "effective_sources", "failure"}:
+                raise _integrity("Failed HB outcome leaks success-only evidence.")
+            failure = outcome.get("failure")
+            if not isinstance(failure, dict) or set(failure) != {"kind", "stage", "message", "evidence_sha256"} or failure.get("kind") != "hb_case_failure" or failure.get("stage") not in {"operating_point", "linearization", "response_formation"} or not isinstance(failure.get("message"), str) or not failure["message"]:
+                raise _integrity("HB case failure is malformed.")
+            _valid_sha(failure.get("evidence_sha256"))
+            continue
+        if status != "success":
+            raise _integrity("HB case has an unknown terminal status.")
+        success_fields = {
+            "case_ordinal", "case_id", "status", "bias_state", "pump_state",
+            "effective_sources", "artifacts", "traces", "reconciliation",
+            "backend_normalization_evidence_sha256", "state_node_map",
+        }
+        if set(outcome) != success_fields or outcome.get("bias_state") not in {"off", "on"} or outcome.get("pump_state") not in {"off", "on"}:
+            raise _integrity("Successful HB outcome is open or malformed.")
+        _valid_sha(outcome.get("backend_normalization_evidence_sha256"))
+        _verify_hb_reconciliation(outcome.get("reconciliation"))
+        _verify_hb_state_node_map(outcome.get("state_node_map"))
+        _verify_hb_case_catalog(
+            outcome.get("artifacts"), outcome.get("traces"), ordinal,
+            spec, lattice, outcome["state_node_map"], terminal,
+            expected_probe, native_ports, native_probe,
+        )
+
+
+def _verify_hb_effective_sources(
+    value: object,
+    pump_rank: int,
+    *,
+    spec: Mapping[str, object],
+    declared_case: Mapping[str, object],
+    expected_injection_sha256: Mapping[str, str],
+) -> None:
+    drives = spec.get("drives")
+    bindings = declared_case.get("currents")
+    if not isinstance(value, list) or not isinstance(drives, list) or not isinstance(bindings, list) or len(value) != len(drives):
+        raise _integrity("HB outcome has no effective-source evidence.")
+    by_drive: dict[str, Mapping[str, object]] = {}
+    for binding in bindings:
+        if not isinstance(binding, Mapping) or not isinstance(binding.get("drive_id"), str) or binding["drive_id"] in by_drive:
+            raise _integrity("HB case current declaration is malformed.")
+        by_drive[binding["drive_id"]] = binding
+    for source, drive in zip(value, drives):
+        if not isinstance(source, dict) or set(source) != {"drive_id", "mode", "coefficient", "injection_map_sha256"} or not isinstance(source.get("drive_id"), str) or _IDENTIFIER.fullmatch(source["drive_id"]) is None or not _valid_mode_tuple(source.get("mode"), pump_rank):
+            raise _integrity("HB effective-source row is malformed.")
+        if not isinstance(drive, Mapping) or source.get("drive_id") != drive.get("id") or source.get("mode") != drive.get("mode"):
+            raise _integrity("HB effective sources are not in drive declaration order.")
+        _verify_quantity_role(source.get("coefficient"), complex_value=True, unit="ampere", dimensionality="current")
+        binding = by_drive.pop(source["drive_id"], None)
+        coefficient = source["coefficient"]
+        if binding is None:
+            if _f64_value(coefficient["real_si_f64"]) != 0.0 or _f64_value(coefficient["imag_si_f64"]) != 0.0:
+                raise _integrity("An omitted HB current did not materialize as exact zero.")
+        elif coefficient != binding.get("coefficient"):
+            raise _integrity("HB effective-source coefficient disagrees with its case declaration.")
+        expected_injection = expected_injection_sha256.get(str(drive.get("port_id")))
+        if expected_injection is None or source.get("injection_map_sha256") != expected_injection:
+            raise _integrity("HB effective-source injection map disagrees with the sealed compiler basis.")
+    if by_drive:
+        raise _integrity("HB case current names a drive absent from effective sources.")
+
+
+def _verify_hb_reconciliation(value: object) -> None:
+    fields = {"comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256"}
+    if not isinstance(value, dict) or not fields.issubset(value) or not set(value).issubset(fields | {"residual_f64"}) or not isinstance(value.get("comparable"), bool) or value.get("normalization") != "backend_photon_flux_to_scnsim_power_wave":
+        raise _integrity("HB reconciliation evidence is malformed.")
+    _valid_sha(value.get("last_comparable_ancestor")); _valid_sha(value.get("evidence_sha256"))
+    comparable = value["comparable"]
+    if comparable:
+        residual = value.get("residual_f64")
+        if value.get("reason") is not None or not _finite_f64(residual) or _f64_value(residual) < 0.0:
+            raise _integrity("Comparable HB reconciliation lacks its normalized residual.")
+    elif "residual_f64" in value or value.get("reason") not in {"topology", "load_or_ptc", "reference_plane", "reference_matrix", "signed_frequency_grid", "channel_basis", "normalization"}:
+        raise _integrity("Incomparable HB reconciliation is malformed.")
+
+
+def _verify_hb_state_node_map(value: object) -> None:
+    if not isinstance(value, list) or not value:
+        raise _integrity("HB success lacks its state-node map.")
+    for index, row in enumerate(value):
+        if not isinstance(row, dict) or set(row) != {"state_index", "compiler_node_id", "source"} or row.get("state_index") != index or not isinstance(row.get("compiler_node_id"), str) or _IDENTIFIER.fullmatch(row["compiler_node_id"]) is None or not isinstance(row.get("source"), dict):
+            raise _integrity("HB state-node map is malformed.")
+        source = row["source"]
+        kind = source.get("kind")
+        valid = (
+            kind == "plan_node"
+            and set(source) == {"kind", "plan_node_id", "visibility"}
+            and isinstance(source.get("plan_node_id"), str)
+            and _IDENTIFIER.fullmatch(source["plan_node_id"]) is not None
+            and source.get("visibility") in {"public", "port_promoted"}
+        ) or (
+            kind == "component_private"
+            and set(source) == {"kind", "component_path", "private_node_id"}
+            and isinstance(source.get("component_path"), list)
+            and bool(source["component_path"])
+            and all(isinstance(segment, str) and _IDENTIFIER.fullmatch(segment) is not None for segment in source["component_path"])
+            and isinstance(source.get("private_node_id"), str)
+            and _IDENTIFIER.fullmatch(source["private_node_id"]) is not None
+        ) or (
+            kind == "anonymous_internal"
+            and set(source) == {"kind", "internal_node_id"}
+            and isinstance(source.get("internal_node_id"), str)
+            and re.fullmatch(r"internal-[0-9a-f]{64}", source["internal_node_id"]) is not None
+        )
+        if not valid:
+            raise _integrity("HB state-node source mapping is malformed.")
+
+
+def _verify_hb_case_catalog(
+    artifacts: object,
+    traces: object,
+    ordinal: int,
+    spec: Mapping[str, object],
+    lattice: Mapping[str, object],
+    state_node_map: list[dict[str, object]],
+    terminal: list[str],
+    expected_probe: list[dict[str, str]],
+    native_ports: list[str],
+    native_probe: list[dict[str, str]],
+) -> None:
+    roles = ("s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors")
+    if not isinstance(artifacts, dict) or set(artifacts) != set(roles) or not isinstance(traces, list):
+        raise _integrity("HB case artifact catalog is incomplete.")
+    input_modes = [item["mode"] for item in lattice["input_modes"]]
+    output_modes = [item["mode"] for item in lattice["output_modes"]]
+    operating_modes = [item["mode"] for item in lattice["operating_point_modes"]]
+    compiler_nodes = [item["compiler_node_id"] for item in state_node_map]
+    for role in roles:
+        native = role in {"backend_native_s", "backend_native_z"}
+        _verify_hb_catalog_artifact(
+            artifacts[role], ordinal, role, spec,
+            native_ports if native else terminal,
+            native_probe if native else expected_probe,
+            input_modes=input_modes,
+            output_modes=output_modes,
+            operating_modes=operating_modes,
+            compiler_nodes=compiler_nodes,
+        )
+    declared_traces = spec.get("traces")
+    if not isinstance(declared_traces, list) or len(traces) != len(declared_traces):
+        raise _integrity("HB trace catalog disagrees with declaration.")
+    for artifact, declaration in zip(traces, declared_traces):
+        if not isinstance(declaration, dict) or not isinstance(artifact, dict) or artifact.get("id") != declaration.get("id"):
+            raise _integrity("HB trace catalog is not declaration ordered.")
+        _verify_hb_catalog_artifact(
+            artifact, ordinal, str(declaration["id"]), spec, terminal,
+            expected_probe, trace=True, input_modes=input_modes,
+            output_modes=output_modes, operating_modes=operating_modes,
+            compiler_nodes=compiler_nodes,
+        )
+
+
+def _verify_hb_catalog_artifact(
+    artifact: object,
+    ordinal: int,
+    role: str,
+    spec: Mapping[str, object],
+    terminal: list[str],
+    expected_probe: list[dict[str, str]],
+    *,
+    trace: bool = False,
+    input_modes: list[list[int]],
+    output_modes: list[list[int]],
+    operating_modes: list[list[int]],
+    compiler_nodes: list[str],
+) -> None:
+    if not isinstance(artifact, dict):
+        raise _integrity("HB artifact catalog entry is malformed.", artifact_id=role)
+    base = {"id", "path", "sha256", "media_type", "file_manifest", "dtype", "shape", "chunks", "complex_storage", "group_metadata", "datasets", "axes", "unit", "dimensionality", "chunk_policy"}
+    matrix = role in {"s", "y", "z", "backend_native_s", "backend_native_z"}
+    expected_fields = base | ({"coordinate_ids", "probe_load_state", "output_channels", "input_channels"} if matrix else set())
+    if set(artifact) != expected_fields or artifact.get("id") != role or artifact.get("media_type") != "application/vnd+zarr-v2" or artifact.get("group_metadata") != {"zarr_format": 2}:
+        raise _integrity("HB artifact catalog entry has the wrong semantic role.", artifact_id=role)
+    prefix = f"artifacts/cases/{ordinal:06d}/"
+    expected_path = f"{prefix}traces/{role}.zarr" if trace else f"{prefix}{role}.zarr"
+    expected_manifest = expected_path.removesuffix(".zarr") + ".manifest.json"
+    if artifact.get("path") != expected_path or artifact.get("file_manifest") != expected_manifest:
+        raise _integrity("HB artifact path does not match its case ordinal.", artifact_id=role)
+    _valid_sha(artifact.get("sha256"))
+    shape = artifact.get("shape")
+    chunks = artifact.get("chunks")
+    if not isinstance(shape, list) or not isinstance(chunks, list) or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in [*shape, *chunks]):
+        raise _integrity("HB artifact has invalid shape or chunks.", artifact_id=role)
+    if matrix:
+        if len(shape) != 3 or len(chunks) != 3 or chunks != [min(shape[0], 1024), shape[1], shape[2]] or artifact.get("dtype") != "complex128" or artifact.get("complex_storage") != "paired_float64_real_imag" or artifact.get("chunk_policy") != "frequency_slab_full_matrix_v1":
+            raise _integrity("HB matrix artifact storage is malformed.", artifact_id=role)
+        units = {"s": ("dimensionless", "dimensionless"), "y": ("siemens", "conductance"), "z": ("ohm", "resistance"), "backend_native_s": ("dimensionless", "dimensionless"), "backend_native_z": ("ohm", "resistance")}
+        if (artifact.get("unit"), artifact.get("dimensionality")) != units[role] or artifact.get("coordinate_ids") != terminal or artifact.get("probe_load_state") != expected_probe:
+            raise _integrity("HB matrix artifact semantic metadata disagrees with the View.", artifact_id=role)
+        channels = artifact.get("output_channels"), artifact.get("input_channels")
+        expected_output_channels = [
+            {"coordinate": coordinate, "mode": mode}
+            for coordinate in terminal for mode in output_modes
+        ]
+        expected_input_channels = [
+            {"coordinate": coordinate, "mode": mode}
+            for coordinate in terminal for mode in input_modes
+        ]
+        if (
+            not all(isinstance(channels_value, list) for channels_value in channels)
+            or channels[0] != expected_output_channels
+            or channels[1] != expected_input_channels
+            or len(channels[0]) != shape[1]
+            or len(channels[1]) != shape[2]
+        ):
+            raise _integrity("HB matrix channel catalog disagrees with its shape.", artifact_id=role)
+        rank = len(spec.get("pump_axes", []))
+        for channel_list in channels:
+            seen: set[tuple[str, tuple[int, ...]]] = set()
+            for channel in channel_list:
+                if not isinstance(channel, dict) or set(channel) != {"coordinate", "mode"} or channel.get("coordinate") not in terminal or not _valid_mode_tuple(channel.get("mode"), rank):
+                    raise _integrity("HB matrix channel label is malformed.", artifact_id=role)
+                key = (str(channel["coordinate"]), tuple(channel["mode"]))
+                if key in seen:
+                    raise _integrity("HB matrix channel labels repeat.", artifact_id=role)
+                seen.add(key)
+        expected_axes = [
+            {"id": "frequency", "kind": "frequency", "request_field": "spec.frequencies"},
+            {"id": "output_channel", "kind": "output_channel", "values": channels[0]},
+            {"id": "input_channel", "kind": "input_channel", "values": channels[1]},
+        ]
+        if artifact.get("axes") != expected_axes:
+            raise _integrity("HB matrix axes disagree with its channel catalog.", artifact_id=role)
+    else:
+        is_state = role == "states"
+        if trace:
+            if len(shape) != 1 or len(chunks) != 1 or chunks != [min(shape[0], 1024)] or artifact.get("unit") != "dimensionless" or artifact.get("dimensionality") != "dimensionless" or artifact.get("chunk_policy") != "frequency_capped_1024_v1":
+                raise _integrity("HB trace artifact storage is malformed.", artifact_id=role)
+            expected_axes = [{"id": "frequency", "kind": "frequency", "request_field": "spec.frequencies"}]
+        else:
+            if len(shape) != 2 or len(chunks) != 2 or chunks != shape or artifact.get("unit") != ("weber" if is_state else "ampere") or artifact.get("dimensionality") != ("magnetic_flux" if is_state else "current") or artifact.get("chunk_policy") != "single_complete_array_v1":
+                raise _integrity("HB state/source artifact storage is malformed.", artifact_id=role)
+            axes = artifact.get("axes")
+            if not isinstance(axes, list) or len(axes) != 2 or not all(isinstance(axis, dict) for axis in axes) or axes[0].get("kind") != "pump_mode" or axes[1].get("kind") != "node_coordinate":
+                raise _integrity("HB state/source axes are malformed.", artifact_id=role)
+            pump_modes, nodes = axes[0].get("values"), axes[1].get("values")
+            if (
+                not isinstance(pump_modes, list)
+                or not isinstance(nodes, list)
+                or len(pump_modes) != shape[0]
+                or len(nodes) != shape[1]
+                or any(not _valid_mode_tuple(mode, len(spec.get("pump_axes", []))) for mode in pump_modes)
+                or any(not isinstance(node, str) or _IDENTIFIER.fullmatch(node) is None for node in nodes)
+                or len({tuple(mode) for mode in pump_modes}) != len(pump_modes)
+                or len(set(nodes)) != len(nodes)
+                or pump_modes != operating_modes
+                or nodes != compiler_nodes
+            ):
+                raise _integrity("HB state/source axis values disagree with its shape.", artifact_id=role)
+            expected_axes = axes
+        if artifact.get("dtype") != "complex128" or artifact.get("complex_storage") != "paired_float64_real_imag" or artifact.get("axes") != expected_axes:
+            raise _integrity("HB non-matrix artifact has invalid representation.", artifact_id=role)
+    _verify_zarr_datasets(artifact.get("datasets"), shape=shape, chunks=chunks, names=["real", "imag"])
 
 
 def _verify_root_like_result(result: Mapping[str, object], fields: set[str]) -> None:
@@ -3092,30 +3572,136 @@ def _verify_direct_artifact(value: object, role: str) -> int:
     return shape[0]
 
 
-def _compare_artifacts(left: object, right: object) -> None:
+def _compare_artifacts(left: object, right: object, *, operation: object) -> None:
     if not isinstance(left, list) or not isinstance(right, list):
         raise _integrity("Outcome and receipt require artifact inventories.")
-    normalized: list[list[tuple[str, str]]] = []
+    normalized: list[list[tuple[object, ...]]] = []
     for inventory in (left, right):
-        entries: list[tuple[str, str]] = []
-        identifiers: set[str] = set()
+        entries: list[tuple[object, ...]] = []
+        identities: set[tuple[object, ...]] = set()
+        paths: set[str] = set()
         for entry in inventory:
-            if not isinstance(entry, dict) or set(entry) != {"id", "sha256"}:
+            if not isinstance(entry, dict):
                 raise _integrity("Artifact inventory entry is malformed.")
-            identifier = entry.get("id")
-            digest = entry.get("sha256")
-            if not isinstance(identifier, str) or not identifier:
-                raise _integrity("Artifact inventory ID is malformed.")
-            if identifier in identifiers:
-                raise _integrity("Artifact inventory contains a duplicate ID.", artifact_id=identifier)
-            identifiers.add(identifier)
-            entries.append((identifier, _valid_sha(digest)))
+            if operation == "solve_hb":
+                if set(entry) != {"case_id", "id", "path", "sha256"} or not isinstance(entry.get("case_id"), str) or _IDENTIFIER.fullmatch(entry["case_id"]) is None or not isinstance(entry.get("id"), str) or _IDENTIFIER.fullmatch(entry["id"]) is None or not isinstance(entry.get("path"), str):
+                    raise _integrity("HB artifact reference is malformed.")
+                identity = (entry["case_id"], entry["id"], entry["path"])
+                if identity in identities or entry["path"] in paths:
+                    raise _integrity("HB artifact references repeat an identity or path.")
+                identities.add(identity); paths.add(entry["path"])
+                entries.append((*identity, _valid_sha(entry.get("sha256"))))
+            else:
+                if set(entry) != {"id", "sha256"} or not isinstance(entry.get("id"), str) or not entry["id"]:
+                    raise _integrity("Artifact inventory entry is malformed.")
+                identity = (entry["id"],)
+                if identity in identities:
+                    raise _integrity("Artifact inventory contains a duplicate ID.", artifact_id=entry["id"])
+                identities.add(identity)
+                entries.append((*identity, _valid_sha(entry.get("sha256"))))
         normalized.append(entries)
     if normalized[0] != normalized[1]:
         raise _integrity("Outcome and receipt artifact inventories disagree.")
 
 
+def _verify_hb_artifact_inventory(directory: Path, result: Mapping[str, object], receipt: Mapping[str, object]) -> None:
+    """Cross-check HB's case-local semantic catalog against receipt bytes."""
+
+    cases = result.get("cases")
+    links = receipt.get("artifacts")
+    if not isinstance(cases, list) or not isinstance(links, list):
+        raise _integrity("HB Result or receipt lacks its artifact inventory.")
+    expected: list[dict[str, str]] = []
+    seen_identity: set[tuple[str, str, str]] = set()
+    seen_paths: set[str] = set()
+    roles = ("s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors")
+    for outcome in cases:
+        if not isinstance(outcome, dict) or outcome.get("status") == "failure":
+            continue
+        if outcome.get("status") != "success" or not isinstance(outcome.get("case_id"), str) or not isinstance(outcome.get("artifacts"), dict) or not isinstance(outcome.get("traces"), list):
+            raise _integrity("HB success catalog is malformed.")
+        catalog = outcome["artifacts"]
+        artifacts = [catalog[role] for role in roles]
+        artifacts.extend(outcome["traces"])
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                raise _integrity("HB artifact catalog entry is malformed.")
+            artifact_id, path, digest = artifact.get("id"), artifact.get("path"), artifact.get("sha256")
+            if not isinstance(artifact_id, str) or _IDENTIFIER.fullmatch(artifact_id) is None or not isinstance(path, str):
+                raise _integrity("HB artifact catalog has an invalid semantic identity.")
+            # A trace may deliberately reuse a fixed role ID (for example
+            # ``s``); the canonical HB reference is case + local ID + path.
+            identity = (outcome["case_id"], artifact_id, path)
+            if identity in seen_identity or path in seen_paths:
+                raise _integrity("HB artifact catalog repeats a case-local identity or path.")
+            seen_identity.add(identity); seen_paths.add(path)
+            _valid_sha(digest)
+            expected.append({"case_id": outcome["case_id"], "id": artifact_id, "path": path, "sha256": digest})
+            manifest_path = artifact.get("file_manifest")
+            if not isinstance(manifest_path, str):
+                raise _integrity("HB artifact catalog has no manifest path.", artifact_id=artifact_id)
+            artifact_path = _inside(directory, path)
+            manifest = _inside(directory, manifest_path)
+            if not artifact_path.is_dir() or artifact_path.is_symlink() or not manifest.is_file() or manifest.is_symlink():
+                raise _integrity("HB artifact path is missing or unsafe.", artifact_id=artifact_id)
+            manifest_bytes = manifest.read_bytes()
+            if _sha256(manifest_bytes) != digest:
+                raise _integrity("HB artifact manifest hash disagrees with its catalog.", artifact_id=artifact_id)
+            manifest_doc = _decode_bytes(manifest_bytes, "artifact manifest")
+            if manifest_doc.get("schema") != "scnsim.artifact_manifest" or manifest_doc.get("artifact_id") != artifact_id or manifest_doc.get("artifact_path") != path:
+                raise _integrity("HB artifact manifest identity disagrees with its catalog.", artifact_id=artifact_id)
+            _verify_manifest_tree(artifact_path, manifest_doc)
+    _compare_artifacts(expected, links, operation="solve_hb")
+    artifact_root = directory / "artifacts"
+    if not expected:
+        if artifact_root.exists():
+            raise _integrity("All-failed HB batch must not retain an artifact directory.")
+        return
+    if artifact_root.is_symlink() or not artifact_root.is_dir() or (artifact_root / "cases").is_symlink() or not (artifact_root / "cases").is_dir():
+        raise _integrity("HB artifact root is missing or unsafe.")
+    if any(child.is_symlink() or not child.is_dir() for child in (artifact_root / "cases").iterdir()):
+        raise _integrity("HB case artifact root contains an unsafe entry.")
+    actual_ordinals = {
+        child.name for child in (artifact_root / "cases").iterdir()
+        if child.is_dir() and not child.is_symlink()
+    }
+    expected_ordinals = {
+        path.split("/")[2] for path in seen_paths
+    }
+    if actual_ordinals != expected_ordinals:
+        raise _integrity("HB case artifact directories disagree with successful outcomes.")
+    for ordinal in expected_ordinals:
+        case_root = artifact_root / "cases" / ordinal
+        expected_case_entries: set[str] = set()
+        expected_trace_entries: set[str] = set()
+        for path in seen_paths:
+            parts = path.split("/")
+            if parts[2] != ordinal:
+                continue
+            if len(parts) == 4:
+                stem = parts[3].removesuffix(".zarr")
+                expected_case_entries.update({parts[3], f"{stem}.manifest.json"})
+            else:
+                stem = parts[4].removesuffix(".zarr")
+                expected_case_entries.add("traces")
+                expected_trace_entries.update({parts[4], f"{stem}.manifest.json"})
+        entries = {child.name: child for child in case_root.iterdir()}
+        if set(entries) != expected_case_entries:
+            raise _integrity("HB case directory contains undeclared entries.", case_ordinal=ordinal)
+        for name, child in entries.items():
+            if child.is_symlink() or (name == "traces" and not child.is_dir()) or (name != "traces" and (name.endswith(".zarr") != child.is_dir() or name.endswith(".manifest.json") != child.is_file())):
+                raise _integrity("HB case directory contains an unsafe entry.", case_ordinal=ordinal)
+        if expected_trace_entries:
+            trace_root = case_root / "traces"
+            trace_entries = {child.name: child for child in trace_root.iterdir()}
+            if set(trace_entries) != expected_trace_entries or any(child.is_symlink() or (name.endswith(".zarr") != child.is_dir() or name.endswith(".manifest.json") != child.is_file()) for name, child in trace_entries.items()):
+                raise _integrity("HB trace directory contains undeclared or unsafe entries.", case_ordinal=ordinal)
+
+
 def _verify_artifact_inventory(directory: Path, result: Mapping[str, object], receipt: Mapping[str, object]) -> None:
+    if result.get("result_kind") == "hb_batch":
+        _verify_hb_artifact_inventory(directory, result, receipt)
+        return
     catalog = result.get("array_catalog")
     if catalog is None:
         catalog = {}

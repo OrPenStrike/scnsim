@@ -31,6 +31,19 @@ flattened `(coordinate, mode)` pairs in coordinate-major/mode-minor order.
 `MatrixView.input_channels` and `output_channels` expose those exact stored-axis
 labels; presentation never infers a reshape or relabels a mode.
 
+HB operating-point state arrays use the distinct structured axes
+`(pump_mode, node_coordinate)`: each pump-mode label is an ordered integer
+tuple in request pump-axis order, and each node-coordinate label is the sealed
+compiler identity recorded by `state_node_map`. These labels are evidence, not
+new View selectors or Port aliases.
+
+The Result catalog describes artifact meaning (role, dtype, shape, axes, units,
+and channel order). Its HB links carry case-local
+`{case_id, id, path, sha256}` references. The accompanying manifest instead
+seals the byte tree. A repeated local ID or SHA-256 across cases is valid; only
+the complete reference within its receipt-bound attempt has an addressable
+role.
+
 No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
 unit disagreement, non-finite forbidden values, or a real/imag manifest mismatch
 fails during verification rather than returning a partially typed object.

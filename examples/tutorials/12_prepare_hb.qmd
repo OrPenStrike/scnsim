@@ -7,9 +7,9 @@ execute:
 
 ::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** separate HB axes, possible drives, named cases, and finite truncation.
-**Run:** prepare one exact pump-off case.
-**Inspect:** retained modes, signed frequencies, and derived Pump state.
-**Status:** `CONVERGING` scaffold.
+**Run:** solve one exact pump-off HB batch and resolve it without a retry.
+**Inspect:** selected S/Y/Z, case state, and any typed per-case outcome.
+**Status:** `CONVERGING` dev6 candidate.
 :::
 
 ## Declare the experiment without driving it
@@ -71,14 +71,115 @@ hb_spec = HBSolveSpec(
 )
 ```
 
-## Preflight the finite lattice
+## Preflight and solve the finite lattice
 
 Preflight lists actual tuples, signed physical frequencies, source bindings,
-case classification, and selected-network order without starting HB.
+case classification, and selected-network order without starting HB. `solve()`
+then performs one request-global nonlinear realization and returns one outcome
+for every declared case. A case numerical failure remains visible in that batch;
+it does not turn into an empty result or a second request.
 
 ```{python}
 #| id: explain-pump-off-hb
 run.explain(view, hb_spec).show()
 ```
+
+```{python}
+#| id: solve-pump-off-hb
+hb = run.solve(view, hb_spec)
+hb.show()
+
+pump_off = hb.cases["pump_off"]
+if pump_off.succeeded:
+    pump_off.s.view
+    pump_off.y.view
+    pump_off.z.view
+    pump_off.traces["transmission"].show(magnitude="db")
+    pump_off.states
+    pump_off.state_node_map
+else:
+    # A valid numerical failure remains an addressable, typed case outcome.
+    pump_off.failure
+```
+
+`HBBatchResult.cases` is declared-case order and read-only. A partially
+successful or all-numerical-failure batch is still a verified reusable Result:
+successful cases expose S/Y/Z, traces, and states; a failed case exposes its
+same `HBCaseFailure` whenever a success-only property is requested. Malformed
+requests, backend protocol failures, and receipt-integrity failures are instead
+request-level failures and never become synthetic case outcomes.
+
+## Resolve the exact HB request
+
+After a restart, reconstruct the same sealed Plan, View, and Spec. `resolve()`
+only verifies and loads the receipt for that exact request; it never imports a
+factory, reruns Julia, retries a numerical failure, or selects a “latest”
+batch.
+
+```{python}
+#| id: resolve-pump-off-hb
+from fixtures.floating_probe import build_floating_probe_circuit
+from scnsim import (
+    CircuitRun,
+    CurrentDrive,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    PumpAxis,
+    ReductionPipeline,
+    SParameterTrace,
+    units as u,
+)
+
+fixture_after_restart = build_floating_probe_circuit()
+run_after_restart = CircuitRun(
+    plan=fixture_after_restart.plan,
+    workspace="workspaces/advanced-course",
+)
+view_after_restart = run_after_restart.original.reduce(
+    ReductionPipeline()
+    .ptc(fixture_after_restart.probe_plus, fixture_after_restart.probe_minus)
+    .transform_pair(
+        fixture_after_restart.qubit_plus,
+        fixture_after_restart.qubit_minus,
+        id="qubit",
+    )
+    .retain("feedline_in", "feedline_out", "qubit.differential")
+)
+pump_after_restart = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+pump_drive_after_restart = CurrentDrive(
+    id="pump_drive",
+    at=fixture_after_restart.feedline_in,
+    mode=(1,),
+)
+hb_spec_after_restart = HBSolveSpec(
+    pump_axes=(pump_after_restart,),
+    drives=(pump_drive_after_restart,),
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    cases=(HBCaseSpec(id="pump_off", currents={}),),
+    truncation=HBTruncation(
+        pump_harmonics=(3,),
+        modulation_harmonics=(1,),
+        three_wave_mixing=False,
+        four_wave_mixing=False,
+    ),
+    traces=(
+        SParameterTrace(
+            id="transmission",
+            input_port="feedline_in",
+            input_mode=(0,),
+            output_port="feedline_out",
+            output_mode=(0,),
+        ),
+    ),
+)
+resolved_hb = run_after_restart.resolve(view_after_restart, hb_spec_after_restart)
+resolved_hb.show()
+```
+
+For a Ref containing PTC, a case with an effective DC or AC drive requires
+`allow_driven_ptc=True`. That approval leaves the nonlinear balance loaded;
+compensation applies only to response linearization. This pump-off case has no
+effective drive, so it exercises the ordinary PTC lineage without that approval.
 
 [Previous](11_transform_retain.qmd) · [Course map](../../docs/index.qmd) · [Next: compare Direct and HB](13_compare_direct_hb.qmd) · [Concept: Direct/HB realization](../../docs/concepts/direct-and-hb-realizations.qmd#direct-and-hb-selected-network)

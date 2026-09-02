@@ -43,8 +43,11 @@ uv run python -c "from scnsim import CircuitPlan, components; help(components.ca
 ```
 
 Primitive, Composite, RLGC, PTC/transform, expanded Direct, optimization, and
-inventory paths through Lessons 1–11 are executable candidates. HB operations
-continue to raise `ScaffoldUnavailableError` until dev6 lands.
+inventory paths through Lessons 1–13 are executable candidates. Lessons 12–13
+exercise the dev6 HB candidate: typed pump axes, drives, cases, truncation,
+per-case outcomes, exact resolution, and side-by-side Direct/HB presentation
+on independently declared grids. They do not imply Full V1 acceptance,
+stabilization, HB optimization, interpolation, or a SCQGate handoff.
 
 ## Read the documentation
 

@@ -160,9 +160,10 @@ How do I inspect one floating pair in automatic common/differential coordinates?
 
 ### [Declare a pump-off HB request](../examples/tutorials/12_prepare_hb.qmd){.stretched-link} {.course-card-title .unlisted}
 
-How do axes, drives, cases, and truncation describe a zero-drive experiment?
+How do axes, drives, cases, and truncation author, solve, and resolve a
+zero-drive experiment?
 
-<p class="course-card-outcome"><strong>Produces</strong> · HB preflight and derived pump-off state.</p>
+<p class="course-card-outcome"><strong>Produces</strong> · A receipt-backed pump-off HB batch with typed case outcomes.</p>
 :::
 ::::
 
@@ -172,9 +173,10 @@ How do axes, drives, cases, and truncation describe a zero-drive experiment?
 
 ### [Solve and compare Direct/HB responses](../examples/tutorials/13_compare_direct_hb.qmd){.stretched-link} {.course-card-title .unlisted}
 
-How do I compare the same selected network across both solvers?
+How do I present one selected network through both solvers without conflating
+their grids?
 
-<p class="course-card-outcome"><strong>Produces</strong> · Symmetric Direct/HB S/Y/Z surfaces.</p>
+<p class="course-card-outcome"><strong>Produces</strong> · Independent Direct and HB S/Y/Z surfaces shown side by side.</p>
 :::
 ::::
 

@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from html import escape
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal
 
 import numpy as np
@@ -120,6 +121,62 @@ def _validate_frequency_anchor(value: Quantity, *, name: str) -> None:
         raise ValueError(f"{name} must be finite with a positive real part")
 
 
+def _detached_quantity(value: Quantity) -> Quantity:
+    """Detach authored Pint storage before an immutable Spec retains it."""
+
+    magnitude = value.magnitude
+    if isinstance(magnitude, np.ndarray):
+        magnitude = np.array(magnitude, copy=True)
+        magnitude.setflags(write=False)
+    return units.registry.Quantity(magnitude, value.units)
+
+
+def _mode_tuple(value: tuple[int, ...], *, name: str) -> tuple[int, ...]:
+    if not isinstance(value, tuple):
+        raise TypeError(f"{name} must be a tuple")
+    if any(not isinstance(item, int) or isinstance(item, bool) for item in value):
+        raise TypeError(f"{name} must contain integers")
+    return value
+
+
+def _nonnegative_int_tuple(value: tuple[int, ...], *, name: str) -> tuple[int, ...]:
+    checked = _mode_tuple(value, name=name)
+    if any(item < 0 for item in checked):
+        raise ValueError(f"{name} must contain nonnegative integers")
+    return checked
+
+
+def _validate_complex_current(value: Quantity, *, name: str) -> None:
+    if not isinstance(value, Quantity) or value._REGISTRY is not units.registry:
+        raise TypeError(f"{name} must use the scnsim.units registry")
+    try:
+        magnitude = np.asarray(value.to("ampere").magnitude)
+    except Exception as exc:
+        raise TypeError(f"{name} must be a current Quantity") from exc
+    if magnitude.ndim != 0:
+        raise ValueError(f"{name} must be a finite scalar Quantity")
+    scalar = complex(magnitude.item())
+    if not isfinite(scalar.real) or not isfinite(scalar.imag):
+        raise ValueError(f"{name} must be finite")
+
+
+def _validate_hb_mode(
+    mode: tuple[int, ...],
+    *,
+    rank: int,
+    limits: tuple[int, ...],
+    truncation: HBTruncation,
+    name: str,
+) -> None:
+    if len(mode) != rank:
+        raise ValueError(f"{name} rank must equal pump-axis rank")
+    if any(abs(value) > limit for value, limit in zip(mode, limits)):
+        raise ValueError(f"{name} is outside the declared harmonic lattice")
+    crop = truncation.max_intermodulation_order
+    if crop is not None and sum(abs(value) for value in mode) > crop:
+        raise ValueError(f"{name} is outside max_intermodulation_order")
+
+
 def _family(value: str) -> Literal["S", "Y", "Z"]:
     if value not in {"S", "Y", "Z"}:
         raise ValueError("family must be 'S', 'Y', or 'Z'")
@@ -226,7 +283,7 @@ class HybridizedPoleSpec:
     """
 
     coordinates: tuple[Coordinate, ...]
-    anchor: Quantity
+    _anchor: Quantity
 
     def __init__(self, *, coordinates: Sequence[Coordinate], anchor: Quantity) -> None:
         checked = tuple(coordinates)
@@ -235,7 +292,11 @@ class HybridizedPoleSpec:
             raise ValueError("HybridizedPoleSpec requires at least two unique coordinates")
         _validate_frequency_anchor(anchor, name="anchor")
         object.__setattr__(self, "coordinates", checked)
-        object.__setattr__(self, "anchor", anchor)
+        object.__setattr__(self, "_anchor", _detached_quantity(anchor))
+
+    @property
+    def anchor(self) -> Quantity:
+        return _detached_quantity(self._anchor)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -260,7 +321,7 @@ class TransferZeroSpec:
     This is an analytic complex-Newton quantity, not a sampled response minimum.
     """
 
-    anchor: Quantity
+    _anchor: Quantity
     family: Literal["S", "Y", "Z"]
     input_coordinate: Coordinate
     output_coordinate: Coordinate
@@ -270,10 +331,14 @@ class TransferZeroSpec:
         _family(family)
         _coordinate_id(input_coordinate)
         _coordinate_id(output_coordinate)
-        object.__setattr__(self, "anchor", anchor)
+        object.__setattr__(self, "_anchor", _detached_quantity(anchor))
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "input_coordinate", input_coordinate)
         object.__setattr__(self, "output_coordinate", output_coordinate)
+
+    @property
+    def anchor(self) -> Quantity:
+        return _detached_quantity(self._anchor)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -658,31 +723,84 @@ class OptimizationSpec:
 
 @dataclass(frozen=True, slots=True)
 class PumpAxis:
-    """Name one independent HB pump axis; implemented in the HB ``dev6`` slice."""
+    """Name one independent positive-frequency HB pump fundamental."""
+
+    id: str
+    _frequency: Quantity
 
     def __init__(self, *, id: str, frequency: Quantity) -> None:
-        unavailable("PumpAxis construction")
+        id = _identifier(id, field="pump-axis id")
+        units.require_positive_quantity(frequency, "hertz", name="pump-axis frequency")
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "_frequency", _detached_quantity(frequency))
+
+    @property
+    def frequency(self) -> Quantity:
+        return _detached_quantity(self._frequency)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"id": self.id, "frequency": self.frequency}
 
 
 @dataclass(frozen=True, slots=True)
 class CurrentDrive:
-    """Declare one logical-Port HB drive; unavailable before ``dev6``."""
+    """Declare one logical-Port HB Fourier-current injection channel."""
+
+    id: str
+    at: PortRef
+    mode: tuple[int, ...]
 
     def __init__(self, *, id: str, at: PortRef, mode: tuple[int, ...]) -> None:
-        unavailable("CurrentDrive construction")
+        id = _identifier(id, field="HB drive id")
+        if not isinstance(at, PortRef):
+            raise TypeError("CurrentDrive.at must be a PortRef")
+        checked = _mode_tuple(mode, name="CurrentDrive.mode")
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "at", at)
+        object.__setattr__(self, "mode", checked)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "id": self.id,
+            "port_id": self.at.id,
+            "mode": self.mode,
+            "orientation": "port_node_to_reference",
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class HBCaseSpec:
-    """Name one HB operating condition; unavailable before ``dev6``."""
+    """Name one immutable set of declared HB drive coefficients."""
+
+    id: str
+    _currents: Mapping[CurrentDrive, Quantity]
 
     def __init__(self, *, id: str, currents: Mapping[CurrentDrive, Quantity]) -> None:
-        unavailable("HBCaseSpec construction")
+        id = _identifier(id, field="HB case id")
+        if not isinstance(currents, Mapping):
+            raise TypeError("HBCaseSpec.currents must be a mapping")
+        checked: dict[CurrentDrive, Quantity] = {}
+        for drive, current in currents.items():
+            if not isinstance(drive, CurrentDrive):
+                raise TypeError("HBCaseSpec current keys must be CurrentDrive values")
+            _validate_complex_current(current, name=f"current for drive {drive.id!r}")
+            checked[drive] = _detached_quantity(current)
+        object.__setattr__(self, "id", id)
+        object.__setattr__(self, "_currents", MappingProxyType(checked))
 
+    @property
+    def currents(self) -> Mapping[CurrentDrive, Quantity]:
+        return MappingProxyType({drive: _detached_quantity(current) for drive, current in self._currents.items()})
 
 @dataclass(frozen=True, slots=True)
 class HBTruncation:
-    """Declare a finite HB mode lattice; unavailable before ``dev6``."""
+    """Declare the request-global finite HB operating and response lattices."""
+
+    pump_harmonics: tuple[int, ...]
+    modulation_harmonics: tuple[int, ...]
+    three_wave_mixing: bool
+    four_wave_mixing: bool
+    max_intermodulation_order: int | None
 
     def __init__(
         self,
@@ -693,7 +811,29 @@ class HBTruncation:
         four_wave_mixing: bool,
         max_intermodulation_order: int | None = None,
     ) -> None:
-        unavailable("HBTruncation construction")
+        pump = _nonnegative_int_tuple(pump_harmonics, name="pump_harmonics")
+        modulation = _nonnegative_int_tuple(modulation_harmonics, name="modulation_harmonics")
+        if not isinstance(three_wave_mixing, bool) or not isinstance(four_wave_mixing, bool):
+            raise TypeError("HB mixing selections must be bool")
+        if (
+            max_intermodulation_order is not None
+            and (not isinstance(max_intermodulation_order, int) or isinstance(max_intermodulation_order, bool) or max_intermodulation_order < 0)
+        ):
+            raise ValueError("max_intermodulation_order must be a nonnegative integer or None")
+        object.__setattr__(self, "pump_harmonics", pump)
+        object.__setattr__(self, "modulation_harmonics", modulation)
+        object.__setattr__(self, "three_wave_mixing", three_wave_mixing)
+        object.__setattr__(self, "four_wave_mixing", four_wave_mixing)
+        object.__setattr__(self, "max_intermodulation_order", max_intermodulation_order)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "pump_harmonics": self.pump_harmonics,
+            "modulation_harmonics": self.modulation_harmonics,
+            "max_intermodulation_order": self.max_intermodulation_order,
+            "three_wave_mixing": self.three_wave_mixing,
+            "four_wave_mixing": self.four_wave_mixing,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -737,7 +877,15 @@ class SParameterTrace:
 
 @dataclass(frozen=True, slots=True)
 class HBSolveSpec:
-    """Request a shared-basis nonlinear HB case batch; unavailable before ``dev6``."""
+    """Request one immutable shared-basis nonlinear HB batch."""
+
+    pump_axes: tuple[PumpAxis, ...]
+    drives: tuple[CurrentDrive, ...]
+    _frequencies: Quantity
+    cases: tuple[HBCaseSpec, ...]
+    truncation: HBTruncation
+    traces: tuple[SParameterTrace, ...]
+    allow_driven_ptc: bool
 
     def __init__(
         self,
@@ -750,7 +898,112 @@ class HBSolveSpec:
         traces: Sequence[SParameterTrace] = (),
         allow_driven_ptc: bool = False,
     ) -> None:
-        unavailable("HBSolveSpec construction")
+        axes = tuple(pump_axes)
+        declared_drives = tuple(drives)
+        declared_cases = tuple(cases)
+        declared_traces = tuple(traces)
+        if not all(isinstance(axis, PumpAxis) for axis in axes):
+            raise TypeError("pump_axes must contain PumpAxis values")
+        if len({axis.id for axis in axes}) != len(axes):
+            raise ValueError("pump-axis IDs must be unique")
+        if not all(isinstance(drive, CurrentDrive) for drive in declared_drives):
+            raise TypeError("drives must contain CurrentDrive values")
+        if len({drive.id for drive in declared_drives}) != len(declared_drives):
+            raise ValueError("HB drive IDs must be unique")
+        if not isinstance(truncation, HBTruncation):
+            raise TypeError("truncation must be an HBTruncation")
+        if len(truncation.pump_harmonics) != len(axes) or len(truncation.modulation_harmonics) != len(axes):
+            raise ValueError("HB truncation rank must equal pump-axis rank")
+        _validate_frequency_grid(frequencies)
+        if not all(isinstance(case, HBCaseSpec) for case in declared_cases) or not declared_cases:
+            raise ValueError("cases must be a nonempty sequence of HBCaseSpec values")
+        if len({case.id for case in declared_cases}) != len(declared_cases):
+            raise ValueError("HB case IDs must be unique")
+        if not all(isinstance(trace, SParameterTrace) for trace in declared_traces):
+            raise TypeError("traces must contain SParameterTrace values")
+        if len({trace.id for trace in declared_traces}) != len(declared_traces):
+            raise ValueError("HB trace IDs must be unique")
+        if not isinstance(allow_driven_ptc, bool):
+            raise TypeError("allow_driven_ptc must be bool")
+
+        rank = len(axes)
+        declared_by_mode: set[tuple[str, tuple[int, ...]]] = set()
+        for drive in declared_drives:
+            _validate_hb_mode(
+                drive.mode,
+                rank=rank,
+                limits=truncation.pump_harmonics,
+                truncation=truncation,
+                name=f"drive {drive.id!r}",
+            )
+            key = (drive.at.id, drive.mode)
+            inverse = (drive.at.id, tuple(-item for item in drive.mode))
+            if drive.mode and any(drive.mode) and inverse in declared_by_mode:
+                raise ValueError("HB drives must not independently declare conjugate modes at one Port")
+            declared_by_mode.add(key)
+        for trace in declared_traces:
+            _validate_hb_mode(
+                trace.input_mode,
+                rank=rank,
+                limits=truncation.modulation_harmonics,
+                truncation=truncation,
+                name=f"trace {trace.id!r} input_mode",
+            )
+            _validate_hb_mode(
+                trace.output_mode,
+                rank=rank,
+                limits=truncation.modulation_harmonics,
+                truncation=truncation,
+                name=f"trace {trace.id!r} output_mode",
+            )
+        declared_set = set(declared_drives)
+        for case in declared_cases:
+            for drive, current in case._currents.items():
+                if drive not in declared_set:
+                    raise ValueError("HB case binds a CurrentDrive not declared by this HBSolveSpec")
+                if not any(declared is drive for declared in declared_drives):
+                    raise ValueError("HB case must bind the exact declared CurrentDrive object")
+                if not any(drive.mode) and complex(current.to("ampere").magnitude).imag != 0.0:
+                    raise ValueError("a DC HB current coefficient must be real")
+        object.__setattr__(self, "pump_axes", axes)
+        object.__setattr__(self, "drives", declared_drives)
+        object.__setattr__(self, "_frequencies", _detached_quantity(frequencies))
+        object.__setattr__(self, "cases", declared_cases)
+        object.__setattr__(self, "truncation", truncation)
+        object.__setattr__(self, "traces", declared_traces)
+        object.__setattr__(self, "allow_driven_ptc", allow_driven_ptc)
+
+    @property
+    def frequencies(self) -> Quantity:
+        return _detached_quantity(self._frequencies)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "hb_solve",
+            "pump_axes": tuple(axis._canonical_record() for axis in self.pump_axes),
+            "drives": tuple(drive._canonical_record() for drive in self.drives),
+            "frequencies": self.frequencies,
+            "cases": tuple(
+                {
+                    "id": case.id,
+                    "currents": tuple(
+                        {
+                            "drive_id": drive.id,
+                            "coefficient": current,
+                            "coefficient_convention": "exp_minus_i_m_dot_omega_t_fourier_coefficient",
+                        }
+                        for drive, current in self._ordered_case_currents(case)
+                    ),
+                }
+                for case in self.cases
+            ),
+            "truncation": self.truncation._canonical_record(),
+            "traces": tuple(trace._canonical_record() for trace in self.traces),
+            "allow_driven_ptc": self.allow_driven_ptc,
+        }
+
+    def _ordered_case_currents(self, case: HBCaseSpec) -> tuple[tuple[CurrentDrive, Quantity], ...]:
+        return tuple((drive, case._currents[drive]) for drive in self.drives if drive in case._currents)
 
 
 @dataclass(frozen=True, slots=True)
