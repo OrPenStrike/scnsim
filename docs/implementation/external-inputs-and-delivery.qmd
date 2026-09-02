@@ -4,12 +4,12 @@ subtitle: "What may be reused, parsed, and implemented first?"
 toc-depth: 2
 ---
 
-**Status:** Human-`ACCEPTED` Full V1 implementation; stabilization in progress.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Parse one native Q2D artifact
 
-`load_q2d_rlgc()` will parse SCGSim's public AEDT 2024.2 combined `CG, RL`
-export directly. The candidate carrier contains one exact header and one primary
+`load_q2d_rlgc()` parses SCGSim's public AEDT 2024.2 combined `CG, RL`
+export directly. The carrier contains one exact header and one primary
 Capacitance, Conductance, Inductance, and Resistance matrix block with source
 labels, units, extraction frequency, and original order. SCNSim validates the
 complete conductor map and records a content hash.
@@ -56,7 +56,7 @@ hashes explain mechanics only; they do not transfer acceptance or consumers.
 
 The public V1 documentation and integrated runtime are complete in the
 Human-accepted dev1–dev6 scope. All 13 ordered QMD/IPYNB lesson pairs exercise
-that implementation. Full V1 stabilization is in progress; acceptance and
+that implementation. Full V1 is `STABILIZED`; acceptance, stabilization, and
 integration do not imply release.
 
 Runtime implementation followed four independently reviewed and integrated

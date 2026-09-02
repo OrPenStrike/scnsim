@@ -4,7 +4,7 @@ subtitle: "How does the first backend operation obtain a reproducible Julia?"
 toc-depth: 2
 ---
 
-**Status:** Human-`ACCEPTED` Full V1 implementation; stabilization in progress.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Prepare on the first backend-bound operation
 
@@ -35,7 +35,7 @@ bootstrap succeeds or fails.
 
 ## Ship one internal Julia environment
 
-SCNSim will commit these package resources:
+SCNSim ships these package resources:
 
 ```text
 src/scnsim/_julia/
@@ -54,7 +54,7 @@ only. The HB slice adds JosephsonCircuits `0.5.4` at General-registry tree
 `a88bafb8f57ad5b43ef302ae893288f0b75c11e3`). Python locates all resources
 through `importlib.resources`, never caller cwd or a user Julia project.
 
-SCNSim will commit one internal `Project.toml` and `Manifest.toml`. The package
+SCNSim ships one internal `Project.toml` and `Manifest.toml`. The package
 launches the JuliaPkg-resolved executable with `--project` pointing to that
 internal project and instantiates it when needed. A committed Manifest fixes
 the resolved dependency state; Julia's environment guidance
@@ -85,7 +85,7 @@ fixes Julia and BLAS to one thread to reduce avoidable variation, while still
 recording the observed values. See
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd).
 
-The first candidate supports Linux and macOS. Windows raises
+The Full V1 runtime supports Linux and macOS. Windows raises
 `UnsupportedRuntimePlatformError` before workspace mutation, Julia selection,
 or download. The first slice also requires a 64-bit Julia platform so signed
 Int64 optimizer seeds can be reinterpreted exactly as UInt64.

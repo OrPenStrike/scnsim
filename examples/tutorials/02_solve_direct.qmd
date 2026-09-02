@@ -9,7 +9,7 @@ execute:
 **Learn:** describe one Port response before executing it.
 **Run:** prepare and solve one Direct S/Y/Z request.
 **Inspect:** the complete one-Port S/Y/Z surfaces.
-**Status:** Human-`ACCEPTED` Full V1; stabilization in progress.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Describe the response you need
@@ -25,9 +25,9 @@ The workspace stores exact request receipts and artifacts. It is not a mutable
 “latest result” directory. Requests for the same sealed Plan may coexist; only
 binding a different Plan activates the default topology replacement policy.
 
-The first executable candidate supports this original one-Port, no-trace Direct
-request. N-port views and named traces remain later lessons and currently fail
-closed.
+This lesson intentionally starts with the smallest complete Direct request: an
+original one-Port view without named traces. Lessons 9–11 extend the same
+runtime path to N-port views, named traces, PTC, transforms, and retention.
 
 ::: {.callout-tip title="Iterate the topology in the same kernel" appearance="simple"}
 In an authoring Notebook, keep the builder in an earlier editable cell. Redefine

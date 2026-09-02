@@ -1,15 +1,14 @@
 ---
 title: "Contract"
-subtitle: "Public behavior and the design that will implement it"
+subtitle: "Public behavior and its implementation design"
 ---
 
 ::: {.callout-note appearance="simple"}
 ## Full V1 lifecycle authority
 
-The complete dev1–dev6 Full V1 public semantics are Human-`ACCEPTED`.
-Cross-slice stabilization is in progress; the previously stabilized Lessons
-6–8 scope remains stabilized. Acceptance and stabilization are not release
-claims.
+The complete dev1–dev6 Full V1 public semantics are Human-`ACCEPTED` and
+`STABILIZED`. Their documentation, implementation, durable cross-slice tests,
+and validation agree. Acceptance and stabilization are not release claims.
 :::
 
 ## Public contracts
@@ -32,8 +31,8 @@ replace a public invariant.
 
 Read this collection in order before changing the scaffold. Each page answers
 one maintainer question. Together they cover all thirteen lessons and every
-currently declared public V1 surface; a later runtime slice may remain
-fail-fast, but its implementation boundary is no longer left implicit.
+currently declared public V1 surface. Post-V1 surfaces remain fail-fast unless
+a later Human-accepted scope implements them.
 
 1. [Which layer owns each responsibility?](../implementation/system-architecture.qmd)
 2. [When is a Plan sealed, and what is hashed?](../implementation/plan-sealing-and-identity.qmd)
@@ -53,6 +52,6 @@ fail-fast, but its implementation boundary is no longer left implicit.
 16. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
 17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
-The collection remains the implementation authority whether a slice is
-executable or still fail-fast. When a future slice changes one of these
-decisions, only the affected page and public contract return for Human review.
+The collection remains the implementation authority for the stabilized Full
+V1. When a future scope changes one of these decisions, only the affected page
+and public contract return for Human review.

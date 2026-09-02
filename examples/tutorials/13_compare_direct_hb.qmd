@@ -9,7 +9,7 @@ execute:
 **Learn:** solve one selected network through Direct and pump-off HB.
 **Run:** materialize two independent response Results.
 **Inspect:** each Result's S/Y/Z surface and named HB case.
-**Status:** Human-`ACCEPTED` Full V1; stabilization in progress.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Solve one view on two declared grids

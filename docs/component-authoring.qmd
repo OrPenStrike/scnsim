@@ -10,8 +10,8 @@ toc-depth: 3
 This page is the Human-accepted authority for Full V1 component authoring.
 It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
 snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
-the HB declarations taught through Lesson 13. Cross-slice stabilization is in
-progress; the dev4 Lessons 6–8 authoring scope remains previously stabilized.
+the HB declarations taught through Lesson 13. The complete authoring scope is
+`STABILIZED` with the rest of Full V1.
 :::
 
 ## Contract scope

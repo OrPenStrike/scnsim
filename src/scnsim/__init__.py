@@ -1,8 +1,8 @@
 """SCNSim — Superconducting Circuit Network Simulation.
 
-This package implements the Human-accepted Full V1 public semantics taught in
-Lessons 1--13. Cross-slice stabilization is in progress; acceptance and
-stabilization remain separate from release delivery.
+This package implements the Human-accepted and stabilized Full V1 public
+semantics taught in Lessons 1--13. Stabilization remains separate from release
+delivery.
 
 Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
 with :class:`CircuitRun` plus a model package supplied by your team if you only

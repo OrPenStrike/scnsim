@@ -9,7 +9,7 @@ execute:
 **Learn:** give one project its own explicit component catalog.
 **Run:** subclass `Library` and create its module-level singleton.
 **Inspect:** the catalog's Python documentation surface.
-**Status:** Human-`ACCEPTED` Full V1; previously stabilized dev4 scope.
+**Status:** `STABILIZED` Full V1.
 :::
 
 ## Name the catalog your project owns

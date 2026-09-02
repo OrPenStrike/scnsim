@@ -20,6 +20,6 @@ Notebooks.
 Validation compares ordered semantic cells, explicit code IDs, source, and
 kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. In the
-`1.0.0.dev6` implements the Human-`ACCEPTED` Full V1 course taught in Lessons
-1–13. Cross-slice stabilization is in progress; Lessons 6–8 retain their
-previously stabilized status.
+`1.0.0.dev6` implements the Human-`ACCEPTED` and `STABILIZED` Full V1 course
+taught in Lessons 1–13. Stabilization is a semantic and validation state, not a
+release claim.

@@ -12,10 +12,9 @@ running Direct, harmonic-balance, and optimization workflows. It owns the
 circuit-network layer; geometry and electromagnetic simulation remain SCGSim
 responsibilities.
 
-> **Status:** The complete dev1–dev6 Full V1 public semantics are
-> Human-`ACCEPTED`. Full V1 stabilization is in progress; the previously
-> stabilized dev4 Lessons 6–8 scope remains stabilized while the remaining
-> cross-slice durable tests are being added.
+> **Status:** `STABILIZED` Full V1. The complete dev1–dev6 public semantics
+> are Human-`ACCEPTED`, and their documentation, implementation, durable
+> cross-slice tests, and validation agree. This is not a release claim.
 
 ## Install for development
 
@@ -46,8 +45,8 @@ Primitive, Composite, RLGC, PTC/transform, expanded Direct, optimization, and
 inventory paths through Lessons 1–13 are the accepted Full V1 implementation. Lessons 12–13
 exercise the accepted HB scope: typed pump axes, drives, cases, truncation,
 per-case outcomes, exact resolution, and side-by-side Direct/HB presentation
-on independently declared grids. Acceptance does not imply stabilization,
-HB optimization, interpolation, release delivery, or a SCQGate handoff.
+on independently declared grids. Stabilization does not add HB optimization,
+interpolation, release delivery, or a SCQGate handoff.
 
 ## Read the documentation
 

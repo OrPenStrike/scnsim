@@ -10,9 +10,8 @@ use it.
 
 ::: {.callout-note title="Full V1 lifecycle" appearance="simple"}
 The complete dev1–dev6 public semantics taught in Lessons 1–13 are
-Human-`ACCEPTED`. Full V1 stabilization is in progress. The previously
-stabilized Lessons 6–8 scope remains stabilized while durable coverage is
-extended across the remaining Direct, workspace, and HB slices.
+Human-`ACCEPTED` and `STABILIZED`. Their documentation, implementation,
+durable cross-slice tests, and validation agree. This is not a release claim.
 :::
 
 ## Author and analyze

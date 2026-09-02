@@ -4,7 +4,7 @@ subtitle: "How are typed quantities evaluated without Python candidate callbacks
 toc-depth: 2
 ---
 
-**Status:** Human-`ACCEPTED` Full V1 implementation; stabilization in progress.
+**Status:** `STABILIZED` Full V1 implementation.
 
 ## Build one labeled Direct operator
 
@@ -208,11 +208,11 @@ $$
 
 Candidate failure and cache reuse still consume population ordinals. Exact
 cost ties resolve by the earliest baseline/generation/population ordinal. The
-`dev3` candidate supports any number of primitive R/L/C parameters and
-objectives, with `DiagonalRootSpec.frequency` and `.linewidth` selectors on a
-supported retained View.
+The original `dev3` slice established any number of primitive R/L/C parameters
+and objectives, with `DiagonalRootSpec.frequency` and `.linewidth` selectors
+on a supported retained View.
 
-`dev5` adds the schema-backed selectors
+The integrated `dev5` slice adds the schema-backed selectors
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
 `ResidueNormalizedCouplingSpec.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. `QuantitySum` remains legal

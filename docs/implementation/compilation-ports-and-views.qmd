@@ -4,7 +4,7 @@ subtitle: "How does one authored Plan become a selected Direct or HB network?"
 toc-depth: 2
 ---
 
-**Status:** Human-`ACCEPTED` Full V1 implementation; stabilization in progress.
+**Status:** `STABILIZED` Full V1 implementation.
 
 The distributed-line compiler is specified in
 [RLGC, Q2D, and Pi Expansion](rlgc-q2d-and-pi-expansion.qmd); the immutable

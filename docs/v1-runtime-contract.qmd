@@ -13,10 +13,10 @@ authoring, Direct/root/CMA execution, RLGC and N-port selected networks,
 PTC/transform/retain, typed Direct quantities, workspace evidence, and the
 case-oriented JosephsonCircuits HB path taught through Lesson 13.
 
-Full V1 stabilization is in progress. The previously stabilized dev4 Lessons
-6–8 scope remains stabilized while durable tests are extended across the
-remaining accepted slices. This lifecycle state does not imply a release,
-main promotion, root pin, or consumer migration.
+The complete dev1–dev6 Full V1 runtime scope is `STABILIZED`: its accepted
+documentation, implementation, durable cross-slice tests, and validation
+agree. This lifecycle state does not imply a release, main promotion, root
+pin, or consumer migration.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -71,11 +71,11 @@ stated above:
 | How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
 | How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
-| How will maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
+| How do maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
 
-Partial HB case failure and Direct/HB grid comparison now have explicit
-contracts below. This candidate does not leave either behavior to backend or
-implementation convenience.
+Partial HB case failure and Direct/HB grid comparison have explicit contracts
+below. The stabilized implementation does not leave either behavior to backend
+or implementation convenience.
 
 ## Product and lifecycle boundary
 
@@ -327,7 +327,7 @@ of that same result and never launch another solve.
 abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
 `HBSolveSpec` directly.
 
-The dev5 candidate supports `DirectSolveSpec` on every final View that proves
+The stabilized Full V1 runtime supports `DirectSolveSpec` on every final View that proves
 its ordered terminal basis is Port-realizable. It publishes the complete
 finite N-port S/Y/Z matrices once, then projects any declared named traces from
 that same result. A non-realizable final View fails closed rather than
@@ -1981,7 +1981,7 @@ operator is ill-conditioned. Multiplying an entire equation by a scalar also
 does not change its condition number.
 
 SCNSim therefore does not expose a `ScalingSpec`, ScalingOptimizer, mutable
-scale state, or automatic coordinate equilibration in this V1 candidate.
+scale state, or automatic coordinate equilibration in Full V1.
 Direct and Schur implementations must:
 
 - use factorization/linear solves rather than an explicit inverse;
