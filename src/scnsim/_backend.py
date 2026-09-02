@@ -751,6 +751,9 @@ def run_terminal(
                 _terminate_process_group(process)
             stdout_reader.join()
             stderr_reader.join()
+            for stream in (process.stdin, process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
 
 
 def run_preflight(
