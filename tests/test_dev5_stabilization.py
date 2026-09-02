@@ -544,6 +544,7 @@ class Dev5ExtrapolationRuntimeTests(unittest.TestCase):
             ]
             self.assertTrue(authorized_candidates)
             for candidate in authorized_candidates:
+                self.assertEqual(candidate["outcome"]["status"], "success")
                 self.assertEqual(len(candidate["extrapolation_evidence"]), 2)
                 self.assertEqual(
                     [row["consumer_target"]["component_path"] for row in candidate["extrapolation_evidence"]],
@@ -700,7 +701,7 @@ class Dev5DirectQuantityRuntimeTests(unittest.TestCase):
                 [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
                 [objective.id for objective in advanced_objectives],
             )
-        self.assertTrue(np.isfinite(advanced.best.cost))
+        self.assertEqual(advanced.best.cost, 0.0)
 
         zero_objectives = (
             CostObjective(id="zero_frequency", quantity=self.zero_spec.frequency, target=self.zero.frequency, weight=1.0 * u.dimensionless),
@@ -725,7 +726,7 @@ class Dev5DirectQuantityRuntimeTests(unittest.TestCase):
                 [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
                 ["zero_frequency"],
             )
-        self.assertTrue(np.isfinite(zero.best.cost))
+        self.assertEqual(zero.best.cost, 0.0)
 
 
 if __name__ == "__main__":

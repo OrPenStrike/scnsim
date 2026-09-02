@@ -453,6 +453,47 @@ class Dev6ComplexAnchorRuntimeTests(unittest.TestCase):
             run = CircuitRun(plan=_two_coordinate_plan(), workspace=Path(workspace))
             view = run.original.reduce(ReductionPipeline().retain("a", "b"))
             spec = HybridizedPoleSpec(coordinates=("a", "b"), anchor=(6.0 - 1.0e-12j) * u.GHz)
+            request, _ = run._request_declaration("evaluate_direct", view, spec, None)
+            encoded = request["spec"]["anchor"]
+            from scnsim._backend import _child_environment, packaged_julia_resources, prepare_runtime
+
+            prepared = prepare_runtime()
+            program = f'''
+using SCNSimBackend
+record = Dict{{String,Any}}(
+    "type" => "complex_quantity_f64",
+    "real_si_f64" => "{encoded['real_si_f64']}",
+    "imag_si_f64" => "{encoded['imag_si_f64']}",
+    "si_unit" => "hertz",
+    "dimensionality" => "frequency",
+)
+decoded = SCNSimBackend.complex_frequency_value(record)
+@assert SCNSimBackend.f64_hex(real(decoded)) == "{encoded['real_si_f64']}"
+@assert SCNSimBackend.f64_hex(imag(decoded)) == "{encoded['imag_si_f64']}"
+println(SCNSimBackend.f64_hex(real(decoded)))
+println(SCNSimBackend.f64_hex(imag(decoded)))
+'''
+            with packaged_julia_resources() as (project, _, _):
+                decoded = subprocess.run(
+                    [
+                        str(prepared.executable),
+                        "--startup-file=no",
+                        "--history-file=no",
+                        "--threads=1",
+                        f"--project={project}",
+                        "-e",
+                        program,
+                    ],
+                    cwd=project,
+                    env=_child_environment(),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            self.assertEqual(
+                decoded.stdout.splitlines(),
+                [encoded["real_si_f64"], encoded["imag_si_f64"]],
+            )
             result = run.evaluate(view, spec)
             self.assertTrue(np.isfinite(result.frequency.to("hertz").magnitude))
             self.assertTrue(np.isfinite(result.linewidth.to("hertz").magnitude))
