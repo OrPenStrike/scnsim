@@ -5,27 +5,34 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import numpy as np
+import scnsim.runtime as runtime_module
 
 from scnsim import (
+    BackendProtocolError,
     CMAESSpec,
     CircuitPlan,
     CircuitRun,
     CostObjective,
     DiagonalRootSpec,
     DirectSolveSpec,
+    EvidenceIntegrityError,
     OptimizationSpec,
     OptimizationVariable,
     ReductionPipeline,
+    ResultUnavailableError,
     WorkspaceVersioningDowngradeForbidden,
     components,
     units as u,
 )
+from scnsim._canonical import canonical_json_bytes, sha256_hex
 
 
 def _primitive_plan(*, plan_id: str = "primitive_full_v1", capacitance: float = 110.0):
@@ -167,6 +174,125 @@ print(json.dumps([result.identity.result_sha256 for result in results]))
             json.loads(output),
             [self.direct.identity.result_sha256, self.root.identity.result_sha256, self.optimization.identity.result_sha256],
         )
+
+    def test_failed_and_interrupted_attempts_are_visible_and_retry_appends_success(self) -> None:
+        with TemporaryDirectory() as workspace:
+            plan, _, _ = _primitive_plan(plan_id="attempt_history")
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
+            spec = DirectSolveSpec(frequencies=[5.5] * u.GHz)
+
+            with patch.object(
+                runtime_module,
+                "run_terminal",
+                side_effect=BackendProtocolError("deterministic launch failure", stage="process_start"),
+            ):
+                with self.assertRaises(BackendProtocolError):
+                    run.solve(run.original, spec)
+            failed = run.inventory().requests
+            self.assertEqual(len(failed), 1)
+            self.assertEqual(failed[0]["status"], "failed")
+            self.assertEqual(failed[0]["attempts"], ("000001",))
+            with self.assertRaises(ResultUnavailableError):
+                run.resolve(run.original, spec)
+            self.assertEqual(run.inventory().requests[0]["attempts"], ("000001",))
+
+            with patch.object(runtime_module, "run_terminal", side_effect=KeyboardInterrupt()):
+                with self.assertRaises(KeyboardInterrupt):
+                    run.solve(run.original, spec)
+            interrupted = run.inventory().requests[0]
+            self.assertEqual(interrupted["status"], "interrupted")
+            self.assertEqual(interrupted["attempts"], ("000001", "000002"))
+            with self.assertRaises(ResultUnavailableError):
+                run.resolve(run.original, spec)
+            self.assertEqual(run.inventory().requests[0]["attempts"], interrupted["attempts"])
+
+            result = run.solve(run.original, spec)
+            completed = run.inventory().requests[0]
+            self.assertEqual(completed["status"], "succeeded")
+            self.assertEqual(completed["attempts"], ("000001", "000002", "000003"))
+            attempt_root = run._binding.leaf / "requests" / completed["request_sha256"] / "attempts"
+            self.assertEqual(
+                [json.loads((attempt_root / ordinal / "receipt.json").read_bytes())["outcome"] for ordinal in completed["attempts"]],
+                ["failure", "interrupted", "success"],
+            )
+            self.assertEqual(run.resolve(run.original, spec).identity, result.identity)
+            self.assertEqual(run.solve(run.original, spec).identity, result.identity)
+            self.assertEqual(run.inventory().requests[0]["attempts"], completed["attempts"])
+
+    def test_cma_interrupted_generation_replays_exactly_and_corruption_fails_closed(self) -> None:
+        with TemporaryDirectory() as workspace:
+            plan, resonator, capacitor = _primitive_plan()
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
+            _, _, optimization, view = _primitive_requests(run, resonator, capacitor)
+            real_run_terminal = runtime_module.run_terminal
+
+            def complete_generation_then_interrupt(*args: object, **kwargs: object):
+                real_run_terminal(*args, **kwargs)
+                interruption = KeyboardInterrupt()
+                interruption.termination = "terminated"  # type: ignore[attr-defined]
+                raise interruption
+
+            with patch.object(runtime_module, "run_terminal", complete_generation_then_interrupt):
+                with self.assertRaises(KeyboardInterrupt):
+                    run.optimize(view, optimization)
+
+            interrupted = run.inventory().requests[0]
+            self.assertEqual(interrupted["status"], "interrupted")
+            self.assertEqual(interrupted["attempts"], ("000001",))
+            request_sha = interrupted["request_sha256"]
+            first_attempt = run._binding.leaf / "requests" / request_sha / "attempts" / "000001"
+            receipt_path = first_attempt / "receipt.json"
+            receipt = json.loads(receipt_path.read_bytes())
+            self.assertEqual(receipt["outcome"], "interrupted")
+            self.assertEqual([row["id"] for row in receipt["artifacts"]], ["generation_000001"])
+            ledger_path = first_attempt / "artifacts" / "generations" / "000001.json"
+            ledger_bytes = ledger_path.read_bytes()
+            ledger_sha = sha256_hex(ledger_bytes)
+            self.assertEqual(receipt["artifacts"][0]["sha256"], ledger_sha)
+
+            with TemporaryDirectory() as corrupted_root:
+                corrupted = Path(corrupted_root, "workspace")
+                shutil.copytree(workspace, corrupted)
+                corrupt_ledger_path = next(
+                    corrupted.glob(
+                        f"leaves/*/requests/{request_sha}/attempts/000001/artifacts/generations/000001.json"
+                    )
+                )
+                corrupt_receipt_path = corrupt_ledger_path.parents[2] / "receipt.json"
+                corrupt_ledger = json.loads(corrupt_ledger_path.read_bytes())
+                corrupt_ledger["candidates"][0]["evaluation_ordinal"] += 1
+                corrupt_ledger_bytes = canonical_json_bytes(corrupt_ledger)
+                corrupt_ledger_path.write_bytes(corrupt_ledger_bytes)
+                corrupt_receipt = json.loads(corrupt_receipt_path.read_bytes())
+                corrupt_receipt["artifacts"][0]["sha256"] = sha256_hex(corrupt_ledger_bytes)
+                corrupt_receipt_path.write_bytes(canonical_json_bytes(corrupt_receipt))
+
+                corrupt_plan, corrupt_resonator, corrupt_capacitor = _primitive_plan()
+                corrupt_run = CircuitRun(plan=corrupt_plan, workspace=corrupted)
+                _, _, corrupt_spec, corrupt_view = _primitive_requests(
+                    corrupt_run, corrupt_resonator, corrupt_capacitor
+                )
+                with self.assertRaises(EvidenceIntegrityError):
+                    corrupt_run.optimize(corrupt_view, corrupt_spec)
+                with self.assertRaises(EvidenceIntegrityError):
+                    corrupt_run.inventory()
+                self.assertFalse((corrupt_ledger_path.parents[3] / "000002").exists())
+
+            resumed = run.optimize(view, optimization)
+            completed = run.inventory().requests[0]
+            self.assertEqual(completed["status"], "succeeded")
+            self.assertEqual(completed["attempts"], ("000001", "000002"))
+            second_attempt = first_attempt.parent / "000002"
+            second_attempt_document = json.loads((second_attempt / "attempt.json").read_bytes())
+            self.assertEqual(second_attempt_document["resume_ledger_sha256"], ledger_sha)
+            self.assertEqual((second_attempt / "artifacts" / "generations" / "000001.json").read_bytes(), ledger_bytes)
+            self.assertEqual(canonical_json_bytes(resumed.ledger[0]), ledger_bytes)
+            self.assertEqual(resumed.best.cost.hex(), self.optimization.best.cost.hex())
+            resumed_best = resumed.best.parameters.values[capacitor.parameter("capacitance")].to("fF").magnitude
+            reference_best = self.optimization.best.parameters.values[
+                self.capacitor.parameter("capacitance")
+            ].to("fF").magnitude
+            self.assertEqual(float(resumed_best).hex(), float(reference_best).hex())
 
 
 if __name__ == "__main__":

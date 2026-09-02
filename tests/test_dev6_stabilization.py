@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ from scnsim import (
     CircuitPlan,
     CircuitRun,
     CurrentDrive,
+    DirectSolveSpec,
     EvidenceIntegrityError,
     HBCaseFailure,
     HBCaseSpec,
@@ -181,7 +183,7 @@ class Dev6DeclarationTests(unittest.TestCase):
         self.assertEqual(tuple(spec.frequencies.to("gigahertz").magnitude), (5.0, 5.5))
         self.assertFalse(np.asarray(spec.frequencies.magnitude).flags.writeable)
         self.assertIsInstance(case.currents, MappingProxyType)
-        with self.assertRaises(Exception):
+        with self.assertRaises(FrozenInstanceError):
             pump.id = "changed"
         self.assertFalse(plan.sealed)
 
@@ -362,6 +364,67 @@ class Dev6PreflightTests(unittest.TestCase):
             self.assertEqual(evidence["nonlinear_balance"]["load_state"], "loaded")
             self.assertEqual(evidence["response_linearization"]["load_state"], "compensated")
 
+    def test_hb_numerical_classifier_keeps_linearization_and_response_stages_narrow(self) -> None:
+        from scnsim._backend import _child_environment, packaged_julia_resources, prepare_runtime
+
+        prepared = prepare_runtime()
+        program = r'''
+using LinearAlgebra
+using SCNSimBackend
+
+linearization = SCNSimBackend.hb_numeric_exception(SingularException(1), "linearization")
+@assert linearization isa SCNSimBackend.HBCaseNumericalFailure
+println(linearization.stage)
+
+response = try
+    SCNSimBackend.hb_checked_solve(
+        zeros(ComplexF64, 1, 1),
+        ones(ComplexF64, 1, 1),
+        "forced singular response",
+        1,
+    )
+    nothing
+catch error
+    error
+end
+@assert response isa SCNSimBackend.HBCaseNumericalFailure
+println(response.stage)
+
+propagated = try
+    error("not an accepted numerical failure")
+catch original
+    try
+        SCNSimBackend.hb_numeric_exception(original, "linearization")
+        nothing
+    catch error
+        error
+    end
+end
+@assert propagated isa ErrorException
+println(nameof(typeof(propagated)))
+'''
+        with packaged_julia_resources() as (project, _, _):
+            completed = subprocess.run(
+                [
+                    str(prepared.executable),
+                    "--startup-file=no",
+                    "--history-file=no",
+                    "--threads=1",
+                    f"--project={project}",
+                    "-e",
+                    program,
+                ],
+                cwd=project,
+                env=_child_environment(),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(
+            completed.stdout.splitlines(),
+            ["linearization", "response_formation", "ErrorException"],
+        )
+
 
 @unittest.skipUnless(
     os.environ.get("SCNSIM_RUN_JULIA_TESTS") == "1",
@@ -421,6 +484,97 @@ class Dev6RuntimeTests(unittest.TestCase):
         selected = np.asarray(success.s.view.matrix.magnitude)[:, 0, 0]
         self.assertTrue(np.array_equal(trace.view(np.uint64), selected.view(np.uint64)))
         self.assertFalse(np.asarray(success.states.magnitude).flags.writeable)
+        self.assertEqual(len(success.effective_sources), 1)
+        effective = success.effective_sources[0]
+        self.assertEqual(effective["drive_id"], "dc")
+        self.assertEqual(effective["mode"], (0,))
+        self.assertEqual(effective["coefficient"], (1.0e-9 + 0.0j) * u.ampere)
+        self.assertEqual(effective["generated_conjugate"]["mode"], (0,))
+        self.assertEqual(
+            effective["backend_binding"]["coefficient_convention"],
+            "exp_plus_i_m_dot_omega_t_josephsoncircuits_source",
+        )
+        self.assertEqual(len(effective["injection_map_sha256"]), 64)
+
+        topology = self.partial.topology_evidence
+        self.assertEqual(
+            set(topology),
+            {
+                "allow_driven_ptc",
+                "intrinsic_compiled_graph_sha256",
+                "nonlinear_balance",
+                "response_linearization",
+            },
+        )
+        self.assertFalse(topology["allow_driven_ptc"])
+        self.assertEqual(topology["nonlinear_balance"]["load_state"], "loaded")
+        self.assertEqual(topology["response_linearization"]["load_state"], "raw")
+        self.assertEqual(
+            topology["nonlinear_balance"]["lineage_sha256"],
+            topology["response_linearization"]["lineage_sha256"],
+        )
+        self.assertEqual(len(topology["intrinsic_compiled_graph_sha256"]), 64)
+
+        native = success.s.backend_native
+        reconciliation = success.s.reconciliation
+        self.assertIsNotNone(native)
+        self.assertIsNotNone(reconciliation)
+        self.assertEqual(native.coordinates, success.s.view.coordinates)
+        self.assertEqual(native.input_channels, success.s.view.input_channels)
+        self.assertEqual(native.output_channels, success.s.view.output_channels)
+        self.assertTrue(reconciliation.comparable)
+        self.assertIsNone(reconciliation.reason)
+        self.assertTrue(np.isfinite(reconciliation.residual))
+        self.assertEqual(
+            reconciliation.last_comparable_ancestor,
+            topology["response_linearization"]["lineage_sha256"],
+        )
+        self.assertEqual(len(reconciliation.evidence_sha256), 64)
+        self.assertEqual(
+            success.state_node_map,
+            (
+                {
+                    "compiler_node_id": "signal",
+                    "source": {
+                        "kind": "plan_node",
+                        "plan_node_id": "signal",
+                        "visibility": "public",
+                    },
+                    "state_index": 0,
+                },
+            ),
+        )
+        with self.assertRaises(FrozenInstanceError):
+            success.id = "changed"
+        with self.assertRaises(FrozenInstanceError):
+            self.partial.cases = {}
+
+        result_path = next(
+            self.workspace.glob(
+                f"leaves/*/requests/{self.partial.identity.request_sha256}/attempts/000001/result.json"
+            )
+        )
+        document = json.loads(result_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [(case["case_ordinal"], case["case_id"], case["status"]) for case in document["cases"]],
+            [(1, "off", "success"), (2, "small", "success"), (3, "overcritical", "failure")],
+        )
+        artifact_roles = {
+            "s", "y", "z", "backend_native_s", "backend_native_z", "states", "effective_source_vectors"
+        }
+        for ordinal, case in enumerate(document["cases"][:2], start=1):
+            self.assertEqual(set(case["artifacts"]), artifact_roles)
+            for role, artifact in case["artifacts"].items():
+                self.assertEqual(artifact["id"], role)
+                self.assertEqual(artifact["path"], f"artifacts/cases/{ordinal:06d}/{role}.zarr")
+                self.assertEqual(
+                    artifact["file_manifest"],
+                    f"artifacts/cases/{ordinal:06d}/{role}.manifest.json",
+                )
+                self.assertEqual(len(artifact["sha256"]), 64)
+        self.assertNotIn("artifacts", document["cases"][2])
+        self.assertEqual(document["cases"][2]["failure"]["kind"], "hb_case_failure")
+        self.assertEqual(document["cases"][2]["failure"]["stage"], "operating_point")
 
         self.assertTrue(all(not outcome.succeeded for outcome in self.all_failure.cases.values()))
         self.assertEqual({outcome.failure.stage for outcome in self.all_failure.cases.values()}, {"operating_point"})
@@ -474,6 +628,102 @@ print(json.dumps(result.identity.__dict__ if hasattr(result.identity, '__dict__'
                 run.resolve(run.original, spec)
             with self.assertRaises(EvidenceIntegrityError):
                 run.inventory()
+
+    def test_nonzero_three_wave_pump_executes_with_generated_conjugate(self) -> None:
+        plan, port = _one_port_jj()
+        pump = PumpAxis(id="pump", frequency=6.0 * u.GHz)
+        drive = CurrentDrive(id="pump_drive", at=port, mode=(2,))
+        spec = HBSolveSpec(
+            pump_axes=(pump,),
+            drives=(drive,),
+            frequencies=[5.5] * u.GHz,
+            cases=(HBCaseSpec(id="pumped", currents={drive: 1.0 * u.nA}),),
+            truncation=HBTruncation(
+                pump_harmonics=(2,),
+                modulation_harmonics=(2,),
+                three_wave_mixing=True,
+                four_wave_mixing=False,
+            ),
+        )
+        with TemporaryDirectory() as workspace:
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
+            lattice = run.explain(run.original, spec).evidence["compiled"]["hb_preflight"]["lattice"]
+            self.assertEqual([row["mode"] for row in lattice["operating_point_modes"]], [(2,)])
+            self.assertEqual([row["mode"] for row in lattice["input_modes"]], [(0,), (1,), (-1,)])
+            outcome = run.solve(run.original, spec).cases["pumped"]
+            self.assertTrue(outcome.succeeded)
+            self.assertEqual(outcome.bias_state, BiasState.OFF)
+            self.assertEqual(outcome.pump_state, PumpState.ON)
+            self.assertEqual(outcome.effective_sources[0]["mode"], (2,))
+            self.assertEqual(outcome.effective_sources[0]["generated_conjugate"]["mode"], (-2,))
+            self.assertEqual(outcome.effective_sources[0]["coefficient"], (1.0e-9 + 0.0j) * u.ampere)
+            self.assertTrue(outcome.s.reconciliation.comparable)
+
+    def test_driven_ptc_four_wave_and_direct_hb_independent_grids(self) -> None:
+        plan, feed_in, probe_plus, probe_minus, plus, minus = _floating_probe_plan()
+        with TemporaryDirectory() as workspace:
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
+            view = run.original.reduce(
+                ReductionPipeline()
+                .ptc(probe_plus, probe_minus)
+                .transform_pair(plus, minus, id="qubit")
+                .retain("feedline_in", "feedline_out", "qubit.differential")
+            )
+            direct = run.solve(
+                view,
+                DirectSolveSpec(frequencies=[5.4, 6.0, 6.6] * u.GHz),
+            )
+            pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+            drive = CurrentDrive(id="pump_drive", at=feed_in, mode=(1,))
+            hb_spec = HBSolveSpec(
+                pump_axes=(pump,),
+                drives=(drive,),
+                frequencies=[6.0] * u.GHz,
+                cases=(HBCaseSpec(id="driven", currents={drive: 1.0 * u.pA}),),
+                truncation=HBTruncation(
+                    pump_harmonics=(3,),
+                    modulation_harmonics=(1,),
+                    three_wave_mixing=False,
+                    four_wave_mixing=True,
+                ),
+                allow_driven_ptc=True,
+            )
+            hb = run.solve(view, hb_spec)
+            outcome = hb.cases["driven"]
+            self.assertTrue(outcome.succeeded)
+            self.assertEqual(outcome.pump_state, PumpState.ON)
+            self.assertEqual(hb.topology_evidence["nonlinear_balance"]["load_state"], "loaded")
+            self.assertEqual(hb.topology_evidence["response_linearization"]["load_state"], "compensated")
+            self.assertEqual(outcome.s.view.probe_loads[probe_plus.id], "compensated")
+            self.assertEqual(outcome.s.view.probe_loads[probe_minus.id], "compensated")
+            self.assertEqual(outcome.s.view.probe_loads["feedline_in"], "raw")
+            self.assertEqual(outcome.s.view.probe_loads["feedline_out"], "raw")
+            self.assertTrue(all(state == "raw" for state in outcome.s.backend_native.probe_loads.values()))
+            self.assertFalse(outcome.s.reconciliation.comparable)
+            self.assertEqual(outcome.s.reconciliation.reason, "load_or_ptc")
+            self.assertIsNone(outcome.s.reconciliation.residual)
+            self.assertTrue(
+                np.array_equal(
+                    direct.frequencies.to("hertz").magnitude,
+                    ([5.4, 6.0, 6.6] * u.GHz).to("hertz").magnitude,
+                )
+            )
+            self.assertTrue(
+                np.array_equal(
+                    outcome.s.view.frequencies.to("hertz").magnitude,
+                    ([6.0] * u.GHz).to("hertz").magnitude,
+                )
+            )
+            self.assertEqual(direct.s.view.matrix.shape, (3, 3, 3))
+            self.assertEqual(outcome.s.view.matrix.shape, (1, 3, 3))
+            self.assertNotEqual(direct.identity.request_sha256, hb.identity.request_sha256)
+
+            report = run.build_report(ReportSpec(inputs=(direct, hb)))
+            self.assertIs(report.inputs[0], direct)
+            self.assertIs(report.inputs[1], hb)
+            self.assertIn("Direct response", report.html)
+            self.assertIn("HB batch", report.html)
+            self.assertNotIn(str(workspace), report.html)
 
 
 if __name__ == "__main__":
