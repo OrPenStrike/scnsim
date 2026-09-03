@@ -81,7 +81,10 @@ diagram.show()
 
 SCNSim returns a real Schemdraw authoring diagram here. `Theme.AUTO` gives its
 Notebook rich display a light fallback plus an adaptive light/dark SVG; direct
-static saving uses the light fallback. The open Port's downward `R = Z0`
+static saving uses the light fallback. Use the toolbar to copy the image,
+zoom, or reset; after zooming, drag the diagram to pan it. `Ctrl`/`Command`
+plus the mouse wheel also zooms, and `Open SVG` remains a portable fallback.
+The open Port's downward `R = Z0`
 branch is the existing raw-network load, not an extra authored component. The
 diagram remains presentation of the authored Plan—not numerical evidence and
 not a solver run.

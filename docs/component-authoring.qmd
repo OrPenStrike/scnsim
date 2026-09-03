@@ -1009,6 +1009,11 @@ It shows semantic components, Public nodes, logical Ports, canonical ground,
 actual wiring, and anonymous Internal junctions. A grounded linear resonator is
 drawn as parallel L and C branches whose lower endpoints share one block-local
 bus and ground glyph. The primitive example above produces the same structure.
+One physical electric node may be projected as a longer local signal bus with
+several private drawing taps. Every incident component still binds that same
+`ElectricNode`; taps are neither aliases nor additional circuit nodes. Its
+Public identity dot and label appear once at the bus identity anchor, while
+the other taps remain unfilled T-junctions.
 Filled dots identify labeled Public nodes only. Ordinary same-net T-junctions
 remain unfilled, and a four-way same-net meeting is drawn as two nearby T
 junctions instead of an ambiguous cross. A crossing between different nets
@@ -1017,10 +1022,14 @@ rather than by an additional filled dot.
 Separate local ground glyphs still denote the one Plan ground; the renderer
 does not draw a page-wide reference bus. A one-conductor transmission line is
 an inline two-terminal CPW rectangle. A multi-conductor line is one taller MTL
-rectangle spanning ordered conductor rows, with its pin identities inside the
-block. The RLGC reference conductor alone never creates a drawn ground wire.
-CPW, MTL, IDC, and other composites remain recognizable authoring objects
-rather than opaque backend rows.
+rectangle spanning ordered conductor rows. The block owns ordered boundary
+anchors; labeled Public node identities remain outside the electrical symbol
+at those anchors. The RLGC reference conductor alone never creates a drawn
+ground wire.
+CPW/MTL is the one dedicated custom electrical symbol. Built-in IDC, SQUID,
+and resonator composites expand into their declared native R/L/C/Josephson
+branches. A user-authored custom Composite remains an opaque public-pin block
+so its hidden children do not leak through authoring presentation.
 
 Automatic layout is complete, so hints are optional. When a model author needs
 to preserve a particular reading order, use relational handles rather than

@@ -2314,6 +2314,14 @@ together. `Theme.LIGHT` and `Theme.DARK` are fixed and self-contained. Direct
 `Theme.AUTO` always writes the portable light fallback. Theme choice never
 enters Plan, request, Result, receipt, artifact, or workspace identity.
 
+The Notebook HTML representation places that same SVG in a local inspection
+surface with copy-image, zoom, reset, pointer-drag pan, and `Open SVG`
+controls. `Ctrl`/`Command` plus the mouse wheel also zooms. A frontend that
+blocks scripts or clipboard access still exposes the unmodified SVG through
+the link and ordinary scroll overflow. The controls are presentation-only;
+they do not enter standalone reports or change `Drawing.save()` and
+`Figure.savefig()`.
+
 `CircuitDiagramSpec.layout` optionally accepts a `SchematicLayout`. It is a
 typed set of relational authoring hints rather than a coordinate system:
 `SchematicPath` fixes an alternating node-or-Port/component path,
@@ -2333,9 +2341,17 @@ Grounded LC components expand visually into their parallel L/C branches with a
 shared local bottom bus and one ground glyph rather than an opaque box. One
 `ground(*pins)` call defines the same local bus/glyph group for ordinary
 primitives; separate calls draw separate glyphs while remaining one electrical
-ground. The renderer never replaces them with a page-wide ground bus. Larger
-composites retain recognizable authoring symbols instead of compiler ladders.
-Every visible object traces to the Plan.
+ground. The renderer never replaces them with a page-wide ground bus. Built-in
+IDC, SQUID, and resonator composites expand to native R/L/C/Josephson symbols;
+only user-authored custom Composites retain opaque public-pin boundaries. CPW
+and MTL remain the sole custom electrical-symbol family. Every visible object
+traces to the Plan.
+
+One `ElectricNode` may require several geometric attachment points. The
+renderer projects it as one private signal bus with ordered private taps; this
+does not create aliases or additional electrical coordinates. Its labeled
+Public identity appears once at the bus identity anchor. All other taps are
+unfilled T-junctions and remain part of the same physical node.
 
 Without hints the renderer performs the complete deterministic automatic
 layout. It excludes canonical ground from graph ranking, starts from the first
@@ -2344,9 +2360,11 @@ branches, cycles, disconnected panels, and remaining Ports with Plan-order and
 exact-ID tie breaks. The fixed heuristic reserves the main-path blocks first,
 separates remaining relations into orthogonal lanes, and then packs disconnected
 panels; it does not evaluate or claim a globally optimal score. Every primitive
-symbol and its deliberately placed side label occupy one precomputed layout
-block, so label clearance participates in spacing rather than being guessed
-after drawing. Filled dots are reserved for labeled Public-node identities.
+symbol and its native Schemdraw side label occupy one orientation-aware layout
+block measured from transformed bounds, so label clearance participates in
+spacing rather than being guessed after drawing. All geometry derives from one
+private `2.2`-coordinate unit and named fractional multiples; measured occupied
+bounds can only enlarge the spacing. Filled dots are reserved for labeled Public-node identities.
 Main-wire branches use unfilled T-junctions, multiple branches use distinct
 points on a short trunk, and same-net four-way meetings are staggered into two
 adjacent unfilled T-junctions. Unavoidable different-net crossings use explicit
@@ -2377,10 +2395,11 @@ anchor; this is renderer fallback only, not compiler or pin-identity authority.
 A one-conductor `transmission_line` uses a two-terminal `CPW` rectangle inserted
 directly in the signal path, with its ID and length inside. Its RLGC reference
 conductor does not imply a drawn ground connection. An N-conductor line uses one
-taller `MTL` rectangle spanning the ordered conductor rows. Head/tail pin labels
-remain inside that block beside their anchors, and their text extents participate
-in block sizing. The compiled view still exposes every matrix-valued pi section
-and station.
+taller `MTL` rectangle spanning the ordered conductor rows. The block owns one
+ordered boundary anchor per head/tail conductor; labeled Public node identities
+remain outside the block at those anchors, and their text extents participate in
+placement. The compiled view still exposes every matrix-valued pi section and
+station.
 
 The `compiled` representation runs only the deterministic structural compile
 preflight needed to materialize the complete baseline physical graph. It is

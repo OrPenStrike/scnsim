@@ -180,6 +180,112 @@ def _adaptive_svg(svg: str, theme: Theme) -> str:
     return embedded[: opening_end + 1] + style + embedded[opening_end + 1 :]
 
 
+def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
+    """Wrap one adaptive SVG in a self-contained Notebook inspection surface.
+
+    The SVG remains the copy/export authority.  JavaScript adds local pan,
+    zoom, and clipboard controls when the frontend permits it; ordinary HTML
+    overflow plus the Open SVG link remain usable when scripts are disabled.
+    """
+
+    checked = _require_theme(theme)
+    suffix = sha256(f"viewer\0{checked.value}\0{svg}".encode("utf-8")).hexdigest()[:16]
+    class_name = f"scnsim-svg-viewer-{suffix}"
+    selector = f".{class_name}"
+    css = _theme_css(checked, selector=selector)
+    color_scheme = "light dark" if checked is Theme.AUTO else checked.value
+    source = "data:image/svg+xml;base64," + base64.b64encode(
+        svg.encode("utf-8")
+    ).decode("ascii")
+    return (
+        f"<style>{css}"
+        f"{selector}{{box-sizing:border-box;color:var(--scnsim-fg);"
+        f"background:var(--scnsim-bg);color-scheme:{color_scheme};"
+        "border:1px solid var(--scnsim-grid);font:13px system-ui,sans-serif}}"
+        f"{selector} .scnsim-viewer-toolbar{{display:flex;gap:.4rem;"
+        "align-items:center;padding:.4rem;border-bottom:1px solid var(--scnsim-grid);"
+        "background:var(--scnsim-bg);position:sticky;top:0;z-index:2}}"
+        f"{selector} button,{selector} a{{box-sizing:border-box;border:1px solid "
+        "var(--scnsim-grid);border-radius:.25rem;padding:.25rem .5rem;"
+        "font:inherit;color:var(--scnsim-fg);background:var(--scnsim-bg);"
+        "text-decoration:none;cursor:pointer}}"
+        f"{selector} button:hover,{selector} a:hover{{border-color:var(--scnsim-accent)}}"
+        f"{selector} .scnsim-viewer-status{{margin-left:auto;color:var(--scnsim-secondary)}}"
+        f"{selector} .scnsim-viewer-viewport{{overflow:auto;max-height:72vh;"
+        "overscroll-behavior:contain;cursor:grab;background:var(--scnsim-bg)}}"
+        f"{selector} .scnsim-viewer-viewport.scnsim-dragging{{cursor:grabbing;user-select:none}}"
+        f"{selector} .scnsim-viewer-canvas{{width:100%;min-width:1px}}"
+        f"{selector} .scnsim-viewer-canvas>svg{{display:block;width:100%;"
+        "max-width:none;height:auto;background:var(--scnsim-bg)}}"
+        "</style>"
+        f'<div class="{class_name}" data-scnsim-svg-viewer>'
+        '<div class="scnsim-viewer-toolbar" role="toolbar" '
+        'aria-label="SCNSim figure controls">'
+        '<button type="button" data-action="copy">Copy image</button>'
+        '<button type="button" data-action="out" aria-label="Zoom out">−</button>'
+        '<button type="button" data-action="in" aria-label="Zoom in">+</button>'
+        '<button type="button" data-action="reset">Reset</button>'
+        f'<a href="{source}" target="_blank" rel="noopener" '
+        'download="scnsim-figure.svg">Open SVG</a>'
+        '<span class="scnsim-viewer-status" aria-live="polite">100%</span>'
+        '</div><div class="scnsim-viewer-viewport" tabindex="0" '
+        'aria-label="Pan and zoom SCNSim figure">'
+        f'<div class="scnsim-viewer-canvas">{svg}</div></div></div>'
+        "<script>(()=>{"
+        "const script=document.currentScript;const root=script&&script.previousElementSibling;"
+        "if(!root||!root.hasAttribute('data-scnsim-svg-viewer'))return;"
+        "const viewport=root.querySelector('.scnsim-viewer-viewport');"
+        "const canvas=root.querySelector('.scnsim-viewer-canvas');"
+        "const status=root.querySelector('.scnsim-viewer-status');"
+        "const copy=root.querySelector('[data-action=copy]');"
+        "let scale=1;let drag=null;"
+        "const apply=()=>{canvas.style.width=(scale*100)+'%';"
+        "status.textContent=Math.round(scale*100)+'%';};"
+        "const zoom=(factor)=>{const rect=viewport.getBoundingClientRect();"
+        "const x=viewport.scrollLeft+rect.width/2;const y=viewport.scrollTop+rect.height/2;"
+        "const old=scale;scale=Math.min(8,Math.max(.25,scale*factor));apply();"
+        "viewport.scrollLeft=x*(scale/old)-rect.width/2;"
+        "viewport.scrollTop=y*(scale/old)-rect.height/2;};"
+        "root.addEventListener('click',event=>{"
+        "const action=event.target.dataset&&event.target.dataset.action;"
+        "if(action==='in')zoom(1.25);else if(action==='out')zoom(.8);"
+        "else if(action==='reset'){scale=1;apply();viewport.scrollTo(0,0);}});"
+        "viewport.addEventListener('wheel',event=>{if(!(event.ctrlKey||event.metaKey))return;"
+        "event.preventDefault();zoom(event.deltaY<0?1.12:1/1.12);},{passive:false});"
+        "viewport.addEventListener('pointerdown',event=>{if(event.button!==0)return;"
+        "drag={x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};"
+        "viewport.setPointerCapture(event.pointerId);viewport.classList.add('scnsim-dragging');});"
+        "viewport.addEventListener('pointermove',event=>{if(!drag)return;"
+        "viewport.scrollLeft=drag.left-(event.clientX-drag.x);"
+        "viewport.scrollTop=drag.top-(event.clientY-drag.y);});"
+        "const end=()=>{drag=null;viewport.classList.remove('scnsim-dragging');};"
+        "viewport.addEventListener('pointerup',end);viewport.addEventListener('pointercancel',end);"
+        "copy.addEventListener('click',async()=>{const original=copy.textContent;"
+        "const markup=new XMLSerializer().serializeToString(canvas.querySelector('svg'));"
+        "let url=null;try{const blob=new Blob([markup],{type:'image/svg+xml'});"
+        "url=URL.createObjectURL(blob);const image=new Image();"
+        "await new Promise((resolve,reject)=>{image.onload=resolve;"
+        "image.onerror=reject;image.src=url;});"
+        "const box=canvas.querySelector('svg').viewBox.baseVal;"
+        "const width=Math.max(1,Math.ceil(box&&box.width?box.width:image.width));"
+        "const height=Math.max(1,Math.ceil(box&&box.height?box.height:image.height));"
+        "const ratio=Math.min(2,4096/Math.max(width,height));"
+        "const bitmap=document.createElement('canvas');bitmap.width=Math.ceil(width*ratio);"
+        "bitmap.height=Math.ceil(height*ratio);"
+        "bitmap.getContext('2d').drawImage(image,0,0,bitmap.width,bitmap.height);"
+        "URL.revokeObjectURL(url);url=null;"
+        "const png=await new Promise(resolve=>bitmap.toBlob(resolve,'image/png'));"
+        "if(!png||!navigator.clipboard||!window.ClipboardItem)"
+        "throw new Error('image clipboard unavailable');"
+        "await navigator.clipboard.write([new ClipboardItem({'image/png':png})]);"
+        "copy.textContent='Copied image';}catch(error){if(url)URL.revokeObjectURL(url);"
+        "try{await navigator.clipboard.writeText(markup);"
+        "copy.textContent='Copied SVG';}catch(inner){copy.textContent='Use Open SVG';}}"
+        "setTimeout(()=>{copy.textContent=original;},1400);});apply();"
+        "})();</script>"
+    )
+
+
 def _html_fragment(fragment: str, theme: Theme) -> str:
     checked = _require_theme(theme)
     suffix = sha256(f"{checked.value}\0{fragment}".encode("utf-8")).hexdigest()[:16]
@@ -239,7 +345,10 @@ def _themed_figure_class() -> type[Any]:
             exclude: object = None,
         ) -> dict[str, str]:
             del include, exclude
-            return {"text/html": _figure_svg(self, self._scnsim_theme)}
+            svg = _figure_svg(self, self._scnsim_theme)
+            return {
+                "text/html": _notebook_svg_viewer(svg, self._scnsim_theme)
+            }
 
         def _ipython_display_(self) -> None:
             # Matplotlib's inline backend also registers PNG/SVG formatters for
@@ -247,7 +356,8 @@ def _themed_figure_class() -> type[Any]:
             # adaptive HTML bundle the single Notebook representation.
             from IPython.display import HTML, display
 
-            display(HTML(_figure_svg(self, self._scnsim_theme)))
+            svg = _figure_svg(self, self._scnsim_theme)
+            display(HTML(_notebook_svg_viewer(svg, self._scnsim_theme)))
 
         def savefig(self, *args: object, **kwargs: object) -> object:
             background = _palette(self._scnsim_theme).background
@@ -338,13 +448,20 @@ def _themed_drawing_class() -> type[Any]:
         ) -> dict[str, str]:
             del include, exclude
             svg = schemdraw.Drawing._repr_svg_(self)
-            return {"text/html": _adaptive_svg(svg, self._scnsim_theme)}
+            adaptive = _adaptive_svg(svg, self._scnsim_theme)
+            return {
+                "text/html": _notebook_svg_viewer(
+                    adaptive,
+                    self._scnsim_theme,
+                )
+            }
 
         def _ipython_display_(self) -> None:
             from IPython.display import HTML, display
 
             svg = schemdraw.Drawing._repr_svg_(self)
-            display(HTML(_adaptive_svg(svg, self._scnsim_theme)))
+            adaptive = _adaptive_svg(svg, self._scnsim_theme)
+            display(HTML(_notebook_svg_viewer(adaptive, self._scnsim_theme)))
 
         def _repr_svg_(self) -> None:
             # Avoid a second static MIME candidate shadowing adaptive HTML.

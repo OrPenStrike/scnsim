@@ -9,7 +9,7 @@ execute:
 **Learn:** separate HB axes, possible drives, named cases, and finite truncation.
 **Run:** solve one exact pump-off HB batch and resolve it without a retry.
 **Inspect:** selected S/Y/Z, case state, and any typed per-case outcome.
-**Status:** `STABILIZED` Full V1; presentation theme `CONVERGING` candidate.
+**Status:** `STABILIZED` Full V1; presentation and tutorial fixture `CONVERGING` candidate.
 :::
 
 ## Declare the experiment without driving it
@@ -46,8 +46,8 @@ run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
 view = run.original.reduce(
     ReductionPipeline()
     .ptc(fixture.probe_plus, fixture.probe_minus)
-    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
-    .retain("feedline_in", "feedline_out", "qubit.differential")
+    .transform_pair(fixture.floating_plus, fixture.floating_minus, id="floating")
+    .retain("feedline_in", "feedline_out", "floating.differential")
 )
 pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
 pump_drive = CurrentDrive(id="pump_drive", at=fixture.feedline_in, mode=(1,))
@@ -150,11 +150,11 @@ view_after_restart = run_after_restart.original.reduce(
     ReductionPipeline()
     .ptc(fixture_after_restart.probe_plus, fixture_after_restart.probe_minus)
     .transform_pair(
-        fixture_after_restart.qubit_plus,
-        fixture_after_restart.qubit_minus,
-        id="qubit",
+        fixture_after_restart.floating_plus,
+        fixture_after_restart.floating_minus,
+        id="floating",
     )
-    .retain("feedline_in", "feedline_out", "qubit.differential")
+    .retain("feedline_in", "feedline_out", "floating.differential")
 )
 pump_after_restart = PumpAxis(id="pump", frequency=9.0 * u.GHz)
 pump_drive_after_restart = CurrentDrive(

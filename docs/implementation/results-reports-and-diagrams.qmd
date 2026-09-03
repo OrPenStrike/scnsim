@@ -67,6 +67,15 @@ the existing `Drawing.save()` or `Figure.savefig()` directly preserves an
 explicit theme; `AUTO` saves the light fallback for SVG and raster output.
 Presentation never reads environment variables or frontend-specific state.
 
+Notebook rich display wraps the same authoritative SVG in a self-contained
+inspection surface. Its toolbar can copy the rendered image, zoom in or out,
+reset the view, and open the underlying SVG; pointer drag pans an enlarged
+diagram and `Ctrl`/`Command` plus the mouse wheel zooms it. If the frontend
+blocks JavaScript or clipboard access, ordinary scrolling and the `Open SVG`
+link remain available. These controls exist only in the Notebook rich
+representation: they do not alter the returned `Drawing` or `Figure`, the SVG
+geometry, standalone reports, or static `save()`/`savefig()` output.
+
 The light and dark palettes share one fixed paired ten-color cycle. Changing
 theme cannot change source arrays, curve or case order, line count, labels,
 legend, axes, diagram geometry, layout, topology, or any Plan/request/Result
@@ -98,12 +107,15 @@ pretending to be a reduced or backend-result circuit.
 
 The authoring projection first lowers the Plan into presentation-only
 component blocks, ordered pin anchors, electric nets, logical Ports, and local
-ground groups. Its deterministic port-rooted layered heuristic chooses a
+ground groups. A physical net is represented internally by one `NetBus` and
+as many private `NetTap` anchors as its incident blocks require. Those anchors
+are layout data only: one Public-node identity dot/label remains authoritative
+for the entire bus. Its deterministic port-rooted layered heuristic chooses a
 semantic main path, packs grounded branches beneath their attachment, and
 routes orthogonal wires without treating canonical ground as a page-wide
-layout vertex. A primitive symbol and its deliberately placed label form one
-occupied layout block: the label side and conservative text extent participate
-in spacing before Schemdraw receives either object. The renderer therefore does
+layout vertex. A primitive symbol and its native Schemdraw label form one
+orientation-aware occupied block: the transformed symbol and measured label
+bounds participate in spacing before final composition. The renderer therefore does
 not rely on a post-render label offset to discover whether components overlap.
 Filled dots are reserved for labeled Public-node identities. A pure same-net
 T-junction is unfilled; a same-net four-way meeting is routed as two adjacent
@@ -130,10 +142,17 @@ A one-conductor `transmission_line` is a two-terminal `CPW` rectangle inserted
 directly in the signal path; its ID and length are inside the symbol. The
 reference conductor remains RLGC model metadata and is not rendered as an
 implicit ground connection. An N-conductor line is one taller `MTL` rectangle
-spanning ordered conductor rows. Its head/tail pin names are placed inside the
-block beside their boundary anchors, and their complete text extents contribute
-to block sizing. The compiled representation continues to show the complete
+spanning ordered conductor rows. It owns one ordered boundary anchor per
+head/tail conductor; labeled Public node identities remain outside the block at
+those anchors, and their complete text extents participate in placement. The
+compiled representation continues to show the complete
 matrix-valued pi ladder rather than this authoring abstraction.
+
+All authoring geometry derives from one private `2.2`-coordinate unit. Native
+element span, label clearance, terminal stubs, routing lanes, Port leads,
+grounded-branch depth, and disconnected-panel gaps are fixed multiples of that
+unit; measured occupied bounds may only increase the resulting spacing. There
+is no public scale knob and no per-fixture coordinate escape hatch.
 
 ## Assemble reports from explicit inputs
 
