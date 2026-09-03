@@ -13,7 +13,8 @@ snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
 the HB declarations taught through Lesson 13. The complete authoring scope is
 `STABILIZED` with the rest of Full V1. Typed schematic-layout hints and the
 semantic authoring renderer are a separate `CONVERGING` presentation scope;
-they neither change nor replace this physical authority.
+they neither change nor replace this physical authority. Their single target
+authority is [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 :::
 
 ## Contract scope
@@ -990,154 +991,24 @@ incompatible collection of individually plausible pairwise coefficients.
 
 ### Inspect the authoring circuit or complete compiled graph
 
-The Plan owns both schematic projections. The default is a human-readable
-authoring diagram:
+The Plan owns authoring and compiler-expanded inspection projections, but
+neither projection is another circuit definition. The replacement contract
+for automatic placement, native-symbol expansion, Port and ground grammar,
+typed relational hints, snapshot provenance, independent electrical/semantic
+reconstruction, and the code-free review packet is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
-```python
-from scnsim import CircuitDiagramSpec
+That presentation scope is currently a documentation-first `CONVERGING`
+target whose runtime alignment is pending. Until alignment is complete, the
+existing renderer and legacy hint classes must not be described as satisfying
+the certified-projection contract. The component, node, ground, Port,
+parameter, Composite, RLGC, and coupling semantics on this page remain the
+physical input authority against which the future diagram audits compare.
 
-diagram = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",
-        show_parameter_values=True,
-    )
-)
-diagram.show()
-```
-
-It shows semantic components, Public nodes, logical Ports, canonical ground,
-actual wiring, and anonymous Internal junctions. A grounded linear resonator is
-drawn as parallel L and C branches whose lower endpoints share one block-local
-bus and ground glyph. The primitive example above produces the same structure.
-One physical electric node may be projected as a longer local signal bus with
-several private drawing taps. Every incident component still binds that same
-`ElectricNode`; taps are neither aliases nor additional circuit nodes. Its
-Public identity dot and label appear once at the bus identity anchor, while
-the other taps remain unfilled T-junctions.
-Filled dots identify labeled Public nodes only. Ordinary same-net T-junctions
-remain unfilled, and a four-way same-net meeting is drawn as two nearby T
-junctions instead of an ambiguous cross. A crossing between different nets
-uses a wire jump. Port-promoted nodes are identified by the open Port boundary
-rather than by an additional filled dot.
-Separate local ground glyphs still denote the one Plan ground; the renderer
-does not draw a page-wide reference bus. A one-conductor transmission line is
-an inline two-terminal CPW rectangle. A multi-conductor line is one taller MTL
-rectangle spanning ordered conductor rows. The block owns ordered boundary
-anchors; labeled Public node identities remain outside the electrical symbol
-at those anchors. The RLGC reference conductor alone never creates a drawn
-ground wire.
-CPW/MTL is the one dedicated custom electrical symbol. Built-in and
-user-authored Composites recursively expand their sealed snapshots into the
-declared native R/L/C/Josephson branches. This visual expansion does not make
-hidden children, nodes, or parameters addressable through the parent Python
-API; it is a read-only presentation path rather than a second authoring
-surface.
-
-Automatic layout is complete, so hints are optional. When a model author needs
-to preserve a particular reading order, use relational handles rather than
-page coordinates:
-
-```python
-from scnsim import (
-    CircuitDiagramSpec,
-    DiagramSide,
-    SchematicGroup,
-    SchematicLayout,
-    SchematicPath,
-)
-
-layout = SchematicLayout(
-    primary_paths=(
-        SchematicPath(
-            waypoints=(signal_port, coupling_cap, resonator_node),
-        ),
-    ),
-    port_sides={signal_port: DiagramSide.LEFT},
-    branch_order={resonator_node: (resonator_cap, resonator_ind)},
-    groups=(
-        SchematicGroup(
-            id="resonator_shunts",
-            members=(resonator_cap, resonator_ind),
-        ),
-    ),
-)
-
-diagram = plan.render_schematic(CircuitDiagramSpec(layout=layout))
-```
-
-A Port attached to the middle of a horizontal through bus may be placed only
-on `DiagramSide.TOP` or `DiagramSide.BOTTOM`; for a vertical through bus the
-allowed sides rotate to `LEFT` or `RIGHT`. The automatic layout follows this
-normal-to-bus rule. A conflicting explicit side fails with
-`SCNSimValidationError(stage="schematic_layout")` instead of routing a Port
-block around the page. A Port at a bus endpoint may remain tangent to the bus,
-as in the Lesson 1 left boundary.
-
-A path alternates node-or-Port handles with directly adjacent components. For
-an ambiguous N-terminal relation it includes the intended
-`ElectricNodeRef`; the renderer does not guess. Groups affect packing and
-spacing only and draw no enclosing frame. Handles from another Plan,
-duplicate or overlapping declarations, and mutually conflicting hints raise
-`SCNSimValidationError(stage="schematic_layout")`. Authoring layout hints are
-presentation-only and are rejected for the compiled audit representation.
-
-Generic two-terminal symbols place `terminal_1` left and `terminal_2` right;
-when drawn as a downward grounded branch they place `terminal_1` above
-`terminal_2`. Rotation moves the anchors without renaming them or changing the
-branch orientation. A custom N-terminal composite without a dedicated symbol
-uses its ordered Library pin schema as a clockwise fallback, beginning at the
-lower-left boundary. Descriptive pin names remain unchanged: visual placement
-never becomes compiler or pin-identity authority.
-
-For grounded nonlinear resonators, both representations keep the ordinary
-`capacitance` branch and every junction `junction_capacitance` branch visibly
-distinct. With `show_parameter_values=True`, each branch is labeled with its
-owning ParameterRef identity and value; the two symmetric-SQUID Cj branches
-show their shared `junction_capacitance` identity. No branch is folded into a
-total C.
-
-Use the compiled representation to audit the complete baseline primitive
-expansion:
-
-```python
-expanded = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="compiled",
-        show_parameter_values=True,
-    )
-)
-expanded.show()
-```
-
-For every transmission line it shows all `n_sections`, every section index,
-and all `n_sections + 1` physical nodes per conductor. It records `dx`, the
-head/tail and outer Plan attachments, declared conductor order, reference
-conductor, and head-to-tail `+z` current direction. Each section shows the full
-`R * dx` and `L * dx` series contribution plus `G * dx / 2` and `C * dx / 2`
-at both ends. Each interior node identifies the two adjacent half-shunt
-contributions and their compiled total.
-
-At each pi-ladder station, C/G shunts owned by that station share one local
-ground bus and glyph. The complete diagram and its legend map every such glyph,
-every grounded built-in return, and every explicit `ground()` group to Plan
-ground and JosephsonCircuits node `"0"` without creating additional nodes.
-
-For `N=1`, the renderer uses ordinary R/L series and G/C shunt symbols. For
-`N>1`, it preserves ordered conductor lanes and represents the series and
-shunt matrices as matrix-valued blocks with complete C/G Maxwell and L/R
-tables; it never invents a scalar equivalent. Exact-zero branches may be
-omitted from the drawing only when the complete value table marks them
-`omitted-as-zero`. Large ladders use deterministic multi-panel or paged vector
-layout whose boundaries retain continuous section and node IDs. Sections,
-mutual terms, and conductor order are never collapsed, truncated, or
-reordered.
-
-This compiled schematic is still Plan-derived inspection evidence. It does not
-show Direct/HB rows, an HB off-diagonal-R capability claim, PTC, transforms,
-Schur elimination, or numerical results. `run.explain(ref, spec).show()` owns
-those backend- and request-specific facts. The V1 surface deliberately has no
-focus, section-range, partial-ladder, `plan.show()`, or schematic `.plot()`
-alternative.
+A Plan diagram represents baseline physical authoring only. Request-specific
+PTC, transforms, retain, Schur reduction, ParameterSet values, Direct/HB
+results, and numerical capability evidence remain with `run.explain()` and
+verified Results.
 
 `run.explain(ref, spec).show()` performs the same deterministic component and
 ParameterSet preflight used by execution, without launching a solver or

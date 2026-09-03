@@ -1,0 +1,600 @@
+---
+title: "Automatic Semantic Circuit Diagram Layout"
+subtitle: "Certified electrical and semantic projections of one CircuitPlan"
+toc-depth: 3
+---
+
+::: {.callout-warning}
+## CONVERGING target contract — runtime alignment pending
+
+This page is the single current design authority for SCNSim automatic semantic
+circuit diagrams. It supersedes earlier presentation prose about page-wide
+rails, first-Port paths, opaque Composite fallbacks, `SchematicPath`,
+`SchematicGroup`, and packing groups.
+
+The target interfaces and fail-closed audits described here are **not yet the
+current runtime implementation**. Full V1 numerical, workspace, and identity
+semantics remain `STABILIZED`; only this diagram-presentation scope is
+`CONVERGING`. Human review of this document precedes runtime/API alignment and
+durable stabilization tests.
+:::
+
+## Product promise
+
+An automatic diagram is useful for Agent-authored circuits only when it does
+more than look plausible. A successful `CircuitDiagramResult` must certify
+that the visible electrical and semantic projection can be reconstructed and
+matched exactly to the `CircuitPlan` snapshot from which it was made.
+
+The promise has three deliberately separate parts:
+
+| Audit | Question | Product responsibility |
+|---|---|---|
+| A. Electrical fidelity | Do the emitted symbols, pins, wires, ground returns, Ports, and coupled branches reconstruct the exact Plan connectivity? | Mandatory independent renderer audit. |
+| B. Semantic fidelity | Do the visible Subsystems, parallel relations, interfaces, differential bundles, and mutual couplings reconstruct the intended presentation IR? | Mandatory independent renderer audit and complete visual alphabet. |
+| C. Design intent | Is this exact Plan the circuit the Human intended the Agent to build? | Human review of the certified diagram and review table. |
+
+Passing A and B means that the diagram does not lie about the Plan. It does not
+mean that the Plan itself satisfies a Design Target. SCNSim must not describe C
+as an automated validation result.
+
+## Authority and snapshot identity
+
+`CircuitPlan` remains the only physical-authoring authority. Layout objects,
+diagram geometry, labels, SVG metadata, and audit tables cannot declare a
+component, split a net, add a pin, or change canonical ground.
+
+`render_schematic()` captures the same canonical Plan document and SHA-256
+encoding used when a later `CircuitRun` seals the Plan. Capturing that immutable
+snapshot does not seal or mutate a Plan that is still being authored. If the
+Plan changes afterward, the old diagram continues to identify the old
+snapshot; a new render receives a new Plan SHA. A diagram and an analysis
+result refer to the same physical Plan only when their complete
+`plan_sha256` values agree.
+
+The Plan SHA binds the physical baseline declaration, including component
+hierarchy, topology, the canonical union of grounded endpoints, parameters,
+source-unit provenance, Ports, and couplings. Separate `ground()` call groups
+may remain diagram/audit evidence without entering the physical Plan hash;
+they can therefore change the connectivity certificate's ground-group record
+without claiming a different simulated circuit. Presentation choices never
+enter Plan identity.
+
+## One semantic projection pipeline
+
+Authoring and compiled diagrams use one certified pipeline with two independent
+branches:
+
+```text
+canonical Plan snapshot
+├─> independent expected electrical and semantic manifests
+└─> semantic lowering -> placement -> routing -> actual emitted geometry
+                                      ├─> electrical reconstruction audit (A)
+                                      └─> semantic reconstruction audit (B)
+                                                       |
+                                              Theme / SVG serialization
+```
+
+The expected manifests are derived directly from the canonical Plan document.
+The observed manifests are reconstructed after placement from the objects that
+were actually emitted. The reconstruction code may read only:
+
+- native-symbol types and their transformed electrical anchors;
+- CPW/MTL boundary anchors and conductor rows;
+- conductive segment endpoints;
+- Port boundary, circuit, and load anchors;
+- ground-glyph attachment buses;
+- T-junction and wire-jump geometry;
+- RelationBlock terminals; and
+- visible IDs, parameter labels, and coupling marks.
+
+It must not reuse the manifest or bundle enumeration that drove placement. One
+lowered table cannot be both the drawing instruction and its own witness.
+Hidden SVG metadata may carry provenance, but it cannot repair an incomplete
+visible projection or satisfy either audit.
+
+## Semantic layout IR
+
+The private IR separates electrical identity from drawing geometry.
+
+### ElementBlock
+
+Every physical R, L, C, G, Josephson junction, and junction capacitance is an
+orientation-aware native `ElementBlock`. A block owns:
+
+- the full component path and primitive kind;
+- ordered physical pins and electrical anchors;
+- the native Schemdraw symbol bounds;
+- separately measured name and baseline-value label rows; and
+- one occupied bounding box that includes the required clearances.
+
+Native labels are attached to their oriented symbols. They are not placed as
+free-floating text after layout, and label width never stretches the
+electrical symbol. Horizontal elements use top or bottom label regions;
+vertical elements use the measured outside left or right region appropriate to
+their direction. Name and value are measured as separate rows with at least
+`1/8 U` between their occupied bounds.
+
+### SubsystemBlock
+
+A `SubsystemBlock` preserves component hierarchy, attachment ownership, and
+relative packing. It is normally invisible: SCNSim does not replace a
+resonator, IDC, SQUID, or custom Composite with a generic rectangle. Each
+Subsystem ID is shown once, while native leaves use the shortest unique local
+name plus a separate value row. Full canonical component paths remain
+available in audit evidence and `run.explain()`.
+
+Every built-in and user-authored Composite recursively expands its sealed
+snapshot into native R/L/C/G/JJ symbols. Hidden child handles remain
+unavailable to authoring code even though the sealed physical branches are
+visible. CPW/MTL transmission line is the only boxed custom electrical symbol.
+
+### RelationBlock
+
+Parallel leaves with the same unordered endpoint pair form one
+`RelationBlock`. Examples include C parallel with L and a Josephson junction
+parallel with its Cj. A RelationBlock owns its two terminal buses, native
+leaves, labels, and any local ground glyph. It prevents parallel branches from
+being placed as a false series chain.
+
+### InterfaceBundle and attachments
+
+An `InterfaceBundle` is derived from the Plan; it is not a second topology
+declaration. It groups the top-level primitive or relation members that connect
+two Subsystems, or that connect a Port boundary to one Subsystem.
+Its canonical Plan-derived identity is visible exactly once in the diagram and
+is the identity reconstructed by the semantic audit.
+
+Attachment geometry is decided per Public `ElectricNode`, not from the total
+number of neighbors of a whole Subsystem:
+
+- one single-ended bundle receives one centered outward anchor;
+- two single-ended bundles receive opposite inline anchors on the same node;
+- three or more bundles receive ordered anchors on a short boundary bus; and
+- a bundle touching several Public nodes is differential or multi-terminal,
+  so its terminals face the peer Subsystem together as a set.
+
+Top-level two-terminal primitives bridging two Subsystem public nodes belong
+to that interface. Canonical ground is never counted as a neighboring
+Subsystem. No attachment rule may invent another ElectricNode or public pin.
+
+### NetBus and NetTap
+
+One `ElectricNode` may need several geometric contacts. The layout may
+therefore create one private `NetBus` with several private `NetTap` anchors.
+All taps reconstruct to the same electrical node. A labeled Public node has
+one identity anchor and one filled dot; ordinary taps and T-junctions are
+unfilled. A Port-promoted node is identified by its open Port circle rather
+than a second node dot.
+
+## Complete visual alphabet
+
+### Native branches and ground
+
+R, L, C, G, Josephson junctions, and Cj are drawn with native electrical
+symbols. IDC is shown as its terminal-to-terminal capacitance plus both
+terminal-to-reference shunts. Grounded and floating resonators expose their
+actual parallel branches. A SQUID exposes both junctions, each Cj, and finite
+loop inductance.
+
+Parallel grounded branches attached to the same signal node and ground group
+share a short local bottom bus and one ground glyph. Shunts belonging to
+different signal nodes receive separate ground glyphs even though every glyph
+maps to the one canonical Plan ground. Canonical ground is never a page-wide
+layout vertex or rail.
+
+### CPW and MTL
+
+One-conductor transmission line is an inline CPW box with continuous outline,
+input/output anchors, ID, and length. Multi-conductor line is one MTL box with
+ordered conductor rows and one head/tail anchor per row. The reference
+conductor is explicit legend metadata and never creates an inferred ground
+wire.
+
+The compiled projection expands every line into its complete pi ladder. For
+N>1 it preserves matrix order and complete C/G and L/R evidence rather than
+inventing scalar equivalents.
+
+### Logical Ports
+
+A logical Port is one rotatable presentation block containing:
+
+- an open boundary circle;
+- an interior circuit anchor;
+- an unfilled interior T-junction;
+- the declared reference-impedance branch and local ground; and
+- a visible Port ID, role, and baseline Z0.
+
+`terminated` and `nonloading_probe` are visibly distinct; the latter is marked
+PTC-removable. The load branch is the existing raw-network Port load, not an
+authored Library resistor. On an interior horizontal bus the Port block faces
+top or bottom; on an interior vertical bus it faces left or right. Endpoint
+Ports may remain tangent to the bus.
+
+### Junctions and crossings
+
+- A filled dot denotes one labeled Public-node identity.
+- An ordinary same-net T-junction is unfilled.
+- A same-net four-way meeting becomes two staggered T-junctions.
+- Different nets never use an ordinary cross; an unavoidable crossing uses a
+  wire jump.
+- Wires may enter or leave blocks only through registered anchors and may not
+  cross a symbol, label, Port block, or Subsystem occupied region.
+
+### Mutual inductance
+
+When both inductors participate only in one coupling and can remain adjacent
+without changing public-terminal order or violating occupied boxes, they are
+drawn as adjacent parallel inductors with signed `k` between them and derived
+`M` when values are visible.
+
+Otherwise the diagram contains a non-optional coupling legend that identifies
+both oriented branch paths, signed `k`, and optional derived `M`. A mutual
+coupling with neither an adjacent mark nor a complete visible legend fails the
+semantic audit. Drawing placement never determines the physical sign.
+
+## Automatic placement and routing
+
+All geometry derives from one private diagram metric system with
+`unit_length = 2.2` Schemdraw coordinates:
+
+| Quantity | Minimum |
+|---|---|
+| Native element span | `1 U` |
+| Label clearance | `1/8 U` |
+| Terminal stub and wire obstacle clearance | `1/4 U` |
+| Routing-lane pitch | `1/2 U` |
+| Port lead | `5/8 U` |
+| Port load span | `1 U` |
+| Grounded-branch depth | `2 U` |
+| Disconnected-panel gap | `3 U` |
+
+Measured symbol, label, legend, and provenance bounds may only increase these
+spacings. No fixture ID, Tutorial name, component ID, hand-authored coordinate,
+or public scale knob may bypass the metric system.
+
+Each connected panel is decomposed into articulation and biconnected blocks.
+All distinct `terminated` Ports participate in the connecting backbone;
+`nonloading_probe` Ports remain peripheral. A panel with fewer than two
+terminated Ports roots at the first Port or earliest Public node. Cycles remain
+biconnected semantic blocks rather than being broken by an arbitrary pairwise
+path. Disconnected circuits are packed as separate panels.
+
+Placement reserves complete ElementBlock, RelationBlock, InterfaceBundle,
+Port, label, and legend bounds. Rows, columns, boundary buses, and routing lanes
+expand monotonically until all accepted constraints hold. Deterministic Plan
+declaration order and exact IDs are tie breakers. The heuristic does not claim
+a global optimum.
+
+## Relational manual hints
+
+Manual layout is a constrained reading-order input to the same automatic
+engine. It is not a coordinate escape hatch. All of the following target types
+are exported from the `scnsim` package root; the definitions show their public
+shape rather than a second implementation module:
+
+```python
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from enum import Enum
+from types import MappingProxyType
+
+class DiagramSide(str, Enum):
+    LEFT = "left"
+    RIGHT = "right"
+    TOP = "top"
+    BOTTOM = "bottom"
+
+@dataclass(frozen=True, slots=True)
+class SchematicInterface:
+    id: str
+    members: tuple[ComponentInstance, ...] = ()
+    nodes: tuple[ElectricNodeRef, ...] = ()
+
+@dataclass(frozen=True, slots=True)
+class SchematicAttachment:
+    interface: SchematicInterface
+    at: ComponentInstance | ElectricNodeRef
+
+@dataclass(frozen=True, slots=True)
+class SchematicRoute:
+    points: tuple[PortRef | SchematicAttachment, ...]
+
+@dataclass(frozen=True, slots=True)
+class SchematicLayout:
+    interfaces: tuple[SchematicInterface, ...] = ()
+    primary_routes: tuple[SchematicRoute, ...] = ()
+    attachment_sides: Mapping[SchematicAttachment, DiagramSide] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    attachment_order: Mapping[
+        ComponentInstance | ElectricNodeRef,
+        tuple[SchematicAttachment, ...],
+    ] = field(default_factory=lambda: MappingProxyType({}))
+    port_sides: Mapping[PortRef, DiagramSide] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+```
+
+`DiagramSide` is the only accepted side value; raw strings fail before layout.
+Every mapping is defensively copied into an immutable, deterministic internal
+mapping during construction, so a caller retaining the original dictionary
+cannot mutate a layout after validation.
+
+`SchematicInterface.id` is a nonempty layout-local selector identity. It is
+unique within one `SchematicLayout`, but it is neither a new Plan identity nor
+an alias for an ElectricNode or InterfaceBundle. The automatic IR's canonical
+bundle identity remains the visible semantic identifier and digest input.
+Changing only the selector ID therefore cannot change the certified semantic
+manifest.
+
+`members` and `nodes` cannot both be empty. Their combined selector is an
+intersection and must match exactly one InterfaceBundle already derived from
+the same Plan. Each `members` entry is a top-level `ComponentInstance`; each
+`nodes` entry is a Public `ElectricNodeRef`. Nodes disambiguate genuine
+multi-terminal relations; they do not declare a net or route. Two interface
+selectors may not select the same derived bundle.
+
+An attachment selects exactly one existing public/top-level endpoint of its
+interface. A component endpoint means the bundle's attachment to that
+Subsystem; a node endpoint means its attachment at that Public node. If `at`
+matches neither or more than one endpoint, validation fails.
+
+A route contains at least two distinct points and defines only primary reading
+order. Every consecutive point pair must already have one unique connecting
+chain in the automatic semantic IR; an absent or ambiguous chain fails rather
+than being guessed. A caller resolves a cyclic ambiguity by adding existing
+intermediate attachments until every adjacent route hop is unique, never by
+supplying coordinates. An attachment cannot occupy conflicting positions in
+two primary routes. `attachment_sides`, `attachment_order`, and `port_sides`
+constrain only eligible outer anchors and cannot make a nonadjacent pair
+adjacent electrically.
+
+All referenced handles must belong to the same Plan. Hidden or internal leaves,
+foreign handles, duplicate interfaces, incomplete endpoints, conflicting
+orders, impossible sides, and a selector that matches zero or several bundles
+raise `SCNSimValidationError(stage="schematic_layout")`. Compiled diagrams
+reject authoring layout hints with `ValueError`.
+
+`layout=None` and hinted layouts pass through the same placement, routing, and
+independent audits. They must produce identical connectivity and semantic
+digests. When runtime alignment begins, these types replace `SchematicPath`,
+`SchematicGroup`, and `branch_order` completely; there is no alias, compatibility
+encoder, or migration path.
+
+## Independent audits and digests
+
+### Electrical reconstruction (A)
+
+The observed electrical manifest normalizes:
+
+- every native branch kind, full path, ordered pin, and reconstructed net;
+- every ground return and local-group membership;
+- every Port attachment, role, Z0, and node-to-reference orientation;
+- every CPW/MTL conductor, reference, head/tail attachment, and row order;
+- every mutually coupled oriented branch pair; and
+- every exact-zero branch omitted from visible geometry.
+
+Its canonical digest is `connectivity_sha256`. The observed manifest must
+equal the independently generated expected manifest exactly; set equality
+without complete ordered-pin and orientation evidence is insufficient.
+
+### Semantic reconstruction (B)
+
+The observed semantic manifest reconstructs:
+
+- Subsystem hierarchy and each visible Subsystem identity;
+- RelationBlock endpoints and native members;
+- InterfaceBundle endpoints, member branches, and single-ended versus
+  differential/multi-terminal classification;
+- Port-boundary ownership; and
+- mutual-coupling presentation mode and visible identity.
+
+Its canonical digest is `semantic_sha256`. A parallel relation drawn as series,
+a differential interface drawn as unrelated single-ended branches, an omitted
+coupling mark, or an ambiguous ownership label fails this audit even when
+electrical connectivity happens to be correct. Adjacent-inductor and visible-
+legend coupling presentations normalize to the same coupling identity; their
+geometric presentation mode is audit evidence but is not part of the semantic
+digest.
+
+### Geometry and label validity
+
+Before semantic serialization, layout validation proves that occupied blocks
+and labels do not overlap, wires contact only registered anchors, conductive
+paths are continuous, and junction/jump grammar is unambiguous. When baseline
+values are visible, their rendered labels must exactly match the canonical
+Plan values and source-unit provenance selected for display.
+
+Theme, hint choice, provenance visibility, padding, and equivalent geometric
+routing are excluded from the Plan, connectivity, and semantic digest
+preimages. Each digest uses a schema-tagged canonical encoding so a future
+meaning change cannot silently reuse an old digest.
+
+## Target Result and presentation surface
+
+The target defaults make an ordinary authoring diagram review-ready:
+
+```python
+CircuitDiagramSpec(
+    *,
+    representation="authoring",
+    theme=Theme.AUTO,
+    show_parameter_values=True,
+    show_provenance=True,
+    layout: SchematicLayout | None = None,
+)
+```
+
+Successful construction attaches an immutable audit with no public
+constructor. The following is its read-only protocol, not a user-constructible
+dataclass:
+
+```python
+class CircuitDiagramAudit:
+    @property
+    def representation(self) -> Literal["authoring", "compiled"]: ...
+
+    @property
+    def plan_id(self) -> str: ...
+
+    @property
+    def plan_sha256(self) -> str: ...
+
+    @property
+    def connectivity_sha256(self) -> str: ...
+
+    @property
+    def semantic_sha256(self) -> str: ...
+
+    @property
+    def compiled_graph_sha256(self) -> str | None: ...
+
+    def show(self) -> HtmlPresentation: ...
+
+diagram.audit.plan_sha256
+diagram.audit.connectivity_sha256
+diagram.audit.semantic_sha256
+diagram.audit.compiled_graph_sha256
+diagram.audit.show()
+```
+
+There is no `passed` boolean: failure returns no diagram or audit object.
+`CircuitDiagramResult.show()` continues to return the real Schemdraw `Drawing`.
+Notebook rich display continues to provide the self-contained copy, zoom,
+reset, drag-pan, and Open SVG surface. Static SVG/raster save remains a
+non-interactive projection.
+
+### Provenance region
+
+A measured bottom region and outer padding keep all symbols and labels away
+from the image boundary. By default the region displays:
+
+```text
+AUTHORING · CircuitPlan <id> · plan <12> · conn <12> · semantic <12> · values: baseline
+```
+
+A compiled diagram additionally displays `compiled <12>`. The region uses the
+same Theme palette as the drawing. Complete digests remain in
+`CircuitDiagramAudit` and SVG metadata; neither independent audit relies on
+that metadata.
+
+`show_provenance=False` removes the visible region but never disables the
+audits or typed certificate. A copied raster without the region consequently
+has no standalone visible provenance; this is an explicit presentation choice.
+
+### Audit review table
+
+`diagram.audit.show()` displays the audited observed reconstruction rather than
+printing the Plan's expected manifest a second time. It contains:
+
+- Plan identity and full digests;
+- Public nodes, exact endpoints, and ground groups;
+- Ports, roles, Z0, and orientation;
+- InterfaceBundle endpoints and members;
+- RelationBlock endpoints and native leaves;
+- mutual-coupling branch identities, signed `k`, and derived `M` when defined;
+- CPW/MTL conductor order, reference, and head/tail attachments;
+- omitted-zero declarations; and
+- baseline values with source-unit provenance.
+
+For a compiled projection it also includes the expanded graph identity, line
+sections, conductor/station identities, complete matrix evidence, and omitted
+compiled zero terms.
+
+## Compiled projection
+
+Compiled diagrams perform two certified comparisons:
+
+```text
+Plan snapshot -> compiler expanded graph -> expected compiled manifest
+                                  actual compiled drawing
+                                           -> observed compiled manifest
+```
+
+The Plan SHA proves the source; `compiled_graph_sha256` proves the exact
+expansion; the reconstructed connectivity and semantic digests prove the
+visible compiled drawing. A large ladder may use deterministic pages or
+panels, but it cannot truncate sections, conductor rows, matrix entries,
+attachments, or omitted-zero evidence.
+
+Compiled projection remains structural baseline evidence. It contains no PTC,
+retain, transform, Schur reduction, Direct/HB response, or ParameterSet
+override. Those request-specific facts belong to `run.explain()` and verified
+analysis Results.
+
+## Fail-closed behavior
+
+Layout cannot return a degraded or partial image. These are
+`schematic_layout` failures:
+
+- malformed, foreign, ambiguous, or contradictory manual hints;
+- an unplaceable required visual mark or provenance region;
+- symbol, Port, label, legend, or panel overlap;
+- a wire entering a non-anchor obstacle;
+- a disconnected required wire segment; or
+- an ambiguous ordinary crossing that cannot be represented with the junction
+  and jump alphabet.
+
+These are `schematic_audit` failures:
+
+- expected and reconstructed pins, nets, ground, Ports, or line conductors
+  differ;
+- a branch is missing, duplicated, reversed, or attached to the wrong net;
+- RelationBlock, InterfaceBundle, Subsystem, or differential classification
+  differs;
+- a required coupling or omission record is not visibly and completely
+  represented; or
+- a visible baseline name/value label disagrees with the captured Plan.
+
+No warning-only path, page-wide-rail fallback, hidden metadata repair, or
+best-effort success is allowed.
+
+## Human review protocol
+
+An Agent submitting a `CircuitPlan` supplies a code-free review packet:
+
+1. the default authoring diagram with baseline values and provenance visible;
+2. the Net/BOM table from `diagram.audit.show()`;
+3. a compiled diagram and compiled audit table whenever CPW/MTL or another
+   compiler expansion is present; and
+4. the applicable Design Target against which the Human judges intent.
+
+Machine audit guarantees A and B. The Human uses the certified visual grammar
+to decide C: whether the topology, Subsystems, interfaces, Port roles,
+couplings, and baseline quantities are the intended circuit.
+
+## Honest limits
+
+- Diagram values are Plan baselines, not values from a particular
+  `ParameterSet`, optimizer candidate, or HB case.
+- Authoring and compiled diagrams show the physical Plan. They do not show a
+  selected View, PTC compensation, retain, transform, Schur elimination, or
+  normalization choice.
+- A diagram cannot accept an optimization result, scientific Gate, or Design
+  Target.
+- `run.explain()` remains the authority for request-specific lowering and
+  evidence; it cannot substitute for a visible coupling mark or repair a
+  failed diagram audit.
+- Matrix RLGC requires its complete compiled table/legend to be reviewed; the
+  CPW/MTL authoring box alone is intentionally insufficient.
+- Router stress graphs are diagnostic inputs, not product circuit fixtures or
+  examples of physical intent.
+
+## Supersession and implementation order
+
+This document is the only current target authority for the affected scope.
+The existing renderer and old public hint classes remain temporarily reachable
+only because this is a documentation-first convergence checkpoint. After the
+Human accepts the written contract, runtime alignment must:
+
+1. replace the old hint API without aliases or a compatibility encoder;
+2. implement the real certified projection and typed audit surface;
+3. remove superseded rail, opaque-Composite, packing-group, and best-effort
+   paths;
+4. validate with ephemeral probes and Human-visible diagrams; and
+5. add durable tests only after Human acceptance of the exact implementation
+   candidate.
+
+Until that alignment is complete, current rendered diagrams must not be
+described as satisfying this target contract.

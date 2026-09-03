@@ -99,63 +99,19 @@ The paired line cycle, in order, is
 `#475569/#cbd5e1`. The left/right member is the light/dark rendering of the
 same trace index.
 
-Schemdraw renders authoring and compiler-expanded schematics as vector output.
-Authoring diagrams are a read-only projection of a structurally complete
-authored Plan; they do not seal it. Compiled diagrams consume a Julia preflight
-graph and must show every declared pi section and matrix-valued block without
-pretending to be a reduced or backend-result circuit.
+Circuit diagrams have a separate `CONVERGING` target authority:
+[Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
+That contract owns Plan-snapshot binding, semantic lowering, native Composite
+expansion, automatic and hinted layout, routing, Port and ground projection,
+independent electrical/semantic reconstruction audits, digests, provenance,
+and code-free review. Runtime alignment is pending; this implementation page
+does not certify the current renderer or restate a second layout design.
 
-The authoring projection first lowers the Plan into presentation-only
-component blocks, ordered pin anchors, electric nets, logical Ports, and local
-ground groups. A physical net is represented internally by one `NetBus` and
-as many private `NetTap` anchors as its incident blocks require. Those anchors
-are layout data only: one Public-node identity dot/label remains authoritative
-for the entire bus. Its deterministic port-rooted layered heuristic chooses a
-semantic main path, packs grounded branches beneath their attachment, and
-routes orthogonal wires without treating canonical ground as a page-wide
-layout vertex. A primitive symbol and its native Schemdraw label form one
-orientation-aware occupied block: the transformed symbol and measured label
-bounds participate in spacing before final composition. The renderer therefore does
-not rely on a post-render label offset to discover whether components overlap.
-For a grounded native branch, automatic layout centers the symbol between its
-signal bus and short local ground bus; any depth beyond the native symbol span
-is divided equally between the two terminal leads.
-Filled dots are reserved for labeled Public-node identities. A pure same-net
-T-junction is unfilled; a same-net four-way meeting is routed as two adjacent
-unfilled T-junctions rather than an ambiguous cross. A wire jump denotes an
-unavoidable crossing of different nets. The fixed heuristic reserves the
-main-path blocks first, separates remaining relations into orthogonal lanes,
-and then packs disconnected panels; it does not evaluate or claim a globally
-optimal score. Plan declaration order and exact IDs provide stable tie breaks.
-
-A logical Port is one rotatable three-anchor presentation block: open boundary
-circle, circuit connection, and declared reference load meet at an unfilled
-T-junction. LEFT/RIGHT orientations keep the circuit connection horizontal and
-the resistor descending; TOP/BOTTOM orientations make the circuit connection
-vertical and place the resistor horizontally, with a ground glyph at its far
-end. At an interior through node, the Port block must be normal to the local
-bus: TOP/BOTTOM for a horizontal bus and LEFT/RIGHT for a vertical bus. An
-incompatible explicit side fails closed rather than creating a page-spanning
-detour. Endpoint Ports may remain tangent to the bus. Rotation changes only
-drawing anchors. This is the presentation of the existing raw Port load, not a
-new Library component or a second Port model. A `nonloading_probe` additionally
-identifies that its response load is PTC-removable.
-
-A one-conductor `transmission_line` is a two-terminal `CPW` rectangle inserted
-directly in the signal path; its ID and length are inside the symbol. The
-reference conductor remains RLGC model metadata and is not rendered as an
-implicit ground connection. An N-conductor line is one taller `MTL` rectangle
-spanning ordered conductor rows. It owns one ordered boundary anchor per
-head/tail conductor; labeled Public node identities remain outside the block at
-those anchors, and their complete text extents participate in placement. The
-compiled representation continues to show the complete
-matrix-valued pi ladder rather than this authoring abstraction.
-
-All authoring geometry derives from one private `2.2`-coordinate unit. Native
-element span, label clearance, terminal stubs, routing lanes, Port leads,
-grounded-branch depth, and disconnected-panel gaps are fixed multiples of that
-unit; measured occupied bounds may only increase the resulting spacing. There
-is no public scale knob and no per-fixture coordinate escape hatch.
+This page continues to own only the presentation boundary shared by verified
+results, reports, and diagrams: strict `Theme` selection, palette application,
+portable static fallback, and Notebook inspection controls. None of those
+presentation choices may alter source data, Plan/request/Result identity, or
+the electrical and semantic manifests defined by the layout contract.
 
 ## Assemble reports from explicit inputs
 

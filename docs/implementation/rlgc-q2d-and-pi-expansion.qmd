@@ -137,22 +137,15 @@ values, orientation, and each backend lowering are receipt evidence. Direct
 and HB therefore may use distinct realizations while remaining traceable to one
 expanded graph.
 
-## Render the whole compiled audit
+## Compiled-diagram boundary
 
-`CircuitDiagramSpec(representation="compiled")` is a deterministic audit of the
-expanded graph, not a Direct/HB diagram or a reduced network. It orders line
-components by their compiled component identity, then sections ascending, then
-conductors in the declared basis. It shows every station and section, endpoint
-attachment, $\Delta x$, conductor/reference identity, head-to-tail orientation,
-all series blocks, and both endpoint half-shunts. Interior stations identify
-both contributions and their total.
-
-For $N=1$ the audit may use ordinary R/L/G/C symbols; for $N>1$ it keeps
-ordered conductor lanes and prints complete matrix-valued blocks. Exact-zero
-rows may be visually omitted only when their complete table says
-`omitted_as_zero`. Pagination is deterministic and retains continuous station
-and section IDs; no view, solver row, partial range, or numerical result is
-introduced by rendering.
+This page owns the complete ordered pi graph and its matrix evidence, not its
+visual layout or certification. The single `CONVERGING` target for
+`CircuitDiagramSpec(representation="compiled")`, including pages, native
+symbols, omitted-zero evidence, independent reconstruction, and the compiled
+audit table, is
+[Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
+Runtime alignment to that target is pending.
 
 ## Preflight evidence
 

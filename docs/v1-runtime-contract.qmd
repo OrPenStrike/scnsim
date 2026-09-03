@@ -21,7 +21,10 @@ pin, or consumer migration.
 The separate semantic authoring-schematic layout and adaptive presentation-
 theme scope is a `CONVERGING` candidate. It changes only how physical
 authority and already-materialized figures and reports are presented; it does
-not reopen Full V1 numerical, workspace, or identity semantics.
+not reopen Full V1 numerical, workspace, or identity semantics. Its single
+target authority is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd);
+the current runtime does not yet implement that candidate contract.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -68,6 +71,7 @@ stated above:
 | Review question | Detailed section |
 |---|---|
 | How are Libraries, terminals, electric nodes, canonical ground, logical Ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
+| How must an automatic circuit diagram certify electrical and semantic fidelity to its Plan? | [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd) (`CONVERGING`; runtime alignment pending) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Runtime ownership model](#runtime-ownership-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
@@ -2280,153 +2284,36 @@ derived presentation and never creates an analysis attempt or receipt.
 
 ## Authoring and compiled schematics
 
-Schematics belong to the physical authority, so both representations start at
-the Plan rather than a reduced Ref:
+Authoring and compiled schematics are read-only Plan projections rather than
+reduced Refs, solver results, or alternate topology authorities. Their
+replacement product contract is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+It defines the target `CircuitDiagramSpec`, relational manual hints,
+`CircuitDiagramAudit`, Plan/compiled digests, complete visual alphabet,
+independent electrical and semantic reconstruction, provenance region, and
+code-free Agent review packet.
 
-```python
-diagram = plan.render_schematic()
-diagram.show()
-```
+That scope is currently `CONVERGING` and its runtime alignment is pending.
+Consequently, the current renderer and legacy `SchematicPath`,
+`SchematicGroup`, and `branch_order` surface must not be used as evidence that
+the certified-projection target is already implemented. The target contract
+will replace those classes without a compatibility path after its written
+semantics are Human-accepted.
 
-Omitting the Spec selects the human-readable `authoring` representation,
-automatic light/dark theme selection, and IDs without parameter values. The
-explicit surface is:
+The stable runtime boundary remains narrow: schematic rendering does not seal
+or mutate a Plan, execute an analysis, write a workspace, or change physical,
+request, or Result identity. Authoring diagrams project baseline Plan values;
+compiled diagrams project deterministic compiler expansion. PTC, retained
+coordinates, transforms, selected Views, parameter overrides, and numerical
+results remain request/result evidence and must not be drawn as if they altered
+the authored circuit.
 
-```python
-from scnsim import CircuitDiagramSpec, Theme
-
-diagram = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",  # or "compiled"
-        theme=Theme.AUTO,             # or Theme.LIGHT / Theme.DARK
-        show_parameter_values=True,
-    )
-)
-diagram.show()
-```
-
-Raw strings and all other non-`Theme` values raise `TypeError` before a
-diagram, numerical figure, or report is rendered. In Notebook rich display,
-`Theme.AUTO` supplies self-contained SVG/HTML with a light fallback and a
-`prefers-color-scheme: dark` override that changes foreground and background
-together. `Theme.LIGHT` and `Theme.DARK` are fixed and self-contained. Direct
-`Drawing.save()` and `Figure.savefig()` preserve explicit themes, while
-`Theme.AUTO` always writes the portable light fallback. Theme choice never
-enters Plan, request, Result, receipt, artifact, or workspace identity.
-
-The Notebook HTML representation places that same SVG in a local inspection
-surface with copy-image, zoom, reset, pointer-drag pan, and `Open SVG`
-controls. `Ctrl`/`Command` plus the mouse wheel also zooms. A frontend that
-blocks scripts or clipboard access still exposes the unmodified SVG through
-the link and ordinary scroll overflow. The controls are presentation-only;
-they do not enter standalone reports or change `Drawing.save()` and
-`Figure.savefig()`.
-
-`CircuitDiagramSpec.layout` optionally accepts a `SchematicLayout`. It is a
-typed set of relational authoring hints rather than a coordinate system:
-`SchematicPath` fixes an alternating node-or-Port/component path,
-`port_sides` fixes selected Port boundaries, `branch_order` fixes component
-order at selected nodes, and disjoint `SchematicGroup` values affect packing
-without drawing group frames. `DiagramSide` supplies the four boundary sides.
-All handles must belong to the same Plan. Foreign handles, non-adjacent or
-ambiguous paths, duplicate members, overlapping groups, and conflicting hints
-raise `SCNSimValidationError(stage="schematic_layout")` before rendering.
-Applying an authoring layout to `representation="compiled"` raises
-`ValueError`. Layout hints, like theme, never enter physical or workspace
-identity.
-
-The `authoring` representation draws the semantic components, Public nodes,
-logical Ports, canonical ground, anonymous junctions, and declared connections.
-Grounded LC components expand visually into their parallel L/C branches with a
-shared local bottom bus and one ground glyph rather than an opaque box. One
-`ground(*pins)` call defines the same local bus/glyph group for ordinary
-primitives; separate calls draw separate glyphs while remaining one electrical
-ground. The renderer never replaces them with a page-wide ground bus. Built-in
-and user-authored Composites recursively expand their sealed snapshots to
-native R/L/C/Josephson symbols. Hidden child handles remain unavailable
-through the parent authoring API even though their sealed topology is visible.
-CPW and MTL remain the sole custom electrical-symbol family. Every visible
-object traces to the Plan.
-
-One `ElectricNode` may require several geometric attachment points. The
-renderer projects it as one private signal bus with ordered private taps; this
-does not create aliases or additional electrical coordinates. Its labeled
-Public identity appears once at the bus identity anchor. All other taps are
-unfilled T-junctions and remain part of the same physical node.
-
-Without hints the renderer performs the complete deterministic automatic
-layout. It excludes canonical ground from graph ranking, starts from the first
-declared Port when one exists, finds a semantic component path, and then packs
-branches, cycles, disconnected panels, and remaining Ports with Plan-order and
-exact-ID tie breaks. The fixed heuristic reserves the main-path blocks first,
-separates remaining relations into orthogonal lanes, and then packs disconnected
-panels; it does not evaluate or claim a globally optimal score. Every primitive
-symbol and its native Schemdraw side label occupy one orientation-aware layout
-block measured from transformed bounds, so label clearance participates in
-spacing rather than being guessed after drawing. All geometry derives from one
-private `2.2`-coordinate unit and named fractional multiples; measured occupied
-bounds can only enlarge the spacing. Filled dots are reserved for labeled Public-node identities.
-Main-wire branches use unfilled T-junctions, multiple branches use distinct
-points on a short trunk, and same-net four-way meetings are staggered into two
-adjacent unfilled T-junctions. Unavoidable different-net crossings use explicit
-wire jumps rather than an electrically ambiguous cross.
-
-Every logical Port is a rotatable three-anchor presentation block: open
-boundary circle, circuit connection, and reference load meet at an unfilled
-T-junction. LEFT/RIGHT keep the circuit connection horizontal and the `Z0`
-resistor descending; TOP/BOTTOM rotate the circuit connection vertically and
-place the resistor horizontally with a ground glyph at its far end. Rotation
-changes only drawing anchors. At an interior through node the Port must be
-normal to the local bus: TOP/BOTTOM for a horizontal bus and LEFT/RIGHT for a
-vertical bus. A conflicting explicit `port_sides` hint raises
-`SCNSimValidationError(stage="schematic_layout")`; it is never satisfied by a
-page-spanning detour. Endpoint Ports may remain tangent to the bus. The role
-label distinguishes `terminated` from `nonloading_probe`; the latter is marked
-PTC-removable. This is the existing raw loaded-network boundary projected into
-the drawing, not an authored resistor or a second Port model. Public node IDs
-appear once with a filled identity dot, Port-promoted nodes show only the Port,
-and anonymous or Internal routing junctions remain unfilled.
-
-Generic two-terminal symbols place `terminal_1` left and `terminal_2` right,
-or top and bottom for a downward grounded branch. Rotation moves anchors but
-never renames pins or reverses their physical orientation. A custom N-terminal
-black box without a dedicated symbol places its ordered Library pin schema
-clockwise from the lower-left boundary and labels every public pin beside its
-anchor; this is renderer fallback only, not compiler or pin-identity authority.
-A one-conductor `transmission_line` uses a two-terminal `CPW` rectangle inserted
-directly in the signal path, with its ID and length inside. Its RLGC reference
-conductor does not imply a drawn ground connection. An N-conductor line uses one
-taller `MTL` rectangle spanning the ordered conductor rows. The block owns one
-ordered boundary anchor per head/tail conductor; labeled Public node identities
-remain outside the block at those anchors, and their text extents participate in
-placement. The compiled view still exposes every matrix-valued pi section and
-station.
-
-The `compiled` representation runs only the deterministic structural compile
-preflight needed to materialize the complete baseline physical graph. It is
-the audit view for primitive expansions, including every transmission-line pi
-section. It is not a Direct or HB lowering and contains no backend rows, PTC,
-coordinate transform, Schur reduction, or selected-view equivalent. Those
-facts remain available through `run.explain(ref, spec).show()`.
-
-`render_schematic()` requires a structurally complete valid Plan but does not
-seal or mutate it, solve an analysis, or write a workspace. A compiled diagram
-records the Plan, compiler, and expanded-graph identities. Values, when
-requested, are baseline values: scalars appear near components, while complete
-matrix or multi-field values appear in an ID-keyed legend or table without
-truncation or unreadable layout compression.
-
-`CircuitDiagramResult.show()` only presents the materialized diagram. It never
-recompiles or executes. Diagram identity is separate from Plan and numerical
-receipt identity; a theme/layout change or rendering failure cannot change or
-block numerical analysis. SCNSim exposes neither `plan.show()` nor schematic
-`.plot()`, and reduced Refs are inspected as operations and evidence rather
-than fabricated equivalent circuits.
-
-The compiled view maps every explicit ground group, grounded built-in return,
-and pi-section station-local C/G shunt bus to Plan ground and JosephsonCircuits
-node `"0"`. Simulation identity canonicalizes the union of grounded endpoints;
-diagram identity additionally preserves the endpoint-derived local grouping.
+All visual grammar, automatic and hinted placement, native Composite
+expansion, Port and ground projection, certified digests, independent A/B
+reconstruction audits, provenance, and diagram failure behavior belong only to
+the linked layout contract. Until runtime alignment is complete, a current
+diagram is useful diagnostic output but is not a certified projection under
+that contract.
 
 ## Failure and evidence contract
 
@@ -2644,6 +2531,8 @@ overwrite unrelated success receipts.
 - No implicit latest-result selector exists.
 - V1 has no public timeout, JobRef, cancellation API, callback progress
   framework, or persistent Julia daemon.
-- Schematic auto-layout is a deterministic port-rooted layered and orthogonal
-  routing heuristic, not a general constraint solver or global optimum proof.
+- Certified automatic semantic circuit-diagram layout is a separate
+  `CONVERGING` target with runtime alignment pending; the stabilized Full V1
+  runtime does not yet claim the certified projection defined in
+  [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 - V1 has no public linear-algebra scaling configuration.
