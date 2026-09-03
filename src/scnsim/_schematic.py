@@ -2539,13 +2539,27 @@ def _draw_grounded_components(
             if direction == "up"
             else -_METRICS.grounded_branch_depth
         )
+        lead = max(
+            0.0,
+            (
+                _METRICS.grounded_branch_depth
+                - _METRICS.native_span
+            )
+            / 2,
+        )
         for component, branch_x in zip(components, branch_xs):
             if direction == "down":
-                start = (branch_x, node_y)
-                end = (branch_x, node_y - _METRICS.native_span)
+                start = (branch_x, node_y - lead)
+                end = (branch_x, bus_y + lead)
             else:
-                start = (branch_x, node_y)
-                end = (branch_x, node_y + _METRICS.native_span)
+                start = (branch_x, node_y + lead)
+                end = (branch_x, bus_y - lead)
+            _wire(
+                drawing,
+                [(branch_x, node_y), start],
+                color=color,
+                net=node_id,
+            )
             drawing.add(
                 _native_element(
                     component,

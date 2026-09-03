@@ -117,6 +117,9 @@ layout vertex. A primitive symbol and its native Schemdraw label form one
 orientation-aware occupied block: the transformed symbol and measured label
 bounds participate in spacing before final composition. The renderer therefore does
 not rely on a post-render label offset to discover whether components overlap.
+For a grounded native branch, automatic layout centers the symbol between its
+signal bus and short local ground bus; any depth beyond the native symbol span
+is divided equally between the two terminal leads.
 Filled dots are reserved for labeled Public-node identities. A pure same-net
 T-junction is unfilled; a same-net four-way meeting is routed as two adjacent
 unfilled T-junctions rather than an ambiguous cross. A wire jump denotes an
