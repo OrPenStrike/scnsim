@@ -317,9 +317,7 @@ def _presentation_plan(plan: Any, layout: Any | None) -> tuple[Any, Any | None]:
     ]
 
     def display_path(path: tuple[str, ...]) -> str:
-        if len(path) == 1:
-            return path[0]
-        return f"{path[0]}.{path[-1]}"
+        return ".".join(path)
 
     def add_leaf(
         source: Any,
@@ -410,29 +408,6 @@ def _presentation_plan(plan: Any, layout: Any | None) -> tuple[Any, Any | None]:
     ) -> None:
         if source._realization.get("kind") != "composite":
             add_leaf(source, path, targets, top)
-            return
-
-        # A user Library owns its abstraction boundary.  Its hidden children
-        # are not authoring-presentation data, even though the immutable
-        # snapshot is available to the compiler.  Built-ins are the only
-        # composites whose public contract defines a native-symbol expansion.
-        if source.catalog_id != "scnsim.components":
-            opaque = _PresentationComponent(
-                id="/".join(path),
-                display_id=display_path(path),
-                factory=source.factory,
-                catalog_id=source.catalog_id,
-                _pins=dict(source._pins),
-                _parameters=dict(source._parameters),
-                _realization=source._realization,
-                _ground_groups=tuple(source._ground_groups),
-            )
-            components.append(opaque)
-            leaf_by_top[top].append(opaque)
-            for pin in source._pins.values():
-                pin_nodes[pin] = targets[pin]
-                presented_by_source_pin[pin].append(pin)
-                owner_by_pin[pin] = opaque
             return
 
         realization = source._realization
@@ -1818,76 +1793,6 @@ def _seed_multiconductor_lines(
     return seeded
 
 
-def _opaque_anchor_specs(
-    component: Any,
-) -> tuple[tuple[Any, tuple[float, float], tuple[float, float]], ...]:
-    """Return clockwise public-pin anchors beginning at lower left."""
-
-    width, height = _block_size(component)
-    pins = tuple(component._pins.values())
-    left_count = (len(pins) + 1) // 2
-    right_count = len(pins) - left_count
-    specs: list[tuple[Any, tuple[float, float], tuple[float, float]]] = []
-    for index, pin in enumerate(pins[:left_count]):
-        fraction = (index + 1) / (left_count + 1)
-        specs.append(
-            (
-                pin,
-                (-width / 2, -height / 2 + fraction * height),
-                (-1.0, 0.0),
-            )
-        )
-    for index, pin in enumerate(pins[left_count:]):
-        fraction = (index + 1) / (right_count + 1)
-        specs.append(
-            (
-                pin,
-                (width / 2, height / 2 - fraction * height),
-                (1.0, 0.0),
-            )
-        )
-    return tuple(specs)
-
-
-def _seed_opaque_blocks(
-    plan: Any,
-    positions: dict[int, tuple[float, float]],
-) -> dict[Any, tuple[float, float]]:
-    """Reserve one measured block for every N-terminal custom Composite."""
-
-    centers: dict[Any, tuple[float, float]] = {}
-    panel_y = min((point[1] for point in positions.values()), default=0.0)
-    for component in plan._components:
-        targets = _external_nodes(plan, component)
-        if component.catalog_id == "scnsim.components" or len(targets) <= 2:
-            continue
-        specs = _opaque_anchor_specs(component)
-        candidates: list[tuple[float, float]] = []
-        for pin, anchor, _normal in specs:
-            node = plan._pin_nodes.get(pin)
-            if node != "ground" and node is not None and id(node) in positions:
-                point = positions[id(node)]
-                candidates.append((point[0] - anchor[0], point[1] - anchor[1]))
-        if candidates:
-            center = (
-                sum(point[0] for point in candidates) / len(candidates),
-                sum(point[1] for point in candidates) / len(candidates),
-            )
-        else:
-            panel_y -= _METRICS.panel_gap
-            center = (0.0, panel_y)
-        centers[component] = center
-        for pin, anchor, normal in specs:
-            node = plan._pin_nodes.get(pin)
-            if node == "ground" or node is None or id(node) in positions:
-                continue
-            positions[id(node)] = (
-                center[0] + anchor[0] + normal[0] * _METRICS.element_gap,
-                center[1] + anchor[1] + normal[1] * _METRICS.element_gap,
-            )
-    return centers
-
-
 def _seed_unbounded_cyclic_panels(
     plan: Any,
     edges: tuple[_Edge, ...],
@@ -2106,100 +2011,6 @@ def _place_remaining_nodes(
         positions[node_id] = _reserve_node_position((0.0, panel_y), positions)
 
 
-def _draw_inline_opaque(
-    drawing: Any,
-    component: Any,
-    left: tuple[float, float],
-    right: tuple[float, float],
-    *,
-    color: str,
-    show_values: bool,
-) -> None:
-    label = _label_box(_label(component, show_values=show_values))
-    center_x = (left[0] + right[0]) / 2
-    body_width = max(
-        _METRICS.native_span,
-        label.width + 2 * _METRICS.terminal_stub,
-    )
-    body_height = max(
-        _METRICS.native_span,
-        label.height + 2 * _METRICS.terminal_stub,
-    )
-    body_left = center_x - body_width / 2
-    body_right = center_x + body_width / 2
-    _wire(drawing, [left, (body_left, left[1])], color=color, net=(component.id, "left"))
-    drawing.add(
-        elm.Rect(
-            (body_left, left[1] - body_height / 2),
-            (body_right, left[1] + body_height / 2),
-            color=color,
-        ).at((0.0, 0.0))
-    )
-    _draw_label(drawing, label, (center_x, left[1]), color=color)
-    _wire(drawing, [(body_right, right[1]), right], color=color, net=(component.id, "right"))
-
-
-def _draw_one_terminal_opaque(
-    drawing: Any,
-    component: Any,
-    terminal: tuple[float, float],
-    *,
-    color: str,
-    show_values: bool,
-) -> None:
-    """Draw one user-owned Composite boundary without exposing its children."""
-
-    width, height = _block_size(component)
-    body_left = terminal[0] + _METRICS.element_gap
-    body_right = body_left + width
-    body_bottom = terminal[1] - height / 2
-    body_top = terminal[1] + height / 2
-    _wire(
-        drawing,
-        [terminal, (body_left, terminal[1])],
-        color=color,
-        net=(component.id, "terminal"),
-    )
-    drawing.add(
-        elm.Rect(
-            (body_left, body_bottom),
-            (body_right, body_top),
-            color=color,
-        ).at((0.0, 0.0))
-    )
-    _draw_label(
-        drawing,
-        _label_box(_label(component, show_values=show_values)),
-        ((body_left + body_right) / 2, terminal[1]),
-        color=color,
-    )
-    pin = next(iter(component._pins.values()))
-    _draw_label(
-        drawing,
-        _label_box(pin.name),
-        (
-            body_left - _METRICS.label_clearance,
-            terminal[1] + _METRICS.label_clearance,
-        ),
-        color=color,
-        horizontal="right",
-        vertical="bottom",
-    )
-    if component._ground_groups:
-        ground_anchor = ((body_left + body_right) / 2, body_bottom)
-        ground_end = (
-            ground_anchor[0],
-            ground_anchor[1] - _METRICS.terminal_stub,
-        )
-        _wire(
-            drawing,
-            [ground_anchor, ground_end],
-            color=color,
-            net=(component.id, "internal_ground"),
-        )
-        _ground(drawing, ground_end, color=color)
-
-
 def _draw_multiconductor_line(
     drawing: Any,
     plan: Any,
@@ -2249,68 +2060,6 @@ def _draw_multiconductor_line(
         )
 
 
-def _draw_multiterminal_opaque(
-    drawing: Any,
-    plan: Any,
-    component: Any,
-    center: tuple[float, float],
-    buses: dict[int, _NetBus],
-    *,
-    color: str,
-    show_values: bool,
-) -> None:
-    width, height = _block_size(component)
-    left = center[0] - width / 2
-    right = center[0] + width / 2
-    bottom = center[1] - height / 2
-    top = center[1] + height / 2
-    drawing.add(elm.Rect((left, bottom), (right, top), color=color).at((0.0, 0.0)))
-    _draw_label(
-        drawing,
-        _label_box(_label(component, show_values=show_values)),
-        center,
-        color=color,
-    )
-    for pin, anchor, normal in _opaque_anchor_specs(component):
-        node = plan._pin_nodes.get(pin)
-        absolute = (center[0] + anchor[0], center[1] + anchor[1])
-        if node == "ground":
-            outside = (
-                absolute[0] + normal[0] * _METRICS.terminal_stub,
-                absolute[1] + normal[1] * _METRICS.terminal_stub,
-            )
-            _wire(
-                drawing,
-                [absolute, outside],
-                color=color,
-                net="ground",
-            )
-            _ground(drawing, outside, color=color)
-            continue
-        target = buses[id(node)].tap(_component_tap_key(component))
-        outside = (
-            absolute[0] + normal[0] * _METRICS.terminal_stub,
-            absolute[1] + normal[1] * _METRICS.terminal_stub,
-        )
-        _wire(
-            drawing,
-            [target, (outside[0], target[1]), outside, absolute],
-            color=color,
-            net=id(node),
-        )
-        _draw_label(
-            drawing,
-            _label_box(_wrap_identifier(pin.name)),
-            (
-                absolute[0] - normal[0] * _METRICS.label_clearance,
-                absolute[1] + _METRICS.label_clearance,
-            ),
-            color=color,
-            horizontal="left" if normal[0] < 0 else "right",
-            vertical="bottom",
-        )
-
-
 def _draw_relation(
     drawing: Any,
     component: Any,
@@ -2325,13 +2074,6 @@ def _draw_relation(
     net_b: object,
 ) -> None:
     drawing._scnsim_current_component = component.id
-    native = component.factory in {
-        "resistor",
-        "capacitor",
-        "inductor",
-        "josephson_junction",
-        "transmission_line",
-    }
     delta_x = abs(a[0] - b[0])
     delta_y = abs(a[1] - b[1])
     horizontal = delta_y < _EPSILON
@@ -2368,27 +2110,17 @@ def _draw_relation(
             color=color,
             net=right_net,
         )
-        if native:
-            _draw_horizontal_component(
-                drawing,
-                component,
-                left,
-                right,
-                color=color,
-                show_values=show_values,
-            )
-        else:
-            _draw_inline_opaque(
-                drawing,
-                component,
-                left,
-                right,
-                color=color,
-                show_values=show_values,
-            )
+        _draw_horizontal_component(
+            drawing,
+            component,
+            left,
+            right,
+            color=color,
+            show_values=show_values,
+        )
         return
 
-    if vertical and native and component.factory != "transmission_line":
+    if vertical and component.factory != "transmission_line":
         lane_x = (a[0] + b[0]) / 2
         if abs(a[0] - b[0]) < _EPSILON:
             route_lane = getattr(drawing, "_scnsim_vertical_lane", 0)
@@ -2456,24 +2188,14 @@ def _draw_relation(
         color=color,
         net=left_net,
     )
-    if native:
-        _draw_horizontal_component(
-            drawing,
-            component,
-            left,
-            right,
-            color=color,
-            show_values=show_values,
-        )
-    else:
-        _draw_inline_opaque(
-            drawing,
-            component,
-            left,
-            right,
-            color=color,
-            show_values=show_values,
-        )
+    _draw_horizontal_component(
+        drawing,
+        component,
+        left,
+        right,
+        color=color,
+        show_values=show_values,
+    )
     _wire(
         drawing,
         [
@@ -2615,7 +2337,6 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
         show_values=spec.show_parameter_values,
     )
     multiconductor_lines = _seed_multiconductor_lines(plan, positions)
-    opaque_centers = _seed_opaque_blocks(plan, positions)
     _seed_unbounded_cyclic_panels(plan, edges, positions)
     _place_remaining_nodes(
         plan,
@@ -2705,39 +2426,12 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
         )
         drawn.add(component)
 
-    for component, center in sorted(
-        opaque_centers.items(), key=lambda row: _component_key(row[0])
-    ):
-        _draw_multiterminal_opaque(
-            drawing,
-            plan,
-            component,
-            center,
-            buses,
-            color=color,
-            show_values=spec.show_parameter_values,
-        )
-        drawn.add(component)
-
-    # N-terminal opaque custom components and multi-row MTL blocks retain one
-    # coherent block.  Their external nodes were already graph-placed.
+    # Recursive presentation lowering must classify every leaf as one native
+    # R/L/C/Josephson symbol or the dedicated CPW/MTL line symbol.
     for component in plan._components:
         if component in drawn:
             continue
         targets = _external_nodes(plan, component)
-        if len(targets) == 1 and component.catalog_id != "scnsim.components":
-            terminal = buses[id(targets[0])].tap(
-                _component_tap_key(component)
-            )
-            _draw_one_terminal_opaque(
-                drawing,
-                component,
-                terminal,
-                color=color,
-                show_values=spec.show_parameter_values,
-            )
-            drawn.add(component)
-            continue
         _layout_error(
             "automatic authoring layout did not classify a component block",
             evidence={

@@ -140,11 +140,12 @@ missing child, a dropped mutual, or a reason to collapse the remaining graph.
 
 ## Project the same snapshot two ways
 
-The authoring diagram projects the semantic outer components, their public pins
-and coordinates, actual outer wiring, and canonical ground. It preserves local
-ground groups as glyph grouping while never creating more than one electrical
-ground. It does not turn hidden children into public handles or show backend
-rows.
+The authoring diagram recursively projects the sealed snapshot as native
+R/L/C/Josephson symbols, together with public pins and coordinates, actual
+outer wiring, private internal junctions, and canonical ground. It preserves
+local ground groups as glyph grouping while never creating more than one
+electrical ground. Visible child paths remain presentation labels: they do not
+turn hidden children into public handles or expose backend rows.
 
 The compiled diagram recursively projects the entire baseline snapshot. It
 labels each expanded leaf and private node by its segment-array component path,

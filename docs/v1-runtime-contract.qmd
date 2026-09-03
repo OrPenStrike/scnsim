@@ -2342,10 +2342,11 @@ shared local bottom bus and one ground glyph rather than an opaque box. One
 `ground(*pins)` call defines the same local bus/glyph group for ordinary
 primitives; separate calls draw separate glyphs while remaining one electrical
 ground. The renderer never replaces them with a page-wide ground bus. Built-in
-IDC, SQUID, and resonator composites expand to native R/L/C/Josephson symbols;
-only user-authored custom Composites retain opaque public-pin boundaries. CPW
-and MTL remain the sole custom electrical-symbol family. Every visible object
-traces to the Plan.
+and user-authored Composites recursively expand their sealed snapshots to
+native R/L/C/Josephson symbols. Hidden child handles remain unavailable
+through the parent authoring API even though their sealed topology is visible.
+CPW and MTL remain the sole custom electrical-symbol family. Every visible
+object traces to the Plan.
 
 One `ElectricNode` may require several geometric attachment points. The
 renderer projects it as one private signal bus with ordered private taps; this

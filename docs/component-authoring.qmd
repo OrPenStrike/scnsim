@@ -1026,10 +1026,12 @@ rectangle spanning ordered conductor rows. The block owns ordered boundary
 anchors; labeled Public node identities remain outside the electrical symbol
 at those anchors. The RLGC reference conductor alone never creates a drawn
 ground wire.
-CPW/MTL is the one dedicated custom electrical symbol. Built-in IDC, SQUID,
-and resonator composites expand into their declared native R/L/C/Josephson
-branches. A user-authored custom Composite remains an opaque public-pin block
-so its hidden children do not leak through authoring presentation.
+CPW/MTL is the one dedicated custom electrical symbol. Built-in and
+user-authored Composites recursively expand their sealed snapshots into the
+declared native R/L/C/Josephson branches. This visual expansion does not make
+hidden children, nodes, or parameters addressable through the parent Python
+API; it is a read-only presentation path rather than a second authoring
+surface.
 
 Automatic layout is complete, so hints are optional. When a model author needs
 to preserve a particular reading order, use relational handles rather than
