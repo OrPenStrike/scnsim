@@ -1009,6 +1009,11 @@ It shows semantic components, Public nodes, logical Ports, canonical ground,
 actual wiring, and anonymous Internal junctions. A grounded linear resonator is
 drawn as parallel L and C branches whose lower endpoints share one block-local
 bus and ground glyph. The primitive example above produces the same structure.
+Filled dots identify labeled Public nodes only. Ordinary same-net T-junctions
+remain unfilled, and a four-way same-net meeting is drawn as two nearby T
+junctions instead of an ambiguous cross. A crossing between different nets
+uses a wire jump. Port-promoted nodes are identified by the open Port boundary
+rather than by an additional filled dot.
 Separate local ground glyphs still denote the one Plan ground; the renderer
 does not draw a page-wide reference bus. A one-conductor transmission line is
 an inline two-terminal CPW rectangle. A multi-conductor line is one taller MTL

@@ -2346,12 +2346,14 @@ separates remaining relations into orthogonal lanes, and then packs disconnected
 panels; it does not evaluate or claim a globally optimal score. Every primitive
 symbol and its deliberately placed side label occupy one precomputed layout
 block, so label clearance participates in spacing rather than being guessed
-after drawing. Main-wire branches use filled T-junctions, multiple branches use
-distinct points on a short trunk, and unavoidable different-net crossings use
-explicit wire jumps rather than an electrically ambiguous cross.
+after drawing. Filled dots are reserved for labeled Public-node identities.
+Main-wire branches use unfilled T-junctions, multiple branches use distinct
+points on a short trunk, and same-net four-way meetings are staggered into two
+adjacent unfilled T-junctions. Unavoidable different-net crossings use explicit
+wire jumps rather than an electrically ambiguous cross.
 
 Every logical Port is a rotatable three-anchor presentation block: open
-boundary circle, circuit connection, and reference load meet at a filled
+boundary circle, circuit connection, and reference load meet at an unfilled
 T-junction. LEFT/RIGHT keep the circuit connection horizontal and the `Z0`
 resistor descending; TOP/BOTTOM rotate the circuit connection vertically and
 place the resistor horizontally with a ground glyph at its far end. Rotation
@@ -2363,8 +2365,8 @@ page-spanning detour. Endpoint Ports may remain tangent to the bus. The role
 label distinguishes `terminated` from `nonloading_probe`; the latter is marked
 PTC-removable. This is the existing raw loaded-network boundary projected into
 the drawing, not an authored resistor or a second Port model. Public node IDs
-appear once, Port-promoted nodes show only the Port, and truly anonymous nodes
-appear as junction dots.
+appear once with a filled identity dot, Port-promoted nodes show only the Port,
+and anonymous or Internal routing junctions remain unfilled.
 
 Generic two-terminal symbols place `terminal_1` left and `terminal_2` right,
 or top and bottom for a downward grounded branch. Rotation moves anchors but

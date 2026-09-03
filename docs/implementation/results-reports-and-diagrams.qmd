@@ -105,14 +105,16 @@ layout vertex. A primitive symbol and its deliberately placed label form one
 occupied layout block: the label side and conservative text extent participate
 in spacing before Schemdraw receives either object. The renderer therefore does
 not rely on a post-render label offset to discover whether components overlap.
-Filled dots denote same-net junctions; a wire jump denotes an unavoidable
-crossing of different nets. The fixed heuristic reserves the main-path blocks
-first, separates remaining relations into orthogonal lanes, and then packs
-disconnected panels; it does not evaluate or claim a globally optimal score.
-Plan declaration order and exact IDs provide stable tie breaks.
+Filled dots are reserved for labeled Public-node identities. A pure same-net
+T-junction is unfilled; a same-net four-way meeting is routed as two adjacent
+unfilled T-junctions rather than an ambiguous cross. A wire jump denotes an
+unavoidable crossing of different nets. The fixed heuristic reserves the
+main-path blocks first, separates remaining relations into orthogonal lanes,
+and then packs disconnected panels; it does not evaluate or claim a globally
+optimal score. Plan declaration order and exact IDs provide stable tie breaks.
 
 A logical Port is one rotatable three-anchor presentation block: open boundary
-circle, circuit connection, and declared reference load meet at its filled
+circle, circuit connection, and declared reference load meet at an unfilled
 T-junction. LEFT/RIGHT orientations keep the circuit connection horizontal and
 the resistor descending; TOP/BOTTOM orientations make the circuit connection
 vertical and place the resistor horizontally, with a ground glyph at its far

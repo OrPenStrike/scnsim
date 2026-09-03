@@ -307,8 +307,6 @@ def _draw_grounded_builtin_resonator(
         color=color,
         net=node_net,
     )
-    for x in top_connected:
-        _dot(drawing, (x, top_y), color=color, background=background)
     for x, element, text, branch_top, branch_bottom in rows:
         _draw_labeled_vertical(
             drawing,
@@ -689,7 +687,13 @@ def _wire(
             horizontal = start[1] == end[1]
             collinear_conflict = False
             crossings: list[tuple[float, float]] = []
-            same_net_crossings: list[tuple[float, float]] = []
+            same_net_crossings: list[
+                tuple[
+                    tuple[float, float],
+                    tuple[float, float],
+                    tuple[float, float],
+                ]
+            ] = []
             for other_start, other_end, other_net in existing:
                 other_horizontal = other_start[1] == other_end[1]
                 if horizontal == other_horizontal:
@@ -710,7 +714,9 @@ def _wire(
                     and min(v_start[1], v_end[1]) < y < max(v_start[1], v_end[1])
                 ):
                     if other_net == net:
-                        same_net_crossings.append((x, y))
+                        same_net_crossings.append(
+                            ((x, y), other_start, other_end)
+                        )
                     else:
                         crossings.append((x, y))
             if collinear_conflict:
@@ -743,6 +749,55 @@ def _wire(
                 )
                 continue
             coordinate = (lambda point: point[0]) if horizontal else (lambda point: point[1])
+            if same_net_crossings:
+                if _detour_depth >= 12:
+                    _layout_error("orthogonal router could not stagger a same-net crossing")
+                same_net_crossings.sort(
+                    key=lambda item: coordinate(item[0]),
+                    reverse=coordinate(end) < coordinate(start),
+                )
+                crossing, other_start, other_end = same_net_crossings[0]
+                if horizontal:
+                    low = min(other_start[1], other_end[1])
+                    high = max(other_start[1], other_end[1])
+                    positive_room = high - crossing[1]
+                    negative_room = crossing[1] - low
+                    sign = 1.0 if positive_room >= negative_room else -1.0
+                    room = positive_room if sign > 0 else negative_room
+                    offset = sign * min(0.36, room / 2.0)
+                    staggered = [
+                        start,
+                        crossing,
+                        (crossing[0], crossing[1] + offset),
+                        (end[0], crossing[1] + offset),
+                        end,
+                    ]
+                else:
+                    low = min(other_start[0], other_end[0])
+                    high = max(other_start[0], other_end[0])
+                    positive_room = high - crossing[0]
+                    negative_room = crossing[0] - low
+                    sign = 1.0 if positive_room >= negative_room else -1.0
+                    room = positive_room if sign > 0 else negative_room
+                    offset = sign * min(0.36, room / 2.0)
+                    staggered = [
+                        start,
+                        crossing,
+                        (crossing[0] + offset, crossing[1]),
+                        (crossing[0] + offset, end[1]),
+                        end,
+                    ]
+                # A same-net four-way crossing has no distinct identity to
+                # mark.  Follow the existing conductor briefly and leave it
+                # at a second T so the topology stays legible without a dot.
+                _wire(
+                    drawing,
+                    staggered,
+                    color=color,
+                    net=net,
+                    _detour_depth=_detour_depth + 1,
+                )
+                continue
             crossings.sort(
                 key=coordinate,
                 reverse=coordinate(end) < coordinate(start),
@@ -766,8 +821,6 @@ def _wire(
                 drawing.add(elm.Arc2(k=0.75, color=color).at(before).to(after))
                 cursor = after
             drawing.add(elm.Line(color=color).endpoints(cursor, end))
-            for crossing in same_net_crossings:
-                drawing.add(elm.Dot(color=color, fill=color).at(crossing))
             drawing._scnsim_wire_segments = (*existing, (start, end, net))
 
 
@@ -1151,6 +1204,7 @@ def _draw_port(
     *,
     index: int,
     side: Any,
+    through_axis: str | None,
     bounds: tuple[float, float, float, float],
     color: str,
     background: str,
@@ -1163,16 +1217,22 @@ def _draw_port(
     node_x, node_y = node_point
     min_x, max_x, min_y, max_y = bounds
     if side in {DiagramSide.LEFT, DiagramSide.RIGHT}:
-        junction = node_point
-        boundary_x = min_x - 1.65 if side is DiagramSide.LEFT else max_x + 1.65
-        requested_x = min_x if side is DiagramSide.LEFT else max_x
-        if abs(node_x - requested_x) < 1e-12:
-            circle = (boundary_x, node_y)
-            route = [circle, junction]
+        direction = -1.0 if side is DiagramSide.LEFT else 1.0
+        boundary_x = min_x - 1.65 if direction < 0 else max_x + 1.65
+        if through_axis == "vertical":
+            junction = (boundary_x, node_y)
+            circle = (junction[0] + direction * 1.35, node_y)
+            route = [circle, junction, node_point]
         else:
-            outer_y = max_y + 1.65 + 1.25 * index
-            circle = (boundary_x, outer_y)
-            route = [circle, (node_x, outer_y), junction]
+            junction = node_point
+            requested_x = min_x if direction < 0 else max_x
+            if abs(node_x - requested_x) < 1e-12:
+                circle = (boundary_x, node_y)
+                route = [circle, junction]
+            else:
+                outer_y = max_y + 1.65 + 1.25 * index
+                circle = (boundary_x, outer_y)
+                route = [circle, (node_x, outer_y), junction]
     elif side is DiagramSide.TOP:
         junction = (node_x, max_y + 1.65)
         circle = (node_x, junction[1] + 1.35)
@@ -1201,9 +1261,6 @@ def _draw_port(
         horizontal=label_offset[2],
         vertical=label_offset[3],
     )
-    _dot(drawing, junction, color=color, background=background)
-    if junction != node_point:
-        _dot(drawing, node_point, color=color, background=background)
     # This is not a Library resistor: it is the visual projection of B/R/M.
     # DiagramSide rotates the three-anchor Port block rather than routing one
     # fixed symbol around the page.
@@ -1605,7 +1662,6 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
         for node_id, component, branch_x in branch_rows:
             node_y = node_pos[node_id][1]
             geometry_points.extend(((branch_x, node_y), (branch_x, bus_y)))
-            _dot(drawing, (branch_x, node_y), color=color, background=background)
             _draw_vertical_component(
                 drawing,
                 component,
@@ -1715,14 +1771,9 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
             )
         drawn.add(component)
 
-    # Junction dots and labels are emitted once after all geometry.  A
+    # Identity dots and labels are emitted once after all geometry.  A filled
+    # dot denotes a named Public-node identity, never merely a wire join.  A
     # port-promoted node is intentionally represented by its logical Port only.
-    degree: dict[int, int] = defaultdict(int)
-    for edge in edges:
-        degree[id(edge.left)] += 1
-        degree[id(edge.right)] += 1
-    for node_id, entries in shunts.items():
-        degree[node_id] += len(entries)
     port_by_node = port_at_node
     bounds = (
         min((point[0] for point in geometry_points), default=0.0),
@@ -1735,6 +1786,7 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
         point = node_pos[node_id]
         port = port_by_node.get(node_id)
         if port is not None:
+            through_axis = _through_axis(node_id, point, edges, node_pos)
             _draw_port(
                 drawing,
                 port,
@@ -1746,13 +1798,14 @@ def render_authoring_schematic(plan: Any, spec: Any) -> Any:
                     index=plan._ports.index(port),
                     point=point,
                     bounds=bounds,
-                    through_axis=_through_axis(node_id, point, edges, node_pos),
+                    through_axis=through_axis,
                 ),
+                through_axis=through_axis,
                 bounds=bounds,
                 color=color,
                 background=background,
             )
-        elif degree[node_id] > 1 or node.visibility in {"internal", "public"}:
+        elif node.visibility == "public":
             _dot(drawing, point, color=color, background=background)
         if node.visibility == "public":
             if node_label_sides.get(node_id) == "bottom":
