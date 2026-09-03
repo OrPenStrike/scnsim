@@ -12,8 +12,9 @@ use it.
 The complete dev1–dev6 public semantics taught in Lessons 1–13 are
 Human-`ACCEPTED` and `STABILIZED`. Their documentation, implementation,
 durable cross-slice tests, and validation agree. This is not a release claim.
-The adaptive diagram/figure/report theme is a separate `CONVERGING`
-presentation candidate and does not alter those computational semantics.
+The semantic authoring-schematic layout and adaptive diagram/figure/report
+theme are a separate `CONVERGING` presentation candidate and do not alter
+those computational semantics.
 :::
 
 ## Author and analyze

@@ -4,8 +4,8 @@ subtitle: "How does verified evidence become a Python-facing presentation?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation; adaptive presentation-theme
-semantics are a `CONVERGING` candidate.
+**Status:** `STABILIZED` Full V1 implementation; semantic authoring-schematic
+layout and adaptive presentation-theme semantics are a `CONVERGING` candidate.
 
 ## Separate materialized values from analysis evidence
 
@@ -95,6 +95,43 @@ Authoring diagrams are a read-only projection of a structurally complete
 authored Plan; they do not seal it. Compiled diagrams consume a Julia preflight
 graph and must show every declared pi section and matrix-valued block without
 pretending to be a reduced or backend-result circuit.
+
+The authoring projection first lowers the Plan into presentation-only
+component blocks, ordered pin anchors, electric nets, logical Ports, and local
+ground groups. Its deterministic port-rooted layered heuristic chooses a
+semantic main path, packs grounded branches beneath their attachment, and
+routes orthogonal wires without treating canonical ground as a page-wide
+layout vertex. A primitive symbol and its deliberately placed label form one
+occupied layout block: the label side and conservative text extent participate
+in spacing before Schemdraw receives either object. The renderer therefore does
+not rely on a post-render label offset to discover whether components overlap.
+Filled dots denote same-net junctions; a wire jump denotes an unavoidable
+crossing of different nets. The fixed heuristic reserves the main-path blocks
+first, separates remaining relations into orthogonal lanes, and then packs
+disconnected panels; it does not evaluate or claim a globally optimal score.
+Plan declaration order and exact IDs provide stable tie breaks.
+
+A logical Port is one rotatable three-anchor presentation block: open boundary
+circle, circuit connection, and declared reference load meet at its filled
+T-junction. LEFT/RIGHT orientations keep the circuit connection horizontal and
+the resistor descending; TOP/BOTTOM orientations make the circuit connection
+vertical and place the resistor horizontally, with a ground glyph at its far
+end. At an interior through node, the Port block must be normal to the local
+bus: TOP/BOTTOM for a horizontal bus and LEFT/RIGHT for a vertical bus. An
+incompatible explicit side fails closed rather than creating a page-spanning
+detour. Endpoint Ports may remain tangent to the bus. Rotation changes only
+drawing anchors. This is the presentation of the existing raw Port load, not a
+new Library component or a second Port model. A `nonloading_probe` additionally
+identifies that its response load is PTC-removable.
+
+A one-conductor `transmission_line` is a two-terminal `CPW` rectangle inserted
+directly in the signal path; its ID and length are inside the symbol. The
+reference conductor remains RLGC model metadata and is not rendered as an
+implicit ground connection. An N-conductor line is one taller `MTL` rectangle
+spanning ordered conductor rows. Its head/tail pin names are placed inside the
+block beside their boundary anchors, and their complete text extents contribute
+to block sizing. The compiled representation continues to show the complete
+matrix-valued pi ladder rather than this authoring abstraction.
 
 ## Assemble reports from explicit inputs
 

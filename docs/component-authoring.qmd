@@ -11,7 +11,9 @@ This page is the Human-accepted authority for Full V1 component authoring.
 It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
 snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
 the HB declarations taught through Lesson 13. The complete authoring scope is
-`STABILIZED` with the rest of Full V1.
+`STABILIZED` with the rest of Full V1. Typed schematic-layout hints and the
+semantic authoring renderer are a separate `CONVERGING` presentation scope;
+they neither change nor replace this physical authority.
 :::
 
 ## Contract scope
@@ -1008,8 +1010,60 @@ actual wiring, and anonymous Internal junctions. A grounded linear resonator is
 drawn as parallel L and C branches whose lower endpoints share one block-local
 bus and ground glyph. The primitive example above produces the same structure.
 Separate local ground glyphs still denote the one Plan ground; the renderer
-does not draw a page-wide reference bus. CPW, MTL, IDC, and other composites
-remain recognizable authoring objects rather than opaque backend rows.
+does not draw a page-wide reference bus. A one-conductor transmission line is
+an inline two-terminal CPW rectangle. A multi-conductor line is one taller MTL
+rectangle spanning ordered conductor rows, with its pin identities inside the
+block. The RLGC reference conductor alone never creates a drawn ground wire.
+CPW, MTL, IDC, and other composites remain recognizable authoring objects
+rather than opaque backend rows.
+
+Automatic layout is complete, so hints are optional. When a model author needs
+to preserve a particular reading order, use relational handles rather than
+page coordinates:
+
+```python
+from scnsim import (
+    CircuitDiagramSpec,
+    DiagramSide,
+    SchematicGroup,
+    SchematicLayout,
+    SchematicPath,
+)
+
+layout = SchematicLayout(
+    primary_paths=(
+        SchematicPath(
+            waypoints=(signal_port, coupling_cap, resonator_node),
+        ),
+    ),
+    port_sides={signal_port: DiagramSide.LEFT},
+    branch_order={resonator_node: (resonator_cap, resonator_ind)},
+    groups=(
+        SchematicGroup(
+            id="resonator_shunts",
+            members=(resonator_cap, resonator_ind),
+        ),
+    ),
+)
+
+diagram = plan.render_schematic(CircuitDiagramSpec(layout=layout))
+```
+
+A Port attached to the middle of a horizontal through bus may be placed only
+on `DiagramSide.TOP` or `DiagramSide.BOTTOM`; for a vertical through bus the
+allowed sides rotate to `LEFT` or `RIGHT`. The automatic layout follows this
+normal-to-bus rule. A conflicting explicit side fails with
+`SCNSimValidationError(stage="schematic_layout")` instead of routing a Port
+block around the page. A Port at a bus endpoint may remain tangent to the bus,
+as in the Lesson 1 left boundary.
+
+A path alternates node-or-Port handles with directly adjacent components. For
+an ambiguous N-terminal relation it includes the intended
+`ElectricNodeRef`; the renderer does not guess. Groups affect packing and
+spacing only and draw no enclosing frame. Handles from another Plan,
+duplicate or overlapping declarations, and mutually conflicting hints raise
+`SCNSimValidationError(stage="schematic_layout")`. Authoring layout hints are
+presentation-only and are rejected for the compiled audit representation.
 
 Generic two-terminal symbols place `terminal_1` left and `terminal_2` right;
 when drawn as a downward grounded branch they place `terminal_1` above

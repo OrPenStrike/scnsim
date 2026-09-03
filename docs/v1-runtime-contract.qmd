@@ -18,9 +18,10 @@ documentation, implementation, durable cross-slice tests, and validation
 agree. This lifecycle state does not imply a release, main promotion, root
 pin, or consumer migration.
 
-The separate adaptive presentation-theme scope is a `CONVERGING` candidate.
-It changes only how already-materialized diagrams, figures, and reports choose
-colors; it does not reopen Full V1 numerical, workspace, or identity semantics.
+The separate semantic authoring-schematic layout and adaptive presentation-
+theme scope is a `CONVERGING` candidate. It changes only how physical
+authority and already-materialized figures and reports are presented; it does
+not reopen Full V1 numerical, workspace, or identity semantics.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -2313,6 +2314,19 @@ together. `Theme.LIGHT` and `Theme.DARK` are fixed and self-contained. Direct
 `Theme.AUTO` always writes the portable light fallback. Theme choice never
 enters Plan, request, Result, receipt, artifact, or workspace identity.
 
+`CircuitDiagramSpec.layout` optionally accepts a `SchematicLayout`. It is a
+typed set of relational authoring hints rather than a coordinate system:
+`SchematicPath` fixes an alternating node-or-Port/component path,
+`port_sides` fixes selected Port boundaries, `branch_order` fixes component
+order at selected nodes, and disjoint `SchematicGroup` values affect packing
+without drawing group frames. `DiagramSide` supplies the four boundary sides.
+All handles must belong to the same Plan. Foreign handles, non-adjacent or
+ambiguous paths, duplicate members, overlapping groups, and conflicting hints
+raise `SCNSimValidationError(stage="schematic_layout")` before rendering.
+Applying an authoring layout to `representation="compiled"` raises
+`ValueError`. Layout hints, like theme, never enter physical or workspace
+identity.
+
 The `authoring` representation draws the semantic components, Public nodes,
 logical Ports, canonical ground, anonymous junctions, and declared connections.
 Grounded LC components expand visually into their parallel L/C branches with a
@@ -2323,12 +2337,48 @@ ground. The renderer never replaces them with a page-wide ground bus. Larger
 composites retain recognizable authoring symbols instead of compiler ladders.
 Every visible object traces to the Plan.
 
+Without hints the renderer performs the complete deterministic automatic
+layout. It excludes canonical ground from graph ranking, starts from the first
+declared Port when one exists, finds a semantic component path, and then packs
+branches, cycles, disconnected panels, and remaining Ports with Plan-order and
+exact-ID tie breaks. The fixed heuristic reserves the main-path blocks first,
+separates remaining relations into orthogonal lanes, and then packs disconnected
+panels; it does not evaluate or claim a globally optimal score. Every primitive
+symbol and its deliberately placed side label occupy one precomputed layout
+block, so label clearance participates in spacing rather than being guessed
+after drawing. Main-wire branches use filled T-junctions, multiple branches use
+distinct points on a short trunk, and unavoidable different-net crossings use
+explicit wire jumps rather than an electrically ambiguous cross.
+
+Every logical Port is a rotatable three-anchor presentation block: open
+boundary circle, circuit connection, and reference load meet at a filled
+T-junction. LEFT/RIGHT keep the circuit connection horizontal and the `Z0`
+resistor descending; TOP/BOTTOM rotate the circuit connection vertically and
+place the resistor horizontally with a ground glyph at its far end. Rotation
+changes only drawing anchors. At an interior through node the Port must be
+normal to the local bus: TOP/BOTTOM for a horizontal bus and LEFT/RIGHT for a
+vertical bus. A conflicting explicit `port_sides` hint raises
+`SCNSimValidationError(stage="schematic_layout")`; it is never satisfied by a
+page-spanning detour. Endpoint Ports may remain tangent to the bus. The role
+label distinguishes `terminated` from `nonloading_probe`; the latter is marked
+PTC-removable. This is the existing raw loaded-network boundary projected into
+the drawing, not an authored resistor or a second Port model. Public node IDs
+appear once, Port-promoted nodes show only the Port, and truly anonymous nodes
+appear as junction dots.
+
 Generic two-terminal symbols place `terminal_1` left and `terminal_2` right,
 or top and bottom for a downward grounded branch. Rotation moves anchors but
 never renames pins or reverses their physical orientation. A custom N-terminal
 black box without a dedicated symbol places its ordered Library pin schema
-clockwise from the lower-left boundary; this is renderer fallback only, not
-compiler or pin-identity authority.
+clockwise from the lower-left boundary and labels every public pin beside its
+anchor; this is renderer fallback only, not compiler or pin-identity authority.
+A one-conductor `transmission_line` uses a two-terminal `CPW` rectangle inserted
+directly in the signal path, with its ID and length inside. Its RLGC reference
+conductor does not imply a drawn ground connection. An N-conductor line uses one
+taller `MTL` rectangle spanning the ordered conductor rows. Head/tail pin labels
+remain inside that block beside their anchors, and their text extents participate
+in block sizing. The compiled view still exposes every matrix-valued pi section
+and station.
 
 The `compiled` representation runs only the deterministic structural compile
 preflight needed to materialize the complete baseline physical graph. It is
@@ -2572,6 +2622,6 @@ overwrite unrelated success receipts.
 - No implicit latest-result selector exists.
 - V1 has no public timeout, JobRef, cancellation API, callback progress
   framework, or persistent Julia daemon.
-- Schematic auto-layout is deterministic Grid + Attach, not a general
-  constraint solver.
+- Schematic auto-layout is a deterministic port-rooted layered and orthogonal
+  routing heuristic, not a general constraint solver or global optimum proof.
 - V1 has no public linear-algebra scaling configuration.
