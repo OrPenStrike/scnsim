@@ -15,8 +15,9 @@ rails, first-Port paths, opaque Composite fallbacks, `SchematicPath`,
 The target interfaces and fail-closed audits described here are **not yet the
 current runtime implementation**. Full V1 numerical, workspace, and identity
 semantics remain `STABILIZED`; only this diagram-presentation scope is
-`CONVERGING`. Human review of this document precedes runtime/API alignment and
-durable stabilization tests.
+`CONVERGING`. Exact review of this complete written target precedes vertical
+runtime/API alignment, Human review of the resulting diagrams, and durable
+stabilization tests.
 :::
 
 ## Product promise
@@ -52,13 +53,14 @@ snapshot; a new render receives a new Plan SHA. A diagram and an analysis
 result refer to the same physical Plan only when their complete
 `plan_sha256` values agree.
 
-The Plan SHA binds the physical baseline declaration, including component
-hierarchy, topology, the canonical union of grounded endpoints, parameters,
-source-unit provenance, Ports, and couplings. Separate `ground()` call groups
-are source-provenance rows in the audit table only. They do not control
-geometry and do not enter the Plan, connectivity, or semantic digest. Every
-grounded endpoint still reconstructs to the one canonical Plan ground.
-Presentation choices never enter Plan identity.
+The existing Plan SHA binds the physical baseline declaration, including
+component hierarchy, topology, the canonical union of grounded endpoints,
+canonical SI parameter values, Ports, and couplings. It continues to use the
+existing canonical SI encoder unchanged. Source-unit spelling and separate
+`ground()` call grouping are provenance facts only; representation, Theme,
+layout, and diagram geometry are presentation facts only. None enters Plan
+identity. Every grounded endpoint still reconstructs to the one canonical
+Plan ground.
 
 ## One certification shell, two projection pipelines
 
@@ -80,10 +82,10 @@ canonical Plan snapshot
 ```
 
 The expected authoring manifests are derived directly from the canonical Plan
-document. Expected compiled manifests are derived from the exact expanded
-graph whose digest is bound back to that Plan. The observed manifests are
-reconstructed after placement from the objects that were actually emitted.
-The reconstruction code may read only:
+snapshot. Expected compiled manifests are derived from its exact expanded
+graph. The observed manifests are reconstructed from a neutral emitted scene,
+after placement and routing, rather than from answer tables retained by the
+lowering. The reconstruction code may read only:
 
 - native-symbol types and their transformed electrical anchors;
 - CPW/MTL boundary anchors and conductor rows;
@@ -91,14 +93,16 @@ The reconstruction code may read only:
 - Port boundary, circuit, and load anchors;
 - ground-glyph attachment buses;
 - T-junction and wire-jump geometry;
-- RelationBlock and CouplingRelation terminals;
-- emitted SubsystemRegion extents and identity anchors; and
+- visible relation buses/brackets, stitch marks, coupling marks, and their
+  emitted terminals;
+- emitted SubsystemRegion boundaries, headers, identity anchors, and
+  multi-terminal bracket marks; and
 - visible IDs, parameter labels, and coupling marks.
 
-It must not reuse the manifest or bundle enumeration that drove placement. One
-lowered table cannot be both the drawing instruction and its own witness.
-Hidden SVG metadata may carry provenance, but it cannot repair an incomplete
-visible projection or satisfy either audit.
+It must not reuse placement, membership, ownership, interface, or attachment
+answer tables. One lowered table cannot be both the drawing instruction and
+its own witness. Hidden SVG metadata may carry provenance, but it cannot repair
+an incomplete visible projection or satisfy either audit.
 
 ## Semantic layout IR
 
@@ -106,10 +110,11 @@ The private IR separates electrical identity from drawing geometry.
 
 ### ElementBlock
 
-Every authoring physical R, L, C, Josephson junction, and junction capacitance
-is an orientation-aware native `ElementBlock`. Conductance `G` is a native
-compiled RLGC/pi-ladder leaf, not a separate authoring-catalog primitive. A
-block owns:
+Every authoring physical R, L, C, Josephson junction, and independent junction
+capacitance is an orientation-aware native `ElementBlock`. Composite
+occurrences recursively expose these native leaves in the authoring
+projection. Conductance `G` exists only in the compiled RLGC/pi-ladder
+projection and is not an authoring-catalog primitive. A block owns:
 
 - the full component path and primitive kind;
 - ordered physical pins and electrical anchors;
@@ -135,28 +140,39 @@ relative packing. The Subsystem tree contains exactly:
 
 The parent of a non-root Subsystem is the nearest strict Composite ancestor in
 its canonical component path, or the Plan root when no such ancestor exists.
-Every native leaf is owned by its nearest enclosing Subsystem. A CPW/MTL block
-is a terminal boxed Subsystem and owns its conductor anchors rather than an
-authoring expansion. A Plan-level primitive remains owned by the root while
-the parent-scope classification below assigns it exactly one internal or
-interface presentation role. No leaf, relation, or line occurrence may appear
-in two Subsystems.
+Every native leaf is owned by its nearest enclosing Subsystem. Local public
+pins carry an explicit boundary-to-parent pin or net mapping at every
+Composite boundary; ownership is never flattened through that mapping. A
+CPW/MTL block is a terminal boxed electrical Subsystem and owns its ordered
+conductor anchors rather than an authoring expansion. All other built-in and
+user-authored Composites expand recursively to native R/L/C/JJ/Cj symbols. A
+CPW/MTL transmission line is therefore the only boxed electrical symbol. A
+Plan-level primitive remains owned by the root while the parent-scope
+classification below assigns it exactly one internal or interface
+presentation role. A same-scope parent-owned shunt remains outside every child
+region. No leaf, relation, or line occurrence may appear in two Subsystems.
 
-A Subsystem is not replaced by a visible rectangle. It nevertheless emits one
-non-conductive `SubsystemRegion` with a measured occupied extent and one
-identity anchor. The root is the unique outermost region and carries an
-emitted root-region kind even when its provenance text is hidden. Composite
-regions follow component-path nesting; sibling regions are disjoint. Each
-Composite ID is visible exactly once in a reserved region header, the CPW/MTL
-box title supplies its Subsystem ID, and the root Plan ID appears in the
-provenance region when provenance is visible. Native leaves use the shortest
-name that is unique inside their owning region plus a separate value row. Full
-canonical paths remain in the audit table and `run.explain()`.
+A Subsystem is an authored assembly boundary, not an inferred physical mode,
+research intent, or topology cluster. Every Composite Subsystem emits a
+visible non-conductive `SubsystemRegion` with a measured occupied extent,
+boundary, reserved header, and identity anchor; it is never an opaque
+electrical box. The root instead emits the unique outermost non-conductive
+scene envelope and a reserved root-region kind. Its Plan-identity header is
+the optional provenance band controlled by `show_provenance`, not a duplicate
+always-visible root header. Composite regions follow component-path nesting;
+sibling regions are disjoint. Their colors use deterministic paired pastel
+categorical values from a 20-color family in canonical sibling order, but
+header and boundary—not color—establish identity and containment. Each
+Composite ID is visible exactly once in its header, and a CPW/MTL
+electrical-box title supplies its Subsystem ID. When root provenance is
+hidden, the scene envelope remains but no Plan-ID header is emitted. Native
+leaves use the shortest name unique inside their owning region plus a separate
+value row. Full canonical paths remain in the audit table and `run.explain()`.
 
-Every built-in and user-authored Composite recursively expands its sealed
-snapshot into native R/L/C/JJ symbols. Hidden child handles remain unavailable
-to authoring code even though the sealed physical branches are visible.
-CPW/MTL transmission line is the only boxed electrical symbol.
+Hidden child handles remain unavailable to authoring code even though the
+sealed physical branches are visible. Visible identity, boundary, and
+containment provide the semantic-ownership witness; neither fill color nor a
+private placement record is sufficient.
 
 ### RelationBlock
 
@@ -173,48 +189,94 @@ chain.
 ### InterfaceBundle and attachments
 
 An `InterfaceBundle` is a parent-scope, Plan-derived hyperedge; it is not a
-second topology declaration. Each parent scope derives bundles as follows:
+second topology declaration. At each parent scope the renderer applies this
+ordered partition:
 
-1. collapse each immediate child Subsystem to its electrically exposed public
-   pin sites, or to its ordered CPW/MTL conductor anchors;
-2. treat Ports and exposed parent-boundary sites as additional stopping sites;
-3. form a connector graph from parent-owned primitives or RelationBlocks and
-   every parent-owned ElectricNode that joins them; and
-4. make each maximal connected connector component incident to at least two
-   distinct stopping sites one InterfaceBundle.
+1. Form every owner-local `RelationBlock`. Before connector traversal, separate
+   parent-owned grounded shunts and grounded peripheral relations from the
+   member graph. For example, in `A-R1-x-R2-B` with `C(x, ground)`, the two
+   resistors may participate in the A-to-B connector while the capacitor
+   remains a parent-internal peripheral relation; ground never becomes a peer.
+2. Mark boundary nets at immediate-child public-pin sites, CPW/MTL head/tail
+   conductor sites, exposed parent-scope pins, and Port-only boundary sites.
+   Traversal stops at those nets, at canonical ground, and at every child
+   interior.
+3. From the remaining parent-owned primitives and RelationBlocks, form each
+   initial member component as a **maximal** connected component through
+   parent-owned nets that are neither boundary nets nor ground. Preserve every
+   exact boundary-site incidence on that component.
+4. Classify a component with zero or one distinct peer, or only return sites on
+   the same peer, as parent-internal or peripheral. A component incident to two
+   or more distinct peers is an interface candidate.
+5. For candidates with exactly the same two-peer signature, repeatedly merge
+   every pair that shares at least one boundary net until the mandatory maximal
+   transitive closure is reached. The closure never traverses a peer interior,
+   never crosses a nonshared boundary net, and never merges different peer
+   signatures.
+6. A component incident to three or more distinct peers remains one
+   irreducible multi-party `InterfaceBundle`. Its physical branches are not
+   duplicated into fictitious pairwise interfaces.
+7. At every boundary net, a direct co-location of two or more boundary sites
+   with zero intervening member becomes a separate memberless
+   stitch-incidence record. It remains present even when a parent-owned
+   capacitor, RelationBlock, or other member-bearing connector also touches
+   that same net; member-bearing connectivity cannot absorb the zero-member
+   site-to-site incidence.
 
-The connector component's primitives and RelationBlocks are its `members`.
-When two or more stopping sites meet only through the same parent-owned node,
-that node alone forms a memberless shared-node stitch bundle with
-`members=()`. A Public stitch node is visible and selectable; an anonymous
-stitch remains certified but has no Manual-API selector handle.
-Connectors sharing one node, such as two couplers leaving one `readout_node`,
-remain one topology-connected bundle. Physically disconnected connector
-components remain separate bundles even when they touch the same set of
-Subsystems.
+The result is a neighbor-aware partition rather than one page-wide
+topology-connected star. A feedline-to-readout connector and a
+readout-to-floating connector remain separate. Two readout capacitors attached
+to the floating plus/minus sites form one multi-terminal neighbor bundle when
+the required two-peer closure above coalesces them. Disconnected
+channels with the same peers but no shared boundary net remain separate. A
+parent-owned shunt or same-peer return remains internal to the parent scope and
+outside child ownership.
 
-Every member is classified exactly once: a connector crossing boundary sites
-belongs to its InterfaceBundle; otherwise it remains internal to its owning
-Subsystem. Canonical ground is never a stopping site or neighboring
-Subsystem. A public `CoordinateRef` is analysis-coordinate evidence, not an
-electrical boundary site. No interface rule may invent a node, pin, member, or
-attachment.
+A peer key is one of: an immediate child Subsystem occurrence; an exposed
+parent-boundary site keyed by its parent scope and public pin, even when its
+internal node is anonymous; or a Port-only boundary keyed by Port identity.
+The peer signature is the canonically ordered set of distinct incident peer
+keys. An ordinary named Public node at the Plan root does not by itself create
+a peer. The signature describes incidence only, not current direction or
+inferred function.
 
-The canonical bundle identity includes its parent scope, canonically sorted
-endpoint-site identities, members, and canonical node identities. The visible compact ID is
-derived from the endpoint Subsystem, Port, or parent-boundary Public-node IDs. If several
-bundles have the same visible participants, a deterministic ordinal sorted by
-canonical member/node key disambiguates them. The complete identity remains in
-the audit table.
+Ports co-located with a Subsystem boundary decorate that endpoint. Their full
+electrical load, role, and orientation remain visible evidence, but they do not
+create another peer. A root endpoint containing only a Port remains
+representable through its Port peer key. Panel grouping respects authored
+composition and declared non-conductive mutual coupling without ever merging
+conductive nets.
+
+Every parent-owned physical leaf first belongs to exactly one primitive or
+`RelationBlock`, then is classified exactly once as parent-internal/peripheral
+or as a member of exactly one `InterfaceBundle`. The final classifier is the
+peer-incidence partition above, not a vague test that a branch merely crosses a
+boundary site. Nodes may be referenced by several relation or stitch records
+without splitting the node or duplicating a leaf. An attachment-site identity
+is not electrical-net equivalence: several sites may share one net, and one
+aggregate may expose several sites. A public `CoordinateRef` is
+analysis-coordinate evidence, not an electrical boundary site. No interface
+rule may invent a node, pin, member, peer, or attachment.
+
+The canonical bundle identity includes its parent scope, peer signature,
+canonically sorted endpoint-site identities, members, and canonical node
+identities. The visible compact ID is derived from the endpoint Subsystem,
+Port, or exposed parent-boundary public-pin IDs. If several bundles have the
+same visible participants, a deterministic ordinal sorted by canonical member,
+node, and site key disambiguates them. The complete identity remains in the
+audit table.
 
 Attachment geometry is decided per derived bundle endpoint site, not from the
-total number of neighbors of a whole Subsystem:
-
-- one single-ended bundle receives one centered outward anchor;
-- two single-ended bundles receive opposite inline anchors on the same node;
-- three or more bundles receive ordered anchors on a short boundary bus; and
-- a bundle touching several terminal sites is multi-terminal, so all terminals
-  at one endpoint form one aggregate attachment and face the peer together.
+total number of neighbors of a whole Subsystem. Multi-terminal status counts
+the declared terminal-site identities; every identity remains distinct even
+when several sites share one canonical net. Sites on that same canonical net
+may share a short conductive bus. Sites on distinct nets remain electrically
+separate and are grouped only by a visible non-conductive bracket and
+`InterfaceBundle` ID. For a multi-party bundle, each participant's sites face
+the common connector region rather than a nonexistent single peer. Three or
+more co-net attachments use a short ordered bus, never a forced center star;
+distinct-net attachments never do. Route constraints may choose an eligible
+side or order but cannot redefine this partition.
 
 The renderer certifies only single-terminal versus multi-terminal structure.
 It never infers a differential pair from IDs, geometry, electrical symmetry,
@@ -336,132 +398,167 @@ Each connected panel is decomposed into articulation and biconnected blocks
 after constructing its Subsystem/Relation/Interface quotient graph. The
 weighted diameter of the resulting block-cut tree supplies a deterministic
 reading spine; it maximizes covered Subsystem and Interface blocks, then uses
-Plan declaration order and exact IDs as tie breakers. A biconnected cycle stays
-one semantic block and chooses its internal orientation by the same canonical
-ordering rather than being broken into a false tree.
+canonical component paths and exact IDs as tie breakers, never component
+declaration order. A biconnected cycle stays one semantic block and chooses its
+internal orientation by the same canonical ordering rather than being broken
+into a false tree.
 
 Ports are boundary sites attached after that semantic spine exists. A
 `terminated` role may prefer an exterior inline side and a
 `nonloading_probe` role prefers a peripheral side, but neither role, Port
 count, nor first declaration may define topology or select the root. A panel
 with no InterfaceBundle lays out its root-owned relations by the same
-block-cut rule. Disconnected circuits are packed as separate panels.
+block-cut rule. Disconnected circuits are packed as separate panels. Panel
+grouping preserves authored composition and declared mutual-coupling evidence;
+it never merges electrically distinct nets.
 
 Placement reserves complete ElementBlock, RelationBlock, InterfaceBundle,
 Port, label, and legend bounds. Rows, columns, boundary buses, and routing lanes
-expand monotonically until all accepted constraints hold. Deterministic Plan
-declaration order and exact IDs are tie breakers. The heuristic does not claim
-a global optimum.
+are selected from a finite, deterministically ordered candidate set derived
+from graph size, measured occupied bounds, canonical paths, and exact IDs. An
+explicit side/order conflict or exhaustion of that finite set fails
+`schematic_layout`; there is no unbounded grow-and-retry success claim. The
+heuristic does not claim a global optimum, and V1 exposes no drawing-size,
+threshold, or layout-scale knob.
 
-## Relational manual hints
+## Pre-render catalog and Root-only manual hints
 
-Manual layout is a constrained reading-order input to the same automatic
-engine. It is not a coordinate escape hatch. All of the following target types
-are exported from the `scnsim` package root; the definitions show their public
-shape rather than a second implementation module:
+Manual V1 is a constrained reading-order input to the same automatic engine.
+It is Root-only and is not a coordinate escape hatch. Nested Subsystems always
+lay out automatically and remain fully audited.
+
+`plan.schematic_catalog()` derives one immutable, non-mutating
+`SchematicCatalog` snapshot before rendering. It neither seals nor edits the
+Plan. `catalog.show()` is an explicitly **Plan-derived / UNCERTIFIED** lookup
+surface for participants, interfaces, sites, and incidence; it is not a
+diagram audit and contains no observations from emitted geometry.
+The catalog and every ref bind the captured `plan_sha256` plus the catalog
+schema identity.
+
+The catalog exposes only typed opaque handles:
+
+- `catalog.participant(public_handle)` returns a
+  `SchematicParticipantRef` only for an immediate Subsystem occurrence under
+  the Plan root or for a root boundary/Port participant that actually exists
+  in the derived graph. A primitive coupler is member evidence for
+  `find_interface`, not a participant; an ordinary root Public node, a hidden
+  child, or a nested Subsystem is not made eligible merely because it has a
+  public-looking handle;
+- `catalog.find_interface(members=(), nodes=())` intersects the supplied
+  public evidence and must match exactly one already-derived relation. A
+  member-bearing lookup requires nonempty `members`; optional `nodes` further
+  intersects that lookup. With empty `members`, nonempty `nodes` selects only a
+  complete memberless stitch and can never select a co-located member-bearing
+  bundle. It returns a `SchematicInterfaceRef` and never declares a new
+  interface; and
+- `catalog.attachment(interface, participant=..., pin=None)` returns a
+  `SchematicAttachmentRef` for one existing aggregate site. The public pin
+  selector is optional and only disambiguates an existing aggregate, including
+  an MTL head/tail conductor aggregate. It cannot split conductors or
+  terminals.
+
+Both collections empty, duplicate evidence, hidden or ineligible handles, and
+zero, several, or conflicting matches fail closed. An anonymous stitch without
+complete public node evidence remains automatic-only. Refs from repeated
+catalogs are mutually usable only when both the unchanged Plan snapshot and
+catalog schema identities agree. A changed Plan makes earlier refs stale; a
+different schema, foreign catalog, or ref outside the root-visible eligibility
+boundary is rejected rather than reinterpreted.
+
+`SchematicRoute(through=(...), via=(...))` contains at least two ordered
+`SchematicParticipantRef`s and exactly one intervening
+`SchematicInterfaceRef` per adjacent participant pair. Every `via` must
+already be incident to both neighbors. The route states left-to-right reading
+order only: it does not claim a unique conductive path or current direction,
+and it cannot discard an internal cycle. The authoring graph is undirected;
+IDs, names, component roles, and Port roles never imply flow.
+
+`catalog.layout(primary_routes=..., attachment_sides=...,
+attachment_order=..., port_sides=...)` is the only layout factory.
+`primary_routes` contains
+`SchematicRoute`s. `attachment_sides` maps `SchematicAttachmentRef` keys to
+`DiagramSide`; `attachment_order` maps a `SchematicParticipantRef` to an
+ordered tuple of its incident `SchematicAttachmentRef`s; and `port_sides` maps
+Port-backed `SchematicParticipantRef` keys to `DiagramSide`. The factory
+copies every input mapping, validates root-scope eligibility and all conflicts,
+and returns a frozen `SchematicLayout`. Manual V1 rejects nested participants
+or attachments because nested Subsystems remain fully automatic. Raw strings,
+foreign or stale refs, nonincident attachments, impossible sides,
+contradictory routes, incomplete route incidence, and conflicting orders fail
+before placement. Route or side constraints may arrange only existing
+participants, interfaces, and attachments; they cannot change ownership,
+partitioning, incidence, or electrical topology.
+
+The following **TARGET scaffold is intentionally not executable in the current
+runtime**. It assumes `left_lc` and `right_lc` are two public Composite handles,
+`coupling_capacitor` is their parent-owned coupler, `port_in` and `port_out` are
+terminated Ports decorating the two LC endpoint nodes. Those Ports do not
+fabricate separate `InterfaceBundle`s. The scaffold demonstrates every manual
+layout input without making a runtime availability claim:
 
 ```python
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-from enum import Enum
-from types import MappingProxyType
+# TARGET API — two authored LC Composites, one coupler, and terminated Ports.
+from scnsim import CircuitDiagramSpec, DiagramSide, SchematicRoute
 
-class DiagramSide(str, Enum):
-    LEFT = "left"
-    RIGHT = "right"
-    TOP = "top"
-    BOTTOM = "bottom"
+catalog = plan.schematic_catalog()
+catalog.show()
 
-@dataclass(frozen=True, slots=True)
-class SchematicInterface:
-    id: str
-    members: tuple[ComponentInstance, ...] = ()
-    nodes: tuple[ElectricNodeRef, ...] = ()
+port_in_ref = catalog.participant(public_handle=port_in)
+left_lc_ref = catalog.participant(public_handle=left_lc)
+right_lc_ref = catalog.participant(public_handle=right_lc)
+port_out_ref = catalog.participant(public_handle=port_out)
 
-@dataclass(frozen=True, slots=True)
-class SchematicAttachment:
-    interface: SchematicInterface
-    at: ComponentInstance | ElectricNodeRef
+coupler_if = catalog.find_interface(
+    members=(coupling_capacitor,),
+    nodes=(),
+)
+left_coupler_attachment = catalog.attachment(
+    interface=coupler_if,
+    participant=left_lc_ref,
+    pin=None,
+)
+right_coupler_attachment = catalog.attachment(
+    interface=coupler_if,
+    participant=right_lc_ref,
+    pin=None,
+)
 
-@dataclass(frozen=True, slots=True)
-class SchematicRoute:
-    points: tuple[PortRef | SchematicAttachment, ...]
+layout = catalog.layout(
+    primary_routes=(
+        SchematicRoute(
+            through=(left_lc_ref, right_lc_ref),
+            via=(coupler_if,),
+        ),
+    ),
+    attachment_sides={
+        left_coupler_attachment: DiagramSide.RIGHT,
+        right_coupler_attachment: DiagramSide.LEFT,
+    },
+    attachment_order={
+        left_lc_ref: (left_coupler_attachment,),
+        right_lc_ref: (right_coupler_attachment,),
+    },
+    port_sides={
+        port_in_ref: DiagramSide.LEFT,
+        port_out_ref: DiagramSide.RIGHT,
+    },
+)
 
-@dataclass(frozen=True, slots=True)
-class SchematicLayout:
-    interfaces: tuple[SchematicInterface, ...] = ()
-    primary_routes: tuple[SchematicRoute, ...] = ()
-    attachment_sides: Mapping[SchematicAttachment, DiagramSide] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
-    attachment_order: Mapping[
-        ComponentInstance | ElectricNodeRef,
-        tuple[SchematicAttachment, ...],
-    ] = field(default_factory=lambda: MappingProxyType({}))
-    port_sides: Mapping[PortRef, DiagramSide] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
+diagram = plan.render_schematic(CircuitDiagramSpec(layout=layout))
 ```
 
-`DiagramSide` is the only accepted side value; raw strings fail before layout.
-Every mapping is defensively copied into an immutable, deterministic internal
-mapping during construction, so a caller retaining the original dictionary
-cannot mutate a layout after validation.
+`plan.render_schematic()` remains the zero-hint convenience and invokes the
+same catalog builder. Hinted and zero-hint renders traverse the same placement,
+routing, neutral-scene emission, and independent audits. For one Plan snapshot
+and representation their connectivity, semantic, and expanded-graph digests
+are identical; presentation layout may differ. `diagram.audit` remains
+reserved for the certificate and observed reconstruction table—there is no
+duplicate catalog API on the audit.
 
-`SchematicInterface.id` is a nonempty layout-local selector identity. It is
-unique within one `SchematicLayout`, but it is neither a new Plan identity nor
-an alias for an ElectricNode or InterfaceBundle. The automatic IR's canonical
-bundle identity remains the visible semantic identifier and digest input.
-Changing only the selector ID therefore cannot change the certified semantic
-manifest.
-
-`members` and `nodes` cannot both be empty, and neither tuple may contain a
-duplicate. For a derived bundle `b`, `public_members(b)` is the flattened set
-of public parent-scope component handles represented by its primitive or
-RelationBlock members. The selector candidate set is exactly:
-
-```text
-{b | set(members) <= public_members(b) and set(nodes) <= public_nodes(b)}
-```
-
-The intersection must contain exactly one InterfaceBundle already derived
-from the same Plan. Each `members` entry is a public parent-scope
-`ComponentInstance`; each `nodes` entry is a Public `ElectricNodeRef`. A
-nodes-only selector is the public way to select a memberless Public-node
-stitch. Nodes can also disambiguate a multi-terminal bundle; they do not
-declare a net or route. An anonymous memberless stitch remains automatic-only
-because it intentionally has no public handle. Two interface selectors may
-not select the same derived bundle.
-
-An attachment selects exactly one existing public parent-scope endpoint site
-of its interface. A component endpoint means the bundle's attachment to that
-Subsystem; a node endpoint means its attachment at that Public node. A
-multi-terminal Subsystem endpoint is one aggregate site: its terminals cannot
-be selected, ordered, or placed independently. If `at` matches neither or more
-than one endpoint site, validation fails.
-
-A route contains at least two distinct points and defines only primary reading
-order. Every consecutive point pair must already have one unique connecting
-chain in the automatic semantic IR; an absent or ambiguous chain fails rather
-than being guessed. A caller resolves a cyclic ambiguity by adding existing
-intermediate attachments until every adjacent route hop is unique, never by
-supplying coordinates. An attachment cannot occupy conflicting positions in
-two primary routes. `attachment_sides`, `attachment_order`, and `port_sides`
-constrain only eligible outer anchors and cannot make a nonadjacent pair
-adjacent electrically.
-
-All referenced handles must belong to the same Plan. Hidden or internal leaves,
-foreign handles, duplicate interfaces, incomplete endpoints, conflicting
-orders, impossible sides, and a selector that matches zero or several bundles
-raise `SCNSimValidationError(stage="schematic_layout")`. Compiled diagrams
-reject authoring layout hints with `ValueError`.
-
-`layout=None` and hinted layouts pass through the same placement, routing, and
-independent audits. For the same Plan snapshot and representation they must
-produce identical connectivity and semantic digests. When runtime alignment
-begins, these types replace `SchematicPath`, `SchematicGroup`, and
-`branch_order` completely; there is no alias, compatibility encoder, or
-migration path.
+These target surfaces replace user-constructed Interface/Attachment objects,
+`SchematicPath`, `SchematicGroup`, and `branch_order` completely. There is no
+alias, compatibility encoder, or migration path. Compiled diagrams reject
+authoring layout hints.
 
 ## Independent audits and digests
 
@@ -469,16 +566,38 @@ migration path.
 
 The observed electrical manifest normalizes:
 
-- every native branch kind, full path, ordered pin, and reconstructed net;
+- every native branch kind, component path plus branch role, terminal evidence,
+  and reconstructed net;
 - every ground return to canonical Plan ground;
 - every Port attachment, role, Z0, and node-to-reference orientation;
 - every CPW/MTL conductor, reference, head/tail attachment, and row order;
 - every CouplingRelation's mutually coupled oriented branch pair; and
-- every exact-zero branch omitted from visible geometry.
+- every visible exact-zero omission record, including the omitted branch role
+  or compiled term, its endpoints, checked absence, and surviving-path
+  continuity evidence.
 
 Its canonical digest is `connectivity_sha256`. The observed manifest must
 equal the independently generated expected manifest exactly; set equality
-without complete ordered-pin and orientation evidence is insufficient.
+without complete terminal and orientation evidence is insufficient. The
+declared physical pin order remains unchanged. Comparison may normalize the
+terminal swap of a reciprocal R or C, or another symmetry explicitly proven by
+its component model; symmetry is closed by default and is never inferred from
+symbol shape. Reversal is tested only after that permitted normalization.
+Orientation-sensitive branches, mutual-coupling branch order, JJ orientation,
+and CPW/MTL head/tail still fail on reversal and retain visible direction
+evidence. A JJ and its parallel Cj are separate physical leaves because their
+branch roles differ even when their endpoints agree. There is no universal
+semantic meaning assigned to labels such as `terminal_1` and `terminal_2`.
+
+Anonymous-net equivalence is reconstructed from complete endpoint sets, never
+from a hidden ID or a layout-generated name. A missing visible term cannot be
+interpreted as numerical zero. Expected authoring omissions come from the
+canonical Plan snapshot plus existing exact-zero component rules, such as an
+explicitly omitted zero Cj. Expected compiled omissions come from the expanded
+graph evidence. A visible omission record must identify the branch role or
+compiled term and endpoints, then prove its absence and the required surviving
+continuity; the drawing never infers an omission from missing ink and adds no
+near-zero threshold.
 
 ### Semantic reconstruction (B)
 
@@ -486,52 +605,69 @@ The authoring observed semantic manifest reconstructs:
 
 - the unique root role and nested SubsystemRegions, their visible non-root
   identities, and their parent/child containment;
-- every leaf owner by assigning its identity anchor to the smallest containing
-  SubsystemRegion, then combining that region path with its unique local name;
+- every leaf owner by requiring its whole occupied symbol-and-label box to lie
+  inside its reconstructed owning region and outside every child region, then
+  combining that region path with its unique local name;
 - RelationBlock endpoints and native members;
 - InterfaceBundle parent scope, endpoint sites, member branches, Public nodes,
-  and single-terminal versus multi-terminal classification;
+  peer signature, single- versus multi-terminal classification, and visible
+  bracket/bus identity;
+- separate memberless stitch incidences;
 - Port-boundary ownership; and
 - CouplingRelation branch ownership, presentation mode, and visible identity.
 
 Its canonical digest is `semantic_sha256`. A parallel relation drawn as series,
 a multi-terminal interface drawn as unrelated single-terminal branches, an
-omitted coupling mark, or an ambiguous ownership region or label fails this
-audit even when electrical connectivity happens to be correct. The witness
-reads emitted SubsystemRegions and identity anchors; it cannot read the
-placement ownership table. Adjacent-inductor and visible-legend coupling
-presentations normalize to the same coupling identity; their geometric
-presentation mode is audit evidence but is not part of the semantic digest.
+omitted coupling mark, a leaf box crossing into a child region, or an ambiguous
+ownership region or label fails this audit even when electrical connectivity
+happens to be correct. The witness reads emitted SubsystemRegions, complete
+occupied boxes, and identity anchors; it cannot read the placement ownership
+table. Only registered electrical attachment crossings may cross a region
+boundary. Adjacent-inductor and visible-legend coupling presentations normalize
+to the same coupling identity; their geometric presentation mode is audit
+evidence but is not part of the semantic digest. All observed relations come
+from emitted endpoints, anchors, region boundaries, and visible marks—not from
+the expected partition.
 
 ### Geometry and label validity
 
 Before semantic serialization, layout validation proves that occupied blocks
 and labels do not overlap, wires contact only registered anchors, conductive
 paths are continuous, and junction/jump grammar is unambiguous. When baseline
-values are visible, their rendered labels must exactly match the canonical
-Plan values and source-unit provenance selected for display.
+values are visible, each uses a deterministic engineering SI prefix derived
+from the canonical value. Source-unit spelling is not reconstructed from the
+displayed value; when retained, it appears separately only as verified snapshot
+provenance and is never substituted for the canonical value.
 
 Theme, hint choice, provenance visibility, padding, and equivalent geometric
 routing are excluded from the Plan, connectivity, and semantic digest
-preimages. Every digest preimage includes its `authoring` or `compiled`
-representation tag. Invariance is required across Theme and hints within one
+preimages. The `connectivity_sha256` and `semantic_sha256` preimages each
+include their `authoring` or `compiled` representation tag and a schema-tagged
+canonical encoding. Invariance is required across Theme and hints within one
 representation; authoring and compiled connectivity or semantic digests are
-not required to match one another. Each digest uses a schema-tagged canonical
-encoding so a future meaning change cannot silently reuse an old digest.
+not required to match one another. Plan identity, compiled lineage,
+expanded-graph identity, and optional presentation identity retain their own
+encoders described on this page; no universal representation-tag rule is
+asserted for every digest. Diagram digests never redefine existing Plan or
+request encoders.
 
 ## Target Result and presentation surface
 
-The target defaults make an ordinary authoring diagram review-ready:
+The target defaults make an ordinary authoring diagram review-ready. This is a
+syntactically valid target usage example, not a claim that the target API is
+already implemented:
 
 ```python
-CircuitDiagramSpec(
-    *,
+from scnsim import CircuitDiagramSpec, Theme
+
+diagram_spec = CircuitDiagramSpec(
     representation="authoring",
     theme=Theme.AUTO,
     show_parameter_values=True,
     show_provenance=True,
-    layout: SchematicLayout | None = None,
+    layout=None,  # SchematicLayout | None
 )
+diagram = plan.render_schematic(diagram_spec)
 ```
 
 Successful construction attaches an immutable audit with no public
@@ -558,55 +694,84 @@ class CircuitDiagramAudit:
     @property
     def compiled_graph_sha256(self) -> str | None: ...
 
+    @property
+    def expanded_graph_sha256(self) -> str | None: ...
+
+    @property
+    def presentation_sha256(self) -> str | None: ...
+
     def show(self) -> HtmlPresentation: ...
 
 diagram.audit.plan_sha256
 diagram.audit.connectivity_sha256
 diagram.audit.semantic_sha256
 diagram.audit.compiled_graph_sha256
+diagram.audit.expanded_graph_sha256
+diagram.audit.presentation_sha256
 diagram.audit.show()
 ```
 
 There is no `passed` boolean: failure returns no diagram or audit object.
-`CircuitDiagramResult.show()` continues to return the real Schemdraw `Drawing`.
-Notebook rich display continues to provide the self-contained copy, zoom,
-reset, drag-pan, and Open SVG surface. Static SVG/raster save remains a
-non-interactive projection.
+Successful certification freezes one checked scene.
+`CircuitDiagramResult.show()` still returns a real Schemdraw `Drawing` through
+a supported read-only subclass/facade; callers cannot mutate the scene behind
+its certificate. Existing `Drawing.save()` remains the static API; this scope
+adds no save or export API. `show()`, rich display, and `Drawing.save()` all
+serialize that same frozen scene, so no later mutation can leave a stale
+certificate. Notebook rich display retains its self-contained
+copy, zoom, reset, drag-pan, and Open SVG surface, with a readable static SVG
+fallback.
+
+`presentation_sha256` is optional. When present, it identifies the canonical
+frozen scene while excluding its self-referential certificate annotation. It
+is a presentation identity, not an authenticity or security signature, and it
+does not enter Plan, request, connectivity, semantic, or expanded-graph
+identity.
 
 ### Provenance region
 
-A measured bottom region and outer padding keep all symbols and labels away
-from the image boundary. By default the region displays:
+A measured bottom provenance band and outer padding keep all symbols and labels
+away from the image boundary. By default the band displays:
 
 ```text
 AUTHORING · CircuitPlan <id> · plan <12> · conn <12> · semantic <12> · values: baseline
 ```
 
-A compiled diagram additionally displays `compiled <12>`. The region uses the
-same Theme palette as the drawing. Complete digests remain in
-`CircuitDiagramAudit` and SVG metadata; neither independent audit relies on
-that metadata.
+A compiled diagram additionally displays `compiler <12> · expanded <12>`.
+The provenance band uses the same Theme palette as the drawing. Complete
+digests remain in `CircuitDiagramAudit` and SVG metadata; neither independent
+audit relies on that metadata.
 
-`show_provenance=False` removes the visible region but never disables the
-audits or typed certificate. A copied raster without the region consequently
-has no standalone visible provenance; this is an explicit presentation choice.
+`show_provenance=False` removes the visible provenance band, not the root scene
+envelope, and never disables the audits or typed certificate. A copied raster
+without the band consequently has no standalone visible provenance; this is
+an explicit presentation choice. The hidden-band form cannot be the sole
+code-free Human acceptance packet.
 
 ### Audit review table
 
 `diagram.audit.show()` displays the audited observed reconstruction rather than
-printing the Plan's expected manifest a second time. It contains:
+printing the Plan's expected manifest a second time. It separates **observed
+scene facts** from **verified snapshot/provenance facts**. Observed rows contain:
 
-- Plan identity and full digests;
 - Public nodes, exact endpoints, and canonical-ground returns;
-- source `ground()` call groups as provenance-only rows, explicitly excluded
-  from geometry and digest inputs;
 - Ports, roles, Z0, and orientation;
-- InterfaceBundle endpoints and members;
+- InterfaceBundle peers, sites, members, and multi-terminal marks;
+- memberless stitch incidences;
 - RelationBlock endpoints and native leaves;
-- mutual-coupling branch identities, signed `k`, and derived `M` when defined;
+- mutual-coupling branch identities and signed `k`, plus derived `M` only when
+  it was emitted and independently checked against the bound values;
 - CPW/MTL conductor order, reference, and head/tail attachments;
-- omitted-zero declarations; and
-- baseline values with source-unit provenance.
+- visible exact-zero omissions and continuity evidence; and
+- displayed baseline values.
+
+Verified rows contain Plan/schema and complete digest identities, canonical SI
+values (including hidden baseline values), source-unit spelling, source
+`ground()` call groups, and other hidden snapshot provenance. Ground-call
+groups are explicitly excluded from geometry and every diagram digest input;
+source-unit spelling is excluded from Plan and diagram semantic identity. When
+derived `M` is not emitted, any snapshot-derived value belongs only in these
+verified rows and is not reported as an observed scene fact.
 
 For a compiled projection it also includes the expanded graph identity, line
 sections, conductor/station identities, complete matrix evidence, and omitted
@@ -624,8 +789,13 @@ Plan snapshot -> compiler expanded graph -> expected compiled manifest
                                            -> observed compiled manifest
 ```
 
-The Plan SHA proves the source; `compiled_graph_sha256` proves the exact
-expansion. The compiled electrical witness reconstructs emitted primitive
+The Plan SHA proves the physical source. Existing runtime
+`compiled_graph_sha256` identifies Plan-plus-Julia-source lineage; it is not a
+content digest of the expansion. The distinct `expanded_graph_sha256` binds
+`plan_sha256` together with the disclosed structural content: `node_order`,
+`resolved_bindings`, and `expanded_branch_rows`, using the existing runtime
+encoder unchanged. It does not claim to cover every derived stamp matrix.
+The compiled electrical witness reconstructs emitted primitive
 pins, nets, line stations, sections, and ordered conductor rows. Its semantic
 witness reconstructs compiler hierarchy, pi-section membership, matrix-entry
 provenance, and omitted-zero records. The representation-tagged connectivity
@@ -638,6 +808,11 @@ Compiled projection remains structural baseline evidence. It contains no PTC,
 retain, transform, Schur reduction, Direct/HB response, or ParameterSet
 override. Those request-specific facts belong to `run.explain()` and verified
 analysis Results.
+
+The A/B comparisons establish structural correspondence between the expected
+snapshot or expansion and the observed scene. They do not prove that the
+trusted baseline compiler or solver is scientifically correct, and they do not
+cover ParameterSet overrides, selected Views, PTC, or numerical results.
 
 ## Fail-closed behavior
 
@@ -656,9 +831,13 @@ These are `schematic_audit` failures:
 
 - expected and reconstructed pins, nets, ground, Ports, or line conductors
   differ;
-- a branch is missing, duplicated, reversed, or attached to the wrong net;
+- a branch is missing, duplicated, attached to the wrong net, or remains
+  reversed after every explicitly permitted model-symmetry normalization;
 - RelationBlock, InterfaceBundle, Subsystem containment, single- versus
   multi-terminal classification, or CouplingRelation ownership differs;
+- a complete leaf symbol-and-label occupied box leaves its owning region,
+  enters a child region, or crosses a region boundary other than at a
+  registered electrical attachment;
 - a required coupling or omission record is not visibly and completely
   represented; or
 - a visible baseline name/value label disagrees with the captured Plan.
@@ -667,6 +846,32 @@ Both classes raise `SCNSimValidationError` with the named `stage`. They occur
 before a `CircuitDiagramResult` exists and never allocate a runtime attempt,
 receipt, artifact, or workspace entry. No warning-only path, page-wide-rail
 fallback, hidden metadata repair, or best-effort success is allowed.
+
+## Planned Tutorial rollout
+
+This section is a rollout map, not an executable Lesson or a renumbering of the
+current files. Nothing may be used in a Tutorial narrative before it has been
+taught.
+
+| Planned Lesson | Target file | Diagram learning outcome |
+|---|---|---|
+| 1 | existing Lesson 1 | Render the first zero-hint authoring diagram and distinguish electrical fidelity A, semantic fidelity B, and Human intent review C. |
+| 8 | existing Lesson 8 | Review recursive native-leaf visibility, local boundary-to-parent mapping, and nested ownership in a reused Composite. |
+| 9 — Review and customize a certified schematic | `09_review_customize_schematic.qmd` | First explain and build two resonators using only the already-taught Composite, net, ground, and Port operations. Then inspect `plan.schematic_catalog()`, compare automatic and Root-only hinted layout, and verify Plan, connectivity, and semantic digest invariance. |
+| 10 — Model a Multi-section Transmission Line | renamed `10_model_n_trace_line.qmd` | Teach RLGC meaning and head/tail conductor order before authoring two CPW sections inside one explicit feedline Composite with exposed input, tap, and output pins. The compiled diagram shows complete topology, every section, and conductor order; the audit table carries the complete matrix, provenance, and omitted-zero detail rather than cramming matrix numbers into the picture. |
+| 11 — Compensate Nonloading Probes | renamed `11_compensate_probes.qmd` | Explain the floating Subsystem's two terminals and its three declared capacitance branches before introducing the full feedline–readout–floating fixture, its neighbor bundles, and PTC. |
+| 12 — Transform and Retain Coordinates | renamed `12_transform_retain.qmd` | Continue the existing transform/retain lesson only after the physical fixture and probe compensation have been taught. |
+| 13 — Prepare Harmonic Balance | renamed `13_prepare_hb.qmd` | Continue the existing HB preparation lesson with no earlier use of untaught diagram or fixture semantics. |
+| 14 — Compare Direct and HB | renamed `14_compare_direct_hb.qmd` | Continue the existing Direct/HB comparison after both realization paths have been taught. |
+
+The current fixture contains two separate CPW occurrences. Moving them into a
+real feedline Composite changes hierarchy and therefore Plan SHA, while keeping
+the declared values and electrical connectivity unchanged. That fixture is not
+edited by this documentation slice. During later runtime alignment, the new
+Lesson 9 is inserted after Library 6, Composite 7, and reuse 8. Current Lessons
+9–11 map exactly to new Lessons 10–12, and current Lessons 12–13 map exactly to
+new Lessons 13–14. Immutable historical dev5/dev6 delivery rows keep their
+original numbering. No Tutorial file is added, renamed, or edited now.
 
 ## Human review protocol
 
@@ -703,16 +908,18 @@ couplings, and baseline quantities are the intended circuit.
 
 This document is the only current target authority for the affected scope.
 The existing renderer and old public hint classes remain temporarily reachable
-only because this is a documentation-first convergence checkpoint. After the
-Human accepts the written contract, runtime alignment must:
+only because this is a documentation-first convergence checkpoint. Delivery
+order remains:
 
-1. replace the old hint API without aliases or a compatibility encoder;
-2. implement the real certified projection and typed audit surface;
-3. remove superseded rail, opaque-Composite, packing-group, and best-effort
-   paths;
-4. validate with ephemeral probes and Human-visible diagrams; and
-5. add durable tests only after Human acceptance of the exact implementation
-   candidate.
+1. complete exact-document review of this full target;
+2. align real vertical runtime slices, replacing the old hint API without
+   aliases or a compatibility encoder and removing superseded rail,
+   opaque-Composite, packing-group, and best-effort paths;
+3. validate each coherent implementation slice with non-test probes and
+   Human-visible diagrams while retaining one integration scope;
+4. request Human acceptance of the exact combined implementation candidate;
+   and
+5. add durable stabilization tests only after that acceptance.
 
 Until that alignment is complete, current rendered diagrams must not be
 described as satisfying this target contract.

@@ -11,10 +11,11 @@ This page is the Human-accepted authority for Full V1 component authoring.
 It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
 snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
 the HB declarations taught through Lesson 13. The complete authoring scope is
-`STABILIZED` with the rest of Full V1. Typed schematic-layout hints and the
-semantic authoring renderer are a separate `CONVERGING` presentation scope;
-they neither change nor replace this physical authority. Their single target
-authority is [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+`STABILIZED` with the rest of Full V1. Catalog-resolved schematic-layout hints
+and certified authoring/compiled projections are a separate `CONVERGING`
+presentation scope; they neither change nor replace this physical authority.
+Their single target authority is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 :::
 
 ## Contract scope
@@ -220,10 +221,10 @@ Calls may repeat near separate authoring blocks. All calls assign pins to the
 same electrical ground; each call additionally preserves one endpoint-derived
 source-provenance group whose identity is independent of call order. Grouping
 does not enter the physical compile/hash, the diagram connectivity/semantic
-digests, or layout geometry. The authoring projection decides shared local
-buses from owning Subsystem, signal node, and canonical ground instead. The
-call group remains visible only in the diagram audit table. An empty call is
-invalid.
+digests, or layout geometry. Visual bus/glyph reconstruction and the separation
+of observed ground from provenance-only call groups belong only to the
+[diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
+An empty call is invalid.
 
 `CompositePlan.ground(*pins)` gives a custom composite the same authoring
 surface. It binds those child endpoints to the eventual parent Plan ground and
@@ -349,11 +350,9 @@ plan.ground(
 )
 ```
 
-The two ground endpoints share one local schematic bus and glyph because they
-are parallel branches on the same signal node inside one owning Subsystem.
-Whether they were supplied by one or several `ground()` calls changes only
-source-provenance rows in the diagram audit table; it cannot split or merge
-the visual ground bus.
+Both endpoints enter the same canonical ground. Their visual bus/glyph grammar
+and provenance-only treatment of `ground()` call grouping are defined once in
+the [diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
 
 ## General composites
 
@@ -999,8 +998,9 @@ incompatible collection of individually plausible pairwise coefficients.
 The Plan owns authoring and compiler-expanded inspection projections, but
 neither projection is another circuit definition. The replacement contract
 for automatic placement, native-symbol expansion, Port and ground grammar,
-typed relational hints, snapshot provenance, independent electrical/semantic
-reconstruction, and the code-free review packet is
+the immutable pre-render catalog and Root-only hints, snapshot provenance,
+independent electrical/semantic reconstruction, and the code-free review
+packet is
 [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
 That presentation scope is currently a documentation-first `CONVERGING`

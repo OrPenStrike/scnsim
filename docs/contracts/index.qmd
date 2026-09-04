@@ -24,8 +24,9 @@ and resolve.
   components, pins, electric nodes, ground, Ports, parameters, composites, and
   physical Plan construction.
 - [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
-  defines the certified authoring/compiled projections, automatic layout,
-  relational hints, independent audits, and code-free review protocol.
+  defines the certified authoring/compiled projections, neighbor-aware
+  relation partition, immutable pre-render catalog, Root-only hints,
+  independent audits, and code-free review protocol.
 - [V1 Runtime Contract](../v1-runtime-contract.qmd) defines Runs, Refs, Specs,
   units, reduction, Direct/HB behavior, optimization, Results, attempts,
   receipts, failure, and known limits.

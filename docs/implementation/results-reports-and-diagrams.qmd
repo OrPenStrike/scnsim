@@ -4,8 +4,9 @@ subtitle: "How does verified evidence become a Python-facing presentation?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation; semantic authoring-schematic
-layout and adaptive presentation-theme semantics are a `CONVERGING` candidate.
+**Status:** `STABILIZED` Full V1 implementation; certified authoring/compiled
+schematic layout and adaptive presentation-theme semantics are a `CONVERGING`
+candidate.
 
 ## Separate materialized values from analysis evidence
 
@@ -102,11 +103,12 @@ same trace index.
 Circuit diagrams have a separate `CONVERGING` target authority:
 [Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
 That contract owns Plan-snapshot binding, representation-specific authoring
-and compiled lowerings, native Composite expansion, automatic and hinted
+and compiled lowerings, native Composite expansion, neighbor-aware relation
+partition, the immutable pre-render catalog, automatic and Root-only hinted
 layout, routing, Port and ground projection, independent electrical/semantic
-reconstruction audits, digests, provenance, and code-free review. Runtime
-alignment is pending; this implementation page does not certify the current
-renderer or restate a second layout design.
+reconstruction audits, diagram identities, provenance, and code-free review.
+Runtime alignment is pending; this implementation page does not certify the
+current renderer or restate a second layout design.
 
 This page continues to own only the presentation boundary shared by verified
 results, reports, and diagrams: strict `Theme` selection, palette application,

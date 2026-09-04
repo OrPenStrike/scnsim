@@ -18,9 +18,9 @@ documentation, implementation, durable cross-slice tests, and validation
 agree. This lifecycle state does not imply a release, main promotion, root
 pin, or consumer migration.
 
-The separate semantic authoring-schematic layout and adaptive presentation-
-theme scope is a `CONVERGING` candidate. It changes only how physical
-authority and already-materialized figures and reports are presented; it does
+The separate certified authoring/compiled schematic layout and adaptive
+presentation-theme scope is a `CONVERGING` candidate. It changes only how
+physical authority and already-materialized figures and reports are presented; it does
 not reopen Full V1 numerical, workspace, or identity semantics. Its single
 target authority is
 [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd);
@@ -2288,8 +2288,9 @@ Authoring and compiled schematics are read-only Plan projections rather than
 reduced Refs, solver results, or alternate topology authorities. Their
 replacement product contract is
 [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
-It defines the target `CircuitDiagramSpec`, relational manual hints,
-`CircuitDiagramAudit`, Plan/compiled digests, complete visual alphabet,
+It defines the target `CircuitDiagramSpec`, immutable pre-render
+`SchematicCatalog`, Root-only relational hints, `CircuitDiagramAudit`,
+Plan/compiler/expanded/presentation identities, complete visual alphabet,
 independent electrical and semantic reconstruction, provenance region, and
 code-free Agent review packet.
 
