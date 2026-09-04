@@ -2315,6 +2315,15 @@ the linked layout contract. Until runtime alignment is complete, a current
 diagram is useful diagnostic output but is not a certified projection under
 that contract.
 
+The target failure boundary has two explicit preflight stages. Invalid hints,
+unplaceable required marks, collisions, illegal obstacle crossings, broken
+conductive paths, and ambiguous crossing grammar raise
+`SCNSimValidationError(stage="schematic_layout")`. A mismatch between the
+independently expected and reconstructed electrical or semantic manifest raises
+`SCNSimValidationError(stage="schematic_audit")`. Either failure returns no
+`CircuitDiagramResult` and allocates no runtime attempt, receipt, artifact, or
+workspace entry.
+
 ## Failure and evidence contract
 
 SCNSim-specific failures derive from `SCNSimError` through exactly five categories:
@@ -2385,7 +2394,8 @@ SCNSim fails closed for:
   inductance matrix that is not reciprocal positive definite;
 - an unsupported component expansion or missing Direct/HB realization;
 - an incomplete/invalid Plan requested for schematic rendering, an invalid
-  diagram representation/theme, or an unauditable compiled expansion;
+  diagram representation/theme, a `schematic_layout` preflight failure, a
+  `schematic_audit` manifest mismatch, or an unauditable compiled expansion;
 - a bare physical number, unknown unit, foreign registry, or dimensionality
   mismatch;
 - a ParameterSet containing unknown refs, non-finite values, or another Plan

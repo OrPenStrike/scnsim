@@ -63,7 +63,7 @@ The snapshot records the following exact data before Plan sealing:
 |---|---|
 | Child hierarchy | Each child `component_path`, catalog/factory schema identity, ordered pin schema, public parameters, and either primitive leaf data or a nested snapshot. |
 | Private topology | Every private node, its complete endpoint set of `(component_path, pin)`, and every unexposed child endpoint. |
-| Canonical ground | The complete set of grounded endpoints; each local `ground()` group is retained in the diagram projection with its endpoint-derived identity. |
+| Canonical ground | The complete set of grounded endpoints; each local `ground()` call group is retained only as endpoint-derived source provenance for the diagram audit table. |
 | Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to its `ParameterSpec`/baseline/binding consumers, and public inductive-branch ID to one oriented expanded branch. Public parameters retain the factory declaration order; map-like surfaces remain canonically sorted. |
 | Binding graph | Each child physical slot is a constant, public-parameter identity, or declarative `AffineMap`; every repeated consumer remains a separate fan-out edge. |
 
@@ -75,10 +75,11 @@ remain snapshot evidence and cannot be selected by a parent or Runtime Spec.
 
 The canonical physical snapshot, including all private children, paths,
 endpoints, public maps, baselines, and bindings, contributes to the Plan hash.
-The complete local ground-group list is preserved for authoring/compiled
-diagrams but excluded from that physical hash: its grouping cannot change the
-canonical ground or compiled operator. This matches the existing Plan identity
-boundary in [Plan Sealing and Canonical Identity](plan-sealing-and-identity.qmd#separate-three-identities).
+The complete local ground-call list is preserved only as authoring provenance
+and is excluded from the physical hash and diagram connectivity/semantic
+digests: it cannot change canonical ground, the compiled operator, or diagram
+geometry. This matches the existing Plan identity boundary in
+[Plan Sealing and Canonical Identity](plan-sealing-and-identity.qmd#separate-three-identities).
 
 ## Bind parameters as data
 
@@ -147,9 +148,11 @@ placed, routed, labeled, certified, or reviewed as a diagram.
 
 Those projection rules now have one `CONVERGING` target authority:
 [Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
-It requires both projections to preserve snapshot paths, private topology,
-ground membership, parameter fan-out, and omitted-zero evidence while keeping
-hidden children unavailable as public authoring handles. PTC, transforms,
+It requires each representation-specific projection to preserve snapshot
+paths, private topology, canonical-ground membership, parameter fan-out, and
+omitted-zero evidence while keeping hidden children unavailable as public
+authoring handles. Authoring and compiled projections share a certification
+architecture but use different lowerings and semantic manifests. PTC, transforms,
 reduction, selected Views, and numerical results remain request/result evidence
 rather than Plan-diagram content. Runtime alignment to that target is pending.
 

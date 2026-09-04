@@ -217,10 +217,12 @@ plan.ground(
 ```
 
 Calls may repeat near separate authoring blocks. All calls assign pins to the
-same electrical ground; each call additionally preserves one local schematic
-group whose endpoint-derived identity is independent of call order. Grouping
-does not enter the physical compile/hash. It only lets the authoring projection
-draw those endpoints on one local bus with one ground glyph. An empty call is
+same electrical ground; each call additionally preserves one endpoint-derived
+source-provenance group whose identity is independent of call order. Grouping
+does not enter the physical compile/hash, the diagram connectivity/semantic
+digests, or layout geometry. The authoring projection decides shared local
+buses from owning Subsystem, signal node, and canonical ground instead. The
+call group remains visible only in the diagram audit table. An empty call is
 invalid.
 
 `CompositePlan.ground(*pins)` gives a custom composite the same authoring
@@ -348,8 +350,10 @@ plan.ground(
 ```
 
 The two ground endpoints share one local schematic bus and glyph because they
-were declared in the same `ground()` call. Separate calls would draw separate
-local glyphs while remaining the same electrical ground.
+are parallel branches on the same signal node inside one owning Subsystem.
+Whether they were supplied by one or several `ground()` calls changes only
+source-provenance rows in the diagram audit table; it cannot split or merge
+the visual ground bus.
 
 ## General composites
 
@@ -602,11 +606,12 @@ component, and a sealed Plan never re-runs a factory.
 The frozen boundary includes every public and hidden child, child pin, private
 and exposed node, canonical-ground endpoint, public parameter baseline and
 binding map, explicitly exposed pin/coordinate, and oriented inductive branch.
-The physical private expansion contributes to Plan identity. Local ground
-groups are retained completely for diagram evidence but remain excluded from
-the physical hash because they only choose local glyph grouping. The maintainer
-snapshot format, finite nesting rule, and one data-only Julia expansion path
-are fixed in [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+The physical private expansion contributes to Plan identity. Local ground-call
+groups are retained completely as diagram-audit source provenance but remain
+excluded from the physical hash and never choose glyph grouping or other
+geometry. The maintainer snapshot format, finite nesting rule, and one
+data-only Julia expansion path are fixed in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
 ### Interdigitated capacitor
 
@@ -989,7 +994,7 @@ incompatible collection of individually plausible pairwise coefficients.
 
 ## Inspection and evidence
 
-### Inspect the authoring circuit or complete compiled graph
+### Inspect authoring or compiler-expanded structure
 
 The Plan owns authoring and compiler-expanded inspection projections, but
 neither projection is another circuit definition. The replacement contract
@@ -1017,8 +1022,8 @@ writing the workspace. For component authoring it shows:
 - every Library exact identity and public component schema;
 - composite hierarchy and primitive/backend expansion;
 - component-pin to electric-node/ground mapping, including Public, anonymous
-  Internal, Port-promoted, built-in-grounded, and explicit local-group
-  identities;
+  Internal, Port-promoted, built-in-grounded, and source-provenance-only
+  explicit ground-call group identities;
 - every logical Port's node attachment, role, reference impedance,
   one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
@@ -1074,9 +1079,7 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
   node; wiring a `CoordinateRef`; exposing a foreign node; or hidden state
   referenced as consumer API; or an unexposed one-pin child endpoint;
-- an incomplete or invalid Plan passed to `render_schematic()`; an unknown
-  representation/theme; or a compiled expansion that cannot preserve exact
-  section, node, conductor, matrix, zero-term, or outer-attachment evidence;
+- an incomplete or invalid Plan passed to `render_schematic()`;
 - an `AffineMap` with incompatible units, non-finite coefficients, unordered or
   dimensionally invalid support, a baseline outside support, or a mapped
   nonphysical child value;
@@ -1087,6 +1090,13 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a coupling coefficient that is not a finite SCNSim-registry dimensionless
   Quantity or has `abs(k) >= 1`, or a complete bound inductance matrix that is
   not reciprocal positive definite.
+
+After the physical Plan input is valid, diagram-specific representation,
+Theme, hint, placement, routing, and certification failures belong exclusively
+to the linked layout contract. They fail as
+`SCNSimValidationError(stage="schematic_layout")` or
+`SCNSimValidationError(stage="schematic_audit")` and do not create runtime
+evidence.
 
 Exact `0 * u.F` is the one valid zero for optional `junction_capacitance`.
 Zero series resistance or conductance in an RLGC model may be valid when the

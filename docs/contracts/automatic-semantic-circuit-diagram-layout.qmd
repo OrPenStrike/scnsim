@@ -31,7 +31,7 @@ The promise has three deliberately separate parts:
 | Audit | Question | Product responsibility |
 |---|---|---|
 | A. Electrical fidelity | Do the emitted symbols, pins, wires, ground returns, Ports, and coupled branches reconstruct the exact Plan connectivity? | Mandatory independent renderer audit. |
-| B. Semantic fidelity | Do the visible Subsystems, parallel relations, interfaces, differential bundles, and mutual couplings reconstruct the intended presentation IR? | Mandatory independent renderer audit and complete visual alphabet. |
+| B. Semantic fidelity | Do the visible Subsystems, parallel relations, single- or multi-terminal interfaces, and mutual couplings reconstruct the intended presentation IR? | Mandatory independent renderer audit and complete visual alphabet. |
 | C. Design intent | Is this exact Plan the circuit the Human intended the Agent to build? | Human review of the certified diagram and review table. |
 
 Passing A and B means that the diagram does not lie about the Plan. It does not
@@ -55,29 +55,35 @@ result refer to the same physical Plan only when their complete
 The Plan SHA binds the physical baseline declaration, including component
 hierarchy, topology, the canonical union of grounded endpoints, parameters,
 source-unit provenance, Ports, and couplings. Separate `ground()` call groups
-may remain diagram/audit evidence without entering the physical Plan hash;
-they can therefore change the connectivity certificate's ground-group record
-without claiming a different simulated circuit. Presentation choices never
-enter Plan identity.
+are source-provenance rows in the audit table only. They do not control
+geometry and do not enter the Plan, connectivity, or semantic digest. Every
+grounded endpoint still reconstructs to the one canonical Plan ground.
+Presentation choices never enter Plan identity.
 
-## One semantic projection pipeline
+## One certification shell, two projection pipelines
 
-Authoring and compiled diagrams use one certified pipeline with two independent
-branches:
+Authoring and compiled diagrams share the same fail-closed certification
+architecture, not one lowering or one semantic IR:
 
 ```text
 canonical Plan snapshot
-├─> independent expected electrical and semantic manifests
-└─> semantic lowering -> placement -> routing -> actual emitted geometry
-                                      ├─> electrical reconstruction audit (A)
-                                      └─> semantic reconstruction audit (B)
-                                                       |
-                                              Theme / SVG serialization
+├─> expected authoring manifests
+│   authoring semantic lowering -> placement -> routing -> emitted authoring scene
+│                                                         ├─> authoring A witness
+│                                                         └─> authoring B witness
+└─> compiler-expanded graph -> expected compiled manifests
+    compiled lowering -> placement -> routing -> emitted compiled scene
+                                             ├─> compiled A witness
+                                             └─> compiled B witness
+                                                                  |
+                                                         Theme / SVG serialization
 ```
 
-The expected manifests are derived directly from the canonical Plan document.
-The observed manifests are reconstructed after placement from the objects that
-were actually emitted. The reconstruction code may read only:
+The expected authoring manifests are derived directly from the canonical Plan
+document. Expected compiled manifests are derived from the exact expanded
+graph whose digest is bound back to that Plan. The observed manifests are
+reconstructed after placement from the objects that were actually emitted.
+The reconstruction code may read only:
 
 - native-symbol types and their transformed electrical anchors;
 - CPW/MTL boundary anchors and conductor rows;
@@ -85,7 +91,8 @@ were actually emitted. The reconstruction code may read only:
 - Port boundary, circuit, and load anchors;
 - ground-glyph attachment buses;
 - T-junction and wire-jump geometry;
-- RelationBlock terminals; and
+- RelationBlock and CouplingRelation terminals;
+- emitted SubsystemRegion extents and identity anchors; and
 - visible IDs, parameter labels, and coupling marks.
 
 It must not reuse the manifest or bundle enumeration that drove placement. One
@@ -99,8 +106,10 @@ The private IR separates electrical identity from drawing geometry.
 
 ### ElementBlock
 
-Every physical R, L, C, G, Josephson junction, and junction capacitance is an
-orientation-aware native `ElementBlock`. A block owns:
+Every authoring physical R, L, C, Josephson junction, and junction capacitance
+is an orientation-aware native `ElementBlock`. Conductance `G` is a native
+compiled RLGC/pi-ladder leaf, not a separate authoring-catalog primitive. A
+block owns:
 
 - the full component path and primitive kind;
 - ordered physical pins and electrical anchors;
@@ -118,45 +127,100 @@ their direction. Name and value are measured as separate rows with at least
 ### SubsystemBlock
 
 A `SubsystemBlock` preserves component hierarchy, attachment ownership, and
-relative packing. It is normally invisible: SCNSim does not replace a
-resonator, IDC, SQUID, or custom Composite with a generic rectangle. Each
-Subsystem ID is shown once, while native leaves use the shortest unique local
-name plus a separate value row. Full canonical component paths remain
-available in audit evidence and `run.explain()`.
+relative packing. The Subsystem tree contains exactly:
+
+1. the root `CircuitPlan`;
+2. every built-in or user-authored Composite occurrence; and
+3. every CPW/MTL transmission-line occurrence.
+
+The parent of a non-root Subsystem is the nearest strict Composite ancestor in
+its canonical component path, or the Plan root when no such ancestor exists.
+Every native leaf is owned by its nearest enclosing Subsystem. A CPW/MTL block
+is a terminal boxed Subsystem and owns its conductor anchors rather than an
+authoring expansion. A Plan-level primitive remains owned by the root while
+the parent-scope classification below assigns it exactly one internal or
+interface presentation role. No leaf, relation, or line occurrence may appear
+in two Subsystems.
+
+A Subsystem is not replaced by a visible rectangle. It nevertheless emits one
+non-conductive `SubsystemRegion` with a measured occupied extent and one
+identity anchor. The root is the unique outermost region and carries an
+emitted root-region kind even when its provenance text is hidden. Composite
+regions follow component-path nesting; sibling regions are disjoint. Each
+Composite ID is visible exactly once in a reserved region header, the CPW/MTL
+box title supplies its Subsystem ID, and the root Plan ID appears in the
+provenance region when provenance is visible. Native leaves use the shortest
+name that is unique inside their owning region plus a separate value row. Full
+canonical paths remain in the audit table and `run.explain()`.
 
 Every built-in and user-authored Composite recursively expands its sealed
-snapshot into native R/L/C/G/JJ symbols. Hidden child handles remain
-unavailable to authoring code even though the sealed physical branches are
-visible. CPW/MTL transmission line is the only boxed custom electrical symbol.
+snapshot into native R/L/C/JJ symbols. Hidden child handles remain unavailable
+to authoring code even though the sealed physical branches are visible.
+CPW/MTL transmission line is the only boxed electrical symbol.
 
 ### RelationBlock
 
-Parallel leaves with the same unordered endpoint pair form one
-`RelationBlock`. Examples include C parallel with L and a Josephson junction
-parallel with its Cj. A RelationBlock owns its two terminal buses, native
-leaves, labels, and any local ground glyph. It prevents parallel branches from
-being placed as a false series chain.
+Within one owning Subsystem, parallel leaves with the same canonical unordered
+endpoint pair form one `RelationBlock`. Examples include C parallel with L and
+a Josephson junction parallel with its Cj. A RelationBlock owns its two
+terminal buses, native leaves, labels, and any local ground glyph. Relation
+formation precedes interface classification, so a parent-owned RelationBlock
+may subsequently be one interface member without duplicating its leaves. A
+remaining nonparallel primitive is classified once by the same parent-scope
+rules. This prevents parallel branches from being placed as a false series
+chain.
 
 ### InterfaceBundle and attachments
 
-An `InterfaceBundle` is derived from the Plan; it is not a second topology
-declaration. It groups the top-level primitive or relation members that connect
-two Subsystems, or that connect a Port boundary to one Subsystem.
-Its canonical Plan-derived identity is visible exactly once in the diagram and
-is the identity reconstructed by the semantic audit.
+An `InterfaceBundle` is a parent-scope, Plan-derived hyperedge; it is not a
+second topology declaration. Each parent scope derives bundles as follows:
 
-Attachment geometry is decided per Public `ElectricNode`, not from the total
-number of neighbors of a whole Subsystem:
+1. collapse each immediate child Subsystem to its electrically exposed public
+   pin sites, or to its ordered CPW/MTL conductor anchors;
+2. treat Ports and exposed parent-boundary sites as additional stopping sites;
+3. form a connector graph from parent-owned primitives or RelationBlocks and
+   every parent-owned ElectricNode that joins them; and
+4. make each maximal connected connector component incident to at least two
+   distinct stopping sites one InterfaceBundle.
+
+The connector component's primitives and RelationBlocks are its `members`.
+When two or more stopping sites meet only through the same parent-owned node,
+that node alone forms a memberless shared-node stitch bundle with
+`members=()`. A Public stitch node is visible and selectable; an anonymous
+stitch remains certified but has no Manual-API selector handle.
+Connectors sharing one node, such as two couplers leaving one `readout_node`,
+remain one topology-connected bundle. Physically disconnected connector
+components remain separate bundles even when they touch the same set of
+Subsystems.
+
+Every member is classified exactly once: a connector crossing boundary sites
+belongs to its InterfaceBundle; otherwise it remains internal to its owning
+Subsystem. Canonical ground is never a stopping site or neighboring
+Subsystem. A public `CoordinateRef` is analysis-coordinate evidence, not an
+electrical boundary site. No interface rule may invent a node, pin, member, or
+attachment.
+
+The canonical bundle identity includes its parent scope, canonically sorted
+endpoint-site identities, members, and canonical node identities. The visible compact ID is
+derived from the endpoint Subsystem, Port, or parent-boundary Public-node IDs. If several
+bundles have the same visible participants, a deterministic ordinal sorted by
+canonical member/node key disambiguates them. The complete identity remains in
+the audit table.
+
+Attachment geometry is decided per derived bundle endpoint site, not from the
+total number of neighbors of a whole Subsystem:
 
 - one single-ended bundle receives one centered outward anchor;
 - two single-ended bundles receive opposite inline anchors on the same node;
 - three or more bundles receive ordered anchors on a short boundary bus; and
-- a bundle touching several Public nodes is differential or multi-terminal,
-  so its terminals face the peer Subsystem together as a set.
+- a bundle touching several terminal sites is multi-terminal, so all terminals
+  at one endpoint form one aggregate attachment and face the peer together.
 
-Top-level two-terminal primitives bridging two Subsystem public nodes belong
-to that interface. Canonical ground is never counted as a neighboring
-Subsystem. No attachment rule may invent another ElectricNode or public pin.
+The renderer certifies only single-terminal versus multi-terminal structure.
+It never infers a differential pair from IDs, geometry, electrical symmetry,
+or a later `transform_pair()` request. Differential meaning remains a Human
+Design Target interpretation until a separate authoring-semantic scope defines
+explicit physical metadata.
 
 ### NetBus and NetTap
 
@@ -171,16 +235,19 @@ than a second node dot.
 
 ### Native branches and ground
 
-R, L, C, G, Josephson junctions, and Cj are drawn with native electrical
-symbols. IDC is shown as its terminal-to-terminal capacitance plus both
+Authoring R, L, C, Josephson junctions, and Cj are drawn with native electrical
+symbols. Compiled RLGC leaves additionally use native G symbols. IDC is shown
+as its terminal-to-terminal capacitance plus both
 terminal-to-reference shunts. Grounded and floating resonators expose their
 actual parallel branches. A SQUID exposes both junctions, each Cj, and finite
 loop inductance.
 
-Parallel grounded branches attached to the same signal node and ground group
-share a short local bottom bus and one ground glyph. Shunts belonging to
-different signal nodes receive separate ground glyphs even though every glyph
-maps to the one canonical Plan ground. Canonical ground is never a page-wide
+Within one owning Subsystem, parallel grounded branches attached to the same
+signal node share a short local bottom bus and one ground glyph. Shunts in
+different Subsystems or on different signal nodes receive separate ground
+glyphs even though every glyph maps to the one canonical Plan ground.
+`ground()` call grouping is shown only as source provenance in the audit table;
+it cannot merge or split visual buses. Canonical ground is never a page-wide
 layout vertex or rail.
 
 ### CPW and MTL
@@ -219,9 +286,19 @@ Ports may remain tangent to the bus.
 - Different nets never use an ordinary cross; an unavoidable crossing uses a
   wire jump.
 - Wires may enter or leave blocks only through registered anchors and may not
-  cross a symbol, label, Port block, or Subsystem occupied region.
+  cross a symbol, label, or Port block. A wire may occupy its owning Subsystem
+  region and cross an intended Subsystem boundary only through a registered
+  attachment anchor; an unrelated wire may not traverse that region.
 
-### Mutual inductance
+### CouplingRelation and mutual inductance
+
+Every declared mutual inductance becomes one non-conductive
+`CouplingRelation`, separate from conductive InterfaceBundles. Its two oriented
+inductive branches retain their nearest Subsystem owners. The relation itself
+is owned by the lowest common ancestor of those owners; it is internal when
+both owners match and cross-Subsystem otherwise. Its canonical identity binds
+that owner, both oriented branch identities, and signed `k`. Neither case
+changes electrical nets.
 
 When both inductors participate only in one coupling and can remain adjacent
 without changing public-terminal order or violating occupied boxes, they are
@@ -231,7 +308,9 @@ drawn as adjacent parallel inductors with signed `k` between them and derived
 Otherwise the diagram contains a non-optional coupling legend that identifies
 both oriented branch paths, signed `k`, and optional derived `M`. A mutual
 coupling with neither an adjacent mark nor a complete visible legend fails the
-semantic audit. Drawing placement never determines the physical sign.
+semantic audit. This same rule applies to every declared SQUID-arm or loop
+coupling; proximity never implies an undeclared `k`, and no declared `k` may be
+left implicit. Drawing placement never determines the physical sign.
 
 ## Automatic placement and routing
 
@@ -253,12 +332,20 @@ Measured symbol, label, legend, and provenance bounds may only increase these
 spacings. No fixture ID, Tutorial name, component ID, hand-authored coordinate,
 or public scale knob may bypass the metric system.
 
-Each connected panel is decomposed into articulation and biconnected blocks.
-All distinct `terminated` Ports participate in the connecting backbone;
-`nonloading_probe` Ports remain peripheral. A panel with fewer than two
-terminated Ports roots at the first Port or earliest Public node. Cycles remain
-biconnected semantic blocks rather than being broken by an arbitrary pairwise
-path. Disconnected circuits are packed as separate panels.
+Each connected panel is decomposed into articulation and biconnected blocks
+after constructing its Subsystem/Relation/Interface quotient graph. The
+weighted diameter of the resulting block-cut tree supplies a deterministic
+reading spine; it maximizes covered Subsystem and Interface blocks, then uses
+Plan declaration order and exact IDs as tie breakers. A biconnected cycle stays
+one semantic block and chooses its internal orientation by the same canonical
+ordering rather than being broken into a false tree.
+
+Ports are boundary sites attached after that semantic spine exists. A
+`terminated` role may prefer an exterior inline side and a
+`nonloading_probe` role prefers a peripheral side, but neither role, Port
+count, nor first declaration may define topology or select the root. A panel
+with no InterfaceBundle lays out its root-owned relations by the same
+block-cut rule. Disconnected circuits are packed as separate panels.
 
 Placement reserves complete ElementBlock, RelationBlock, InterfaceBundle,
 Port, label, and legend bounds. Rows, columns, boundary buses, and routing lanes
@@ -328,17 +415,30 @@ bundle identity remains the visible semantic identifier and digest input.
 Changing only the selector ID therefore cannot change the certified semantic
 manifest.
 
-`members` and `nodes` cannot both be empty. Their combined selector is an
-intersection and must match exactly one InterfaceBundle already derived from
-the same Plan. Each `members` entry is a top-level `ComponentInstance`; each
-`nodes` entry is a Public `ElectricNodeRef`. Nodes disambiguate genuine
-multi-terminal relations; they do not declare a net or route. Two interface
-selectors may not select the same derived bundle.
+`members` and `nodes` cannot both be empty, and neither tuple may contain a
+duplicate. For a derived bundle `b`, `public_members(b)` is the flattened set
+of public parent-scope component handles represented by its primitive or
+RelationBlock members. The selector candidate set is exactly:
 
-An attachment selects exactly one existing public/top-level endpoint of its
-interface. A component endpoint means the bundle's attachment to that
-Subsystem; a node endpoint means its attachment at that Public node. If `at`
-matches neither or more than one endpoint, validation fails.
+```text
+{b | set(members) <= public_members(b) and set(nodes) <= public_nodes(b)}
+```
+
+The intersection must contain exactly one InterfaceBundle already derived
+from the same Plan. Each `members` entry is a public parent-scope
+`ComponentInstance`; each `nodes` entry is a Public `ElectricNodeRef`. A
+nodes-only selector is the public way to select a memberless Public-node
+stitch. Nodes can also disambiguate a multi-terminal bundle; they do not
+declare a net or route. An anonymous memberless stitch remains automatic-only
+because it intentionally has no public handle. Two interface selectors may
+not select the same derived bundle.
+
+An attachment selects exactly one existing public parent-scope endpoint site
+of its interface. A component endpoint means the bundle's attachment to that
+Subsystem; a node endpoint means its attachment at that Public node. A
+multi-terminal Subsystem endpoint is one aggregate site: its terminals cannot
+be selected, ordered, or placed independently. If `at` matches neither or more
+than one endpoint site, validation fails.
 
 A route contains at least two distinct points and defines only primary reading
 order. Every consecutive point pair must already have one unique connecting
@@ -357,10 +457,11 @@ raise `SCNSimValidationError(stage="schematic_layout")`. Compiled diagrams
 reject authoring layout hints with `ValueError`.
 
 `layout=None` and hinted layouts pass through the same placement, routing, and
-independent audits. They must produce identical connectivity and semantic
-digests. When runtime alignment begins, these types replace `SchematicPath`,
-`SchematicGroup`, and `branch_order` completely; there is no alias, compatibility
-encoder, or migration path.
+independent audits. For the same Plan snapshot and representation they must
+produce identical connectivity and semantic digests. When runtime alignment
+begins, these types replace `SchematicPath`, `SchematicGroup`, and
+`branch_order` completely; there is no alias, compatibility encoder, or
+migration path.
 
 ## Independent audits and digests
 
@@ -369,10 +470,10 @@ encoder, or migration path.
 The observed electrical manifest normalizes:
 
 - every native branch kind, full path, ordered pin, and reconstructed net;
-- every ground return and local-group membership;
+- every ground return to canonical Plan ground;
 - every Port attachment, role, Z0, and node-to-reference orientation;
 - every CPW/MTL conductor, reference, head/tail attachment, and row order;
-- every mutually coupled oriented branch pair; and
+- every CouplingRelation's mutually coupled oriented branch pair; and
 - every exact-zero branch omitted from visible geometry.
 
 Its canonical digest is `connectivity_sha256`. The observed manifest must
@@ -381,22 +482,26 @@ without complete ordered-pin and orientation evidence is insufficient.
 
 ### Semantic reconstruction (B)
 
-The observed semantic manifest reconstructs:
+The authoring observed semantic manifest reconstructs:
 
-- Subsystem hierarchy and each visible Subsystem identity;
+- the unique root role and nested SubsystemRegions, their visible non-root
+  identities, and their parent/child containment;
+- every leaf owner by assigning its identity anchor to the smallest containing
+  SubsystemRegion, then combining that region path with its unique local name;
 - RelationBlock endpoints and native members;
-- InterfaceBundle endpoints, member branches, and single-ended versus
-  differential/multi-terminal classification;
+- InterfaceBundle parent scope, endpoint sites, member branches, Public nodes,
+  and single-terminal versus multi-terminal classification;
 - Port-boundary ownership; and
-- mutual-coupling presentation mode and visible identity.
+- CouplingRelation branch ownership, presentation mode, and visible identity.
 
 Its canonical digest is `semantic_sha256`. A parallel relation drawn as series,
-a differential interface drawn as unrelated single-ended branches, an omitted
-coupling mark, or an ambiguous ownership label fails this audit even when
-electrical connectivity happens to be correct. Adjacent-inductor and visible-
-legend coupling presentations normalize to the same coupling identity; their
-geometric presentation mode is audit evidence but is not part of the semantic
-digest.
+a multi-terminal interface drawn as unrelated single-terminal branches, an
+omitted coupling mark, or an ambiguous ownership region or label fails this
+audit even when electrical connectivity happens to be correct. The witness
+reads emitted SubsystemRegions and identity anchors; it cannot read the
+placement ownership table. Adjacent-inductor and visible-legend coupling
+presentations normalize to the same coupling identity; their geometric
+presentation mode is audit evidence but is not part of the semantic digest.
 
 ### Geometry and label validity
 
@@ -408,8 +513,11 @@ Plan values and source-unit provenance selected for display.
 
 Theme, hint choice, provenance visibility, padding, and equivalent geometric
 routing are excluded from the Plan, connectivity, and semantic digest
-preimages. Each digest uses a schema-tagged canonical encoding so a future
-meaning change cannot silently reuse an old digest.
+preimages. Every digest preimage includes its `authoring` or `compiled`
+representation tag. Invariance is required across Theme and hints within one
+representation; authoring and compiled connectivity or semantic digests are
+not required to match one another. Each digest uses a schema-tagged canonical
+encoding so a future meaning change cannot silently reuse an old digest.
 
 ## Target Result and presentation surface
 
@@ -489,7 +597,9 @@ has no standalone visible provenance; this is an explicit presentation choice.
 printing the Plan's expected manifest a second time. It contains:
 
 - Plan identity and full digests;
-- Public nodes, exact endpoints, and ground groups;
+- Public nodes, exact endpoints, and canonical-ground returns;
+- source `ground()` call groups as provenance-only rows, explicitly excluded
+  from geometry and digest inputs;
 - Ports, roles, Z0, and orientation;
 - InterfaceBundle endpoints and members;
 - RelationBlock endpoints and native leaves;
@@ -504,7 +614,9 @@ compiled zero terms.
 
 ## Compiled projection
 
-Compiled diagrams perform two certified comparisons:
+Compiled diagrams use the same expected-versus-observed witness architecture
+but never reuse authoring Subsystem, InterfaceBundle, attachment, or placement
+rules. They perform two representation-specific certified comparisons:
 
 ```text
 Plan snapshot -> compiler expanded graph -> expected compiled manifest
@@ -513,8 +625,12 @@ Plan snapshot -> compiler expanded graph -> expected compiled manifest
 ```
 
 The Plan SHA proves the source; `compiled_graph_sha256` proves the exact
-expansion; the reconstructed connectivity and semantic digests prove the
-visible compiled drawing. A large ladder may use deterministic pages or
+expansion. The compiled electrical witness reconstructs emitted primitive
+pins, nets, line stations, sections, and ordered conductor rows. Its semantic
+witness reconstructs compiler hierarchy, pi-section membership, matrix-entry
+provenance, and omitted-zero records. The representation-tagged connectivity
+and semantic digests prove the visible compiled drawing; they are not aliases
+for the authoring digests. A large ladder may use deterministic pages or
 panels, but it cannot truncate sections, conductor rows, matrix entries,
 attachments, or omitted-zero evidence.
 
@@ -541,14 +657,16 @@ These are `schematic_audit` failures:
 - expected and reconstructed pins, nets, ground, Ports, or line conductors
   differ;
 - a branch is missing, duplicated, reversed, or attached to the wrong net;
-- RelationBlock, InterfaceBundle, Subsystem, or differential classification
-  differs;
+- RelationBlock, InterfaceBundle, Subsystem containment, single- versus
+  multi-terminal classification, or CouplingRelation ownership differs;
 - a required coupling or omission record is not visibly and completely
   represented; or
 - a visible baseline name/value label disagrees with the captured Plan.
 
-No warning-only path, page-wide-rail fallback, hidden metadata repair, or
-best-effort success is allowed.
+Both classes raise `SCNSimValidationError` with the named `stage`. They occur
+before a `CircuitDiagramResult` exists and never allocate a runtime attempt,
+receipt, artifact, or workspace entry. No warning-only path, page-wide-rail
+fallback, hidden metadata repair, or best-effort success is allowed.
 
 ## Human review protocol
 
@@ -556,8 +674,8 @@ An Agent submitting a `CircuitPlan` supplies a code-free review packet:
 
 1. the default authoring diagram with baseline values and provenance visible;
 2. the Net/BOM table from `diagram.audit.show()`;
-3. a compiled diagram and compiled audit table whenever CPW/MTL or another
-   compiler expansion is present; and
+3. a compiled diagram and compiled audit table when CPW/MTL matrix or
+   pi-ladder expansion must be reviewed, especially for `N > 1`; and
 4. the applicable Design Target against which the Human judges intent.
 
 Machine audit guarantees A and B. The Human uses the certified visual grammar

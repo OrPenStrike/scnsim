@@ -14,7 +14,9 @@ Human-`ACCEPTED` and `STABILIZED`. Their documentation, implementation,
 durable cross-slice tests, and validation agree. This is not a release claim.
 The semantic authoring-schematic layout and adaptive diagram/figure/report
 theme are a separate `CONVERGING` presentation candidate and do not alter
-those computational semantics.
+those computational semantics. Until its runtime alignment is complete, the
+diagram cells in this course are diagnostic views rather than certified
+electrical/semantic projection evidence.
 :::
 
 ## Author and analyze
@@ -127,7 +129,7 @@ How does a reusable subsystem connect to a larger circuit?
 
 How do I preserve full RLGC matrices through π-section lowering?
 
-<p class="course-card-outcome"><strong>Produces</strong> · A complete compiled ladder diagram.</p>
+<p class="course-card-outcome"><strong>Produces</strong> · A diagnostic compiled ladder view; certified projection remains pending.</p>
 :::
 ::::
 
