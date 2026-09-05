@@ -58,6 +58,7 @@ from .errors import (
     WorkspaceVersioningDowngradeForbidden,
 )
 from .io import load_q2d_rlgc
+from .presentation import Theme
 from .results import (
     AnalysisResult,
     BiasState,
@@ -104,7 +105,11 @@ from .specs import (
     ReportSpec,
     ResidueNormalizedCouplingSpec,
     ResponseElementSpec,
+    DiagramSide,
     SParameterTrace,
+    SchematicGroup,
+    SchematicLayout,
+    SchematicPath,
     TransferZeroSpec,
 )
 
@@ -133,6 +138,7 @@ __all__ = [
     "DirectResponseFormationError",
     "DirectSolveResult",
     "DirectSolveSpec",
+    "DiagramSide",
     "ElectricNodeRef",
     "EliminatedBlockSolveFailure",
     "EvidenceIntegrityError",
@@ -190,9 +196,13 @@ __all__ = [
     "SCNSimStateError",
     "SCNSimValidationError",
     "SParameterTrace",
+    "SchematicGroup",
+    "SchematicLayout",
+    "SchematicPath",
     "ScaffoldUnavailableError",
     "ScatteringMatrixResult",
     "TraceResult",
+    "Theme",
     "TransferZeroSpec",
     "UnsupportedRuntimePlatformError",
     "UnsupportedSingularCapacitanceForDiagonalRootV1",

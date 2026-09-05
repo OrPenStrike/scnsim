@@ -25,6 +25,7 @@ project:
     - docs/concepts/direct-and-hb-realizations.qmd
     - docs/concepts/units-parameters-and-optimization.qmd
     - docs/contracts/index.qmd
+    - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
     - docs/implementation/system-architecture.qmd
@@ -136,6 +137,8 @@ website:
           contents:
             - text: "Component Authoring Contract"
               href: docs/component-authoring.qmd
+            - text: "Automatic Semantic Circuit Diagram Layout"
+              href: docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
             - text: "V1 Runtime Contract"
               href: docs/v1-runtime-contract.qmd
         - section: "Implementation design"

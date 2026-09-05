@@ -8,8 +8,9 @@ execute:
 ::: {.callout-note title="Lesson focus" appearance="simple"}
 **Learn:** treat custom and built-in factories as equal component producers.
 **Run:** wire the reusable LC into an outer `CircuitPlan`.
-**Inspect:** the authoring-level component boundary.
-**Status:** `STABILIZED` Full V1.
+**Inspect:** the sealed native expansion without changing its public boundary.
+**Status:** `STABILIZED` Full V1; semantic schematic/theme `CONVERGING`
+candidate.
 :::
 
 ## Compose the reusable subsystem
@@ -52,10 +53,13 @@ plan.add_port(
 )
 ```
 
-## Inspect the abstraction you authored
+## Inspect the sealed construction
 
-The authoring diagram preserves the custom component boundary. A compiled
-diagram may expand it for audit, but neither projection replaces the Plan.
+The authoring diagram expands the custom Composite's sealed snapshot into its
+native capacitor and inductor branches. The visible child paths are audit
+labels, not handles: the outer Plan can still address only the public
+`terminal` pin. Neither this projection nor the compiled audit replaces the
+Plan.
 
 ```{python}
 #| id: inspect-custom-component

@@ -24,6 +24,13 @@ from . import units
 from ._scaffold import unavailable
 from .authoring import ParameterSet
 from .errors import HBCaseFailure
+from .presentation import (
+    Theme,
+    _finish_figure,
+    _html_fragment,
+    _require_theme,
+    _themed_subplots,
+)
 
 
 T = TypeVar("T")
@@ -254,10 +261,15 @@ class ScatteringMatrixResult(MatrixFamilyResult):
     def __init__(self) -> None:
         unavailable("ScatteringMatrixResult construction")
 
-    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+    def show(
+        self,
+        *,
+        magnitude: Literal["linear", "db"] = "linear",
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        checked_theme = _require_theme(theme)
         if magnitude not in {"linear", "db"}:
             raise ValueError("magnitude must be 'linear' or 'db'")
-        import matplotlib.pyplot as plt
 
         matrix = np.asarray(getattr(self.view.matrix, "magnitude", self.view.matrix))
         if matrix.ndim != 3:
@@ -267,14 +279,19 @@ class ScatteringMatrixResult(MatrixFamilyResult):
         if magnitude == "db":
             shown_magnitude = 20.0 * np.log10(shown_magnitude)
         frequencies = np.asarray(self.view.frequencies.magnitude)
-        figure, (upper, lower) = plt.subplots(2, 1, sharex=True)
+        figure, (upper, lower) = _themed_subplots(
+            checked_theme,
+            2,
+            1,
+            sharex=True,
+        )
         upper.plot(frequencies, shown_magnitude)
         phase = np.where(np.abs(values) == 0.0, np.nan, np.angle(values, deg=True))
         lower.plot(frequencies, phase)
         upper.set_ylabel("|S| (dB)" if magnitude == "db" else "|S|")
         lower.set_ylabel("phase (deg; exact zero undefined)")
         lower.set_xlabel("frequency")
-        return figure
+        return _finish_figure(figure, checked_theme)
 
 
 @dataclass(frozen=True, slots=True)
@@ -483,15 +500,24 @@ class HBCaseOutcome(Result):
     def state_node_map(self) -> tuple[Mapping[str, object], ...]:
         return self._success(self._state_node_map)  # type: ignore[return-value]
 
-    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+    def show(
+        self,
+        *,
+        magnitude: Literal["linear", "db"] = "linear",
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        checked_theme = _require_theme(theme)
         if self._failure is not None:
             failure = self._failure
             return HtmlPresentation(
-                f"<h3>HB case {escape(self.id)}</h3><p>failure: "
-                f"kind={escape(failure.kind)}; stage={escape(failure.stage)}; "
-                f"message={escape(str(failure))}</p>"
+                _html_fragment(
+                    f"<h3>HB case {escape(self.id)}</h3><p>failure: "
+                    f"kind={escape(failure.kind)}; stage={escape(failure.stage)}; "
+                    f"message={escape(str(failure))}</p>",
+                    checked_theme,
+                )
             )
-        return self.s.show(magnitude=magnitude)
+        return self.s.show(magnitude=magnitude, theme=checked_theme)
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,7 +528,13 @@ class HBBatchResult(AnalysisResult):
     def __init__(self) -> None:
         unavailable("HBBatchResult construction")
 
-    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+    def show(
+        self,
+        *,
+        magnitude: Literal["linear", "db"] = "linear",
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        checked_theme = _require_theme(theme)
         if magnitude not in {"linear", "db"}:
             raise ValueError("magnitude must be 'linear' or 'db'")
         successes = tuple(outcome for outcome in self.cases.values() if outcome.succeeded)
@@ -514,9 +546,9 @@ class HBBatchResult(AnalysisResult):
                 f"message={escape(str(outcome.failure))}</li>"
                 for outcome in failures
             )
-            return HtmlPresentation(f"<h3>HB cases</h3><ul>{rows}</ul>")
-
-        import matplotlib.pyplot as plt
+            return HtmlPresentation(
+                _html_fragment(f"<h3>HB cases</h3><ul>{rows}</ul>", checked_theme)
+            )
 
         trace_ids = tuple(successes[0].traces)
         if trace_ids:
@@ -531,7 +563,13 @@ class HBBatchResult(AnalysisResult):
                 for output_index, (output_coordinate, output_mode) in enumerate(view.output_channels)
                 for input_index, (input_coordinate, input_mode) in enumerate(view.input_channels)
             )
-        figure, axes = plt.subplots(len(panels), 2, squeeze=False, sharex=True)
+        figure, axes = _themed_subplots(
+            checked_theme,
+            len(panels),
+            2,
+            squeeze=False,
+            sharex=True,
+        )
         for (magnitude_axis, phase_axis), (panel_label, selector) in zip(axes, panels):
             for outcome in successes:
                 if trace_ids:
@@ -562,7 +600,7 @@ class HBBatchResult(AnalysisResult):
                     for outcome in failures
                 )
             )
-        return figure
+        return _finish_figure(figure, checked_theme)
 
 
 @dataclass(frozen=True, slots=True)
@@ -573,17 +611,22 @@ class TraceResult(Result):
     def __init__(self) -> None:
         unavailable("TraceResult construction")
 
-    def show(self, *, magnitude: Literal["linear", "db"] = "linear") -> object:
+    def show(
+        self,
+        *,
+        magnitude: Literal["linear", "db"] = "linear",
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        checked_theme = _require_theme(theme)
         if magnitude not in {"linear", "db"}:
             raise ValueError("magnitude must be 'linear' or 'db'")
-        import matplotlib.pyplot as plt
 
         values = np.abs(np.asarray(self.value.magnitude))
         if magnitude == "db":
             values = 20.0 * np.log10(values)
-        figure, axis = plt.subplots()
+        figure, axis = _themed_subplots(checked_theme)
         axis.plot(np.asarray(self.frequencies.magnitude), values)
-        return figure
+        return _finish_figure(figure, checked_theme)
 
 
 @dataclass(frozen=True, slots=True)

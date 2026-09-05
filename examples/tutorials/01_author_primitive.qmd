@@ -9,7 +9,7 @@ execute:
 **Learn:** make components, nodes, ground, and one logical Port the physical authority.
 **Run:** author one reflective LC circuit.
 **Inspect:** its authoring schematic.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; semantic schematic/theme `CONVERGING` candidate.
 :::
 
 ## Assemble only the branches you mean
@@ -61,20 +61,32 @@ to the exact authored objects without replacing their identities with strings.
 `render_schematic()` projects the authored circuit; it neither seals nor
 solves the Plan. `CircuitDiagramSpec` selects an authoring or compiled
 representation and presentation details. Here the diagram should show one
-50-ohm boundary, one coupling capacitor, and parallel C/L branches sharing one
-local ground bus.
+50-ohm boundary as an open Port and loaded T-junction, one series coupling
+capacitor, and parallel C/L branches sharing a short local ground bus. No
+layout hint is needed: this cell deliberately exercises automatic semantic
+layout.
 
 ```{python}
 #| id: show-authoring-schematic
-from scnsim import CircuitDiagramSpec
+from scnsim import CircuitDiagramSpec, Theme
 
 diagram = plan.render_schematic(
-    CircuitDiagramSpec(show_parameter_values=True)
+    CircuitDiagramSpec(
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+    )
 )
 diagram.show()
 ```
 
-SCNSim returns a real Schemdraw authoring diagram here. It remains
-presentation of the authored Plan—not numerical evidence and not a solver run.
+SCNSim returns a real Schemdraw authoring diagram here. `Theme.AUTO` gives its
+Notebook rich display a light fallback plus an adaptive light/dark SVG; direct
+static saving uses the light fallback. Use the toolbar to copy the image,
+zoom, or reset; after zooming, drag the diagram to pan it. `Ctrl`/`Command`
+plus the mouse wheel also zooms, and `Open SVG` remains a portable fallback.
+The open Port's downward `R = Z0`
+branch is the existing raw-network load, not an extra authored component. The
+diagram remains presentation of the authored Plan—not numerical evidence and
+not a solver run.
 
 [Course map](../../docs/index.qmd) · [Next: prepare and solve a Direct response](02_solve_direct.qmd) · [Concept: physical authority](../../docs/concepts/physical-authority-and-reusable-composition.qmd#plan-as-physical-authority)

@@ -9,7 +9,7 @@ execute:
 **Learn:** solve one selected network through Direct and pump-off HB.
 **Run:** materialize two independent response Results.
 **Inspect:** each Result's S/Y/Z surface and named HB case.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; tutorial fixture presentation `CONVERGING` candidate.
 :::
 
 ## Solve one view on two declared grids
@@ -43,8 +43,8 @@ run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
 view = run.original.reduce(
     ReductionPipeline()
     .ptc(fixture.probe_plus, fixture.probe_minus)
-    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
-    .retain("feedline_in", "feedline_out", "qubit.differential")
+    .transform_pair(fixture.floating_plus, fixture.floating_minus, id="floating")
+    .retain("feedline_in", "feedline_out", "floating.differential")
 )
 direct_frequencies = [5.5, 6.0, 6.5] * u.GHz
 direct_trace = SParameterTrace(

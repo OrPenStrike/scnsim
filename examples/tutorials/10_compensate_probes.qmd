@@ -9,7 +9,7 @@ execute:
 **Learn:** remove evidenced probe loads without deleting Port identity.
 **Run:** derive one PTC network view.
 **Inspect:** selected load-state and topology evidence.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; tutorial fixture presentation `CONVERGING` candidate.
 :::
 
 ## Compensate only declared probes
@@ -20,6 +20,11 @@ before `retain()`. The [floating-circuit fixture](fixtures/floating_probe.py)
 reconstructs one two-port network and a floating resonator with probes on both
 terminals. PTC is an explicit topology step: it removes only the selected
 `nonloading_probe` shunts and preserves their coordinates and wave references.
+The feedline is coupled first to a grounded parallel-LC readout. In this lesson
+that lumped resonator is the target-mode approximation of a quarter-wave
+readout resonator; it is not a claim of full distributed equivalence. Two
+distinct coupling capacitors then connect the same `readout_node` to
+`floating_plus` and `floating_minus`.
 
 ```{python}
 #| id: derive-ptc-view
@@ -39,6 +44,25 @@ ptc_view = run.original.reduce(
     .retain("feedline_in", "feedline_out")
 )
 spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+```
+
+## Inspect the physical chain
+
+The authoring projection shows both readout couplers leaving distinct taps on
+the one `readout_node` bus. Those taps are drawing anchors, not extra circuit
+nodes. The floating resonator remains an actual mutual C/L network with its two
+separate reference shunts and probe boundaries.
+
+```{python}
+#| id: show-floating-probe-schematic
+from scnsim import CircuitDiagramSpec, Theme
+
+fixture.plan.render_schematic(
+    CircuitDiagramSpec(
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+    )
+).show()
 ```
 
 ## Verify the load evidence

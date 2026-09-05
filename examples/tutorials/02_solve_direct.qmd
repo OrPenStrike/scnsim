@@ -9,7 +9,7 @@ execute:
 **Learn:** describe one Port response before executing it.
 **Run:** prepare and solve one Direct S/Y/Z request.
 **Inspect:** the complete one-Port S/Y/Z surfaces.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; presentation theme `CONVERGING` candidate.
 :::
 
 ## Describe the response you need
@@ -44,6 +44,7 @@ from fixtures.primitive_resonator import build_primitive_resonator
 from scnsim import (
     CircuitRun,
     DirectSolveSpec,
+    Theme,
     units as u,
 )
 
@@ -74,9 +75,13 @@ presents materialized data and never solves again.
 ```{python}
 #| id: solve-direct-response
 direct = run.solve(run.original, direct_spec)
-direct.s.show(magnitude="db")
+direct.s.show(magnitude="db", theme=Theme.LIGHT)
 direct.y.view
 direct.z.view
 ```
+
+`Theme.LIGHT` is fixed and self-contained, so the same foreground and
+background are used in a dark Notebook and in a directly saved Figure. Use
+`Theme.AUTO` when the rich display should follow the viewer instead.
 
 [Previous](01_author_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: evaluate a quantity](03_evaluate_quantity.qmd) · [Concept: Run, request, Result](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)

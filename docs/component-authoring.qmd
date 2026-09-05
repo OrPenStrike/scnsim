@@ -11,7 +11,11 @@ This page is the Human-accepted authority for Full V1 component authoring.
 It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
 snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
 the HB declarations taught through Lesson 13. The complete authoring scope is
-`STABILIZED` with the rest of Full V1.
+`STABILIZED` with the rest of Full V1. Catalog-resolved schematic-layout hints
+and certified authoring/compiled projections are a separate `CONVERGING`
+presentation scope; they neither change nor replace this physical authority.
+Their single target authority is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 :::
 
 ## Contract scope
@@ -214,11 +218,13 @@ plan.ground(
 ```
 
 Calls may repeat near separate authoring blocks. All calls assign pins to the
-same electrical ground; each call additionally preserves one local schematic
-group whose endpoint-derived identity is independent of call order. Grouping
-does not enter the physical compile/hash. It only lets the authoring projection
-draw those endpoints on one local bus with one ground glyph. An empty call is
-invalid.
+same electrical ground; each call additionally preserves one endpoint-derived
+source-provenance group whose identity is independent of call order. Grouping
+does not enter the physical compile/hash, the diagram connectivity/semantic
+digests, or layout geometry. Visual bus/glyph reconstruction and the separation
+of observed ground from provenance-only call groups belong only to the
+[diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
+An empty call is invalid.
 
 `CompositePlan.ground(*pins)` gives a custom composite the same authoring
 surface. It binds those child endpoints to the eventual parent Plan ground and
@@ -344,9 +350,9 @@ plan.ground(
 )
 ```
 
-The two ground endpoints share one local schematic bus and glyph because they
-were declared in the same `ground()` call. Separate calls would draw separate
-local glyphs while remaining the same electrical ground.
+Both endpoints enter the same canonical ground. Their visual bus/glyph grammar
+and provenance-only treatment of `ground()` call grouping are defined once in
+the [diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
 
 ## General composites
 
@@ -599,11 +605,12 @@ component, and a sealed Plan never re-runs a factory.
 The frozen boundary includes every public and hidden child, child pin, private
 and exposed node, canonical-ground endpoint, public parameter baseline and
 binding map, explicitly exposed pin/coordinate, and oriented inductive branch.
-The physical private expansion contributes to Plan identity. Local ground
-groups are retained completely for diagram evidence but remain excluded from
-the physical hash because they only choose local glyph grouping. The maintainer
-snapshot format, finite nesting rule, and one data-only Julia expansion path
-are fixed in [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+The physical private expansion contributes to Plan identity. Local ground-call
+groups are retained completely as diagram-audit source provenance but remain
+excluded from the physical hash and never choose glyph grouping or other
+geometry. The maintainer snapshot format, finite nesting rule, and one
+data-only Julia expansion path are fixed in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
 ### Interdigitated capacitor
 
@@ -986,88 +993,27 @@ incompatible collection of individually plausible pairwise coefficients.
 
 ## Inspection and evidence
 
-### Inspect the authoring circuit or complete compiled graph
+### Inspect authoring or compiler-expanded structure
 
-The Plan owns both schematic projections. The default is a human-readable
-authoring diagram:
+The Plan owns authoring and compiler-expanded inspection projections, but
+neither projection is another circuit definition. The replacement contract
+for automatic placement, native-symbol expansion, Port and ground grammar,
+the immutable pre-render catalog and Root-only hints, snapshot provenance,
+independent electrical/semantic reconstruction, and the code-free review
+packet is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
-```python
-from scnsim import CircuitDiagramSpec
+That presentation scope is currently a documentation-first `CONVERGING`
+target whose runtime alignment is pending. Until alignment is complete, the
+existing renderer and legacy hint classes must not be described as satisfying
+the certified-projection contract. The component, node, ground, Port,
+parameter, Composite, RLGC, and coupling semantics on this page remain the
+physical input authority against which the future diagram audits compare.
 
-diagram = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",
-        show_parameter_values=True,
-    )
-)
-diagram.show()
-```
-
-It shows semantic components, Public nodes, logical Ports, canonical ground,
-actual wiring, and anonymous Internal junctions. A grounded linear resonator is
-drawn as parallel L and C branches whose lower endpoints share one block-local
-bus and ground glyph. The primitive example above produces the same structure.
-Separate local ground glyphs still denote the one Plan ground; the renderer
-does not draw a page-wide reference bus. CPW, MTL, IDC, and other composites
-remain recognizable authoring objects rather than opaque backend rows.
-
-Generic two-terminal symbols place `terminal_1` left and `terminal_2` right;
-when drawn as a downward grounded branch they place `terminal_1` above
-`terminal_2`. Rotation moves the anchors without renaming them or changing the
-branch orientation. A custom N-terminal composite without a dedicated symbol
-uses its ordered Library pin schema as a clockwise fallback, beginning at the
-lower-left boundary. Descriptive pin names remain unchanged: visual placement
-never becomes compiler or pin-identity authority.
-
-For grounded nonlinear resonators, both representations keep the ordinary
-`capacitance` branch and every junction `junction_capacitance` branch visibly
-distinct. With `show_parameter_values=True`, each branch is labeled with its
-owning ParameterRef identity and value; the two symmetric-SQUID Cj branches
-show their shared `junction_capacitance` identity. No branch is folded into a
-total C.
-
-Use the compiled representation to audit the complete baseline primitive
-expansion:
-
-```python
-expanded = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="compiled",
-        show_parameter_values=True,
-    )
-)
-expanded.show()
-```
-
-For every transmission line it shows all `n_sections`, every section index,
-and all `n_sections + 1` physical nodes per conductor. It records `dx`, the
-head/tail and outer Plan attachments, declared conductor order, reference
-conductor, and head-to-tail `+z` current direction. Each section shows the full
-`R * dx` and `L * dx` series contribution plus `G * dx / 2` and `C * dx / 2`
-at both ends. Each interior node identifies the two adjacent half-shunt
-contributions and their compiled total.
-
-At each pi-ladder station, C/G shunts owned by that station share one local
-ground bus and glyph. The complete diagram and its legend map every such glyph,
-every grounded built-in return, and every explicit `ground()` group to Plan
-ground and JosephsonCircuits node `"0"` without creating additional nodes.
-
-For `N=1`, the renderer uses ordinary R/L series and G/C shunt symbols. For
-`N>1`, it preserves ordered conductor lanes and represents the series and
-shunt matrices as matrix-valued blocks with complete C/G Maxwell and L/R
-tables; it never invents a scalar equivalent. Exact-zero branches may be
-omitted from the drawing only when the complete value table marks them
-`omitted-as-zero`. Large ladders use deterministic multi-panel or paged vector
-layout whose boundaries retain continuous section and node IDs. Sections,
-mutual terms, and conductor order are never collapsed, truncated, or
-reordered.
-
-This compiled schematic is still Plan-derived inspection evidence. It does not
-show Direct/HB rows, an HB off-diagonal-R capability claim, PTC, transforms,
-Schur elimination, or numerical results. `run.explain(ref, spec).show()` owns
-those backend- and request-specific facts. The V1 surface deliberately has no
-focus, section-range, partial-ladder, `plan.show()`, or schematic `.plot()`
-alternative.
+A Plan diagram represents baseline physical authoring only. Request-specific
+PTC, transforms, retain, Schur reduction, ParameterSet values, Direct/HB
+results, and numerical capability evidence remain with `run.explain()` and
+verified Results.
 
 `run.explain(ref, spec).show()` performs the same deterministic component and
 ParameterSet preflight used by execution, without launching a solver or
@@ -1076,8 +1022,8 @@ writing the workspace. For component authoring it shows:
 - every Library exact identity and public component schema;
 - composite hierarchy and primitive/backend expansion;
 - component-pin to electric-node/ground mapping, including Public, anonymous
-  Internal, Port-promoted, built-in-grounded, and explicit local-group
-  identities;
+  Internal, Port-promoted, built-in-grounded, and source-provenance-only
+  explicit ground-call group identities;
 - every logical Port's node attachment, role, reference impedance,
   one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
@@ -1133,9 +1079,7 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
   node; wiring a `CoordinateRef`; exposing a foreign node; or hidden state
   referenced as consumer API; or an unexposed one-pin child endpoint;
-- an incomplete or invalid Plan passed to `render_schematic()`; an unknown
-  representation/theme; or a compiled expansion that cannot preserve exact
-  section, node, conductor, matrix, zero-term, or outer-attachment evidence;
+- an incomplete or invalid Plan passed to `render_schematic()`;
 - an `AffineMap` with incompatible units, non-finite coefficients, unordered or
   dimensionally invalid support, a baseline outside support, or a mapped
   nonphysical child value;
@@ -1146,6 +1090,13 @@ Plan seal or deterministic preflight fails before backend execution for:
 - a coupling coefficient that is not a finite SCNSim-registry dimensionless
   Quantity or has `abs(k) >= 1`, or a complete bound inductance matrix that is
   not reciprocal positive definite.
+
+After the physical Plan input is valid, diagram-specific representation,
+Theme, hint, placement, routing, and certification failures belong exclusively
+to the linked layout contract. They fail as
+`SCNSimValidationError(stage="schematic_layout")` or
+`SCNSimValidationError(stage="schematic_audit")` and do not create runtime
+evidence.
 
 Exact `0 * u.F` is the one valid zero for optional `junction_capacitance`.
 Zero series resistance or conductance in an RLGC model may be valid when the

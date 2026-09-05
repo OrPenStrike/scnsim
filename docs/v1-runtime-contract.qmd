@@ -18,6 +18,14 @@ documentation, implementation, durable cross-slice tests, and validation
 agree. This lifecycle state does not imply a release, main promotion, root
 pin, or consumer migration.
 
+The separate certified authoring/compiled schematic layout and adaptive
+presentation-theme scope is a `CONVERGING` candidate. It changes only how
+physical authority and already-materialized figures and reports are presented; it does
+not reopen Full V1 numerical, workspace, or identity semantics. Its single
+target authority is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd);
+the current runtime does not yet implement that candidate contract.
+
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
 :::
@@ -63,6 +71,7 @@ stated above:
 | Review question | Detailed section |
 |---|---|
 | How are Libraries, terminals, electric nodes, canonical ground, logical Ports, and couplings authored? | [V1 Component Authoring](component-authoring.qmd) |
+| How must an automatic circuit diagram certify electrical and semantic fidelity to its Plan? | [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd) (`CONVERGING`; runtime alignment pending) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Runtime ownership model](#runtime-ownership-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
@@ -369,8 +378,10 @@ state on the Run.
 Presentation is never another action:
 
 ```python
-direct.s.show(magnitude="db")
-direct.traces["transmission"].show(magnitude="db")
+from scnsim import Theme
+
+direct.s.show(magnitude="db", theme=Theme.AUTO)
+direct.traces["transmission"].show(magnitude="db", theme=Theme.DARK)
 readout.show()
 ```
 
@@ -404,7 +415,7 @@ direct = run.solve(view, direct_spec)
 root = run.evaluate(view, root_spec)
 
 report = run.build_report(
-    ReportSpec(inputs=(direct, root))
+    ReportSpec(inputs=(direct, root), theme=Theme.AUTO)
 )
 ```
 
@@ -2189,10 +2200,10 @@ residual.
 Batch display supports both declared traces and complete-matrix inspection:
 
 ```python
-hb.show()                         # magnitude="linear"
-hb.show(magnitude="db")
-hb.cases["dc_pump_a_low"].show()
-hb.cases["dc_pump_a_low"].s.show(magnitude="db")
+hb.show(theme=Theme.AUTO)  # magnitude="linear"
+hb.show(magnitude="db", theme=Theme.DARK)
+hb.cases["dc_pump_a_low"].show(theme=Theme.LIGHT)
+hb.cases["dc_pump_a_low"].s.show(magnitude="db", theme=Theme.AUTO)
 ```
 
 When traces are declared, `hb.show()` creates one panel per trace and overlays
@@ -2239,11 +2250,11 @@ Reports name every source rather than selecting a latest result:
 
 ```python
 direct_report = run.build_report(
-    ReportSpec(inputs=(direct, evaluated))
+    ReportSpec(inputs=(direct, evaluated), theme=Theme.AUTO)
 )
 
 report = run.build_report(
-    ReportSpec(inputs=(direct, hb))
+    ReportSpec(inputs=(direct, hb), theme=Theme.DARK)
 )
 ```
 
@@ -2261,6 +2272,11 @@ single self-contained HTML embeds plots, summary tables, and every
 source identity, but not complete large raw arrays, workspace links,
 timestamps, or inferred PASS/FAIL claims.
 
+`ReportSpec.theme` accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK`.
+The report body, tables, and embedded Direct/HB SVG share that one theme.
+`AUTO` uses self-contained `prefers-color-scheme` rules with a readable light
+fallback; explicit themes stay fixed regardless of host UI.
+
 An invalid suffix raises `ValueError`, a missing parent raises
 `FileNotFoundError`, and an existing target raises `FileExistsError`; other
 filesystem failures remain their ordinary `OSError` subtype. Report export is
@@ -2268,71 +2284,46 @@ derived presentation and never creates an analysis attempt or receipt.
 
 ## Authoring and compiled schematics
 
-Schematics belong to the physical authority, so both representations start at
-the Plan rather than a reduced Ref:
+Authoring and compiled schematics are read-only Plan projections rather than
+reduced Refs, solver results, or alternate topology authorities. Their
+replacement product contract is
+[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+It defines the target `CircuitDiagramSpec`, immutable pre-render
+`SchematicCatalog`, Root-only relational hints, `CircuitDiagramAudit`,
+Plan/compiler/expanded/presentation identities, complete visual alphabet,
+independent electrical and semantic reconstruction, provenance region, and
+code-free Agent review packet.
 
-```python
-diagram = plan.render_schematic()
-diagram.show()
-```
+That scope is currently `CONVERGING` and its runtime alignment is pending.
+Consequently, the current renderer and legacy `SchematicPath`,
+`SchematicGroup`, and `branch_order` surface must not be used as evidence that
+the certified-projection target is already implemented. The target contract
+will replace those classes without a compatibility path after its written
+semantics are Human-accepted.
 
-Omitting the Spec selects the human-readable `authoring` representation,
-automatic light/dark theme selection, and IDs without parameter values. The
-explicit surface is:
+The stable runtime boundary remains narrow: schematic rendering does not seal
+or mutate a Plan, execute an analysis, write a workspace, or change physical,
+request, or Result identity. Authoring diagrams project baseline Plan values;
+compiled diagrams project deterministic compiler expansion. PTC, retained
+coordinates, transforms, selected Views, parameter overrides, and numerical
+results remain request/result evidence and must not be drawn as if they altered
+the authored circuit.
 
-```python
-diagram = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",  # or "compiled"
-        theme="auto",                # or "light" / "dark"
-        show_parameter_values=True,
-    )
-)
-diagram.show()
-```
+All visual grammar, automatic and hinted placement, native Composite
+expansion, Port and ground projection, certified digests, independent A/B
+reconstruction audits, provenance, and diagram failure behavior belong only to
+the linked layout contract. Until runtime alignment is complete, a current
+diagram is useful diagnostic output but is not a certified projection under
+that contract.
 
-The `authoring` representation draws the semantic components, Public nodes,
-logical Ports, canonical ground, anonymous junctions, and declared connections.
-Grounded LC components expand visually into their parallel L/C branches with a
-shared local bottom bus and one ground glyph rather than an opaque box. One
-`ground(*pins)` call defines the same local bus/glyph group for ordinary
-primitives; separate calls draw separate glyphs while remaining one electrical
-ground. The renderer never replaces them with a page-wide ground bus. Larger
-composites retain recognizable authoring symbols instead of compiler ladders.
-Every visible object traces to the Plan.
-
-Generic two-terminal symbols place `terminal_1` left and `terminal_2` right,
-or top and bottom for a downward grounded branch. Rotation moves anchors but
-never renames pins or reverses their physical orientation. A custom N-terminal
-black box without a dedicated symbol places its ordered Library pin schema
-clockwise from the lower-left boundary; this is renderer fallback only, not
-compiler or pin-identity authority.
-
-The `compiled` representation runs only the deterministic structural compile
-preflight needed to materialize the complete baseline physical graph. It is
-the audit view for primitive expansions, including every transmission-line pi
-section. It is not a Direct or HB lowering and contains no backend rows, PTC,
-coordinate transform, Schur reduction, or selected-view equivalent. Those
-facts remain available through `run.explain(ref, spec).show()`.
-
-`render_schematic()` requires a structurally complete valid Plan but does not
-seal or mutate it, solve an analysis, or write a workspace. A compiled diagram
-records the Plan, compiler, and expanded-graph identities. Values, when
-requested, are baseline values: scalars appear near components, while complete
-matrix or multi-field values appear in an ID-keyed legend or table without
-truncation or unreadable layout compression.
-
-`CircuitDiagramResult.show()` only presents the materialized diagram. It never
-recompiles or executes. Diagram identity is separate from Plan and numerical
-receipt identity; a theme/layout change or rendering failure cannot change or
-block numerical analysis. SCNSim exposes neither `plan.show()` nor schematic
-`.plot()`, and reduced Refs are inspected as operations and evidence rather
-than fabricated equivalent circuits.
-
-The compiled view maps every explicit ground group, grounded built-in return,
-and pi-section station-local C/G shunt bus to Plan ground and JosephsonCircuits
-node `"0"`. Simulation identity canonicalizes the union of grounded endpoints;
-diagram identity additionally preserves the endpoint-derived local grouping.
+The target failure boundary has two explicit preflight stages. Invalid hints,
+unplaceable required marks, collisions, illegal obstacle crossings, broken
+conductive paths, and ambiguous crossing grammar raise
+`SCNSimValidationError(stage="schematic_layout")`. A mismatch between the
+independently expected and reconstructed electrical or semantic manifest raises
+`SCNSimValidationError(stage="schematic_audit")`. Either failure returns no
+`CircuitDiagramResult` and allocates no runtime attempt, receipt, artifact, or
+workspace entry.
 
 ## Failure and evidence contract
 
@@ -2404,7 +2395,8 @@ SCNSim fails closed for:
   inductance matrix that is not reciprocal positive definite;
 - an unsupported component expansion or missing Direct/HB realization;
 - an incomplete/invalid Plan requested for schematic rendering, an invalid
-  diagram representation/theme, or an unauditable compiled expansion;
+  diagram representation/theme, a `schematic_layout` preflight failure, a
+  `schematic_audit` manifest mismatch, or an unauditable compiled expansion;
 - a bare physical number, unknown unit, foreign registry, or dimensionality
   mismatch;
 - a ParameterSet containing unknown refs, non-finite values, or another Plan
@@ -2550,6 +2542,8 @@ overwrite unrelated success receipts.
 - No implicit latest-result selector exists.
 - V1 has no public timeout, JobRef, cancellation API, callback progress
   framework, or persistent Julia daemon.
-- Schematic auto-layout is deterministic Grid + Attach, not a general
-  constraint solver.
+- Certified automatic semantic circuit-diagram layout is a separate
+  `CONVERGING` target with runtime alignment pending; the stabilized Full V1
+  runtime does not yet claim the certified projection defined in
+  [Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 - V1 has no public linear-algebra scaling configuration.

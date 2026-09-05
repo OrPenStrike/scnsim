@@ -9,6 +9,10 @@ subtitle: "Public behavior and its implementation design"
 The complete dev1–dev6 Full V1 public semantics are Human-`ACCEPTED` and
 `STABILIZED`. Their documentation, implementation, durable cross-slice tests,
 and validation agree. Acceptance and stabilization are not release claims.
+
+The separate [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+scope is a documentation-first `CONVERGING` replacement contract. Its target
+renderer and public API are not yet implemented or stabilized.
 :::
 
 ## Public contracts
@@ -18,7 +22,11 @@ and resolve.
 
 - [Component Authoring Contract](../component-authoring.qmd) defines catalogs,
   components, pins, electric nodes, ground, Ports, parameters, composites, and
-  schematic projections.
+  physical Plan construction.
+- [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+  defines the certified authoring/compiled projections, neighbor-aware
+  relation partition, immutable pre-render catalog, Root-only hints,
+  independent audits, and code-free review protocol.
 - [V1 Runtime Contract](../v1-runtime-contract.qmd) defines Runs, Refs, Specs,
   units, reduction, Direct/HB behavior, optimization, Results, attempts,
   receipts, failure, and known limits.

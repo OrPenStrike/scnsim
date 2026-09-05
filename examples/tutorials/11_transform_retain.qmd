@@ -9,7 +9,7 @@ execute:
 **Learn:** derive common/differential coordinates before selecting a final view.
 **Run:** replay PTC, automatic pair transform, and retain in one lineage.
 **Inspect:** weights, basis, eliminated complement, and channel order.
-**Status:** `STABILIZED` Full V1.
+**Status:** `STABILIZED` Full V1; tutorial fixture presentation `CONVERGING` candidate.
 :::
 
 ## Derive one backend-neutral view
@@ -22,7 +22,7 @@ ptc → transform_pair → retain
 ```
 
 `transform_pair()` takes an ordered pair of Public node coordinates and derives
-`qubit.common` and `qubit.differential` using the full-external-cut rule. The
+`floating.common` and `floating.differential` using the full-external-cut rule. The
 weights are resolved from the bound compiled C matrix, not stored as mutable
 Notebook values. `retain()` then Schur-eliminates the complement at zero
 external current.
@@ -37,8 +37,8 @@ run = CircuitRun(plan=fixture.plan, workspace="workspaces/advanced-course")
 analysis_view = run.original.reduce(
     ReductionPipeline()
     .ptc(fixture.probe_plus, fixture.probe_minus)
-    .transform_pair(fixture.qubit_plus, fixture.qubit_minus, id="qubit")
-    .retain("feedline_in", "feedline_out", "qubit.differential")
+    .transform_pair(fixture.floating_plus, fixture.floating_minus, id="floating")
+    .retain("feedline_in", "feedline_out", "floating.differential")
 )
 spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
 ```

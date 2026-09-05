@@ -4,7 +4,9 @@ subtitle: "How does verified evidence become a Python-facing presentation?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** `STABILIZED` Full V1 implementation; certified authoring/compiled
+schematic layout and adaptive presentation-theme semantics are a `CONVERGING`
+candidate.
 
 ## Separate materialized values from analysis evidence
 
@@ -50,26 +52,80 @@ fails during verification rather than returning a partially typed object.
 
 ## Keep presentation downstream of execution
 
-Matplotlib renders numerical `show()` and subtype-specific `plot()` surfaces.
-`magnitude="linear" | "db"` transforms only the displayed S magnitude; source
-arrays remain unchanged. Matplotlib returns the actual Figure, Schemdraw a
-Drawing, and HTML presentation its HTML object. A Notebook or interactive
-frontend may display the returned object; headless code receives it without
-pretending a window opened.
+Matplotlib renders numerical `show()` surfaces. `magnitude="linear" | "db"`
+transforms only the displayed S magnitude; source arrays remain unchanged.
+Every theme entry accepts only the public `Theme.AUTO`, `Theme.LIGHT`, or
+`Theme.DARK` enum value and raises `TypeError` before rendering for raw strings
+or other values. Matplotlib still returns an actual `Figure`, Schemdraw an
+actual `Drawing`, and HTML presentation its HTML object.
 
-Schemdraw renders authoring and compiler-expanded schematics as vector output.
-Authoring diagrams are a read-only projection of a structurally complete
-authored Plan; they do not seal it. Compiled diagrams consume a Julia preflight
-graph and must show every declared pi section and matrix-valued block without
-pretending to be a reduced or backend-result circuit.
+`Theme.AUTO` uses a light-styled object as its portable static fallback, then
+supplies a self-contained SVG/HTML rich representation whose foreground and
+background switch together under `prefers-color-scheme: dark`. A frontend
+without media-query support therefore remains readable in light mode.
+`Theme.LIGHT` and `Theme.DARK` are fixed, self-contained renderings. Calling
+the existing `Drawing.save()` or `Figure.savefig()` directly preserves an
+explicit theme; `AUTO` saves the light fallback for SVG and raster output.
+Presentation never reads environment variables or frontend-specific state.
+
+Notebook rich display wraps the same authoritative SVG in a self-contained
+inspection surface. Its toolbar can copy the rendered image, zoom in or out,
+reset the view, and open the underlying SVG; pointer drag pans an enlarged
+diagram and `Ctrl`/`Command` plus the mouse wheel zooms it. If the frontend
+blocks JavaScript or clipboard access, ordinary scrolling and the `Open SVG`
+link remain available. These controls exist only in the Notebook rich
+representation: they do not alter the returned `Drawing` or `Figure`, the SVG
+geometry, standalone reports, or static `save()`/`savefig()` output.
+
+The light and dark palettes share one fixed paired ten-color cycle. Changing
+theme cannot change source arrays, curve or case order, line count, labels,
+legend, axes, diagram geometry, layout, topology, or any Plan/request/Result
+identity. Styling is applied per object without changing Matplotlib `rcParams`
+or Schemdraw global configuration. A Notebook or interactive frontend may
+display the returned object; headless code receives it without pretending a
+window opened.
+
+| Role | Light | Dark |
+|---|---|---|
+| background | `#ffffff` | `#111827` |
+| foreground | `#243044` | `#eaf2fb` |
+| secondary text | `#5b677a` | `#a8b7ca` |
+| grid/border | `#d8e1ec` | `#2b3a4f` |
+| primary accent | `#2f80d1` | `#7bb7f0` |
+
+The paired line cycle, in order, is
+`#2f80d1/#7bb7f0`, `#c76b00/#f2a65a`, `#2e7d32/#7dcc8a`,
+`#7e57c2/#b39ddb`, `#c44536/#ff8a80`, `#0f766e/#2dd4bf`,
+`#a16207/#facc15`, `#be185d/#f472b6`, `#0e7490/#22d3ee`, and
+`#475569/#cbd5e1`. The left/right member is the light/dark rendering of the
+same trace index.
+
+Circuit diagrams have a separate `CONVERGING` target authority:
+[Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
+That contract owns Plan-snapshot binding, representation-specific authoring
+and compiled lowerings, native Composite expansion, neighbor-aware relation
+partition, the immutable pre-render catalog, automatic and Root-only hinted
+layout, routing, Port and ground projection, independent electrical/semantic
+reconstruction audits, diagram identities, provenance, and code-free review.
+Runtime alignment is pending; this implementation page does not certify the
+current renderer or restate a second layout design.
+
+This page continues to own only the presentation boundary shared by verified
+results, reports, and diagrams: strict `Theme` selection, palette application,
+portable static fallback, and Notebook inspection controls. None of those
+presentation choices may alter source data, Plan/request/Result identity, or
+the electrical and semantic manifests defined by the layout contract.
 
 ## Assemble reports from explicit inputs
 
-`ReportSpec.inputs` contains exact `AnalysisResult` objects already held
-by the caller. Report assembly verifies those identities, preserves each native
-grid, and records every failed outcome carried by an input HB batch. It does not
-search the workspace, infer a latest Result, run an analysis, interpolate
-curves, or decide whether a Design Target passed.
+`ReportSpec.inputs` contains exact `AnalysisResult` objects already held by the
+caller, and `ReportSpec.theme` selects the same strict presentation enum used
+by diagrams and figures. Report assembly verifies result identities, preserves
+each native grid, and records every failed outcome carried by an input HB
+batch. Its HTML, tables, and embedded Direct/HB SVG use one theme; `AUTO`
+adapts in the browser while explicit themes remain fixed. It does not search
+the workspace, infer a latest Result, run an analysis, interpolate curves, or
+decide whether a Design Target passed.
 
 `ReportResult` is pure derived data, not a terminal operation. Its
 `save(path)` accepts a new `.html` file beneath an existing parent, refuses
