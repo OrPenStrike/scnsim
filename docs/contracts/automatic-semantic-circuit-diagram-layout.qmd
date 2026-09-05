@@ -32,7 +32,7 @@ The promise has three deliberately separate parts:
 | Audit | Question | Product responsibility |
 |---|---|---|
 | A. Electrical fidelity | Do the emitted symbols, pins, wires, ground returns, Ports, and coupled branches reconstruct the exact Plan connectivity? | Mandatory independent renderer audit. |
-| B. Semantic fidelity | Do the visible Subsystems, parallel relations, single- or multi-terminal interfaces, and mutual couplings reconstruct the intended presentation IR? | Mandatory independent renderer audit and complete visual alphabet. |
+| B. Semantic fidelity | Do the visible Subsystems, relation types, member sets, peer incidences, and mutual couplings reconstruct the intended presentation IR? | Mandatory independent renderer audit and complete visual alphabet. |
 | C. Design intent | Is this exact Plan the circuit the Human intended the Agent to build? | Human review of the certified diagram and review table. |
 
 Passing A and B means that the diagram does not lie about the Plan. It does not
@@ -266,6 +266,14 @@ same visible participants, a deterministic ordinal sorted by canonical member,
 node, and site key disambiguates them. The complete identity remains in the
 audit table.
 
+A memberless stitch has a separate canonical diagram identity comprising its
+parent scope, peer signature, one canonical net identity, canonically sorted
+boundary-site identities, and an empty member set. Its short ID uses the same
+endpoint-derived peer key. When several stitches have the same visible peers,
+their ordinals follow canonical net and site key. These identities belong to
+the diagram contract and do not change the existing physical Plan identity
+encoder.
+
 Attachment geometry is decided per derived bundle endpoint site, not from the
 total number of neighbors of a whole Subsystem. Multi-terminal status counts
 the declared terminal-site identities; every identity remains distinct even
@@ -284,6 +292,39 @@ or a later `transform_pair()` request. Differential meaning remains a Human
 Design Target interpretation until a separate authoring-semantic scope defines
 explicit physical metadata.
 
+### Worked partition: current fixture and target hierarchy
+
+The checked-in `floating_probe.py` fixture is a read-only classification
+example, not a renderer result. Its current Plan root has four immediate child
+Subsystems: the `feedline_left` and `feedline_right` CPW occurrences, the
+already-Composite `readout`, and the `floating` Composite. The readout does not
+need to be restructured. At that root scope:
+
+- the common CPW tap contributes a memberless `S` stitch between the left-tail
+  and right-head boundary sites;
+- the 6 fF parent-owned capacitor at that same tap is one member-bearing,
+  three-party `M` InterfaceBundle with peer signature `{feedline_left, feedline_right,
+  readout}`; the stitch and memberful bundle reference the same electrical net,
+  but the conductive tap/bus is drawn only once; and
+- the 4 fF and 3 fF parent-owned capacitors share the exact `readout_node`
+  boundary net and therefore coalesce into one multi-terminal two-peer
+  `P` InterfaceBundle with peer signature `{readout, floating}`. Their
+  floating-plus and floating-minus terminal-site identities remain distinct.
+
+The planned Lesson 10 replacement authors the two CPW occurrences inside one
+real `feedline` Composite with exposed input, tap, and output public pins. Its
+internal stitch contains the left-tail, right-head, and exposed parent-tap
+boundary incidences. All three peers share one net with zero intervening
+member, so this remains an `S` stitch rather than becoming an `M` relation.
+The Plan root then has three immediate child Subsystems—`feedline`, `readout`,
+and `floating`—and two `P` neighbor bundles: `{feedline, readout}` and
+`{readout, floating}`. For this three-child target hierarchy, recomposition
+must preserve the declared electrical connectivity and values, but it changes
+hierarchy, Plan SHA, and hierarchy-derived Subsystem, interface, catalog, and
+semantic identities. No identity or diagram-digest invariance is claimed
+across the two Plans. The checked-in fixture remains unchanged during this
+documentation-only scope.
+
 ### NetBus and NetTap
 
 One `ElectricNode` may need several geometric contacts. The layout may
@@ -294,6 +335,77 @@ unfilled. A Port-promoted node is identified by its open Port circle rather
 than a second node dot.
 
 ## Complete visual alphabet
+
+### Interface relation marks and in-diagram legend
+
+Every authoring scene includes a small measured, obstacle-aware legend for the
+three relation classes. Their deterministic compact IDs begin with `S` for
+stitch, `P` for pair, or `M` for multiparty, then use the existing
+endpoint-derived compact peer key and a canonical ordinal only when otherwise
+ambiguous within the parent scope:
+
+| Mark | Normative meaning | Required visible evidence |
+|---|---|---|
+| `S:<peers>` | **stitch**: every zero-member stitch, for any peer count | same-net site contacts, one continuous conductive path, and one open stitch guide/bracket |
+| `P:<peers>` | **pair**: a member-bearing `InterfaceBundle` linking exactly two participant terminal groups | both participant groups, every native member, every terminal site, and one open pair guide/bracket |
+| `M:<peers>` | **multiparty**: a member-bearing `InterfaceBundle` linking three or more participant terminal groups | every peer-facing terminal group, every native member, every site, and one open multiparty bracket |
+
+The taxonomy is disjoint: an empty member set is always `S`; a nonempty member
+set with exactly two peers is `P`; and a nonempty member set with three or more
+peers is `M`. Pair versus multiparty is determined by peer count, not terminal
+count. A two-peer bundle may be multi-terminal. Distinct same-peer channels
+without a shared boundary net remain separate bundles and receive separate
+compact IDs. The automatic geometric preference places them in parallel on the
+same eligible side without inferring a differential relation or changing their
+partition.
+
+The guide and bracket strokes are open, unmistakably non-conductive
+annotations. Their complete bounds are measured and reserved as obstacles.
+They never touch a wire as a T-junction, use a junction dot as a relation-type
+mark, or form an electrical box around an R/L/C/JJ/Cj network. A parent-owned
+shunt remains beside its original parent-scope node and outside child regions.
+If a memberful record and a memberless stitch share a canonical net, the
+conductive bus and taps appear once; separate non-conductive marks explain both
+records. A grouping bracket around distinct nets never joins those nets.
+
+::: {.callout-note appearance="simple"}
+## Normative sketches—not current renderer output or certified proof
+
+```text
+          · · · ⟨S:A-B⟩ · · ·
+A:s_A ─────────────┬───────────── B:s_B
+                   └────| |────── C:s_C
+                         C_tap
+          · · · ⟨M:A-B-C⟩ · · ·
+
+A:s_A ─────────────| |──────────── B:s_B
+                    C_pair
+          · · · ⟨P:A-B⟩ · · ·
+
+NOT: a bracket used as a conductive bus
+NOT: a center dot or star used to assert relation type
+NOT: one electrical box hiding native R/L/C/JJ/Cj members
+```
+
+Continuous strokes are electrical conductors. Dotted strokes and open angle
+brackets are non-conductive annotations carrying the short ID. `A:s_A`,
+`B:s_B`, and `C:s_C` are boundary-site labels; they are not the logical Port
+open-circle glyph defined below. In the first sketch, one physical A–B bus and
+one native capacitor are drawn once. `S:A-B` identifies the zero-member A–B
+incidence, while `M:A-B-C` identifies the member-bearing three-peer relation
+containing `C_tap`. The second sketch is a two-peer native-capacitor `P`
+relation. Distinct nets remain separate conductors even when one open bracket
+groups their terminal sites.
+
+These fragments specify the visible grammar only. They are not screenshots,
+fixtures, current-runtime output, A/B witnesses, or evidence that the target
+renderer is implemented.
+:::
+
+The B witness must reconstruct relation type, complete member set, terminal
+sites, and peer count from emitted brackets/guides, boundary sites, symbols,
+and conductive geometry. It may use a compact ID to correlate visible pieces,
+but it cannot trust the ID prefix or a hidden `kind` field as the answer.
 
 ### Native branches and ground
 
@@ -394,14 +506,24 @@ Measured symbol, label, legend, and provenance bounds may only increase these
 spacings. No fixture ID, Tutorial name, component ID, hand-authored coordinate,
 or public scale knob may bypass the metric system.
 
-Each connected panel is decomposed into articulation and biconnected blocks
-after constructing its Subsystem/Relation/Interface quotient graph. The
-weighted diameter of the resulting block-cut tree supplies a deterministic
-reading spine; it maximizes covered Subsystem and Interface blocks, then uses
-canonical component paths and exact IDs as tie breakers, never component
-declaration order. A biconnected cycle stays one semantic block and chooses its
-internal orientation by the same canonical ordering rather than being broken
-into a false tree.
+Placement applies one explicit precedence. Mandatory electrical, ownership,
+alphabet, occupied-bound, collision, continuity, and audit invariants come
+first. Valid Root-only manual reading order, attachment sides/order, and Port
+sides are hard constraints and come second. Automatic presentation preferences
+come last and cannot weaken either earlier class.
+
+Each connected panel first constructs, at the same parent scope, its
+Subsystem/Relation/Interface quotient and its articulation/biconnected
+block-cut decomposition. That structural decomposition precedes selection of
+the reading spine; it introduces no weight, search bound, or additional
+partition rule.
+
+Within each parent scope the automatic reading spine maximizes coverage of
+distinct Subsystem and Interface blocks in that scope. Canonical component
+paths, interface identities, and exact IDs resolve ties and direction; neither
+component declaration order nor names, roles, or Port roles imply physical
+flow. A biconnected cycle stays one semantic block and is oriented by that same
+canonical order rather than being broken into a false tree.
 
 Ports are boundary sites attached after that semantic spine exists. A
 `terminated` role may prefer an exterior inline side and a
@@ -413,13 +535,19 @@ grouping preserves authored composition and declared mutual-coupling evidence;
 it never merges electrically distinct nets.
 
 Placement reserves complete ElementBlock, RelationBlock, InterfaceBundle,
-Port, label, and legend bounds. Rows, columns, boundary buses, and routing lanes
-are selected from a finite, deterministically ordered candidate set derived
-from graph size, measured occupied bounds, canonical paths, and exact IDs. An
-explicit side/order conflict or exhaustion of that finite set fails
-`schematic_layout`; there is no unbounded grow-and-retry success claim. The
-heuristic does not claim a global optimum, and V1 exposes no drawing-size,
-threshold, or layout-scale knob.
+Port, label, guide/bracket, and legend bounds. The later implementation design
+must disclose its exact terminating search strategy before runtime alignment;
+this target contract invents no numeric search bound. An explicit constraint
+conflict or a declared strategy's failure to find a candidate satisfying every
+mandatory invariant fails `schematic_layout`. That failure means only that the
+strategy did not find a valid candidate—not that the graph is mathematically
+unlayoutable—and it returns no partial or best-effort image. The heuristic does
+not claim a global optimum, and V1 exposes no drawing-size, threshold, retry,
+or layout-scale knob.
+
+For one exact renderer revision, Plan/catalog input, and font-metrics
+environment, automatic placement and presentation identities are
+deterministic. Cross-version pixel or geometry invariance is not claimed.
 
 ## Pre-render catalog and Root-only manual hints
 
@@ -444,26 +572,32 @@ The catalog exposes only typed opaque handles:
   `find_interface`, not a participant; an ordinary root Public node, a hidden
   child, or a nested Subsystem is not made eligible merely because it has a
   public-looking handle;
-- `catalog.find_interface(members=(), nodes=())` intersects the supplied
-  public evidence and must match exactly one already-derived relation. A
-  member-bearing lookup requires nonempty `members`; optional `nodes` further
-  intersects that lookup. With empty `members`, nonempty `nodes` selects only a
-  complete memberless stitch and can never select a co-located member-bearing
-  bundle. It returns a `SchematicInterfaceRef` and never declares a new
-  interface; and
+- `catalog.find_interface(*, members=(), nodes=(), pins=())` intersects the
+  supplied public evidence and must match exactly one complete already-derived
+  relation. `pins` has type `tuple[PinRef, ...]`. A member-bearing lookup
+  requires nonempty `members`; optional `nodes` and `pins` further intersect
+  that lookup. With empty `members`, nonempty `nodes`, `pins`, or both select
+  only a complete memberless stitch and can never select a co-located
+  member-bearing bundle. Pin evidence is limited to public boundary pins of
+  root-visible Subsystem participants; hidden child pins, native-leaf pins,
+  and nested manual access remain unavailable. The method returns a
+  `SchematicInterfaceRef` and never declares a new interface; and
 - `catalog.attachment(interface, participant=..., pin=None)` returns a
   `SchematicAttachmentRef` for one existing aggregate site. The public pin
   selector is optional and only disambiguates an existing aggregate, including
   an MTL head/tail conductor aggregate. It cannot split conductors or
   terminals.
 
-Both collections empty, duplicate evidence, hidden or ineligible handles, and
-zero, several, or conflicting matches fail closed. An anonymous stitch without
-complete public node evidence remains automatic-only. Refs from repeated
-catalogs are mutually usable only when both the unchanged Plan snapshot and
-catalog schema identities agree. A changed Plan makes earlier refs stale; a
-different schema, foreign catalog, or ref outside the root-visible eligibility
-boundary is rejected rather than reinterpreted.
+All three evidence collections empty, duplicate evidence, hidden or ineligible
+handles, and zero, several, or conflicting matches fail closed. Eligible
+boundary-pin evidence can identify an anonymous stitch without inventing a
+Public node ID. A lookup always returns the whole derived stitch or aggregate:
+it cannot slice terminals, conductors, members, or peer incidence and cannot
+create a new wire. Refs from repeated catalogs are mutually usable only when
+both the unchanged Plan snapshot and catalog schema identities agree. A changed
+Plan makes earlier refs stale; a different schema, foreign catalog, or ref
+outside the root-visible eligibility boundary is rejected rather than
+reinterpreted.
 
 `SchematicRoute(through=(...), via=(...))` contains at least two ordered
 `SchematicParticipantRef`s and exactly one intervening
@@ -472,6 +606,17 @@ already be incident to both neighbors. The route states left-to-right reading
 order only: it does not claim a unique conductive path or current direction,
 and it cannot discard an internal cycle. The authoring graph is undirected;
 IDs, names, component roles, and Port roles never imply flow.
+
+One multiparty interface `H` may repeat in `via` only as one contiguous run
+spanning distinct incident participants. Thus
+`through=(A, B, C), via=(H, H)` means only `A < B < C` in reading order. It
+does not clone `H`, its members, attachments, or marks; assign a capacitor to
+an `A`–`B` pair; select a conductive route through `H`; or remove any other
+peer of `H` from the automatic scene. This is existing hyperedge incidence,
+not a new multiparty API. Different routes may reuse `H` when their combined
+precedence constraints remain acyclic. A duplicate participant within one
+`through`, a noncontiguous revisit such as `via=(H, J, H)`, or any combined
+precedence cycle fails before placement.
 
 `catalog.layout(primary_routes=..., attachment_sides=...,
 attachment_order=..., port_sides=...)` is the only layout factory.
@@ -488,6 +633,41 @@ contradictory routes, incomplete route incidence, and conflicting orders fail
 before placement. Route or side constraints may arrange only existing
 participants, interfaces, and attachments; they cannot change ownership,
 partitioning, incidence, or electrical topology.
+
+Route precedence, `attachment_sides`, `attachment_order`, and `port_sides` are
+conjoined. No later mapping overrides an earlier route or side/order
+constraint; any combined conflict fails closed.
+
+In the current fixture with four immediate child Subsystems at the Plan root,
+this target lookup selects the complete memberless stitch on the anonymous
+common-tap net using only eligible root-visible CPW boundary pins. It does not
+promote or name the net:
+
+```python
+# TARGET API — exact pin evidence selects one complete existing stitch.
+tap_stitch = catalog.find_interface(
+    members=(),
+    nodes=(),
+    pins=(
+        feedline_left.pin("tail", conductor="signal"),
+        feedline_right.pin("head", conductor="signal"),
+    ),
+)
+```
+
+### Normative manual edge cases
+
+`A`, `B`, `C`, and `D` below stand for existing
+`SchematicParticipantRef`s; `H` stands for one existing multiparty
+`SchematicInterfaceRef`. They are not public constructors.
+
+| Case | Existing target expression | Required result |
+|---|---|---|
+| Contiguous repeated hyperedge | `through=(A, B, C), via=(H, H)` | Valid when all incidences exist; it adds only `A < B < C` precedence. `H` is emitted once and every unlisted peer remains automatic and present. |
+| Compatible reuse across routes | one route has `through=(A, B), via=(H,)`; another has `through=(D, B), via=(H,)` | Valid when the combined precedence graph is acyclic. The second route neither clones nor partitions `H`. |
+| Cyclic reuse | one route has `through=(A, B), via=(H,)`; another has `through=(B, A), via=(H,)` | Rejected as a combined precedence cycle before placement. |
+| Pin-only anonymous stitch lookup | the `find_interface(members=(), nodes=(), pins=(...))` call above | Returns exactly one whole existing `S` stitch only when the evidence is unique; it creates no node, member, attachment, or wire. |
+| Invalid catalog evidence | ambiguous matches, a foreign or stale ref, a hidden child or native-leaf pin, or a nested manual participant | Rejected before layout; no evidence is reinterpreted and no partial object is returned. |
 
 The following **TARGET scaffold is intentionally not executable in the current
 runtime**. It assumes `left_lc` and `right_lc` are two public Composite handles,
@@ -609,25 +789,33 @@ The authoring observed semantic manifest reconstructs:
   inside its reconstructed owning region and outside every child region, then
   combining that region path with its unique local name;
 - RelationBlock endpoints and native members;
-- InterfaceBundle parent scope, endpoint sites, member branches, Public nodes,
-  peer signature, single- versus multi-terminal classification, and visible
-  bracket/bus identity;
-- separate memberless stitch incidences;
+- member-bearing InterfaceBundle parent scope, endpoint sites, member branches,
+  Public nodes, peer signature and peer count, `P` or `M` relation type,
+  single- versus multi-terminal classification, and visible bracket/guide/bus
+  identity;
+- separate `S` stitch parent scope, canonical net, boundary sites, peer
+  signature and peer count, empty member set, same-net conductive incidence,
+  and visible guide/bracket identity;
 - Port-boundary ownership; and
 - CouplingRelation branch ownership, presentation mode, and visible identity.
 
 Its canonical digest is `semantic_sha256`. A parallel relation drawn as series,
 a multi-terminal interface drawn as unrelated single-terminal branches, an
-omitted coupling mark, a leaf box crossing into a child region, or an ambiguous
-ownership region or label fails this audit even when electrical connectivity
-happens to be correct. The witness reads emitted SubsystemRegions, complete
-occupied boxes, and identity anchors; it cannot read the placement ownership
-table. Only registered electrical attachment crossings may cross a region
-boundary. Adjacent-inductor and visible-legend coupling presentations normalize
-to the same coupling identity; their geometric presentation mode is audit
-evidence but is not part of the semantic digest. All observed relations come
-from emitted endpoints, anchors, region boundaries, and visible marks—not from
-the expected partition.
+incorrect `P`/`M` InterfaceBundle or `S` stitch classification, omitted
+coupling mark, leaf box crossing into a child region, or ambiguous ownership
+region or label fails this audit even when electrical connectivity happens to
+be correct. The witness reads emitted SubsystemRegions, complete occupied
+boxes, relation brackets and
+guides, boundary sites, member symbols, conductive geometry, and identity
+anchors; it cannot read the placement ownership table or trust a compact
+relation ID or hidden kind field. A shared conductive bus is reconstructed once
+even when separate stitch and memberful relation records reference it. Only
+registered electrical attachment crossings may cross a region boundary.
+Adjacent-inductor and visible-legend coupling presentations normalize to the
+same coupling identity; their geometric presentation mode is audit evidence but
+is not part of the semantic digest. All observed relations come from emitted
+endpoints, anchors, region boundaries, and visible marks—not from the expected
+partition.
 
 ### Geometry and label validity
 
@@ -756,8 +944,9 @@ scene facts** from **verified snapshot/provenance facts**. Observed rows contain
 
 - Public nodes, exact endpoints, and canonical-ground returns;
 - Ports, roles, Z0, and orientation;
-- InterfaceBundle peers, sites, members, and multi-terminal marks;
-- memberless stitch incidences;
+- member-bearing InterfaceBundle peers, sites, members, `P`/`M` type, and
+  multi-terminal marks;
+- memberless `S` stitch nets, peers, sites, and incidences;
 - RelationBlock endpoints and native leaves;
 - mutual-coupling branch identities and signed `k`, plus derived `M` only when
   it was emitted and independently checked against the bound values;
@@ -820,6 +1009,8 @@ Layout cannot return a degraded or partial image. These are
 `schematic_layout` failures:
 
 - malformed, foreign, ambiguous, or contradictory manual hints;
+- a declared layout-search strategy that terminates without finding a candidate
+  satisfying every mandatory and manual constraint;
 - an unplaceable required visual mark or provenance region;
 - symbol, Port, label, legend, or panel overlap;
 - a wire entering a non-anchor obstacle;
@@ -833,8 +1024,9 @@ These are `schematic_audit` failures:
   differ;
 - a branch is missing, duplicated, attached to the wrong net, or remains
   reversed after every explicitly permitted model-symmetry normalization;
-- RelationBlock, InterfaceBundle, Subsystem containment, single- versus
-  multi-terminal classification, or CouplingRelation ownership differs;
+- RelationBlock, member-bearing `P`/`M` InterfaceBundle, memberless `S` stitch,
+  Subsystem containment, single- versus multi-terminal classification, member
+  set, peer count, or CouplingRelation ownership differs;
 - a complete leaf symbol-and-label occupied box leaves its owning region,
   enters a child region, or crosses a region boundary other than at a
   registered electrical attachment;
@@ -845,7 +1037,9 @@ These are `schematic_audit` failures:
 Both classes raise `SCNSimValidationError` with the named `stage`. They occur
 before a `CircuitDiagramResult` exists and never allocate a runtime attempt,
 receipt, artifact, or workspace entry. No warning-only path, page-wide-rail
-fallback, hidden metadata repair, or best-effort success is allowed.
+fallback, hidden metadata repair, or best-effort success is allowed. Search
+non-success records the strategy failure; it is not a proof of mathematical
+unlayoutability.
 
 ## Planned Tutorial rollout
 
@@ -857,21 +1051,24 @@ taught.
 |---|---|---|
 | 1 | existing Lesson 1 | Render the first zero-hint authoring diagram and distinguish electrical fidelity A, semantic fidelity B, and Human intent review C. |
 | 8 | existing Lesson 8 | Review recursive native-leaf visibility, local boundary-to-parent mapping, and nested ownership in a reused Composite. |
-| 9 — Review and customize a certified schematic | `09_review_customize_schematic.qmd` | First explain and build two resonators using only the already-taught Composite, net, ground, and Port operations. Then inspect `plan.schematic_catalog()`, compare automatic and Root-only hinted layout, and verify Plan, connectivity, and semantic digest invariance. |
-| 10 — Model a Multi-section Transmission Line | renamed `10_model_n_trace_line.qmd` | Teach RLGC meaning and head/tail conductor order before authoring two CPW sections inside one explicit feedline Composite with exposed input, tap, and output pins. The compiled diagram shows complete topology, every section, and conductor order; the audit table carries the complete matrix, provenance, and omitted-zero detail rather than cramming matrix numbers into the picture. |
-| 11 — Compensate Nonloading Probes | renamed `11_compensate_probes.qmd` | Explain the floating Subsystem's two terminals and its three declared capacitance branches before introducing the full feedline–readout–floating fixture, its neighbor bundles, and PTC. |
+| 9 — Review and customize a certified schematic | `09_review_customize_schematic.qmd` | First explain and build two lumped LC resonators using only already-taught R/L/C, Composite, net, ground, public-pin, and Port operations—no CPW/MTL appears here. Then inspect `plan.schematic_catalog()`, identify a stitch, compare automatic and Root-only hinted layout, and verify Plan, connectivity, and semantic digest invariance. |
+| 10 — Model a Multi-section Transmission Line | renamed `10_model_n_trace_line.qmd` | Teach CPW/RLGC meaning, head/tail conductor order, and same-net T-junction grammar before recomposing the two CPW occurrences inside one explicit feedline Composite with exposed input, tap, and output pins. The compiled diagram shows complete topology, every section, and conductor order; the audit table carries the complete matrix, provenance, and omitted-zero detail rather than cramming matrix numbers into the picture. |
+| 11 — Compensate Nonloading Probes | renamed `11_compensate_probes.qmd` | Begin from the target three root groups—feedline, readout, and floating—then explain the floating Subsystem's two terminals, its three declared capacitance branches, both neighbor bundles, and PTC. |
 | 12 — Transform and Retain Coordinates | renamed `12_transform_retain.qmd` | Continue the existing transform/retain lesson only after the physical fixture and probe compensation have been taught. |
 | 13 — Prepare Harmonic Balance | renamed `13_prepare_hb.qmd` | Continue the existing HB preparation lesson with no earlier use of untaught diagram or fixture semantics. |
 | 14 — Compare Direct and HB | renamed `14_compare_direct_hb.qmd` | Continue the existing Direct/HB comparison after both realization paths have been taught. |
 
-The current fixture contains two separate CPW occurrences. Moving them into a
-real feedline Composite changes hierarchy and therefore Plan SHA, while keeping
-the declared values and electrical connectivity unchanged. That fixture is not
-edited by this documentation slice. During later runtime alignment, the new
-Lesson 9 is inserted after Library 6, Composite 7, and reuse 8. Current Lessons
-9–11 map exactly to new Lessons 10–12, and current Lessons 12–13 map exactly to
-new Lessons 13–14. Immutable historical dev5/dev6 delivery rows keep their
-original numbering. No Tutorial file is added, renamed, or edited now.
+The current fixture with four immediate child Subsystems at the Plan root and
+the target with three immediate child Subsystems at the Plan root are
+classified in the worked partition above. For that target hierarchy,
+recomposition must retain declared values and electrical connectivity, but it
+changes hierarchy, Plan SHA, and related semantic identities. The current
+fixture is not edited by this documentation slice. During later runtime
+alignment, the new Lesson 9 is inserted after Library 6, Composite 7, and reuse
+8. Current Lessons 9–11 map exactly to new Lessons 10–12, and current Lessons
+12–13 map exactly to new Lessons 13–14. Immutable historical dev5/dev6 delivery
+rows keep their original numbering. No Tutorial file is added, renamed, or
+edited now.
 
 ## Human review protocol
 
