@@ -36,6 +36,13 @@ Notebook
 `run.explain()` and a compiled schematic may use the same Julia compile
 preflight, but neither launches a solver nor writes the evidence workspace.
 
+The `CONVERGING` Parameter System keeps this boundary: one ordered
+`ParameterSpace` operation is one request and one Julia process, not one
+process per point or a persistent service. Values are runtime data; compatible
+topology preparation may be reused, but every parameter-dependent assembly and
+calculation is recomputed. Exact target behavior belongs to the
+[Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations).
+
 ## Keep the runtime dependency boundary explicit
 
 The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Matplotlib, and Schemdraw

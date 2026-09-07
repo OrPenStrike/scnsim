@@ -9,16 +9,19 @@ project:
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
     - examples/tutorials/03_evaluate_quantity.qmd
-    - examples/tutorials/04_optimize_primitive.qmd
-    - examples/tutorials/05_report_resolve.qmd
-    - examples/tutorials/06_create_library.qmd
-    - examples/tutorials/07_add_composite_factory.qmd
-    - examples/tutorials/08_use_custom_component.qmd
-    - examples/tutorials/09_model_n_trace_line.qmd
-    - examples/tutorials/10_compensate_probes.qmd
-    - examples/tutorials/11_transform_retain.qmd
-    - examples/tutorials/12_prepare_hb.qmd
-    - examples/tutorials/13_compare_direct_hb.qmd
+    - examples/tutorials/04_define_parameters.qmd
+    - examples/tutorials/05_sweep_parameters.qmd
+    - examples/tutorials/06_optimize_primitive.qmd
+    - examples/tutorials/07_report_resolve.qmd
+    - examples/tutorials/08_create_library.qmd
+    - examples/tutorials/09_add_composite_factory.qmd
+    - examples/tutorials/10_use_custom_component.qmd
+    - examples/tutorials/11_review_customize_schematic.qmd
+    - examples/tutorials/12_model_n_trace_line.qmd
+    - examples/tutorials/13_compensate_probes.qmd
+    - examples/tutorials/14_transform_retain.qmd
+    - examples/tutorials/15_prepare_hb.qmd
+    - examples/tutorials/16_compare_direct_hb.qmd
     - docs/concepts/physical-authority-and-reusable-composition.qmd
     - docs/concepts/compilation-coordinates-and-network-views.qmd
     - docs/concepts/requests-execution-and-result-ownership.qmd
@@ -26,6 +29,7 @@ project:
     - docs/concepts/units-parameters-and-optimization.qmd
     - docs/contracts/index.qmd
     - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
+    - docs/contracts/parameter-system.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
     - docs/implementation/system-architecture.qmd
@@ -79,38 +83,46 @@ website:
       contents:
         - text: "Course map"
           href: docs/index.qmd
-        - section: "Author and analyze"
+        - section: "Build a circuit and get a result"
           contents:
-            - text: "1. Author a primitive circuit"
+            - text: "Chapter 1 — Model a coupled grounded resonator"
               href: examples/tutorials/01_author_primitive.qmd
-            - text: "2. Prepare and solve Direct"
+            - text: "Chapter 2 — Ask for a Direct response"
               href: examples/tutorials/02_solve_direct.qmd
-            - text: "3. Choose a View and evaluate"
+            - text: "Chapter 3 — Select a coordinate and evaluate"
               href: examples/tutorials/03_evaluate_quantity.qmd
-            - text: "4. Tune and verify a resonance"
-              href: examples/tutorials/04_optimize_primitive.qmd
-            - text: "5. Report and resolve"
-              href: examples/tutorials/05_report_resolve.qmd
-        - section: "Reusable composition"
+        - section: "Define inputs, sweep, tune, and recover"
           contents:
-            - text: "6. Create a custom Library"
-              href: examples/tutorials/06_create_library.qmd
-            - text: "7. Add a Composite factory"
-              href: examples/tutorials/07_add_composite_factory.qmd
-            - text: "8. Use a custom component"
-              href: examples/tutorials/08_use_custom_component.qmd
-        - section: "Advanced native workflows"
+            - text: "Chapter 4 — Define and bind physical parameters"
+              href: examples/tutorials/04_define_parameters.qmd
+            - text: "Chapter 5 — Sweep parameter points"
+              href: examples/tutorials/05_sweep_parameters.qmd
+            - text: "Chapter 6 — Tune a physical parameter"
+              href: examples/tutorials/06_optimize_primitive.qmd
+            - text: "Chapter 7 — Report and resolve exact requests"
+              href: examples/tutorials/07_report_resolve.qmd
+        - section: "Reuse circuits and review diagrams"
           contents:
-            - text: "9. Model an N-trace line"
-              href: examples/tutorials/09_model_n_trace_line.qmd
-            - text: "10. Compensate probes"
-              href: examples/tutorials/10_compensate_probes.qmd
-            - text: "11. Transform coordinates"
-              href: examples/tutorials/11_transform_retain.qmd
-            - text: "12. Prepare pump-off HB"
-              href: examples/tutorials/12_prepare_hb.qmd
-            - text: "13. Compare Direct/HB"
-              href: examples/tutorials/13_compare_direct_hb.qmd
+            - text: "Chapter 8 — Start a reusable Library"
+              href: examples/tutorials/08_create_library.qmd
+            - text: "Chapter 9 — Build a Composite factory"
+              href: examples/tutorials/09_add_composite_factory.qmd
+            - text: "Chapter 10 — Reuse a component in a circuit"
+              href: examples/tutorials/10_use_custom_component.qmd
+            - text: "Chapter 11 — Review and customize a schematic"
+              href: examples/tutorials/11_review_customize_schematic.qmd
+        - section: "Model and analyze coupled systems"
+          contents:
+            - text: "Chapter 12 — Model ordered RLGC lines"
+              href: examples/tutorials/12_model_n_trace_line.qmd
+            - text: "Chapter 13 — Assemble the capstone and compensate its probes"
+              href: examples/tutorials/13_compensate_probes.qmd
+            - text: "Chapter 14 — Transform and retain coordinates"
+              href: examples/tutorials/14_transform_retain.qmd
+            - text: "Chapter 15 — Prepare pump-off HB"
+              href: examples/tutorials/15_prepare_hb.qmd
+            - text: "Chapter 16 — Read Direct and pump-off HB"
+              href: examples/tutorials/16_compare_direct_hb.qmd
     - id: concept
       title: "Concept"
       style: "floating"
@@ -139,6 +151,8 @@ website:
               href: docs/component-authoring.qmd
             - text: "Automatic Semantic Circuit Diagram Layout"
               href: docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
+            - text: "Parameter System"
+              href: docs/contracts/parameter-system.qmd
             - text: "V1 Runtime Contract"
               href: docs/v1-runtime-contract.qmd
         - section: "Implementation design"

@@ -1,33 +1,37 @@
 ---
 title: "Component Authoring Contract"
-subtitle: "Accepted Library, RLGC, Composite, electric-node, logical-Port, and coupling semantics"
+subtitle: "Physical component models and the CONVERGING structured-authoring boundary"
 toc-depth: 3
 ---
 
-::: {.callout-note}
-## Human-accepted Full V1 scope
+::: {.callout-warning}
+## Mixed lifecycle: accepted physical models, CONVERGING authoring target
 
-This page is the Human-accepted authority for Full V1 component authoring.
-It covers primitive R/L/C/JJ authoring, custom Libraries and Composite
-snapshots, recursive expansion, mutual coupling, RLGC/transmission lines, and
-the HB declarations taught through Lesson 13. The complete authoring scope is
-`STABILIZED` with the rest of Full V1. Catalog-resolved schematic-layout hints
-and certified authoring/compiled projections are a separate `CONVERGING`
-presentation scope; they neither change nor replace this physical authority.
-Their single target authority is
-[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+The Library provenance, primitive R/L/C/JJ models, RLGC/transmission-line
+meaning, mutual coupling, and Direct/HB lowering semantics on this page retain
+their accepted Full V1 authority. Parameter definition, physical binding, and
+batch identities are reopened only in the linked Parameter System target.
+
+The public assembly grammar, recursive inline ownership, its Plan-identity
+integration, and certified diagrams are reopened as a `CONVERGING` target.
+Implementation alignment remains pending, so the target examples are not yet
+executable. Their one normative authority is
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 :::
 
 ## Contract scope
 
-Use one route from reusable component definitions to a sealed physical Plan:
+The target keeps one route from reusable physical definitions to a sealed Plan:
 
 ```text
 immutable Library
 -> component instances with exact source identity
--> declarative Composite parameters, mappings, pins, and coordinates
--> Public or Internal electric nodes and the automatic canonical ground
--> logical Port components on selected nodes
+-> structured root, inline Subsystem, and reusable Composite declarations
+-> explicit series, parallel, branch, bus, tap, N-link, grounding,
+   and coupling roles
+-> deliberately exposed pins, coordinates, branches,
+   and already-bound parameters
+-> root-owned logical Ports
 -> CircuitPlan
 ```
 
@@ -35,18 +39,30 @@ The `CircuitPlan` remains the only physical authority. A schematic, compiled
 backend row, reduced view, or solver result is evidence derived from that Plan,
 not another circuit definition.
 
-This page owns the product-facing component-catalog API. The
+A native component may bind a fixed Quantity directly. It receives a
+`ParameterRef` only when the author deliberately supports operation-time
+variation. The model-first Tutorial therefore uses literal C/L values in
+Chapters 1–3 and introduces independent definitions plus real physical-field
+bindings in Chapter 4. The [Parameter System contract](contracts/parameter-system.qmd)
+owns those target identities and their operation-time values.
+
+This page owns physical factory and lowering semantics. The linked structured
+contract owns the proposed assembly signatures, ownership, layout, identity,
+and authoring/diagram failures. The
+[Parameter System Contract](contracts/parameter-system.qmd) owns independent
+definitions, physical-field Plan adoption, points, spaces, and parameterized
+Results. The
 [V1 Runtime Contract](v1-runtime-contract.qmd) owns Plan sealing, Ref lineages,
 Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
 [authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
-and then [creating a custom Library](../examples/tutorials/06_create_library.qmd)
-before [adding its first Composite factory](../examples/tutorials/07_add_composite_factory.qmd).
+and then [creating a custom Library](../examples/tutorials/08_create_library.qmd)
+before [adding its first Composite factory](../examples/tutorials/09_add_composite_factory.qmd).
 For the design reasoning behind the boundary, read
-[Physical authority and reusable composition](concepts/physical-authority-and-reusable-composition.qmd).
+[Physical authority and structured composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and
-evidence requirements; it is not the linear Tutorial.
+evidence requirements; it is not the guided Tutorial.
 
 ## One component-catalog model {#one-library-model}
 
@@ -65,7 +81,7 @@ component discovery, a Notebook-global registry, or a mutable
 `CircuitLibrary.register_component(...)` workflow.
 
 `Library` is the constructible base for a project's custom catalog. A package
-subclasses it and exports one normally constructed singleton:
+subclasses it and ordinarily exports one constructed catalog instance:
 
 ```python
 from scnsim import Library
@@ -91,13 +107,13 @@ and memory addresses never enter identity. The exact rules are maintained in
 [Catalog and Runtime Identity](implementation/catalog-and-runtime-identity.qmd).
 
 A catalog subclass may inherit only from `Library`-derived bases and may not
-declare instance storage. This keeps both the singleton and its factory surface
+declare instance storage. This keeps each catalog object and its factory surface
 immutable; multiple inheritance that could reintroduce mutable state fails at
-class declaration.
+class declaration. The API does not enforce process-wide singleton identity.
 
-The public base does not inherit SCNSim's built-in factories. The package
-singleton `scnsim.components` is a separate private concrete implementation
-of the same `Library` contract. A custom factory therefore calls
+The public base does not inherit SCNSim's built-in factories. The package-level
+`scnsim.components` object is a separate private concrete implementation of
+the same `Library` contract. A custom factory therefore calls
 `scnsim.components.capacitor(...)` or another built-in factory explicitly;
 the custom catalog exposes only the factories its package owns.
 
@@ -150,148 +166,89 @@ capacitance = capacitor.parameter("capacitance")
 
 A composite may contain primitive children, but child IDs and child parameters
 are inspection evidence, not automatically a consumer API. The factory must
-deliberately expose every supported `ParameterRef`. Composite public-parameter
-IDs are unique and retain their factory declaration order; that order is part of
-the frozen snapshot and Plan identity. This keeps refactoring an internal
-expansion from silently changing Notebook contracts.
+deliberately expose every supported, already-physically-bound `ParameterRef`.
+The lookup returns that original independent ref; it does not create one from a
+child path or literal. Composite public-parameter IDs are unique and retain
+their factory declaration order. This keeps refactoring an internal expansion
+from silently changing Notebook contracts.
 
 Custom libraries use `scnsim.units` and declare the same pin,
 public-parameter, provenance, and lowering evidence. V1 does not add a second
 unit registry, a global plugin mechanism, manual catalog metadata, or mutable
 factory registration.
 
-## Electrical topology and logical Ports
+## Structured topology and logical Ports
 
-### Compose one electric node per call
+The target replaces flat node assembly with explicit authoring structure. The
+one detailed authority is the
+[structured-authoring grammar](contracts/automatic-semantic-circuit-diagram-layout.qmd#structured-authoring-grammar).
 
-Component pins are terminals. One `plan.net()` call declares the complete
-equipotential electric node that connects those terminals and returns an
-`ElectricNodeRef`:
+In summary:
 
-```python
-resonator_node = plan.net(
-    coupling_cap.pin("terminal_2"),
-    resonator.pin("terminal"),
-    id="resonator_node",
-)
-```
+- `add()` registers a physical component without wiring it;
+- `bus()` declares one net; ordinary connections use that `BusRef` directly,
+  while `tap()` names an attachment site only when the user needs an
+  independently addressable contact;
+- `series()`, `parallel()`, and `branch()` place ordinary two-terminal bodies
+  and any structurally used complete body in explicit authored roles;
+- `link(endpoints=(...))` declares one direct zero-component connection among
+  two or more eligible buses, taps, or public pins;
+- `ground_pins(pins=(...))` explicitly grounds one or more eligible pins; and
+- `scope.ground` remains the canonical reference endpoint for structured
+  series, parallel, and branch declarations.
 
-Supplying `id=` creates a Public node coordinate that Runtime Specs and
-reduction lineages may select. Omitting it creates an anonymous Internal node:
+Registration, terminal completeness, and structural use are distinct. Every
+ordinary two-terminal native body belongs to exactly one component-containing
+structure. A complete Composite occurrence or native multi-terminal body may
+instead remain one independent peer after every required pin is bound, or may
+be used once in a structure when its terminal schema permits. `.between()`
+selects an ordered pair only for that one structural use; it is optional for an
+independent peer and never reduces the body's physical model.
 
-```python
-plan.net(
-    section_1.pin("tail", conductor="signal"),
-    section_2.pin("head", conductor="signal"),
-)
-```
+A named root bus publishes an `ElectricNodeRef` through `.node`. An anonymous
+root bus remains unavailable through `.node` until `add_port()` promotes it to
+the Port-named public coordinate; that promotion is an authoring declaration,
+not a render side effect. A private child bus instead requires explicit
+`expose_coordinate()`. Taps delegate `.node` to the same bus identity.
+`CoordinateRef` is never a wiring endpoint.
 
-An Internal node remains part of the original compiled physical operator even
-though a user cannot address its opaque evidence identity as a Runtime
-coordinate. Its identity is derived deterministically from the canonical set
-of exact component/pin endpoints, not from randomness or call order. The exact
-canonical envelope and full-digest `internal-<sha256>` spelling are fixed by
-[Canonical Identities and Schemas](implementation/canonical-identities-and-schemas.qmd#encode-one-canonical-byte-stream).
+The four related handles remain distinct: a `BusRef` is the net, a `TapRef` is
+a named contact on that net, a `PinRef` is a native terminal or an exposed
+parent-facing boundary, and a `CoordinateRef` selects an electrical coordinate
+for analysis. A public pin named `tap` is still a `PinRef`. Tap IDs and creation
+order never imply graphical direction; the structured diagram contract owns
+the optional `SchematicLayout.tap_order` presentation hint.
 
-Every pin belongs to exactly one electric node or the canonical Plan ground. All
-pins for a node are supplied together; a second call cannot incrementally
-merge or redefine it. SCNSim exposes no parallel `connect()` API.
-
-At Plan seal, compilation assigns one node-flux coordinate to every
-non-reference electric node. Adding a logical Port attaches a boundary to that
-coordinate; it never creates a second electrical degree of freedom.
-
-### Attach pins to the canonical ground
-
-Every Plan owns one canonical ground from construction. Its reserved public
-identity is `"ground"`; Direct uses it as the node-flux reference and HB lowers
-the same node deterministically to JosephsonCircuits node `"0"`. The backend
-name is receipt evidence, not a Notebook node selector.
-
-Ordinary primitive pins attach explicitly:
+Only the root `CircuitPlan` adds logical Ports. `add_port()` accepts a root
+`BusRef` or `TapRef`, retains the existing node-to-ground voltage/current
+orientation and reference load, and returns a `PortRef` for PTC and HB drive
+declarations:
 
 ```python
-plan.ground(
-    capacitor.pin("terminal_2"),
-    inductor.pin("terminal_2"),
-)
-```
-
-Calls may repeat near separate authoring blocks. All calls assign pins to the
-same electrical ground; each call additionally preserves one endpoint-derived
-source-provenance group whose identity is independent of call order. Grouping
-does not enter the physical compile/hash, the diagram connectivity/semantic
-digests, or layout geometry. Visual bus/glyph reconstruction and the separation
-of observed ground from provenance-only call groups belong only to the
-[diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
-An empty call is invalid.
-
-`CompositePlan.ground(*pins)` gives a custom composite the same authoring
-surface. It binds those child endpoints to the eventual parent Plan ground and
-never creates a composite-local reference. Grounded built-ins declare their
-own internal group, so their author does not repeat a ground call or receive a
-public ground pin.
-
-### Add one logical Port component to a node
-
-A Port is a specialized Plan component. It owns one external wave/load
-boundary, its role, reference impedance, node attachment, and backend-lowering
-identity. It is not a Library-created `ComponentInstance`, and it never creates
-or infers an electric connection.
-
-Its voltage direction is the attached node relative to the Plan ground;
-positive Port current enters the Plan at that node. This canonical orientation
-is derived from the attachment, so `add_port()` does not expose a second manual
-direction argument.
-
-`plan.add_port()` therefore accepts only an `ElectricNodeRef` returned by the
-same Plan:
-
-```python
+signal_bus = plan.bus(id="signal")
 signal_port = plan.add_port(
     id="signal_in",
-    at=resonator_node,
+    at=signal_bus,
     role="terminated",
     reference_impedance=50.0 * u.ohm,
 )
 ```
 
-The returned `PortRef` is the physical-port handle used by PTC and HB drive
-declarations. One electric node may own at most one logical Port. Multiple DC
-or AC contributions use multiple `CurrentDrive` objects on that Port rather
-than duplicating Port components.
+One electrical node owns at most one logical Port after resolving aliases
+through taps, public child exposures, and N-endpoint links. Port IDs and node
+IDs remain separate
+namespaces, even when the same spelling is chosen. A Port cannot attach to
+ground, a component pin, a foreign handle, or an already-port-bound node.
+Multiple drive contributions remain separate `CurrentDrive` declarations on
+the one Port. A Port's load supplies its reference-to-ground behavior; there is
+no separately wireable Port ground pin.
 
-An anonymous node may also receive a Port:
-
-```python
-input_boundary = plan.net(input_cap.pin("terminal_1"))
-
-signal_port = plan.add_port(
-    id="signal_in",
-    at=input_boundary,
-    role="terminated",
-    reference_impedance=50.0 * u.ohm,
-)
-```
-
-The Port ID promotes that anonymous node to Public coordinate `"signal_in"`
-before Plan seal. A node that already has an explicit Public ID keeps that
-identity even when its Port ID differs. Node IDs, Port IDs, and later
-selected-view channel IDs are separate namespaces. A selected-view channel ID
-is always the exact final node-coordinate ID: an original Public node ID or a
-generated transform ID such as `qubit.differential`. It is never inferred from
-the attached Port ID. Anonymous Port promotion is the one deliberate case in
-which the new Public node coordinate adopts the Port ID, so the two strings
-coincide by construction.
-
-For example, a named node `"pump_drive"` may carry Port ID `"pump"`; retaining
-that node and naming an `SParameterTrace` channel both use `"pump_drive"`, while
-`CurrentDrive.at` uses the returned `pump_port` `PortRef`. `run.explain()` and
-receipts show this deterministic mapping before execution.
-
-At seal, an anonymous node without a Port must join at least two different
-pins. A one-pin anonymous node is valid only when a Port promotes it. A Port
-cannot attach to a pin, ground, foreign node, or already-port-bound node.
+The three grounding roles stay distinct. A physical branch ending at
+`scope.ground` is intrinsic to its owning scope. A module with an ordinary
+return bus exposes a public return pin so its parent can apply
+`ground_pins()`. A logical Port owns its load/reference behavior. All resolve to
+the same canonical ground, but authoring provenance and diagram locality retain
+which layer declared the connection.
 
 ## Built-in leaves
 
@@ -332,26 +289,24 @@ add resistance or turn the component into an RCSJ model. The canonical physics
 is documented in
 [Josephson Current, Phase, Energy, and Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#independent-parallel-junction-capacitance).
 
-The primitive form of a grounded parallel LC makes its one non-reference node
-and one local ground group explicit:
+The target primitive form of a grounded parallel LC makes its one
+non-reference bus and two parallel branches explicit:
 
 ```python
 capacitor = plan.add(components.capacitor(id="resonator_c", capacitance=110.0 * u.fF))
 inductor = plan.add(components.inductor(id="resonator_l", inductance=5.8 * u.nH))
 
-resonator_node = plan.net(
-    capacitor.pin("terminal_1"),
-    inductor.pin("terminal_1"),
-    id="resonator_node",
-)
-plan.ground(
-    capacitor.pin("terminal_2"),
-    inductor.pin("terminal_2"),
+resonator_node = plan.bus(id="resonator_node")
+parallel_lc = plan.parallel(
+    id="parallel_lc",
+    start=resonator_node,
+    branches=((capacitor,), (inductor,)),
+    end=plan.ground,
 )
 ```
 
-Both endpoints enter the same canonical ground. Their visual bus/glyph grammar
-and provenance-only treatment of `ground()` call grouping are defined once in
+Both branches terminate at the same canonical ground. Their visual bus/glyph
+grammar is defined once in
 the [diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
 
 ## General composites
@@ -477,96 +432,63 @@ The continuum-to-ladder physics and refinement obligation remain canonical in
 
 ### Declarative custom composites {#declarative-composites}
 
-A custom Library factory uses `CompositePlan` to make its optimization and
-consumer boundary explicit before exposing one `ComponentInstance`:
+A custom Library factory uses `CompositePlan` to make its physical structure
+and consumer boundary explicit before exposing one `ComponentInstance`. The
+target uses the same `add`, `bus`, `parallel`, and exposure grammar as an inline
+Subsystem:
 
 ```python
-from scnsim import AffineMap, CompositePlan, ParameterSpec
+from scnsim import CompositePlan, ParameterRef, components
 
-def intrinsic_purcell_filter(self, *, id, rlgc):
-    component = CompositePlan(id=id, library=self)
-
-    shared_length = component.parameter(
-        id="shared_short_length",
-        baseline=0.9 * u.mm,
-        spec=ParameterSpec(unit=u.mm),
+def parallel_linear_lc_resonator(
+    self,
+    *,
+    id,
+    capacitance,
+    inductance,
+):
+    composite = CompositePlan(id=id, library=self)
+    capacitor = composite.add(
+        components.capacitor(id="capacitor", capacitance=capacitance)
     )
-    finger_length = component.parameter(
-        id="idc_finger_length",
-        baseline=52.0 * u.um,
-        spec=ParameterSpec(unit=u.um),
+    inductor = composite.add(
+        components.inductor(id="inductor", inductance=inductance)
     )
-
-    readout_short = component.add(
-        components.transmission_line(
-            id="readout_short",
-            length=shared_length,
-            rlgc=rlgc,
-            n_sections=12,
+    terminal = composite.bus(id="terminal")
+    composite.parallel(
+        id="parallel_lc",
+        start=terminal,
+        branches=((capacitor,), (inductor,)),
+        end=composite.ground,
+    )
+    composite.expose_pin(id="terminal", at=terminal)
+    if isinstance(capacitance, ParameterRef):
+        composite.expose_parameter(
+            id="capacitance", parameter=capacitance
         )
-    )
-    filter_short = component.add(
-        components.transmission_line(
-            id="filter_short",
-            length=shared_length,
-            rlgc=rlgc,
-            n_sections=12,
+    if isinstance(inductance, ParameterRef):
+        composite.expose_parameter(
+            id="inductance", parameter=inductance
         )
-    )
-
-    mutual_capacitance = AffineMap(
-        input=finger_length,
-        slope=0.12 * u.fF / u.um,
-        intercept=0.8 * u.fF,
-        support=(35.0 * u.um, 70.0 * u.um),
-    )
-    # The same input may feed separate calibrated maps for C1G and C2G.
-    idc = component.add(
-        components.interdigitated_capacitor(
-            id="idc",
-            terminal_1_to_reference_capacitance=AffineMap(
-                input=finger_length,
-                slope=0.08 * u.fF / u.um,
-                intercept=1.2 * u.fF,
-                support=(35.0 * u.um, 70.0 * u.um),
-            ),
-            terminal_2_to_reference_capacitance=AffineMap(
-                input=finger_length,
-                slope=0.09 * u.fF / u.um,
-                intercept=1.0 * u.fF,
-                support=(35.0 * u.um, 70.0 * u.um),
-            ),
-            terminal_mutual_capacitance=mutual_capacitance,
-        )
-    )
-
-    feedline_node = component.net(
-        readout_short.pin("head", conductor="readout"),
-        id="feedline_node",
-    )
-    filter_tail_node = component.net(
-        filter_short.pin("tail", conductor="readout"),
-        id="filter_tail_node",
-    )
-    component.expose_pin(id="feedline_attachment", at=feedline_node)
-    component.expose_coordinate(
-        id="filter_open_tail",
-        at=filter_tail_node,
-    )
-    return component.build()
+    return composite.build()
 ```
 
-`ParameterSpec` owns only parameter schema identity, authoring/display unit,
-dimensionality, and ParameterSet binding. It does not contain an optimizer,
-search bounds, or a separate mutability flag. Every deliberately exposed
-physical `ParameterRef` may be rebound; an `OptimizationSpec` separately
-chooses which refs are active and supplies finite request-specific bounds.
+The caller defines these refs independently with `ParameterDefinitions` before
+invoking the factory. The capacitor and inductor fields create the physical
+bindings; only a supplied `ParameterRef` is then published at the Composite
+boundary. A supplied Quantity remains a fixed literal and creates no public
+parameter lookup.
+
+`ParameterSpec` owns only independent scalar schema identity and dimensional
+validation. It does not contain an optimizer, search bounds, or a separate
+mutability flag. An `OptimizationSpec` separately chooses active scalar refs
+and supplies finite request-specific bounds.
 
 Passing one public `ParameterRef` directly to several child slots is exact
-identity fan-out: binding `shared_length` changes both children together. It
-does not create two coincidentally equal child parameters. `parameter.show()`
-performs no execution and displays its sealed baseline, unit, child fan-out,
-maps, calibration support, and canonical identity.
+identity fan-out: one binding changes every declared consumer together. It does
+not create coincidentally equal child parameters. Definition inspection shows
+the independent baseline and schema; Plan-specific fan-out and physical
+consumers belong to that Plan's audit or explanation.
 
 `AffineMap(input=x, slope=a, intercept=b, support=(lo, hi))` means exactly
 `y = a*x + b`. SCNSim validates the units of input, slope, intercept, output,
@@ -577,21 +499,20 @@ or interpolation table. A mapped nonphysical child value makes that candidate
 a typed failure rather than falling back to a baseline.
 
 `expose_pin()` and `expose_coordinate()` are deliberately different. A public
-pin participates in a parent `CircuitPlan.net()` connection. A
-`CoordinateRef` is an observation/analysis handle for `retain()`, Direct
-quantity selection, evaluation, and optimization; it cannot be wired or carry
-a logical Port. A composite author may expose the same internal electric node
-once through each surface, but hidden children, parameters, and nodes never
-become consumer API by inference:
+pin is a parent wiring endpoint. A `CoordinateRef` is an observation/analysis
+handle for `retain()`, Direct quantity selection, evaluation, and optimization;
+it cannot be wired or carry a logical Port. A composite author may expose the
+same internal bus once through each surface, but hidden children, parameters,
+and buses never become consumer API by inference:
 
 ```python
-ipf.pin("feedline_attachment")
-ipf.coordinate("filter_open_tail")
+resonator.pin("terminal")
+resonator.parameter("capacitance")
 ```
 
-An otherwise one-pin internal node is valid only when the Composite explicitly
-exposes it as an external pin or analysis coordinate; an unexposed one-pin
-child endpoint fails seal as accidental open topology.
+An otherwise external-facing internal bus is valid only when the Composite
+explicitly exposes its supported pin or analysis coordinate. An unbound native
+terminal or hidden endpoint that remains accidentally open fails seal.
 
 ### Snapshot boundary and recursive expansion {#composite-snapshot-boundary}
 
@@ -602,14 +523,29 @@ snapshot, rather than retaining a Python factory, callback, or expression tree
 to invoke again. A factory exception or invalid graph creates no partial
 component, and a sealed Plan never re-runs a factory.
 
-The frozen boundary includes every public and hidden child, child pin, private
-and exposed node, canonical-ground endpoint, public parameter baseline and
-binding map, explicitly exposed pin/coordinate, and oriented inductive branch.
-The physical private expansion contributes to Plan identity. Local ground-call
-groups are retained completely as diagram-audit source provenance but remain
-excluded from the physical hash and never choose glyph grouping or other
-geometry. The maintainer snapshot format, finite nesting rule, and one
-data-only Julia expansion path are fixed in
+The target frozen boundary includes every public and hidden child, ordered
+native pin, bus/tap, structured series/parallel/branch/link declaration,
+owner-local canonical-ground endpoint and `ground_pins()` declaration, adopted
+parameter definition/spec/baseline evidence and physical-field binding map,
+explicitly exposed pin/coordinate/parameter/inductive branch, and nested scope.
+Public parameter IDs map to the original independently defined `ParameterRef`
+and this snapshot's consumers; the Composite does not own a second parameter
+definition authority.
+
+The snapshot also distinguishes a body registered in the scope, its complete
+terminal binding, and whether it is consumed once by a structure or remains a
+complete independent peer. A containing Plan may connect only the published
+boundary of the resulting occurrence; it cannot assign a second structural
+role to hidden native leaves that were already assembled inside the Composite.
+
+A containing Plan records later caller links and grounding over public pins,
+root Ports, and global electrical closure as its own overlay. Those declarations
+can common exposed returns without rewriting the built child or reapplying the
+child's intrinsic exposure-uniqueness check. The physical private expansion
+and declared structure contribute to future Plan identity. Layout and Theme do
+not. The target requires deliberate alignment of a successor Plan schema, the
+maintainer snapshot, and one data-only Julia expansion path before execution.
+The frozen baseline is described in
 [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
 ### Interdigitated capacitor
@@ -727,11 +663,17 @@ resonator = plan.add(
     )
 )
 
-signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
-resonator_node = plan.net(
-    coupling_cap.pin("terminal_2"),
-    resonator.pin("terminal"),
-    id="resonator_node",
+resonator_node = plan.bus(id="resonator_node")
+signal_boundary = plan.bus(id="signal_boundary")
+plan.series(
+    id="coupling",
+    start=signal_boundary,
+    elements=(coupling_cap,),
+    end=resonator_node,
+)
+plan.link(
+    id="resonator_terminal",
+    endpoints=(resonator_node, resonator.pin("terminal")),
 )
 signal_port = plan.add_port(
     id="signal_in",
@@ -754,8 +696,14 @@ floating = plan.add(
     )
 )
 
-island_1 = plan.net(floating.pin("terminal_1"), id="island_1")
-island_2 = plan.net(floating.pin("terminal_2"), id="island_2")
+island_1 = plan.bus(id="island_1")
+island_2 = plan.bus(id="island_2")
+plan.series(
+    id="floating_mode",
+    start=island_1,
+    elements=(floating,),
+    end=island_2,
+)
 ```
 
 The two terminal-to-reference capacitances are real branches even though the
@@ -821,9 +769,18 @@ pump_inductor = plan.add(
     components.inductor(id="pump_coil", inductance=1.0 * u.nH)
 )
 
-plan.ground(pump_inductor.pin("terminal_2"))
-signal_node = plan.net(jpa.pin("terminal"), id="signal")
-pump_node = plan.net(pump_inductor.pin("terminal_1"), id="pump_drive")
+signal_node = plan.bus(id="signal")
+pump_node = plan.bus(id="pump_drive")
+plan.link(
+    id="signal_component",
+    endpoints=(signal_node, jpa.pin("terminal")),
+)
+plan.branch(
+    id="pump_coil",
+    at=pump_node,
+    elements=(pump_inductor,),
+    end=plan.ground,
+)
 signal_port = plan.add_port(
     id="signal",
     at=signal_node,
@@ -947,11 +904,12 @@ The implementation-facing recursive row order and evidence maps are defined in
 
 ## Parameter variants and derived mutual inductance
 
-Public parameters have three separate owners:
+Public parameters have four separate owners:
 
 | Owner | Declares |
 |---|---|
-| Component Library author | `ParameterSpec`, baseline, child fan-out, `AffineMap`, calibration support |
+| definitions author | `ParameterSpec`, baseline, and independent parameter identity |
+| Component Library author | public boundary, child fan-out, `AffineMap`, calibration support |
 | Circuit-model author | Default `OptimizationSpec`, active variables, finite bounds, objectives, weights, optimizer |
 | Notebook consumer | Design Target and an optional immutable override of the model default |
 
@@ -959,8 +917,9 @@ This separation prevents a reusable composite from creating a hidden search
 envelope. Different circuit models may optimize the same parameter over
 different ranges without duplicating its unit, baseline, or calibration map.
 
-Every public factory parameter becomes a stable `ParameterRef` only when the
-factory exposes it:
+Every ref is stable when its independent definition is created. It becomes a
+Plan input only through registered physical-field consumption, and a factory
+makes it consumer-visible only when it exposes that original ref:
 
 ```python
 candidate = ParameterSet({
@@ -996,24 +955,23 @@ incompatible collection of individually plausible pairwise coefficients.
 ### Inspect authoring or compiler-expanded structure
 
 The Plan owns authoring and compiler-expanded inspection projections, but
-neither projection is another circuit definition. The replacement contract
-for automatic placement, native-symbol expansion, Port and ground grammar,
-the immutable pre-render catalog and Root-only hints, snapshot provenance,
-independent electrical/semantic reconstruction, and the code-free review
-packet is
-[Automatic Semantic Circuit Diagram Layout](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+neither projection is another circuit definition. The target structure,
+automatic and handle-based layout, independent electrical/structural
+reconstruction, snapshot provenance, and code-free review packet belong to
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
-That presentation scope is currently a documentation-first `CONVERGING`
-target whose runtime alignment is pending. Until alignment is complete, the
-existing renderer and legacy hint classes must not be described as satisfying
-the certified-projection contract. The component, node, ground, Port,
-parameter, Composite, RLGC, and coupling semantics on this page remain the
-physical input authority against which the future diagram audits compare.
+That authoring/identity/diagram scope is `CONVERGING`, with implementation
+alignment pending. The existing renderer and superseded catalog-hint classes
+are frozen interpretation evidence only. They do not satisfy the target
+contract or create a compatibility path. The physical Library, component,
+parameter, RLGC, Josephson, SQUID, and coupling meanings on this page remain
+the input authority against which future lowerings and diagrams are checked.
 
-A Plan diagram represents baseline physical authoring only. Request-specific
-PTC, transforms, retain, Schur reduction, ParameterSet values, Direct/HB
-results, and numerical capability evidence remain with `run.explain()` and
-verified Results.
+A Plan diagram represents baseline physical authoring by default and may
+project one explicitly selected `ParameterSet`. It neither selects nor displays
+an analysis `NetworkViewRef`. Request-specific PTC, transforms, retain, Schur
+reduction, Direct/HB results, and numerical capability evidence remain with
+`run.explain()` and verified Results.
 
 `run.explain(ref, spec).show()` performs the same deterministic component and
 ParameterSet preflight used by execution, without launching a solver or
@@ -1021,9 +979,8 @@ writing the workspace. For component authoring it shows:
 
 - every Library exact identity and public component schema;
 - composite hierarchy and primitive/backend expansion;
-- component-pin to electric-node/ground mapping, including Public, anonymous
-  Internal, Port-promoted, built-in-grounded, and source-provenance-only
-  explicit ground-call group identities;
+- structured series/parallel/branch/link declarations, bus/tap membership,
+  public exposures, generated private nodes, and canonical-ground endpoints;
 - every logical Port's node attachment, role, reference impedance,
   one-Port-per-node evidence, and Direct/HB lowering;
 - source units, canonical SI values, and public `ParameterRef` identities;
@@ -1050,20 +1007,11 @@ creating a second durable receipt schema.
 
 Plan seal or deterministic preflight fails before backend execution for:
 
-- duplicate component, node, or Port IDs, a reserved `"ground"` collision, or
-  duplicate pin/public-parameter names inside one component schema;
-- an unknown pin, parameter, inductive branch, node, or unbound/foreign Library
-  instance;
-- assigning one pin to different nodes or ground groups, incrementally
-  redefining a node, an empty `ground()` call, or a foreign/duplicate/already-
-  assigned grounded pin;
-- an empty electric-node declaration or the same pin repeated within one node;
-- an invalid, foreign, or duplicate `ElectricNodeRef` or `PortRef`; an
-  anonymous-node promotion colliding with an existing Public ID; a second Port
-  on one node; a Port bound to ground or directly to a pin; or changing
-  a promoted node identity after seal;
-- an anonymous node with fewer than two distinct pins unless one Port promotes
-  it before seal;
+- any authoring-grammar, endpoint, ownership, component-consumption, exposure,
+  Port, or structural-layout violation enumerated by the
+  [target fail-closed contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#authoring-diagram-failures);
+- duplicate component, parameter, or Port IDs; duplicate pin/public-parameter
+  names inside one component schema; or an unknown/foreign Library instance;
 - a bare physical number, foreign Pint registry, non-finite Quantity, or
   dimensional mismatch;
 - non-positive R, L, C, or `L_J0`; negative `Cj`; or a non-positive/non-integer
@@ -1077,8 +1025,8 @@ Plan seal or deterministic preflight fails before backend execution for:
   matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;
   G/R not positive semidefinite; or an HB request with nonzero off-diagonal R;
 - a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
-  node; wiring a `CoordinateRef`; exposing a foreign node; or hidden state
-  referenced as consumer API; or an unexposed one-pin child endpoint;
+  structure; wiring a `CoordinateRef`; exposing foreign or hidden state; or an
+  unbound native terminal;
 - an incomplete or invalid Plan passed to `render_schematic()`;
 - an `AffineMap` with incompatible units, non-finite coefficients, unordered or
   dimensionally invalid support, a baseline outside support, or a mapped
@@ -1104,9 +1052,9 @@ declared branch permits it; negative or non-finite values are not.
 
 ## Known V1 limits
 
-- Primitive, Composite, RLGC, and transmission-line factories through dev5 are
-  installable components. HB is the accepted dev6 runtime path, not
-  a second component catalog or topology model.
+- Primitive, Composite, RLGC, and transmission-line physical models retain
+  their accepted Full V1 meaning. The replacement structured authoring grammar
+  is a target-only `CONVERGING` scope and is not installed behavior.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
@@ -1125,5 +1073,6 @@ declared branch permits it; negative or non-finite values are not.
   upstream validation limitation described above.
 - `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
   build those circuits from the declared generic components.
-- Authoring and compiled schematic rendering remain projections of the
-  original Plan, never topology or backend authority.
+- Authoring and compiled schematic rendering remain projections of the Plan,
+  never topology or backend authority. Certified structured projection awaits
+  an accepted implementation candidate.

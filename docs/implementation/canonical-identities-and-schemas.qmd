@@ -379,11 +379,18 @@ Every failure evidence envelope also names the owning operation and carries its
 stage-specific canonical context; category/kind/operation mismatches fail
 semantic validation.
 
-`ParameterRef` identity is always the ordered pair `(component_path,
-parameter_id)`. A request carries the complete resolved binding for every Plan
-parameter: explicit values override the sealed baseline, and omitted values are
-expanded from that baseline before hashing. Bindings sort by this pair and must
-be unique.
+The frozen executable runtime identifies `ParameterRef` by the ordered pair
+`(component_path, parameter_id)`. A current request carries the complete
+resolved binding for every Plan parameter: explicit values override the sealed
+baseline, and omitted values are expanded from that baseline before hashing.
+Bindings sort by this pair and must be unique.
+
+The `CONVERGING` [Parameter System Contract](../contracts/parameter-system.qmd#parameter-identity-alignment)
+replaces the target ref identity with definitions-collection ID plus local ID,
+adds physical-consumer closure and ordered batch identities, and promises no
+schema compatibility before implementation alignment. This page records the
+current encoder; it is not a second target authority, and this docs package
+does not alter any JSON or Python schema.
 
 Each population candidate stores the callback-visible raw CMA sample as
 `optimizer_latent_coordinates_f64` and its transformed unit-box sample as

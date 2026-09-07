@@ -1,0 +1,581 @@
+---
+title: "Chapter 13 — Assemble the capstone and compensate its probes"
+subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+> **TARGET API / CONVERGING — not executable on the current runtime.**
+> The complete model and retained numerical requests are documentation-only.
+
+This is the complete three-Subsystem capstone: a two-section feedline, a
+grounded readout LC, and a floating pair, with terminated feedline ends and
+nonloading floating probes. First author and inspect that one complete Plan;
+only afterward ask for a View that compensates the declared probe loads. The
+original diagram remains the physical Plan, not a post-PTC circuit.
+
+## Lesson 13.1 — Build the feedline {#ch13-feedline}
+
+### Declare the root Plan and the feedline scope
+
+The root has exactly three inline Subsystems: `feedline`, `readout`, and
+`floating`. Each CPW body below is a finite-pi discretization, not an exact
+distributed equivalent.
+
+```{python}
+#| id: build-ptc-root-and-feedline
+from scnsim import (
+    CircuitPlan,
+    ParameterDefinitions,
+    ParameterSpec,
+    RLGC,
+    RLGCParameterSpec,
+    components,
+    units as u,
+)
+
+plan = CircuitPlan(id="floating_probe_course")
+feedline = plan.subsystem(id="feedline")
+rlgc = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+inputs = ParameterDefinitions(id="floating_probe_design")
+line_rlgc = inputs.parameter(
+    id="line_rlgc",
+    baseline=rlgc,
+    spec=RLGCParameterSpec(
+        conductors=("signal",),
+        reference_conductor="ground",
+    ),
+)
+readout_capacitance = inputs.parameter(
+    id="readout_capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+readout_inductance = inputs.parameter(
+    id="readout_inductance",
+    baseline=5.8 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+mutual_capacitance = inputs.parameter(
+    id="mutual_capacitance",
+    baseline=16.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+mutual_inductance = inputs.parameter(
+    id="mutual_inductance",
+    baseline=7.0 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+plus_shunt_capacitance = inputs.parameter(
+    id="plus_shunt_capacitance",
+    baseline=45.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+minus_shunt_capacitance = inputs.parameter(
+    id="minus_shunt_capacitance",
+    baseline=42.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+```
+
+`plan` now owns the `feedline` scope. `line_rlgc` is one independent whole-RLGC
+ref intentionally consumed by both native line fields; the remaining refs bind
+the readout and floating physical fields below.
+
+### Add the two independent N=1 line bodies
+
+```{python}
+#| id: add-ptc-feedline-bodies
+left = feedline.add(
+    components.transmission_line(
+        id="left",
+        length=1.0 * u.mm,
+        rlgc=line_rlgc,
+        n_sections=1,
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right",
+        length=1.0 * u.mm,
+        rlgc=line_rlgc,
+        n_sections=1,
+    )
+)
+```
+
+`left` and `right` are independent multi-terminal bodies. The next cell gives
+their signal pins one shared local tap boundary and distinct section ends.
+
+### Declare the local feedline buses
+
+The reference conductor remains RLGC metadata. This capstone uses ordinary
+`BusRef` endpoints: `middle_bus` is the shared electrical node between its two
+line sections and the public coupling pin.
+
+```{python}
+#| id: declare-ptc-feedline-taps
+input_bus = feedline.bus(id="input")
+middle_bus = feedline.bus(id="middle")
+output_bus = feedline.bus(id="output")
+```
+
+These three buses are direct electrical endpoints. Named `TapRef`s are useful
+only when an attachment needs its own presentation handle, as Chapter 12 shows.
+
+### Place both bodies and expose the feedline boundary
+
+```{python}
+#| id: wire-and-expose-ptc-feedline
+left_head_pin = left.pin("head", conductor="signal")
+left_tail_pin = left.pin("tail", conductor="signal")
+right_head_pin = right.pin("head", conductor="signal")
+right_tail_pin = right.pin("tail", conductor="signal")
+
+left_section = feedline.series(
+    id="left_section",
+    start=input_bus,
+    elements=(
+        left.between(left_head_pin, left_tail_pin),
+    ),
+    end=middle_bus,
+)
+right_section = feedline.series(
+    id="right_section",
+    start=middle_bus,
+    elements=(
+        right.between(right_head_pin, right_tail_pin),
+    ),
+    end=output_bus,
+)
+feedline_input_pin = feedline.expose_pin(id="input", at=input_bus)
+feedline_coupling_pin = feedline.expose_pin(id="tap", at=middle_bus)
+feedline_output_pin = feedline.expose_pin(id="output", at=output_bus)
+```
+
+The returned values are `PinRef`s: `feedline_input_pin`,
+`feedline_coupling_pin`, and `feedline_output_pin`. The authored public ID
+`tap` names a Pin boundary here; it does not make the returned handle a TapRef.
+
+The local bus-to-terminal map is explicit:
+
+| Local bus | Authored terminal(s) |
+| --- | --- |
+| input bus | left signal head |
+| middle bus | left signal tail + right signal head |
+| output bus | right signal tail |
+
+`head` and `tail` state authored terminal orientation for each native line
+body; they do not infer physical flow.
+
+## Lesson 13.2 — Add the grounded readout {#ch13-readout}
+
+### Declare the grounded readout LC
+
+The 110 fF/5.8 nH grounded readout LC is the local lumped approximation for
+the target quarter-wave mode. It is not an exact distributed-equivalence claim.
+
+```{python}
+#| id: build-ptc-readout-subsystem
+readout = plan.subsystem(id="readout")
+readout_capacitor = readout.add(
+    components.capacitor(
+        id="capacitor",
+        capacitance=readout_capacitance,
+    )
+)
+readout_inductor = readout.add(
+    components.inductor(
+        id="inductor",
+        inductance=readout_inductance,
+    )
+)
+readout_bus = readout.bus(id="node")
+readout_parallel = readout.parallel(
+    id="parallel_lc",
+    start=readout_bus,
+    branches=((readout_capacitor,), (readout_inductor,)),
+    end=readout.ground,
+)
+readout_terminal = readout.expose_pin(
+    id="readout_node",
+    at=readout_bus,
+)
+```
+
+`readout_terminal` is the one public PinRef the root uses to join this LC. Its
+two independent refs are physically bound here even though this Chapter does
+not vary them.
+
+## Lesson 13.3 — Add the floating subsystem {#ch13-floating}
+
+### Declare the floating subsystem leaves
+
+The three capacitance refs remain distinct: mutual 16 fF, plus shunt 45 fF,
+and minus shunt 42 fF baselines. Each is bound to its named native field.
+
+```{python}
+#| id: build-ptc-floating-parameters-and-leaves
+floating = plan.subsystem(id="floating")
+plus_bus = floating.bus(id="plus")
+minus_bus = floating.bus(id="minus")
+
+mutual_cap = floating.add(
+    components.capacitor(id="mutual_cap", capacitance=mutual_capacitance)
+)
+mutual_ind = floating.add(
+    components.inductor(id="mutual_ind", inductance=mutual_inductance)
+)
+plus_shunt = floating.add(
+    components.capacitor(
+        id="plus_shunt",
+        capacitance=plus_shunt_capacitance,
+    )
+)
+minus_shunt = floating.add(
+    components.capacitor(
+        id="minus_shunt",
+        capacitance=minus_shunt_capacitance,
+    )
+)
+```
+
+These real leaf bodies feed the mutual path, grounded shunts, and two published
+pins in the next cell.
+
+### Structure and expose the floating pair
+
+```{python}
+#| id: structure-and-expose-ptc-floating
+mutual_network = floating.parallel(
+    id="mutual_network",
+    start=plus_bus,
+    branches=((mutual_cap,), (mutual_ind,)),
+    end=minus_bus,
+)
+plus_branch = floating.branch(
+    id="plus_shunt",
+    at=plus_bus,
+    elements=(plus_shunt,),
+    end=floating.ground,
+)
+minus_branch = floating.branch(
+    id="minus_shunt",
+    at=minus_bus,
+    elements=(minus_shunt,),
+    end=floating.ground,
+)
+floating_plus_pin = floating.expose_pin(id="floating_plus", at=plus_bus)
+floating_minus_pin = floating.expose_pin(id="floating_minus", at=minus_bus)
+```
+
+`floating_plus_pin` and `floating_minus_pin` are the public boundary; the
+root will link those pins to named coordinate buses rather than reaching inside.
+
+## Lesson 13.4 — Assemble root couplers and probes {#ch13-root}
+
+### Declare root buses and their analysis aliases
+
+```{python}
+#| id: declare-ptc-root-buses
+feedline_in_bus = plan.bus(id="feedline_in")
+feedline_out_bus = plan.bus(id="feedline_out")
+readout_root_bus = plan.bus(id="readout_node")
+floating_plus_bus = plan.bus(id="floating_plus")
+floating_minus_bus = plan.bus(id="floating_minus")
+
+feedline_in_node = feedline_in_bus.node
+feedline_out_node = feedline_out_bus.node
+readout_node = readout_root_bus.node
+floating_plus = floating_plus_bus.node
+floating_minus = floating_minus_bus.node
+```
+
+The `floating_plus` and `floating_minus` aliases are root `ElectricNodeRef`s.
+The next cell consumes the buses and child pins to complete the public boundary
+links before any native root coupler is registered.
+
+### Link child boundaries at the root
+
+```{python}
+#| id: wire-ptc-root-subsystems
+plan.link(
+    id="feedline_input_child",
+    endpoints=(feedline_in_bus, feedline_input_pin),
+)
+plan.link(
+    id="feedline_output_child",
+    endpoints=(feedline_out_bus, feedline_output_pin),
+)
+plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
+plan.link(
+    id="floating_plus_child",
+    endpoints=(floating_plus_bus, floating_plus_pin),
+)
+plan.link(
+    id="floating_minus_child",
+    endpoints=(floating_minus_bus, floating_minus_pin),
+)
+```
+
+These links consume only published child boundaries and named root buses. The
+next cell registers the three native root capacitors before placing them.
+
+### Register the three native root couplers
+
+```{python}
+#| id: add-ptc-root-couplers
+
+feedline_coupler = plan.add(
+    components.capacitor(
+        id="feedline_readout_coupler",
+        capacitance=6.0 * u.fF,
+    )
+)
+plus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_plus",
+        capacitance=4.0 * u.fF,
+    )
+)
+minus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_minus",
+        capacitance=3.0 * u.fF,
+    )
+)
+```
+
+The three direct `ElementUse` handles now feed separate ordered series
+relations, preserving the electrical path of each coupling.
+
+### Place the three couplers in semantic series order
+
+```{python}
+#| id: declare-ptc-root-coupler-series
+feedline_readout = plan.series(
+    id="feedline_readout",
+    start=feedline_coupling_pin,
+    elements=(feedline_coupler,),
+    end=readout_root_bus,
+)
+readout_floating_plus = plan.series(
+    id="readout_floating_plus",
+    start=readout_root_bus,
+    elements=(plus_coupler,),
+    end=floating_plus_bus,
+)
+readout_floating_minus = plan.series(
+    id="readout_floating_minus",
+    start=readout_root_bus,
+    elements=(minus_coupler,),
+    end=floating_minus_bus,
+)
+```
+
+The completed `plan` now has its physical root topology. The next cell promotes
+its two terminated feedline ports and two raw nonloading probe handles.
+
+### Promote raw loads and declared nonloading probes
+
+The probes exist in the raw loaded Plan before any PTC operation.
+
+```{python}
+#| id: add-ptc-root-ports
+feedline_in_port = plan.add_port(
+    id="feedline_in",
+    at=feedline_in_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+feedline_out_port = plan.add_port(
+    id="feedline_out",
+    at=feedline_out_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_plus = plan.add_port(
+    id="floating_probe_plus",
+    at=floating_plus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_minus = plan.add_port(
+    id="floating_probe_minus",
+    at=floating_minus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+`probe_plus` and `probe_minus` remain raw declared loads here, so their handles
+can first be reviewed and then explicitly selected by the PTC pipeline.
+
+```{python}
+#| id: inspect-raw-loaded-ptc-probes
+from IPython.display import display
+
+display(
+    {
+        "feedline input": feedline_in_port,
+        "feedline output": feedline_out_port,
+        "floating plus probe": probe_plus,
+        "floating minus probe": probe_minus,
+    }
+)
+```
+
+The four displayed handles establish the raw loaded boundary. Review the
+complete physical Plan before choosing an analysis View; rendering neither
+requires nor creates a `CircuitRun`.
+
+### Render the authored physical declaration
+
+```{python}
+#| id: render-ptc-authoring-target
+from scnsim import CircuitDiagramSpec, SchematicLayout, Theme
+
+automatic = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+        show_provenance=True,
+    )
+)
+automatic.show()
+```
+
+`automatic` shows the raw authored Plan. Its audit table is separate so the
+reader can review topology and declaration evidence independently.
+
+```{python}
+#| id: inspect-ptc-authoring-audit
+automatic.audit.show()
+```
+
+The authoring audit confirms Plan-specific input-to-physical-field bindings,
+declared buses, child boundaries, Ports, and three root Subsystems. The next
+projection expands each finite-pi CPW body without turning that compiler detail
+into an analysis View.
+
+```{python}
+#| id: render-ptc-compiled-projection
+compiled = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="compiled",
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+        show_provenance=True,
+    )
+)
+compiled.show()
+```
+
+`compiled` makes the finite-pi expansion inspectable. Its audit carries the
+expanded topology and RLGC provenance separately from the authored projection.
+
+```{python}
+#| id: inspect-ptc-compiled-audit
+compiled.audit.show()
+```
+
+The two readout couplers attach to the same declared readout bus. The next
+optional layout hint changes only how the same authored Plan is read.
+
+```{python}
+#| id: render-ptc-relative-layout
+relative_layout = SchematicLayout(
+    order={plan: (floating, readout, feedline)}
+)
+hinted = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+        show_provenance=True,
+        layout=relative_layout,
+    )
+)
+hinted.show()
+```
+
+The `order` key contains only direct root Subsystems. It changes reading order,
+not wiring, component ownership, or energy direction.
+
+```{python}
+#| id: compare-ptc-layout-audit-identities
+from IPython.display import display
+
+display(
+    {
+        "automatic": {
+            "plan": automatic.audit.plan_sha256,
+            "connectivity": automatic.audit.connectivity_sha256,
+            "semantic": automatic.audit.semantic_sha256,
+        },
+        "hinted": {
+            "plan": hinted.audit.plan_sha256,
+            "connectivity": hinted.audit.connectivity_sha256,
+            "semantic": hinted.audit.semantic_sha256,
+        },
+    }
+)
+```
+
+Matching audit identities show that both drawings project this same complete
+Plan. Only after that review does the next Lesson derive an analytical View.
+
+## Lesson 13.5 — Select a probe-compensated View {#ch13-ptc-view}
+
+### Derive, explain, and solve the PTC-selected request
+
+```{python}
+#| id: derive-ptc-view
+from scnsim import CircuitRun, DirectSolveSpec, ReductionPipeline
+
+run = CircuitRun(plan=plan, workspace="workspaces/advanced-course")
+raw_loaded_view = run.original
+ptc_pipeline = ReductionPipeline().ptc(
+    probe_plus,
+    probe_minus,
+).retain(
+    "feedline_in",
+    "feedline_out",
+)
+ptc_view = raw_loaded_view.reduce(ptc_pipeline)
+spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+```
+
+`run` supplies the execution context and `raw_loaded_view` is its original
+analytical network. PTC removes only the declared probe loads from `ptc_view`;
+it does not modify the rendered Plan. `spec` states the Direct question.
+
+```{python}
+#| id: inspect-ptc-request-evidence
+ptc_explanation = run.explain(ptc_view, spec)
+display(ptc_explanation.evidence)
+ptc_explanation.show()
+```
+
+The explanation records raw-to-compensated View lineage. A target preflight or
+solve failure remains explicit evidence, not a hidden compensation fallback.
+
+```{python}
+#| id: solve-ptc-direct-request
+ptc_direct = run.solve(ptc_view, spec)
+display(ptc_direct)
+```
+
+`ptc_direct` is the returned answer for this selected View and exact grid; it
+is not evidence that the physical diagram itself changed.
+
+[Previous](12_model_n_trace_line.qmd) · [Next](14_transform_retain.qmd)

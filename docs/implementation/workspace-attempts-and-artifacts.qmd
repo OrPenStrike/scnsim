@@ -125,6 +125,14 @@ A verified `HBBatchResult` is successful request evidence even when every case
 contains a numerical `HBCaseFailure`; repeating it reuses the batch. Only a
 request-level failure or interruption is retryable.
 
+The `CONVERGING` Parameter System preserves one request and receipt for one
+ordered parameter batch. Its point identities and lazy artifacts are derived
+from that batch and never masquerade as independent attempts. Numerical
+non-success may remain attached to one point, while protocol, process, or
+integrity failure rejects the request. Exact ordering, selection, and target
+failure ownership belong to the
+[Parameter System Contract](../contracts/parameter-system.qmd#parameter-sweep-result).
+
 `resolve()` acquires no execution slot. It recomputes the request identity,
 finds the verified success, and validates Plan, semantic runtime, receipt, manifest, and
 artifact hashes. Missing or corrupt evidence is an error; it never falls back

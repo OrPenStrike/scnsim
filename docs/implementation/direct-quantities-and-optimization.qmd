@@ -6,6 +6,13 @@ toc-depth: 2
 
 **Status:** `STABILIZED` Full V1 implementation.
 
+The numerical algorithms below remain accepted. The `CONVERGING`
+[Parameter System Contract](../contracts/parameter-system.qmd) separately
+reopens ref identity, fixed non-active parameter binding, ordered batch
+execution, and sweep Results. Until runtime alignment, references below to
+component-derived refs and one `ParameterSet` describe the executable baseline,
+not a compatibility path for the target schema.
+
 ## Build one labeled Direct operator
 
 For the declared `exp(-i omega t)` convention, the compiled operator is

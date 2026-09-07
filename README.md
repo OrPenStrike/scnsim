@@ -6,17 +6,72 @@ output-file: index.html
 
 **Superconducting Circuit Network Simulation**
 
-SCNSim is a notebook-first Python package for declaring reusable
-superconducting-circuit networks, compiling auditable physical operators, and
-running Direct, harmonic-balance, and optimization workflows. It owns the
-circuit-network layer; geometry and electromagnetic simulation remain SCGSim
-responsibilities.
+SCNSim is a notebook-first Python package for building an equivalent-circuit
+model, checking the circuit that was declared, and asking reproducible network
+questions of it. A typical model might contain a parallel LC resonator, a
+coupling capacitor, and a terminated feedline Port. The author states those
+parts, their values and wiring, which parts belong to a subsystem, and which
+subsystem boundaries are public. SCNSim does not infer that engineering intent
+from names, numerical values, a picture, or a calculated mode.
 
-> **Status:** `STABILIZED` Full V1. The complete dev1–dev6 public semantics
-> are Human-`ACCEPTED`, and their documentation, implementation, durable
-> cross-slice tests, and validation agree. The semantic authoring-schematic
-> layout and adaptive presentation-theme APIs are a separate `CONVERGING`
-> candidate. This is not a release claim.
+The model-first course works toward a complete review package: a diagram
+generated from the authored circuit, its independent A/B correspondence audit,
+and typed analytical Results that point back to the same Plan while recording
+their separately selected View and request. The current structured-authoring
+cells describe that target honestly; they do not fabricate an implemented
+diagram or solver output.
+
+If you prefer to see the destination before learning each part, start by
+reading the complete
+[feedline/readout/floating capstone](examples/tutorials/13_compensate_probes.qmd).
+It declares the whole circuit before rendering or selecting probe compensation.
+The earlier Chapters then build the same vocabulary in smaller circuits; the
+capstone is an optional preview, not a prerequisite or a hidden model source.
+
+## Start with the circuit, then choose the question
+
+One complete `CircuitPlan` is the physical and structural source shared by two
+separate paths:
+
+```text
+explicitly authored CircuitPlan
+          |
+          +----> Automatic Semantic Circuit Diagram Layout System (ASCDLS)
+                 diagram of the authored or compiled Plan
+          |
+          +----> CircuitRun -> original or selected View -> request -> Result
+```
+
+The diagram path translates declared electrical and assembly facts into
+automatic geometry, then independently checks that projection against the
+Plan. It answers “did the picture preserve the circuit I wrote?” It does not
+choose an analysis coordinate, reduction, Port-Termination Compensation (PTC),
+parameter override, or solver request.
+
+The analysis path starts from the same Plan. A `CircuitRun` supplies
+`run.original`; the user derives a `NetworkViewRef` only when the question
+needs different coordinates, compensation, or a retained boundary. A Solve,
+Evaluate, or Optimization Spec then states the calculation, and a typed Result
+owns the answer and its evidence. The original drawing therefore remains a
+drawing of the authored circuit even when an analysis View asks about, for
+example, common and differential coordinates of two physical terminals.
+
+| The author must declare | SCNSim may derive |
+|---|---|
+| components, physical values, wiring, ground, and logical Ports | validated electrical and compiled operators |
+| subsystem ownership, series/parallel structure, buses/taps, and public pins | an automatic authoring or compiled diagram |
+| independent parameter definitions and their physical-field bindings | selected parameter points and parameterized diagrams |
+| the analysis question, selected View, parameter point or space, and request | Direct, harmonic-balance, sweep, optimization, Result, and report evidence |
+
+SCNSim owns this circuit-network layer. Physical geometry and electromagnetic
+simulation remain SCGSim responsibilities.
+
+> **Current status:** accepted Direct/HB numerical algorithms and physical
+> models are not reopened. Structured authoring, the independent Parameter
+> System, and parameterized diagrams are `CONVERGING` documentation targets.
+> Their runtime implementation is paused, so the TARGET Tutorial cells are
+> reviewable but not executable on the current runtime. This is neither Human
+> acceptance of the target API nor a release claim.
 
 ## Install for development
 
@@ -36,33 +91,39 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-
 Teammates then clone that consuming repository and run `uv sync --locked`;
 they do not repeat `uv add`.
 
-## Inspect the current package
+## Inspect the frozen runtime baseline
 
 ```bash
 uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-Primitive, Composite, RLGC, PTC/transform, expanded Direct, optimization, and
-inventory paths through Lessons 1–13 are the accepted Full V1 implementation. Lessons 12–13
-exercise the accepted HB scope: typed pump axes, drives, cases, truncation,
-per-case outcomes, exact resolution, and side-by-side Direct/HB presentation
-on independently declared grids. Stabilization does not add HB optimization,
-interpolation, release delivery, or a SCQGate handoff.
+These commands inspect the last implemented package surface. They do not make
+the structured-authoring TARGET Tutorial executable. The retained numerical
+contracts still cover Direct, HB, optimization, views, exact resolution, and
+reports; this documentation rewrite does not change those meanings or add HB
+optimization, interpolation, release delivery, or a SCQGate handoff.
 
 ## Read the documentation
 
-- [Overview](README.md) — product boundary, status, and installation.
-- [Tutorial](docs/index.qmd) — thirteen focused native-API lessons from
-  primitive authoring through optimization, reuse, and pump-off HB.
+- [Overview](README.md) — the model-first workflow, product boundary, status,
+  and installation.
+- [Tutorial](docs/index.qmd) — short TARGET lessons grouped into
+  clean-kernel Chapters; each analysis Chapter first rebuilds the circuit it
+  needs.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
-  why SCNSim uses Plans, views, typed requests, and explicit ownership.
+  why SCNSim separates authored circuit facts, diagram geometry, and analysis
+  Views while keeping one Plan authority.
+- [Parameters](docs/concepts/units-parameters-and-optimization.qmd) — why a
+  named input, its physical binding, a selected point, a sweep, and an
+  optimization variable are different objects.
 - [Contract](docs/contracts/index.qmd) — public behavior plus the maintainer
   implementation design followed by the current executable Runtime slices.
 
-Each lesson also has a generated Notebook in
+Each Chapter also has a zero-output generated Notebook in
 [`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)
-for GitHub preview or VS Code/Jupyter execution.
+for GitHub or VS Code/Jupyter review. Do not execute the TARGET cells until the
+runtime implementation is aligned and separately accepted.
 
 ## Preview locally
 

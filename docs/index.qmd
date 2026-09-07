@@ -1,188 +1,127 @@
 ---
 title: "Tutorial"
-description: "A linear SCNSim micro-course from primitive authoring to Direct, optimization, reusable composition, and pump-off HB."
+description: "A model-first SCNSim course from an explicit circuit and diagram to Views, parameter points, reuse, and pump-off HB."
 anchor-sections: false
 ---
 
-Follow the course in order. Each page answers one user question with one focused
-operation and inspection. If an API has not been taught, the course does not
-use it.
+The numbered files are complete, clean-kernel Chapters. TARGET cells are
+`CONVERGING`, non-executable documentation: generated notebooks are zero-output
+review artifacts, not runtime or scientific evidence. Each Chapter declares
+the circuit it needs before selecting a View, parameter point, or request.
 
-::: {.callout-note title="Full V1 lifecycle" appearance="simple"}
-The complete dev1–dev6 public semantics taught in Lessons 1–13 are
-Human-`ACCEPTED` and `STABILIZED`. Their documentation, implementation,
-durable cross-slice tests, and validation agree. This is not a release claim.
-The semantic authoring-schematic layout and adaptive diagram/figure/report
-theme are a separate `CONVERGING` presentation candidate and do not alter
-those computational semantics. Until its runtime alignment is complete, the
-diagram cells in this course are diagnostic views rather than certified
-electrical/semantic projection evidence.
+::: {.callout-warning title="TARGET course · CONVERGING" appearance="simple"}
+Structured authoring, parameter binding, and certified diagrams are proposed
+API surfaces. Direct/HB, View, optimization, workspace, Result, and report
+meanings remain their established numerical teaching; a diagram never chooses
+an analytical View or performs a calculation.
 :::
 
-## Author and analyze
+## Build a circuit and get a result
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 01</p>
-
-### [Author one primitive reflective circuit](../examples/tutorials/01_author_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I state every component and electrical connection once?
-
-<p class="course-card-outcome"><strong>Produces</strong> · An inspectable authoring schematic.</p>
+### [Chapter 1 — Model a coupled grounded resonator](../examples/tutorials/01_author_primitive.qmd) {.course-card-title .unlisted}
+Short Lessons: [grounded LC](../examples/tutorials/01_author_primitive.qmd#ch1-grounded-lc) · [parent circuit](../examples/tutorials/01_author_primitive.qmd#ch1-assemble-port) · [diagram review](../examples/tutorials/01_author_primitive.qmd#ch1-diagram-review)
 :::
 ::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 2 — Ask for a Direct response](../examples/tutorials/02_solve_direct.qmd) {.course-card-title .unlisted}
+Short Lessons: [rebuild](../examples/tutorials/02_solve_direct.qmd#ch2-model) · [Direct request](../examples/tutorials/02_solve_direct.qmd#ch2-direct-request)
+:::
+::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 3 — Select a coordinate and evaluate](../examples/tutorials/03_evaluate_quantity.qmd) {.course-card-title .unlisted}
+Short Lessons: [model](../examples/tutorials/03_evaluate_quantity.qmd#ch3-model) · [coordinate View](../examples/tutorials/03_evaluate_quantity.qmd#ch3-coordinate-view)
+:::
+::::
+
+## Define inputs, sweep, tune, and recover
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 02</p>
-
-### [Prepare and solve a Direct response](../examples/tutorials/02_solve_direct.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I request and inspect the circuit's one-Port response?
-
-<p class="course-card-outcome"><strong>Produces</strong> · Typed Direct S/Y/Z surfaces.</p>
+### [Chapter 4 — Define and bind physical parameters](../examples/tutorials/04_define_parameters.qmd) {.course-card-title .unlisted}
+Short Lessons: [independent inputs](../examples/tutorials/04_define_parameters.qmd#ch4-definitions) · [physical binding](../examples/tutorials/04_define_parameters.qmd#ch4-binding) · [point selection](../examples/tutorials/04_define_parameters.qmd#ch4-point)
 :::
 ::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 5 — Sweep parameter points](../examples/tutorials/05_sweep_parameters.qmd) {.course-card-title .unlisted}
+Short Lessons: [bound inputs](../examples/tutorials/05_sweep_parameters.qmd#ch5-binding) · [grid and points](../examples/tutorials/05_sweep_parameters.qmd#ch5-spaces) · [selection and collection](../examples/tutorials/05_sweep_parameters.qmd#ch5-collect)
+:::
+::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 6 — Tune a physical parameter](../examples/tutorials/06_optimize_primitive.qmd) {.course-card-title .unlisted}
+Short Lessons: [parameterized model](../examples/tutorials/06_optimize_primitive.qmd#ch6-parameterized-model) · [tuning search](../examples/tutorials/06_optimize_primitive.qmd#ch6-optimize)
+:::
+::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 7 — Report and resolve exact requests](../examples/tutorials/07_report_resolve.qmd) {.course-card-title .unlisted}
+Short Lessons: [model](../examples/tutorials/07_report_resolve.qmd#ch7-model) · [report and resolve](../examples/tutorials/07_report_resolve.qmd#ch7-report-resolve)
+:::
+::::
+
+## Reuse circuits and review diagrams
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 03</p>
-
-### [Choose a View and evaluate one loaded resonance](../examples/tutorials/03_evaluate_quantity.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I ask a node-level quantity question without changing the circuit?
-
-<p class="course-card-outcome"><strong>Produces</strong> · An immutable retained View and a typed loaded-root Result.</p>
+### [Chapter 8 — Start a reusable Library](../examples/tutorials/08_create_library.qmd) {.course-card-title .unlisted}
+Short Lesson: [Library catalog](../examples/tutorials/08_create_library.qmd#ch8-library)
 :::
 ::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 9 — Build a Composite factory](../examples/tutorials/09_add_composite_factory.qmd) {.course-card-title .unlisted}
+Short Lessons: [factory boundary](../examples/tutorials/09_add_composite_factory.qmd#ch9-factory) · [component instance](../examples/tutorials/09_add_composite_factory.qmd#ch9-instance)
+:::
+::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 10 — Reuse a component in a circuit](../examples/tutorials/10_use_custom_component.qmd) {.course-card-title .unlisted}
+Short Lessons: [factory recap](../examples/tutorials/10_use_custom_component.qmd#ch10-factory) · [larger circuit](../examples/tutorials/10_use_custom_component.qmd#ch10-assemble)
+:::
+::::
+:::: {.card .course-card}
+::: {.card-body}
+### [Chapter 11 — Review and customize a schematic](../examples/tutorials/11_review_customize_schematic.qmd) {.course-card-title .unlisted}
+Short Lessons: [model](../examples/tutorials/11_review_customize_schematic.qmd#ch11-model) · [layout](../examples/tutorials/11_review_customize_schematic.qmd#ch11-layout) · [stitch](../examples/tutorials/11_review_customize_schematic.qmd#ch11-stitch) · [parent grounding](../examples/tutorials/11_review_customize_schematic.qmd#ch11-parent-ground) · [return commoning](../examples/tutorials/11_review_customize_schematic.qmd#ch11-common-returns) · [validation](../examples/tutorials/11_review_customize_schematic.qmd#ch11-validation)
+:::
+::::
+
+## Model and analyze coupled systems
 
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 04</p>
-
-### [Tune and verify a primitive resonance](../examples/tutorials/04_optimize_primitive.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I tune the resonance to 6.2 GHz and verify the winner?
-
-<p class="course-card-outcome"><strong>Produces</strong> · An optimization Result, immutable best `ParameterSet`, and explicit readback.</p>
+### [Chapter 12 — Model ordered RLGC lines](../examples/tutorials/12_model_n_trace_line.qmd) {.course-card-title .unlisted}
+Short Lessons: [coupled line](../examples/tutorials/12_model_n_trace_line.qmd#ch12-n2-line) · [tapped feedline](../examples/tutorials/12_model_n_trace_line.qmd#ch12-tapped-feedline)
 :::
 ::::
-
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 05</p>
-
-### [Report and resolve exact Results](../examples/tutorials/05_report_resolve.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I report explicit evidence and reload it after restart?
-
-<p class="course-card-outcome"><strong>Produces</strong> · A report and exact receipt-backed resolution path.</p>
+### [Chapter 13 — Assemble the capstone and compensate probes](../examples/tutorials/13_compensate_probes.qmd) {.course-card-title .unlisted}
+Short Lessons: [feedline](../examples/tutorials/13_compensate_probes.qmd#ch13-feedline) · [readout](../examples/tutorials/13_compensate_probes.qmd#ch13-readout) · [floating subsystem](../examples/tutorials/13_compensate_probes.qmd#ch13-floating) · [root assembly](../examples/tutorials/13_compensate_probes.qmd#ch13-root) · [PTC View](../examples/tutorials/13_compensate_probes.qmd#ch13-ptc-view)
 :::
 ::::
-
-## Reusable composition
-
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 06</p>
-
-### [Create a custom component Library](../examples/tutorials/06_create_library.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I give a project its own explicit component catalog?
-
-<p class="course-card-outcome"><strong>Produces</strong> · One documented custom catalog singleton.</p>
+### [Chapter 14 — Transform and retain coordinates](../examples/tutorials/14_transform_retain.qmd) {.course-card-title .unlisted}
+Short Lessons: [feedline](../examples/tutorials/14_transform_retain.qmd#ch14-feedline) · [readout](../examples/tutorials/14_transform_retain.qmd#ch14-readout) · [floating subsystem](../examples/tutorials/14_transform_retain.qmd#ch14-floating) · [root assembly](../examples/tutorials/14_transform_retain.qmd#ch14-root) · [transform](../examples/tutorials/14_transform_retain.qmd#ch14-transform-view)
 :::
 ::::
-
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 07</p>
-
-### [Add a Composite factory](../examples/tutorials/07_add_composite_factory.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I stop rebuilding the same subsystem internals?
-
-<p class="course-card-outcome"><strong>Produces</strong> · One reusable grounded-LC `ComponentInstance`.</p>
+### [Chapter 15 — Prepare pump-off HB](../examples/tutorials/15_prepare_hb.qmd) {.course-card-title .unlisted}
+Short Lessons: [feedline](../examples/tutorials/15_prepare_hb.qmd#ch15-feedline) · [readout](../examples/tutorials/15_prepare_hb.qmd#ch15-readout) · [floating subsystem](../examples/tutorials/15_prepare_hb.qmd#ch15-floating) · [root assembly](../examples/tutorials/15_prepare_hb.qmd#ch15-root) · [HB request](../examples/tutorials/15_prepare_hb.qmd#ch15-hb-request)
 :::
 ::::
-
 :::: {.card .course-card}
 ::: {.card-body}
-<p class="course-card-eyebrow">Lesson 08</p>
-
-### [Use a custom component in another Plan](../examples/tutorials/08_use_custom_component.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How does a reusable subsystem connect to a larger circuit?
-
-<p class="course-card-outcome"><strong>Produces</strong> · An outer Plan with a custom `ComponentInstance`.</p>
+### [Chapter 16 — Read Direct and pump-off HB](../examples/tutorials/16_compare_direct_hb.qmd) {.course-card-title .unlisted}
+Short Lessons: [feedline](../examples/tutorials/16_compare_direct_hb.qmd#ch16-feedline) · [readout](../examples/tutorials/16_compare_direct_hb.qmd#ch16-readout) · [floating subsystem](../examples/tutorials/16_compare_direct_hb.qmd#ch16-floating) · [root assembly](../examples/tutorials/16_compare_direct_hb.qmd#ch16-root) · [results](../examples/tutorials/16_compare_direct_hb.qmd#ch16-independent-results)
 :::
 ::::
 
-## Advanced native workflows
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 09</p>
-
-### [Model an N-trace transmission line](../examples/tutorials/09_model_n_trace_line.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I preserve full RLGC matrices through π-section lowering?
-
-<p class="course-card-outcome"><strong>Produces</strong> · A diagnostic compiled ladder view; certified projection remains pending.</p>
-:::
-::::
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 10</p>
-
-### [Compensate nonloading probes](../examples/tutorials/10_compensate_probes.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I remove measurement shunts without deleting Port identity?
-
-<p class="course-card-outcome"><strong>Produces</strong> · A PTC view and load evidence.</p>
-:::
-::::
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 11</p>
-
-### [Transform and retain paired coordinates](../examples/tutorials/11_transform_retain.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I inspect one floating pair in automatic common/differential coordinates?
-
-<p class="course-card-outcome"><strong>Produces</strong> · One backend-neutral transformed view.</p>
-:::
-::::
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 12</p>
-
-### [Declare a pump-off HB request](../examples/tutorials/12_prepare_hb.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do axes, drives, cases, and truncation author, solve, and resolve a
-zero-drive experiment?
-
-<p class="course-card-outcome"><strong>Produces</strong> · A receipt-backed pump-off HB batch with typed case outcomes.</p>
-:::
-::::
-
-:::: {.card .course-card}
-::: {.card-body}
-<p class="course-card-eyebrow">Lesson 13</p>
-
-### [Solve and compare Direct/HB responses](../examples/tutorials/13_compare_direct_hb.qmd){.stretched-link} {.course-card-title .unlisted}
-
-How do I present one selected network through both solvers without conflating
-their grids?
-
-<p class="course-card-outcome"><strong>Produces</strong> · Independent Direct and HB S/Y/Z surfaces shown side by side.</p>
-:::
-::::
-
-For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd).
-For exact signatures, equations, failures, evidence, and maintainer design, use
-the [Contract map](contracts/index.qmd).
+For design rationale, use [Concept](concepts/physical-authority-and-reusable-composition.qmd). For exact signatures, equations, failures, evidence, and maintainer design, use the [Contract map](contracts/index.qmd).
