@@ -1454,6 +1454,18 @@ class CompositePlan(_Scope):
 
 
 class CircuitPlan(_Scope):
+    """Root authoring scope for a structured circuit and its physical connections.
+
+    Create named buses, add catalog components, and assemble them with
+    ``series()``, ``parallel()``, ``branch()``, and ``link()``. Inline
+    subsystems retain their own ownership boundaries; Ports belong to the root.
+    The Plan also owns grounding and physical parameter bindings.
+
+    Parameter resolution, calculation, and schematic rendering consume captured
+    Plan snapshots. Rendering neither edits nor seals the authoring graph;
+    constructing a ``CircuitRun`` validates and seals it against further edits.
+    """
+
     def __init__(self, *, id: str) -> None:
         self.ground_net = _Net("ground", True)
         self.sealed = False
