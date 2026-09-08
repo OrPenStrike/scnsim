@@ -1,13 +1,15 @@
 ---
 title: "Chapter 7 — Report and resolve exact requests"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> The request and reporting operations shown here remain target-only.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 One parameterized resonator Plan can answer more than one question. This Chapter
 keeps the physical declaration separate from the Direct and root requests it

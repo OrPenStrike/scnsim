@@ -1,0 +1,825 @@
+{
+  "binding": {
+    "generator_sha256": "c7cd995e477f0cbb1a832e364d4d5a4d59eaaafcc18d6859d0c6fb5283ba5bdd",
+    "recipe_sha256": "cd62d27336432dba63a578e5239d71ececdd91e1d60ccaea8bef9822615a423a",
+    "renderer": {
+      "files": {
+        "src/scnsim/__init__.py": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
+        "src/scnsim/_authoring_snapshot.py": "6a94d0a1191bd5ced0ce082edb5aeaaf76af5510639af46f01319bb34fbd997a",
+        "src/scnsim/_backend.py": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
+        "src/scnsim/_canonical.py": "3c8ef02653a86eaf0f11632f82438794a96107cf2a57b0461af8f49630bc5a6a",
+        "src/scnsim/_diagram/__init__.py": "f7f4b4d6f0379c1378eb673825f1841f1ba95261dd6402b0f7c2eade0828cfef",
+        "src/scnsim/_diagram/audit.py": "023e67ff354fdc053223e11236f6cf286c9a5b717a91ab0d27716197649804a4",
+        "src/scnsim/_diagram/compiled.py": "8933dd1d492952655956629130b3ffa75714258dd3d69a869b6ebc23ef30e092",
+        "src/scnsim/_diagram/composition_constraints.py": "2745e4946f0fe9e68f834676e2c58d49fb85ca8353ec1ccaabec15031b1766f6",
+        "src/scnsim/_diagram/composition_geometry.py": "43401b0a4ad5585f88d0d4e99e69d0d5c93cc734b23293cff6ba1bce9b67b7f5",
+        "src/scnsim/_diagram/composition_model.py": "ba90704be8979b51167bd4f44d9296ad03623c9e64649de4f0c15dc333977330",
+        "src/scnsim/_diagram/composition_planner.py": "013a45f74faeb35c1924d64e811ea2ff6efe602f0b41438d5f44891650d712dd",
+        "src/scnsim/_diagram/drawing.py": "1eb88ddc11cdc04eafd166255046f62a56c6b14f9905a5fbd1ff20d637b4f166",
+        "src/scnsim/_diagram/equivalence.py": "79551c7bdd7824062d574e15f0c44ad899acde6542a217080fd9f8a76aa4227c",
+        "src/scnsim/_diagram/expected.py": "8fe1ca37ea336b9d8ce7c5814970a427c7197c952d1a54e53c251c58eaa11672",
+        "src/scnsim/_diagram/metrics.py": "dba77723e5e27320d0703558d5c956b8dccab0517732bc365275a503e5c2b524",
+        "src/scnsim/_diagram/native.py": "5530eb5a92b824cce3ce25d0c797d2b72989db88c4c7d333ee08029fc3b0f106",
+        "src/scnsim/_diagram/pipeline.py": "adce23bb4264723037e6e07f22bfe3c0b50edb1dcacc0853ee632b355d16207a",
+        "src/scnsim/_diagram/reconstruction.py": "7271887b795ac07cb1f9e2161e3bca3846e36c3a7e7ed27517e676b51d906e2c",
+        "src/scnsim/_diagram/routing.py": "3db6eecdeca06a8be0ba3783546cce4424465cbe9282cdb0afd0818fb26012ad",
+        "src/scnsim/_diagram/scene.py": "a3d3aea4271ac65b00805bf9771fe9463444168f132083bb36b00ea40a4e7fdf",
+        "src/scnsim/_diagram/snapshot.py": "8e4fba1e998c2e5884d01b3f40d59f5045b71073421a6d06cdaad75f12e3aabd",
+        "src/scnsim/_diagram/structured.py": "db9215fb0346ddad5f4269991c20cac3607828173704efb6e20dc5db37847588",
+        "src/scnsim/_diagram/values.py": "5206479f6ad431e1534d0ae129961054b0c0ce7315c2e95e7a2375681e0a1862",
+        "src/scnsim/_diagram/witness.py": "b716b16f3f1f3ab11ef83d33aa5c8fe17a05cfa6ee0fe12786b50661c4dfacb0",
+        "src/scnsim/_diagram_spec.py": "71c066820bc6df7e4f157018abcd7ac0b4fb3cc734c8522c72e48e5d614c9de5",
+        "src/scnsim/_julia/Manifest.toml": "e6b7e3c33d3b21dba19e19661967766e86591d37ed289458b5276e9b3eada4d3",
+        "src/scnsim/_julia/Project.toml": "10b3c41423bb258ee2bfad157de6d115d702e8c1ff7bce2e9fd4cea3d5dd3f12",
+        "src/scnsim/_julia/bin/scnsim_request.jl": "3510ba25cce96b716e75ac2ac92ae0a2b96004f4c7d55547c9de88ddaee14907",
+        "src/scnsim/_julia/runtime.json": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
+        "src/scnsim/_julia/src/SCNSimBackend.jl": "a03b5aaa45ba76c444b72e6710c8a76b63c6b1d821821e2cbb78d763897b8f46",
+        "src/scnsim/_julia/src/batch_v2.jl": "9504a1f35b5406c3b59555ea2294d440409d890f57b4d3dfd792203baffd98d8",
+        "src/scnsim/_julia/src/hb.jl": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902",
+        "src/scnsim/_julia/src/structured_v2.jl": "f3e0f412fbd096c5a90bc5c5269bf258f8e7afdd4c54e2402b7a86abe308c629",
+        "src/scnsim/_parameter_resolution.py": "ee04e7f4861edaab38d364f9646f91adb74ffbbba13e1dd5295c1e29cdcc17f6",
+        "src/scnsim/_parameters.py": "a526aab8648d4c5a9af7b82d974941bb47cb4afe03026a6547d69416c7e1fef6",
+        "src/scnsim/_physical_values.py": "0127251e73157de32ee1413e68e764aabfd95f79ae9400f15a3b3039efa0265b",
+        "src/scnsim/_scaffold.py": "0d45b7ecb1d26875c91226db6291960d5ad72d045adee66666e632ed7435f690",
+        "src/scnsim/_schemas/identity-v1.schema.json": "5f0e84ff32d88ca0a9903c1c28d26964d40f55d9bffff93e97a5d1b122f5219d",
+        "src/scnsim/_schemas/identity-v2.schema.json": "91d8818ff0759fe40b6b1a9a21648322aa7cd15f3a1724d55146a17d8c4000ad",
+        "src/scnsim/_workspace.py": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
+        "src/scnsim/authoring.py": "cce5e548c1f847f15adb6423d94b73696e06d4a19da958116322ac3436b85a89",
+        "src/scnsim/composition.py": "0e8450a61d8e924558866325988543a0912944ff5f5bb379cdcde795cf34cadf",
+        "src/scnsim/errors.py": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
+        "src/scnsim/io.py": "4999f89d4171cf248a5393dc5c54254436d4d65a0f590ef421f251fa248db36f",
+        "src/scnsim/presentation.py": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
+        "src/scnsim/results.py": "0d6e78faba9258075c5fbda8f904adf80a0b2fd62767fca0b11b407a8d2b1afd",
+        "src/scnsim/runtime.py": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
+        "src/scnsim/schematic.py": "9bf407c117a9a706cd7cc3bce761fb56452e82d1d4a68e608f0493575a3fcd66",
+        "src/scnsim/specs.py": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
+        "src/scnsim/units.py": "b42db68916c5904e360d04a2a78abc7e4dc04cd1fc4999f8560c59dcce2c5b53"
+      },
+      "sha256": "7d2ebb401c82f6704d5b08df24a3cc49d95827f29f8618da184df64c0d2dfc16"
+    },
+    "sources": {
+      "01_author_primitive.qmd": {
+        "cells": {
+          "add-inline-resonator-native-parts": "f086a170c50c2ed562c64e015ca182c9e03ff8994b0383fc4c67aa7285578501",
+          "author-inline-resonator-target": "7a0e14bbf2997ef33cb5e772e5810e5b1ab5d97a259180770060c29377df74b6",
+          "declare-inline-resonator-parallel-lc": "cf53eccc17b1a45fb03f6036f3a60970e35cf9fe088ae8684fd0d7e8a7faf607",
+          "declare-primitive-root-buses-and-coupler": "bcff9d828cf68ffd9e929f312b4538d210096ae43e1a9108df701ccbf1ef3318",
+          "declare-primitive-series-and-link": "7618f3428a8df628a1c61dfc2be56684b3be8a47990724dda8875b90e4174146",
+          "expose-inline-resonator-terminal": "ab3e5a24d402eed31593e26e77537adf0b983255cf81b40e8c654151daac934d",
+          "inspect-inline-resonator-boundaries": "5f284a9e7cbfd43728a12d3e3b950f9fa756f8207b43af4e940c0050013579e3",
+          "promote-primitive-port": "f80670f76e00dea2e518c53804732f1544d0c6f7622c209bf423d26592b0512c",
+          "render-inline-resonator-target": "179ed1ce9afb43b26a4ce813e257773f8b85a4cbd62741cf54666f7ece3218ac",
+          "review-inline-resonator-target": "73f78f28f9383eccbc2414040c48b94e4bf24e86fb5e18fe6de45fd842bd627b",
+          "show-inline-resonator-drawing": "6852e9b1e7826e35a5be9c8cfe62dcd3b919b4275442e26c25d1019824d864a0"
+        },
+        "sha256": "060e4f48fc6058806d86672183b75f32665630e198eb2196ce27391cdf04715c"
+      },
+      "04_define_parameters.qmd": {
+        "cells": {
+          "assemble-reused-second-resonator": "c1c1e6892f9736234e93ca565b6c999bb7778a66e73133998b29f3ddff440e75",
+          "assemble-reused-second-root": "c436ed55af9ab6a253875ca080257c0cb9c49e0bf4f856e523c694ea9e716fc2",
+          "complete-parameterized-root": "1153809ab2dd50d62d95fa2dfa8f4cc7581d09f3bdd5d25c9c72e668f4f1b9b2",
+          "create-parameterized-plan": "870dfbf7c1b12b6e9d60ba2f1cace885b0473fd794ed6c7e4bc577888438e4f1",
+          "define-distinct-and-reused-refs": "f15c0ee39f3a4c6e3a7aa64fa5033ff1c765558692b77ee6063f6139eb8b74e2",
+          "define-parameter-inputs": "a6a6a91c52b8df03577cc2d9f7ee4d28cfd91a0d96fdedb2843ce26d7542f5d7",
+          "evaluate-selected-parameter-point": "0ceca169f93b26dc8bf9a51f3bd1505412deba8e7d3fc4d9042772335420caf3",
+          "inspect-parameter-bindings": "d7705414e64b020ceb20d1a7c66cdf27bd50bbb3aa6dd6481d07c9298f143ff0",
+          "inspect-second-plan-binding-audit": "22cc3ad423b0f676780510168d2e6d2da809e774b7170828abb3bf000b10580f",
+          "inspect-selected-parameter-audit": "1df5b2fb23dd9800697b83456bc5510f05cf14d03f6aefb7dfee15d4eb80b06b",
+          "render-selected-parameter-diagram": "b2bbfc52498bfe9f7f82a576e09fe2da7bfac447375a4a6952527302148a8091",
+          "select-parameter-point": "b78e5de7bb4216102dd60e2e66fa89b792c8920fb8427d4d1fae3befcb6cb714",
+          "show-selected-parameter-result": "51d79cd2cd005287e33fbf8a472daf39f30f01130f353f109a5f0f7f6d96614e"
+        },
+        "sha256": "6fd133cadbab84c91eb37471ab2d5b8904e2eaac28a899ba426780a872817539"
+      },
+      "06_optimize_primitive.qmd": {
+        "cells": {
+          "add-optimization-native-parts": "c1f1616030e827847a5aa15f37cbcd34feace0b03280442e28b496e072014c19",
+          "build-optimization-root-and-subsystem": "0aa3d6850f04c6b258b5ae31908409833f51d0a7e91360f5ebad0939e89b84ad",
+          "declare-optimization-parallel-lc": "5432e68f95e2e0ddff9a8b9b4bd3b1744f0c72d5998c388cc0d2c34fbdd3ff90",
+          "declare-optimization-resonator-parameters": "3136f3eb906bbd29ddcce7478a8ee8356673a48514f62f906c2ca888f06a66c2",
+          "declare-optimization-root-wiring": "a8278658e8f61b10054e8035c0056db308779f19f8b847b2d5169e90c6adbc00",
+          "define-fixed-nonactive-parameters": "7bb8c0fe8af1ddfc510483705d429973b80d520d02970ebe04027ff0b53994b3",
+          "define-primitive-optimization": "1eaeb28ab6abea13db87c844d70784a9671fe426b73d9f0df2befa4c6c8e4a0e",
+          "expose-optimization-resonator-terminal": "863292c9d2c38b7865f3791b992a76ceacacb4071a6038113a7b302c9a32f6ec",
+          "inspect-optimized-winner": "05dd5e66f3b3e24219da3ea946a10cdf1836e167e1510aea5ccc666f10560a85",
+          "inspect-optimized-winner-audit": "32890fb106a8c856018e9d9a66d441756ba3f8be64b900a268ae6c18093ab7a4",
+          "inspect-optimized-winner-diagram": "a20d15e9d9d46d433eaf1544caf177f0c534acfdcac16e52608df8e58d20d920",
+          "run-primitive-optimization": "1acf50ff5464adf5ee7588379be68b6b37d3a39c3355383515b09b100fdbef8e",
+          "show-primitive-optimization": "03fdf2408911102c1f693761ad20c2b3d6909219bfce93c31ba8ae1f65f0a553"
+        },
+        "sha256": "7c9ac9c4396b4970d91ec1514df050dc34ba7ce9e466867eda66886aca2a13b7"
+      },
+      "09_add_composite_factory.qmd": {
+        "cells": {
+          "build-composite-instance-and-plan": "9d14008c2c50115c20b95f616f6cca383e5fbe55ade49efb16f8401d75f34bac",
+          "define-library-composite-target": "aff13a656c4d4a2b95554e293c4c5c00a07ffeb9d94918878637a9d71d188225",
+          "inspect-composite-factory-audit": "cac3257aa65a3de321f0e98aa6e72c24ee5232f0363b5d27708f6e05f97edb78",
+          "inspect-composite-factory-target": "f6ee68d8da15ae71c53eb63f28a45049cdf16662d1e2e9b135967a3d99c2ed24",
+          "render-composite-factory-target": "30aa9089f9c52a821cb336e3902daa8bbdd00fc3450d6dcf686b4322915be8b3",
+          "wire-composite-instance-target": "9686e4697b75fe83d90a8a80eb7f354e44ad0912692a4b094abae08b42c0aab1"
+        },
+        "sha256": "8f5e4c86755c7dd7b63920150067b35a85680367c1024c7ecbdeb7d565bf550d"
+      },
+      "10_use_custom_component.qmd": {
+        "cells": {
+          "build-reusable-instance-and-plan": "6e48a586f2f6d7f235af821ce166cc02de2a8af83a6ad10a030bca923b6e1bc5",
+          "create-reusable-coordinate-run": "2b7026dd0908f78cd1b77f2808f9301cd6925ef3e93a6c326a560312e70705ee",
+          "derive-reusable-coordinate-view": "76e673f1db1ee889a5ad350dd2a1cee9f4e209433b0fcf7de1c749adcf2b00e4",
+          "inspect-custom-component-audit": "2687f82ced5213050ac832bc8988a3a090a7e43007bc550f108528e41ba2a87a",
+          "inspect-custom-component-target": "ba7c319327f8dfd6653aa16a8395fc4d97d6d02ac4d7c06938c679536ff86c0b",
+          "rebuild-library-composite-target": "58e9c82d219bc422ad96c3f2f850797a4e2c38b00fc459caab456a35650b9337",
+          "render-reusable-component-target": "1aa614bdf6038f91e52b57f2eab30c7d1ccb89eef30afc9aba168b6737b15dd6",
+          "wire-reusable-component-target": "94e70a543ca5d4a5fdbf4aa32f74055f3dbfb5de6dbd7757d6cc2729ca737363"
+        },
+        "sha256": "d2782aedf3a4b9b75518c6fe3308cf2af4d11181e589f947d615497a5d5bf915"
+      },
+      "11_review_customize_schematic.qmd": {
+        "cells": {
+          "add-four-arm-terminated-ports": "911de8736024a03d17d7ced4bae94a09679802286b7f996d17fe8648f7c0a10b",
+          "add-schematic-root-coupling": "d8e168902c274e85fd1689fcb3554e73f950fc59fb3844fb2c4df4ed18d25335",
+          "add-schematic-root-ports": "aa6b3513d07d3d4dadd4dee5c6f26133f16c70ad1247e432f144b0f5bfccae35",
+          "audit-four-arm-automatic-drawing": "73c54ac14e39f004d91cf560085e5fef3d7c61db784d088bddff4721ceee5b70",
+          "audit-four-arm-cross-drawing": "c0a087bd36b2c7e8bd8320aeca761f420224f1aacf90cc24b8a89af15690fe03",
+          "audit-four-arm-fixed-drawing": "f7ed840d4fd99b19e1e06c12ba0a57f84b5cfda42828ffaf4175df7434afe9a4",
+          "audit-partial-default-four-arm": "c5a1cc3366a4f01d7a3449b2db98ed907a8703ef1e3be90d16757a7215f27d15",
+          "build-direct-stitch-left-lc": "0fc05cf6a3ebf941d0bc0e8421dcc1d57416d42a5449cb1f360d2c9626f236a6",
+          "build-direct-stitch-right-lc": "bcbbf19927ac03b77341baab068f4e753f4b28e0e20ddff4183badb02ac304f9",
+          "build-readout-schematic-subsystem": "a93a6248ac0961117982be67e3f54cb7ad75f2fefd9d1500882c1aa2eaa385b1",
+          "build-storage-schematic-subsystem": "f8c02b87a5b249dff081786b195aceae279b2986b2f30d5bb43fa004762e2fee",
+          "catch-grounded-port-and-ground-return": "e311292cc17bfc38a1c5ef5b8e0ff7c60c43536d3ff0894cbb452a923a76da69",
+          "catch-private-bus-and-retry-public-pin": "aa373789c348d9b8ca605f72f95bd206aa0859e3e4a896273b74775fdc550bc9",
+          "catch-shorted-element-and-grounded-port": "10a5f1f353ca5d8b68d0c590ce263b4902a6d72e3215d85d9b692d0fb3112bd5",
+          "catch-transitive-second-bus-conflict": "c9b51d6fe2daf552f84c4ea6e4eba5e38d361690590adaac957ec58f3fa27b9d",
+          "compare-structured-schematic-digests": "34e8555d4da6e568b9094890437878f882fb096436431040b1f584838e5617cd",
+          "connect-four-arm-cross": "5586616abaa2a34b6bbb557dfb7d2e99a29bab3be0fba4220b8cc107cd2b009a",
+          "construct-structured-schematic-layout": "baff6cf7b2945379985ddf5d0a72c2a772810bf9b693854bd70482a908b566f1",
+          "create-four-arm-automatic-composition": "3e42d34281b1316db7fe2ada19fc1ffd019f1b88b153ac1756828d3909c68f3b",
+          "create-fresh-four-arm-intent": "9ab85c1c62267b375fcc2ffa7125fc6445ce1b01dd24d63d4511128f0a44d1b8",
+          "declare-four-arm-cross": "fdc67d57392bbd916e4b89656d8c471b66b0774a7daf50aa481b398aec9b22d7",
+          "declare-four-arm-plan-and-buses": "423349111a05e997ff68d7833e42c36fed90f7ad5d607f13b7307d1c381ead9b",
+          "export-hinted-structured-schematic": "0034626e1fcdb4cb252b2c43e53196fb07592cf7649f49e6c795874d552ba51c",
+          "ground-public-return-at-parent": "c7d00e78a28dc0682a375b6b56a8c4fc1ff5bc73cee74639bb4971bf5db84c27",
+          "ground-two-independent-public-returns": "895950242d1f5738d82c8feff9a4ac0dcf9ec999c37e5ba0d89df86325e3dc2c",
+          "inspect-automatic-structured-schematic-audit": "e88a618d161c4d1cdea3746c08835d7989289011c082acbf50b551da411435dd",
+          "inspect-four-arm-automatic-composition": "14e192d705dbcd909babf8522c4167604d76e79dbe8587abe3a10b90ae573c7e",
+          "inspect-four-arm-cross-composition": "4858c08df9a4ce52d313dc3e5943d35679a0db77d86f76375daaf53c7949213c",
+          "inspect-four-arm-final-composition": "c09152e1ceec7d593838bd14dd7f574476d5b59db7b5995bb5f01b758eac828e",
+          "inspect-four-arm-fixed-composition": "ca1a46aae40ed884f32e5fe1b9b2c72d07c44ff9820a5a796212408a9575c8b9",
+          "inspect-fresh-four-arm-intent": "830f7ec78ed4f9ef4c9ed7e950d8e825d29bf4265d139d09b98168e2d95af8a9",
+          "inspect-hinted-structured-schematic-audit": "9162354dc4815a36c5430f93fb4b6418f8f03f974ec7f72bb636fcfcc0d0a92b",
+          "inspect-parent-applied-grounding": "f3f2c56c2547e4a35e07830cd9134d60b42ba4a71e40c5a90eef0ef0eecda00f",
+          "inspect-parent-applied-grounding-audit": "79d0ed5b8ab8c190f2b1cfb6859cd2be9e6da1961c2f61d8a4708d538114d1f9",
+          "link-direct-stitch-public-pins": "01cbaffd57f18ff69e1b9102e10d533e9997b4f4d7846f7cc87a4a41f5c91e44",
+          "register-four-arm-capacitors": "dab96717d528c67f0f534419735124bcfe5802865329d2b6cc60c87d6dfad032",
+          "render-automatic-structured-schematic": "7c9103961315313dc7a73e1573da66cdf34e2429f8c379b7c6cf0ff4f259e9fc",
+          "render-four-arm-automatic-composition": "924fc35915d9e80a57e44fb67b5ac30037d02d7b40557e64e1d8a8ded2fd58e7",
+          "render-four-arm-cross-composition": "cd6e079dba7ab37ef20d1a3704aed4e6004ea3992050ff1179e2bcec12ae4551",
+          "render-four-arm-fixed-composition": "a4596b832e75b7133689cb9ac0eab0f4d2fe1cdbc435053115432f961666769d",
+          "render-hinted-structured-schematic": "425444d06daa3df7cfa6198f6c53e990e60ed17707634e16d422264399b009c6",
+          "render-partial-default-four-arm": "e2d6b7a9754a0be486bd69cc8b15940d09aad6846945efae444335ca8babb535",
+          "replace-four-arm-central-wiring": "eef3dcb879c3844fd9ae1729a933b3f6c5e35a11fcffee3979b8e5170830b1b8",
+          "reuse-four-arm-final-composition": "73cbf49f861a02db1121f9faf47a43788e8c82a2dfc4db29499bdcbafd2ea291",
+          "set-four-arm-composition-axes-and-sides": "21697228435409cc1de18d81012d96b53687cc36f702a8b9b19d7cf9fe45d2be",
+          "show-four-arm-automatic-drawing": "731d28146f4cb1efee58639125e6b362da6b8c6639d898d1d03fca044e6d27c5",
+          "show-four-arm-cross-drawing": "54f88079eccc80f51055ad9fb77d1f8627ddab8af485abbfd0a5262ae2154879",
+          "show-four-arm-fixed-drawing": "072b64fd12549143097e27bd1ed2bedebf337e0a662ba8f2dd9d61b4f574dadc",
+          "show-partial-default-four-arm": "3dae20f150608d39c7bb6379fc046080fa0d9079a8aad38a01e8736658a3ca95",
+          "structure-four-capacitor-arms": "071139ef17595de3f04ec492d2507129443360a9f27d28b97bf8b1b448977633"
+        },
+        "sha256": "682a7d4246b9b70048951426d889342b35e74c906c8a71e53e99ede8d1b723c5"
+      },
+      "12_model_n_trace_line.qmd": {
+        "cells": {
+          "add-independent-n-trace-line-body": "d023d9be276c64153727be9b1359d83144d0fcaef2ac9973e20965d35f6e3a54",
+          "add-n-trace-line-body": "219d85d635520a87282069089b7765730b8c442aedfaa55ed33c142b4abdcf34",
+          "add-tapped-feedline-line-bodies": "aad8e3acc4811de0bde3c23054371d99994f0f475d6d963e92afe550009d7bf0",
+          "bind-independent-n-trace-pins": "3ba806f89447debf50e916e1e7afca524fc751bd9a06e082749fb72f75764c00",
+          "bind-whole-rlgc-line-plan": "dfd72d3c6af8c7c1fd6de5ccc201040f8a0c8c1b54269ca82fd04832b5d9a963",
+          "build-tapped-feedline-and-rlgc": "1cd504fcfd2e773617d6a88143b8fc053c5fad96a14f0f366f80fe6ade14b228",
+          "declare-tapped-feedline-buses": "93998215c9b6e859fd428f4631a5fa52946a5fe172537f0b28c43a2a49877e66",
+          "define-n-trace-rlgc": "67bbccfa1eea8b88981bcf5b93ce680dc9ac19142082d3d0bfb0fd46274401d9",
+          "define-whole-rlgc-parameter": "832adce8ba1de0739cabc3585597d2f8fbc12182c04afea3df957b2a1b8ce8cb",
+          "inspect-independent-n-trace-authoring-audit": "a9a9d956d83f9a54613ae2b80ee2f07595fa01a8c0cc5c6ab37b30f216fd0ff0",
+          "inspect-n-trace-compiled": "f667fbb18d6f62d9064711a83c500488584103f76838fea5f8d2bd37c54fd894",
+          "inspect-selected-whole-rlgc-audit": "a57cac02056b421015685ca01ef013d4d0be15829ae6a7e02147750682c67388",
+          "name-n-trace-pins-and-buses": "5e5581e3da9db38ca05bf75539ca6a612f93a7aba062500409ab746325987cf1",
+          "place-and-bind-n-trace-line": "30bb5eca19104e7891cd3fc6362983cf59e699acbb1b46dbcb6b38131f113dc2",
+          "render-independent-n-trace-authoring": "b73f5a340139fd155cdddf20641bf6233d11f17052b7fb91e269a1768063129d",
+          "render-n-trace-authoring": "1ea25f41d2d708354d6646861114de3e615f93d08ae3ceeb98162a76393d18a1",
+          "render-n-trace-compiled": "5118eb392b6c1b14e107e07384a193de42528f2a4a39180eda5b8a068feab91e",
+          "render-selected-whole-rlgc-compiled": "f03391f482604d786761dcc5a3682066152dcb893b80eb94c76953b34a68ba96",
+          "render-tapped-feedline-automatic": "8c4147a4da8fbe6cbb8e166f3b73cf12151a8d5bfc000044dfce56db3030d065",
+          "render-tapped-feedline-with-tap-order": "c94a398ac5e0a0bd6ee4bec56599bb9bc335bcb58ff013900c108bf171869a01",
+          "request-whole-rlgc-response-points": "8622f294494376857218097406b0a369978d1cb26a2fbfd8828b53abfb7f3672",
+          "show-independent-n-trace-authoring": "38c2a8012e94ad4f833dd0712025b489fd50073d2908d412f7389ea88fd22a88",
+          "show-n-trace-compiled": "eaa34fd572e268295df6385d7a8096bc3a4474c6a7cf55a47a1b909573c31d4b",
+          "wire-and-expose-tapped-feedline": "3b906fc1820d8206a4cbdef79fef90529b1443c2713bdfbcfc9ba4e8d4ae0ad2"
+        },
+        "sha256": "f47314d229b97faa58773f01be29b3bed9f9db5e48c28563c039595487277223"
+      },
+      "13_compensate_probes.qmd": {
+        "cells": {
+          "add-ptc-feedline-bodies": "25cf5be782fe69a2a3e3e9d653520026289d0a8a658460574611252bde7be3d1",
+          "add-ptc-root-couplers": "bb650e378ba324e67334b8934fcdc1bf83f2b4d5a40555d078428994f1556f67",
+          "add-ptc-root-ports": "09aba549a5a575c44b816f338acf44aff38df6dbbb32e016ce84e1bbe7a1ee92",
+          "build-ptc-floating-parameters-and-leaves": "27968aaade65a17fa0368e800cf82af880e917b143524add8b250b10b52eacf2",
+          "build-ptc-readout-subsystem": "6646f412f1f84a91260812ce25926ea59325fca2078cf5e213cf7ae2f3dca898",
+          "build-ptc-root-and-feedline": "6d28147d6ce5b83452edba5283635cbc23600483a11a71f17bb1112a774cbec8",
+          "compare-ptc-layout-audit-identities": "444f7bf3f44d603166c327b7ce3a77882048c6d5a17f3909d5a6bafcc9435f68",
+          "configure-ptc-composition-blocks": "68ca6d550629e7f6d10e2b14ebd9058b7a9a867449b6f142cff665ea75f22ecc",
+          "connect-ptc-double-tee-and-elbow": "3938c60423bc5d931911134d863b1032f07e25eb8691e72c9488fc387dc2eb58",
+          "connect-ptc-minus-probe-wiring": "db80640a8c6c16c1a024972a0f3d951a48c45864ab7c2f17770e3789c1037b72",
+          "connect-ptc-plus-probe-wiring": "9a43b161cf3de4f4b0a00592f7a41a691d4c61e2798898a786a05a9dde66aaa0",
+          "create-ptc-automatic-composition": "c4434ca58784ae8ec57417615840b7a639488a223055de5047564ad74e2e02f2",
+          "create-ptc-minus-probe-wiring": "42ad6ff2b770760d3dce759e5bd157069c8adf053d7b4edebb068434165d5df0",
+          "create-ptc-plus-probe-wiring": "ceb828e058bcb0afad4217d0d4a7240b93fadd2be290a9f6d96e6227f5d383c1",
+          "declare-ptc-double-tee-and-elbow": "8453b27b06c8de59814cd3660a4d7e5e741ec3257870b82a64efc96a127a40b6",
+          "declare-ptc-feedline-taps": "bb12c91d66d17cfe89f5ab72edbc9f2a8b5a291e443415dfa8438f577c2c5231",
+          "declare-ptc-root-buses": "ff66a0632b2c89a75b7ee618157471a7a37a462adcf923279182100ec18f0f49",
+          "declare-ptc-root-coupler-series": "11e42a38dd7de1efbde63413723b9b7fc4a91d2c0c8745d17db77c76e33756fd",
+          "derive-ptc-view": "33a4be9dab88cfbdbf575650a599afa1bf79fc1b7c3fa2ed888bd454e2866548",
+          "inspect-ptc-authoring-audit": "6625170b309c0d5fd9a845b79401010643509fd724f1868ea71b3a37919e9e6e",
+          "inspect-ptc-automatic-composition": "7be6d5645b6de1a2ef957f3b9475c0566d2d4e0b778d9ed9de28aa1ea5159c27",
+          "inspect-ptc-compiled-audit": "993d22de896721f1fa20a8c2606312d06922634f3ee2f44047a1342a58c81738",
+          "inspect-ptc-custom-composition": "ce912023a12db216c92ec473f65e908f1a080e085dfba1ce3b25f98f2fe7d412",
+          "inspect-ptc-custom-composition-audit": "a4b95087ad3c42e77c2d9e93aa239ab9a8fc28780c98675c16b1f319a72d410b",
+          "inspect-ptc-final-composition": "b1500b8352d02598fcd0619190a513ae05b75b6e0448f480c19c7dfa09123a05",
+          "inspect-ptc-fixed-composition": "5463953f409b5d254b3fcb0f8eb0571f7a4fc7492ba0e903fa6e841a159dafd1",
+          "inspect-ptc-probe-tee-audit": "97ff3c3a848222658291d5084d7b2aa33774e1977724ca8c6782f478faef5637",
+          "inspect-ptc-probe-tee-composition": "d65f842139f6a5d146397480b5399dec4f6f7cce67b6b847884681524d3e6a69",
+          "inspect-ptc-request-evidence": "0835c5ef9f57947c218f9302df47771a1c9b1251888372328416c15179daa9d6",
+          "inspect-raw-loaded-ptc-probes": "4d3daa839422eb68aec4b0d811b639693dfe9e5496358bad4bf6d65d0a341c41",
+          "orient-ptc-equivalent-public-pins": "231b02b04a53c2c71620e3cc1f23c325b274df11e58e167b650a672d79abf5e5",
+          "orient-ptc-port-blocks": "694609438d9cb5a71c59f414f99b4e5f9422168401dd063c25f66ba7fa784834",
+          "render-ptc-authoring-target": "ec598c1590e22810bb1c851f96d89d0310d23da363756c5b3139fbecfbb27672",
+          "render-ptc-compiled-projection": "3906c86ada7a9197a6983302fb5ae4fb21b14eb227afeb6e71f57b771def7b9d",
+          "render-ptc-custom-composition": "eeab07e3f4a09adead37448c53ca84e00a916bea5ae14f85400f19494f412d58",
+          "render-ptc-probe-tee-composition": "be305adb733293184e782c573adfdb010e4966c214790522fcc446ef51b20c69",
+          "replace-ptc-readout-wiring": "3a613b3feb65a553b8d1902430d3dbad021125996c4699d1eeceeb379a0c96ef",
+          "reuse-ptc-final-composition": "299411c4ca045d2668b7ac3c57c6e738dd3facbd9fbf42d42a6a4304bda1c94c",
+          "set-ptc-local-ground-sides": "fc52dce733a00d758aef8b7754160e6127f3b4bf8390e50b33fad85f522911d1",
+          "show-ptc-custom-composition": "d010c516547feab9635025bf9c7ecbfbdb3793576ba108b8f128be2cc9830cb8",
+          "show-ptc-probe-tee-composition": "ddc9abbc4b696c2955aa90188d7809bcc2ea5d697fe87f499639751d4bcd19ac",
+          "solve-ptc-direct-request": "1b56432e30b70f079ee757a4f32fc67cd1dc67821ad02c193c91be7f827a0c94",
+          "structure-and-expose-ptc-floating": "d00a3251ec8099a1bb938b9ed408b6a6bd6b36614f38c39d3c1cb2c7f1058756",
+          "wire-and-expose-ptc-feedline": "40d48d0efd4fc5621410fc7df129939bfaad2a89cebda71112c81fb48992e9ef",
+          "wire-ptc-root-subsystems": "6b31adf3eedaf33c426892d5e8fcf03121dfdfd8f850ce6aaec0fe98a803058a"
+        },
+        "sha256": "782c19ee6ec308c214f95ec2481d6f860bb1a1ff6634826093a41f26483b7204"
+      }
+    }
+  },
+  "checkpoints": [
+    {
+      "asset": "01-inline-resonator.svg",
+      "cell_id": "render-inline-resonator-target",
+      "certificate": {
+        "connectivity_sha256": "cf9297e37073e7f6cefd7949aa0584b48482bf1817459a43e74a7b6cd12d8520",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "primitive_resonator",
+        "plan_sha256": "6d4cc5ed3ab3e52992e593fa5f58f48e29b5ea61269a7ea724643634ca14221c",
+        "presentation_sha256": "c7875bd5c7454e10de2f725ac21e15167f61b52838569413bfb452c8e23b701b",
+        "representation": "authoring",
+        "semantic_sha256": "5f5ebe491ca2404db0bac11698c9dcda14875d512852808663c711334069914e"
+      },
+      "source": "01_author_primitive.qmd",
+      "status": "ok",
+      "svg_sha256": "b2766d5fb00b112207d76cddfb64b850e38ec01caf15a5ffe8e333a04a5c77d3",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": null,
+      "cell_id": "inspect-parameter-bindings",
+      "certificate": {
+        "connectivity_sha256": "01c875400a3b503b99d31c924c9041dddde5083acedfa6ecad5c76282c5e8826",
+        "parameters_sha256": "cb42a1ad434abc3d2f5748f091d2c1ded9ec02979b3857bdbec8ed5fc99b7528",
+        "plan_id": "primitive_resonator",
+        "plan_sha256": "208f49258086a8252d2bd6e6726b3f95843f1dec6701ee0028fb5e330f46b174",
+        "presentation_sha256": "c7875bd5c7454e10de2f725ac21e15167f61b52838569413bfb452c8e23b701b",
+        "representation": "authoring",
+        "semantic_sha256": "88cc951b0dbab3137bc0d72e00b963751a98ad2a34d564509a8d3c1834973f1a"
+      },
+      "source": "04_define_parameters.qmd",
+      "status": "ok",
+      "svg_sha256": "f0ef05676ed94ff466865ef40a4d6d52b9ca259c25a44410552c8cdccbad6a12",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "04-selected-parameter.svg",
+      "cell_id": "render-selected-parameter-diagram",
+      "certificate": {
+        "connectivity_sha256": "01c875400a3b503b99d31c924c9041dddde5083acedfa6ecad5c76282c5e8826",
+        "parameters_sha256": "8858fe741254226ed3973fe7a6916248a0b8aa50a56e827edf9e659407f461b1",
+        "plan_id": "primitive_resonator",
+        "plan_sha256": "208f49258086a8252d2bd6e6726b3f95843f1dec6701ee0028fb5e330f46b174",
+        "presentation_sha256": "44c99533346bf1fe2bb4d402cd30c5ee53557a988cfc56b42536e45b901f41ef",
+        "representation": "authoring",
+        "semantic_sha256": "88cc951b0dbab3137bc0d72e00b963751a98ad2a34d564509a8d3c1834973f1a"
+      },
+      "source": "04_define_parameters.qmd",
+      "status": "ok",
+      "svg_sha256": "3116d83d0369ed9455cfbc557b72e8a49964919de7164b538cd8c8bdf9f31650",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": null,
+      "cell_id": "inspect-second-plan-binding-audit",
+      "certificate": {
+        "connectivity_sha256": "9e66f0a99d3b25b6015e77c30fd95acf6993d48e0578a020cb69d9e8464119bc",
+        "parameters_sha256": "6ec695fb9ad76070bd92baa06c3ebbd69c3d5d709eaa78ff951023e49cf32e5d",
+        "plan_id": "second_primitive_resonator",
+        "plan_sha256": "a11540f653dc6b1803eadece5f2049ceca6e783672d70baad9ca4753773bfa33",
+        "presentation_sha256": "d32411f7d39221f61572da35e8173552316d5d35330c75156de096c677a7b24b",
+        "representation": "authoring",
+        "semantic_sha256": "763acdbae3d7b5cb89639f271610bd423baafef5a1eaf596c06931ca9cea0cdb"
+      },
+      "source": "04_define_parameters.qmd",
+      "status": "ok",
+      "svg_sha256": "af9663d495bba571a381e1a5f4cf1ac2279245e58c9e3242f86f55c91c304c28",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "06-optimized-winner.svg",
+      "cell_id": "inspect-optimized-winner-diagram",
+      "certificate": {
+        "connectivity_sha256": "01c875400a3b503b99d31c924c9041dddde5083acedfa6ecad5c76282c5e8826",
+        "parameters_sha256": "d12c6f5c7d1034525e539010ffc3724ecc596c67b815a068d965a609e9d1580b",
+        "plan_id": "primitive_resonator",
+        "plan_sha256": "208f49258086a8252d2bd6e6726b3f95843f1dec6701ee0028fb5e330f46b174",
+        "presentation_sha256": "1dfab9a84f9bae6ba6f8827645537febc08b60f7859b50211aaebcc85b476b33",
+        "representation": "authoring",
+        "semantic_sha256": "88cc951b0dbab3137bc0d72e00b963751a98ad2a34d564509a8d3c1834973f1a"
+      },
+      "source": "06_optimize_primitive.qmd",
+      "status": "ok",
+      "svg_sha256": "e43aa495dcbfb07a4fdd2d969146edea8f2de40ec68690d2cc779d4f4245022f",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "09-composite-factory.svg",
+      "cell_id": "render-composite-factory-target",
+      "certificate": {
+        "connectivity_sha256": "8f172645e4670736ccfc91c3428a521a43dea562f3abc61d3398652f99d947d2",
+        "parameters_sha256": "cb42a1ad434abc3d2f5748f091d2c1ded9ec02979b3857bdbec8ed5fc99b7528",
+        "plan_id": "composite_resonator",
+        "plan_sha256": "c8c2368db02915372977ccd3975422b28c8f34a32330911f506e789e1c7a2ccd",
+        "presentation_sha256": "96003d89b222da3dcef3424335e7e90a0b9f15d86613cd3a9135181c59d64de4",
+        "representation": "authoring",
+        "semantic_sha256": "f887f0d27007953b9b3a57ad4b2e8c1543d537bc180397ff4b99cf66d889e3ae"
+      },
+      "source": "09_add_composite_factory.qmd",
+      "status": "ok",
+      "svg_sha256": "624380993ed6c06008ef92b5b69227734e831ffc9db736b08c39a6b64ef69add",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "10-reusable-component.svg",
+      "cell_id": "render-reusable-component-target",
+      "certificate": {
+        "connectivity_sha256": "8f172645e4670736ccfc91c3428a521a43dea562f3abc61d3398652f99d947d2",
+        "parameters_sha256": "cb42a1ad434abc3d2f5748f091d2c1ded9ec02979b3857bdbec8ed5fc99b7528",
+        "plan_id": "composite_resonator",
+        "plan_sha256": "c8c2368db02915372977ccd3975422b28c8f34a32330911f506e789e1c7a2ccd",
+        "presentation_sha256": "96003d89b222da3dcef3424335e7e90a0b9f15d86613cd3a9135181c59d64de4",
+        "representation": "authoring",
+        "semantic_sha256": "f887f0d27007953b9b3a57ad4b2e8c1543d537bc180397ff4b99cf66d889e3ae"
+      },
+      "source": "10_use_custom_component.qmd",
+      "status": "ok",
+      "svg_sha256": "db514fe16068ae620a1607958a8bb08b0f5bd72f274a59d6612913a6f70e2002",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-automatic-structured.svg",
+      "cell_id": "render-automatic-structured-schematic",
+      "certificate": {
+        "connectivity_sha256": "194a3417d436b58e1e1489cd29e0f1d88b993ab31c0083b935b006ed9e6da832",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "review_structured_schematic",
+        "plan_sha256": "e644f7f54e2b4cb9b3e7fc05bf7c420de2a6ab46db8bdc8e7def305f744d5cb2",
+        "presentation_sha256": "81ccd050d76053fabafe5f8ee56b53ca9fe9ff5124072c625899e1a2b4726f54",
+        "representation": "authoring",
+        "semantic_sha256": "9cff65781f38235bb3bd55ffa876dbcae661946d907673a5e758a13037430d44"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "a8f768707cc1156fdf9fe58ffa5d1385bcbe638aeaa7013ceef0da89b13b1d60",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-hinted-structured.svg",
+      "cell_id": "render-hinted-structured-schematic",
+      "certificate": {
+        "connectivity_sha256": "194a3417d436b58e1e1489cd29e0f1d88b993ab31c0083b935b006ed9e6da832",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "review_structured_schematic",
+        "plan_sha256": "e644f7f54e2b4cb9b3e7fc05bf7c420de2a6ab46db8bdc8e7def305f744d5cb2",
+        "presentation_sha256": "823024f8c97af2528d92bb3ef99c120356871b07a406a8bd1257606043b01016",
+        "representation": "authoring",
+        "semantic_sha256": "9cff65781f38235bb3bd55ffa876dbcae661946d907673a5e758a13037430d44"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "3bd3823407aed216569217c0c81a7617e3dc381310bf0c0dd33a23dcd35995fc",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-parent-applied-grounding.svg",
+      "cell_id": "inspect-parent-applied-grounding",
+      "certificate": {
+        "connectivity_sha256": "c0b6df4f7fcd12d12316b61394ff6d5c18183d39a30d75aba37f880b7cb91cc2",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "external_return",
+        "plan_sha256": "6a08978d310ab61a5fce5d42ca27d70a5d739e550c6f21655e805ce227646f7c",
+        "presentation_sha256": "dbfee8a4abda24458a5bb8e0d076a7b2b777cd65962d5a483e3a23c43a1a5cde",
+        "representation": "authoring",
+        "semantic_sha256": "72908dc0a9c312e6b60d78d6aea79043f69520a81f2309edac2f995e9b88b7bf"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "c3f5a8e2a7f98e8ee9ea3bf8edf29e2beb7cb20bc5be1cc85db76391186ccca9",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-four-arm-automatic.svg",
+      "cell_id": "render-four-arm-automatic-composition",
+      "certificate": {
+        "connectivity_sha256": "1b87ec4f15e706ef80083944f78137a9f3cceb17e8a555babea8cd1e206ba39f",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "four_arm_composition",
+        "plan_sha256": "821d75fc84833da602ebb8b275eae9d532f98fcbe34a425d5b5127b36d65c0d9",
+        "presentation_sha256": "43b99d0c07f7c965551dab7313a265628bd5108aa6069334a9d1039915b7a188",
+        "representation": "authoring",
+        "semantic_sha256": "b2d8d68801c1b77968416147e45e8415fd9a23c576a78c0fc13b7fc4a6f519b4"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "02e7e8d58d23f7a22354840f46f96f37cf17e93bdf05ec72864bc7e09a26908c",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-four-arm-cross.svg",
+      "cell_id": "render-four-arm-cross-composition",
+      "certificate": {
+        "connectivity_sha256": "1b87ec4f15e706ef80083944f78137a9f3cceb17e8a555babea8cd1e206ba39f",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "four_arm_composition",
+        "plan_sha256": "821d75fc84833da602ebb8b275eae9d532f98fcbe34a425d5b5127b36d65c0d9",
+        "presentation_sha256": "b4083f3522022f476bae6ba5dc69b102e961bdf4948257aef05378b4b27d56d6",
+        "representation": "authoring",
+        "semantic_sha256": "b2d8d68801c1b77968416147e45e8415fd9a23c576a78c0fc13b7fc4a6f519b4"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "80146a8de30bd9461eb3f42cc8ede0bfe148cc79f17f5c936d9ae792837540b1",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-four-arm-fixed.svg",
+      "cell_id": "render-four-arm-fixed-composition",
+      "certificate": {
+        "connectivity_sha256": "1b87ec4f15e706ef80083944f78137a9f3cceb17e8a555babea8cd1e206ba39f",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "four_arm_composition",
+        "plan_sha256": "821d75fc84833da602ebb8b275eae9d532f98fcbe34a425d5b5127b36d65c0d9",
+        "presentation_sha256": "b4083f3522022f476bae6ba5dc69b102e961bdf4948257aef05378b4b27d56d6",
+        "representation": "authoring",
+        "semantic_sha256": "b2d8d68801c1b77968416147e45e8415fd9a23c576a78c0fc13b7fc4a6f519b4"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "e31471864407d455f35a853deb24bafec5ec44af92798b4ab81bc141e6cb6281",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "11-four-arm-partial-default.svg",
+      "cell_id": "render-partial-default-four-arm",
+      "certificate": {
+        "connectivity_sha256": "1b87ec4f15e706ef80083944f78137a9f3cceb17e8a555babea8cd1e206ba39f",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "four_arm_composition",
+        "plan_sha256": "821d75fc84833da602ebb8b275eae9d532f98fcbe34a425d5b5127b36d65c0d9",
+        "presentation_sha256": "45aad8bbe3bfb8b8ed1f90718b971eda7ca201189e00cd0fc46752493b616ee7",
+        "representation": "authoring",
+        "semantic_sha256": "b2d8d68801c1b77968416147e45e8415fd9a23c576a78c0fc13b7fc4a6f519b4"
+      },
+      "source": "11_review_customize_schematic.qmd",
+      "status": "ok",
+      "svg_sha256": "cc29550f50153fda2f6d8f63d01c625f7ce31593f026f799b6cf46102f7ea8d2",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "12-n-trace-authoring.svg",
+      "cell_id": "render-n-trace-authoring",
+      "certificate": {
+        "connectivity_sha256": "76655d0987ed1d3adddaaf85a4eb4b0dadfef263dd99b8df2364e612f85d5789",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "coupled_line",
+        "plan_sha256": "7b87b4f7a1cc35dc84c2eb1cbcf964592526c3215f22b43e936786b81f795ccc",
+        "presentation_sha256": "1b2c230745c23888eeda30ae2c75bb10e4b98ac8075a95648e104a99f568adf3",
+        "representation": "authoring",
+        "semantic_sha256": "51e8b94dda223910b08b3e5c6b91640de950517ef82b6192856d2472f70aaede"
+      },
+      "source": "12_model_n_trace_line.qmd",
+      "status": "ok",
+      "svg_sha256": "3c6aae4755015e08f7edd338f8cdfd95364503d1cc1abeb0a42df9745dab8ff3",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "12-independent-n-trace-authoring.svg",
+      "cell_id": "render-independent-n-trace-authoring",
+      "certificate": {
+        "connectivity_sha256": "1c215a9ae21e402ca311112385cba4d4d2c54cd896aa24fa2a64d57a309bbfcb",
+        "parameters_sha256": "3933c7314f7c4a6cbd868ad9da2848a92bd896b0f294c5c5374ba2abfeee3e28",
+        "plan_id": "independent_coupled_line",
+        "plan_sha256": "6785e100514eea650ff2bf83d950d2a046769d58871ab3cf8e0adb194ff45b56",
+        "presentation_sha256": "4990ea3228085b851041f286f5988f4c4be35eb652dadcc946778d56c4fe0e06",
+        "representation": "authoring",
+        "semantic_sha256": "dff6cadd7bdc52468e5b83b5bddeb3aaa244cb4c7843f172fda25a0dfceb10ce"
+      },
+      "source": "12_model_n_trace_line.qmd",
+      "status": "ok",
+      "svg_sha256": "bae6b4cd8814634f9bea7782c731ce8341e572896d19f4487b05f5517f23a9c4",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": null,
+      "cell_id": "render-tapped-feedline-automatic",
+      "reason": "fixed connector intersects occupied geometry",
+      "source": "12_model_n_trace_line.qmd",
+      "stage": "schematic_layout",
+      "status": "unavailable"
+    },
+    {
+      "asset": null,
+      "cell_id": "render-tapped-feedline-with-tap-order",
+      "reason": "fixed connector intersects occupied geometry",
+      "source": "12_model_n_trace_line.qmd",
+      "stage": "schematic_layout",
+      "status": "unavailable"
+    },
+    {
+      "asset": "13-ptc-authoring.svg",
+      "cell_id": "render-ptc-authoring-target",
+      "certificate": {
+        "connectivity_sha256": "efc1af3a6e24617477266ddbaadab83d876ee694a9256449509eb3bdd304a0d1",
+        "parameters_sha256": "4b4307bf34d65e4f113d2f88769c2718a26dc4b147253451bca49ff00b8c774b",
+        "plan_id": "floating_probe_course",
+        "plan_sha256": "9a6d8ac59b32647195312b4713e96aeb1fcf9101d5fbe5eabb51fd7bd53f77c3",
+        "presentation_sha256": "4574874d4914eb1ac9eb25f888314c782b25bd09089be19fe85762cca3f2d130",
+        "representation": "authoring",
+        "semantic_sha256": "db6a98f99bff9f747e469e964b3211a1fbfe2472459c79c5c0aa40fcbe2da839"
+      },
+      "source": "13_compensate_probes.qmd",
+      "status": "ok",
+      "svg_sha256": "b4782c48de40a4e21bf2968c5da263f8639a867fa038b79ebd5a9bec59fde815",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "13-ptc-custom-composition.svg",
+      "cell_id": "render-ptc-custom-composition",
+      "certificate": {
+        "connectivity_sha256": "efc1af3a6e24617477266ddbaadab83d876ee694a9256449509eb3bdd304a0d1",
+        "parameters_sha256": "4b4307bf34d65e4f113d2f88769c2718a26dc4b147253451bca49ff00b8c774b",
+        "plan_id": "floating_probe_course",
+        "plan_sha256": "9a6d8ac59b32647195312b4713e96aeb1fcf9101d5fbe5eabb51fd7bd53f77c3",
+        "presentation_sha256": "fca89783aa302e68cdb7986ef78137ebf4645d5a9c95ad65338298e2adf43833",
+        "representation": "authoring",
+        "semantic_sha256": "db6a98f99bff9f747e469e964b3211a1fbfe2472459c79c5c0aa40fcbe2da839"
+      },
+      "source": "13_compensate_probes.qmd",
+      "status": "ok",
+      "svg_sha256": "2483131f7741239396bf874df7d093539e02d0c0213a2297bdae238592f679dd",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    },
+    {
+      "asset": "13-ptc-probe-tee-composition.svg",
+      "cell_id": "render-ptc-probe-tee-composition",
+      "certificate": {
+        "connectivity_sha256": "efc1af3a6e24617477266ddbaadab83d876ee694a9256449509eb3bdd304a0d1",
+        "parameters_sha256": "4b4307bf34d65e4f113d2f88769c2718a26dc4b147253451bca49ff00b8c774b",
+        "plan_id": "floating_probe_course",
+        "plan_sha256": "9a6d8ac59b32647195312b4713e96aeb1fcf9101d5fbe5eabb51fd7bd53f77c3",
+        "presentation_sha256": "6cdd22c80cefe5d3cadf120803136bec8d04e12050da1622beb558eec68460a1",
+        "representation": "authoring",
+        "semantic_sha256": "db6a98f99bff9f747e469e964b3211a1fbfe2472459c79c5c0aa40fcbe2da839"
+      },
+      "source": "13_compensate_probes.qmd",
+      "status": "ok",
+      "svg_sha256": "d5ac6729a01135f8b09f13b2e2242a8d91edbf00f37beb72388e3acf6a33d4ba",
+      "validation": {
+        "audit": "certificate_matched",
+        "composition": "captured",
+        "export": "FrozenDrawing.save",
+        "result": "CircuitDiagramResult"
+      }
+    }
+  ],
+  "environment": {
+    "matplotlib": "3.10.9",
+    "numpy": "2.2.6",
+    "pint": "0.24.4",
+    "python": "3.12.13",
+    "schemdraw": "0.23",
+    "scnsim": "1.0.0.dev6"
+  },
+  "mapping": [
+    {
+      "asset": "01-inline-resonator.svg",
+      "cell_id": "render-inline-resonator-target",
+      "source": "01_author_primitive.qmd"
+    },
+    {
+      "asset": null,
+      "cell_id": "inspect-parameter-bindings",
+      "source": "04_define_parameters.qmd"
+    },
+    {
+      "asset": "04-selected-parameter.svg",
+      "cell_id": "render-selected-parameter-diagram",
+      "source": "04_define_parameters.qmd"
+    },
+    {
+      "asset": null,
+      "cell_id": "inspect-second-plan-binding-audit",
+      "source": "04_define_parameters.qmd"
+    },
+    {
+      "asset": "06-optimized-winner.svg",
+      "cell_id": "inspect-optimized-winner-diagram",
+      "source": "06_optimize_primitive.qmd"
+    },
+    {
+      "asset": "09-composite-factory.svg",
+      "cell_id": "render-composite-factory-target",
+      "source": "09_add_composite_factory.qmd"
+    },
+    {
+      "asset": "10-reusable-component.svg",
+      "cell_id": "render-reusable-component-target",
+      "source": "10_use_custom_component.qmd"
+    },
+    {
+      "asset": "11-automatic-structured.svg",
+      "cell_id": "render-automatic-structured-schematic",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-hinted-structured.svg",
+      "cell_id": "render-hinted-structured-schematic",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-parent-applied-grounding.svg",
+      "cell_id": "inspect-parent-applied-grounding",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-four-arm-automatic.svg",
+      "cell_id": "render-four-arm-automatic-composition",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-four-arm-cross.svg",
+      "cell_id": "render-four-arm-cross-composition",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-four-arm-fixed.svg",
+      "cell_id": "render-four-arm-fixed-composition",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "11-four-arm-partial-default.svg",
+      "cell_id": "render-partial-default-four-arm",
+      "source": "11_review_customize_schematic.qmd"
+    },
+    {
+      "asset": "12-n-trace-authoring.svg",
+      "cell_id": "render-n-trace-authoring",
+      "source": "12_model_n_trace_line.qmd"
+    },
+    {
+      "asset": "12-independent-n-trace-authoring.svg",
+      "cell_id": "render-independent-n-trace-authoring",
+      "source": "12_model_n_trace_line.qmd"
+    },
+    {
+      "asset": "12-tapped-feedline-automatic.svg",
+      "cell_id": "render-tapped-feedline-automatic",
+      "source": "12_model_n_trace_line.qmd"
+    },
+    {
+      "asset": "12-tapped-feedline-tap-order.svg",
+      "cell_id": "render-tapped-feedline-with-tap-order",
+      "source": "12_model_n_trace_line.qmd"
+    },
+    {
+      "asset": "13-ptc-authoring.svg",
+      "cell_id": "render-ptc-authoring-target",
+      "source": "13_compensate_probes.qmd"
+    },
+    {
+      "asset": "13-ptc-custom-composition.svg",
+      "cell_id": "render-ptc-custom-composition",
+      "source": "13_compensate_probes.qmd"
+    },
+    {
+      "asset": "13-ptc-probe-tee-composition.svg",
+      "cell_id": "render-ptc-probe-tee-composition",
+      "source": "13_compensate_probes.qmd"
+    }
+  ],
+  "schema": "scnsim.tutorial_diagrams.v1"
+}

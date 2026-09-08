@@ -371,9 +371,8 @@ function hb_lower_raw(compiled::CompiledPrimitive, plan)
     # orientation or precision.
     for row in compiled.branch_rows
         String(get(row, "kind", "")) == "mutual_inductance" || continue
-        left_ref = lower_branch_reference(plan, row["branch_a"]); right_ref = lower_branch_reference(plan, row["branch_b"])
-        left = join(String.(left_ref["component_path"]), "\u001f") * "\u001e" * String(left_ref["branch_id"])
-        right = join(String.(right_ref["component_path"]), "\u001f") * "\u001e" * String(right_ref["branch_id"])
+        left = structured_branch_key(row["branch_a"])
+        right = structured_branch_key(row["branch_b"])
         haskey(inductors, left) && haskey(inductors, right) ||
             fail("execution", "compiler_invariant", "compile", "compile", "HB mutual row does not resolve to lowered inductors")
         coefficient = quantity_value(row["coupling_coefficient"])
@@ -832,49 +831,53 @@ function hb_probe_state(lineage, ports::Vector{String}; native::Bool = false)
     return Dict{String,Any}[Dict("port_id" => id, "state" => (id in selected ? "compensated" : "raw")) for id in ports]
 end
 
-function hb_private_node_sources!(sources::Dict{String,Dict{String,Any}}, component)
-    realization = component["realization"]
-    if String(realization["kind"]) == "composite"
-        path = String.(component["component_path"])
-        for private_node in realization["private_nodes"]
-            compiler_id = expanded_internal_node_id(component, private_node)
-            source = Dict{String,Any}(
-                "kind" => "component_private",
-                "component_path" => path,
-                "private_node_id" => String(private_node["id"]),
-            )
-            haskey(sources, compiler_id) && sources[compiler_id] != source &&
-                fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB private-node source provenance collides")
-            sources[compiler_id] = source
-        end
-        for child in realization["children"]
-            hb_private_node_sources!(sources, child)
+"""Require the request-bound exact final selected-channel identity."""
+function hb_trace_coordinate(value, selected_coordinates::Vector{String})::String
+    coordinate = String(value)
+    coordinate in selected_coordinates && return coordinate
+    fail("validation", "port_realizability", "hb_case", "hb_case", "HB trace label is absent from the selected channel basis")
+end
+
+function hb_scoped_bus_sources!(sources::Dict{String,Vector{Tuple{Vector{String},String}}}, scope)
+    path = String.(get(scope, "path", Any[]))
+    if !isempty(path)
+        for bus in get(scope, "buses", Any[])
+            net = String(bus["final_net"]); candidate = (copy(path), String(bus["id"]))
+            candidate in get!(sources, net, Tuple{Vector{String},String}[]) || push!(sources[net], candidate)
         end
     end
-    return nothing
+    for child in get(scope, "children", Any[])
+        hb_scoped_bus_sources!(sources, child)
+    end
+    return sources
 end
 
 function hb_state_map(plan, compiled::CompiledPrimitive)
-    plan_nodes = Dict{String,String}()
-    for node in plan["nodes"]
-        plan_nodes[String(node["node_id"])] = String(node["visibility"])
-    end
-    private_sources = Dict{String,Dict{String,Any}}()
-    for component in plan["components"]
-        hb_private_node_sources!(private_sources, component)
+    plan_nodes = Dict{String,String}(); private_sources = Dict{String,Vector{Tuple{Vector{String},String}}}()
+    hb_scoped_bus_sources!(private_sources, plan["scope_hierarchy"])
+    for node in plan["connectivity"]["node_coordinates"]
+        id = String(node["compiler_node_id"])
+        String(node["final_net"]) == id || fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB node identity differs from canonical final net")
+        haskey(plan_nodes, id) && fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB Plan node identity is duplicated")
+        plan_nodes[id] = String(node["visibility"])
     end
     entries = Dict{String,Any}[]
     for (index, node) in enumerate(compiled.nodes)
-        source = if haskey(plan_nodes, node) && plan_nodes[node] in ("public", "port_promoted")
-            Dict("kind" => "plan_node", "plan_node_id" => node, "visibility" => plan_nodes[node])
-        elseif haskey(private_sources, node)
-            private_sources[node]
+        source = if haskey(plan_nodes, node)
+            visibility = plan_nodes[node]
+            if visibility in ("public", "port_promoted")
+                Dict("kind" => "plan_node", "plan_node_id" => node, "visibility" => visibility)
+            elseif visibility == "internal"
+                candidates = get(private_sources, node, Tuple{Vector{String},String}[])
+                length(candidates) == 1 || fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB internal node lacks one sealed scoped-bus source")
+                path, private_id = only(candidates)
+                Dict("kind" => "component_private", "component_path" => path, "private_node_id" => private_id)
+            else
+                fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB Plan node has an unknown visibility")
+            end
         elseif startswith(node, "internal-")
             Dict("kind" => "anonymous_internal", "internal_node_id" => node)
         else
-            # Recursive compiler node IDs which are neither sealed Plan
-            # coordinates nor compiler-private IDs are an integrity defect;
-            # never invent a name-based provenance map.
             fail("execution", "compiler_invariant", "hb_case", "hb_case", "HB state node lacks sealed source provenance")
         end
         push!(entries, Dict("state_index" => index - 1, "compiler_node_id" => node, "source" => source))
@@ -1113,6 +1116,10 @@ function hb_preflight(request, plan, raw_compiled::CompiledPrimitive, view::Real
     view.port_realizable ||
         fail("validation", "port_realizability", "direct_response", "direct_response", "HB response requires a Port-realizable final View")
     lattice, pumps, pump_modes, response_modes, grid, _ = hb_lattice(spec)
+    for trace in spec["traces"]
+        hb_trace_coordinate(trace["input_port"], view.terminal)
+        hb_trace_coordinate(trace["output_port"], view.terminal)
+    end
     circuit = hb_lower_raw(raw_compiled, plan)
     parsed = JosephsonCircuits.parsesortcircuit(circuit; sorting = :none)
     parsed.Nnodes > 1 ||
@@ -1201,8 +1208,10 @@ function solve_hb(request, plan, raw_compiled::CompiledPrimitive, view::Realized
             traces = Dict{String,Any}[]
             selected_channels = hb_channels(selected_coordinates, response_modes)
             for trace in spec["traces"]
-                input = findfirst(==(Dict("coordinate" => trace["input_port"], "mode" => trace["input_mode"])), selected_channels)
-                output = findfirst(==(Dict("coordinate" => trace["output_port"], "mode" => trace["output_mode"])), selected_channels)
+                input_coordinate = hb_trace_coordinate(trace["input_port"], selected_coordinates)
+                output_coordinate = hb_trace_coordinate(trace["output_port"], selected_coordinates)
+                input = findfirst(==(Dict("coordinate" => input_coordinate, "mode" => trace["input_mode"])), selected_channels)
+                output = findfirst(==(Dict("coordinate" => output_coordinate, "mode" => trace["output_mode"])), selected_channels)
                 (input === nothing || output === nothing) && fail("execution", "backend_protocol", "hb_case", "hb_case", "HB trace is absent from selected channel basis")
                 value = vec(selected_s[:, output::Int, input::Int])
                 push!(traces, hb_write_complex(staging, ordinal, "trace:" * String(trace["id"]), value, [Dict("id" => "frequency", "kind" => "frequency", "request_field" => "spec.frequencies")], "dimensionless", "dimensionless"; matrix = false))

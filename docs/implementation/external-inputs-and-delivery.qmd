@@ -80,12 +80,20 @@ evidence, and the expanded Direct catalog. Dev6 extended the same request,
 selected-network, workspace, and receipt authorities with HB; no second Port,
 topology, schema, optimizer, or workspace model remains reachable.
 
-The `dev3` slice implements the exact
-[identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json),
-replacement/versioned workspace contract, portable catalog/runtime provenance,
-and [diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
-Each later slice extends those same authorities rather than introducing a
-parallel schema, workspace, or fallback runtime.
+The `dev3` slice implemented the Full V1 schema baseline, including scientific
+and receipt-side definitions retained in
+[`identity-v1.schema.json`](../../src/scnsim/_schemas/identity-v1.schema.json)
+and still referenced by the current bundle, plus the replacement/versioned
+workspace contract, portable catalog/runtime provenance, and
+[diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
+The current
+[identity schema bundle](../../src/scnsim/_schemas/identity-v2.schema.json)
+references only named retained primitives and dependencies while owning the
+replacement structured Plan, Parameter, Request, and single-point and batch
+Result envelopes. It does not expose the old Plan, request, or whole Result
+envelopes as current; V1 is not a parallel current schema for them. Historical
+later slices extended the same scientific and workspace authorities rather
+than introducing a fallback runtime.
 
 The final row has no postponed behavior inside the accepted Full V1 scope.
 Explicit limitations such as HB optimization, implicit grid interpolation,

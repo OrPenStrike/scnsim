@@ -2,9 +2,11 @@ project:
   type: website
   output-dir: _site
   resources:
+    - src/scnsim/_schemas/identity-v2.schema.json
     - src/scnsim/_schemas/identity-v1.schema.json
   render:
     - README.md
+    - examples/README.md
     - docs/index.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
@@ -28,6 +30,7 @@ project:
     - docs/concepts/direct-and-hb-realizations.qmd
     - docs/concepts/units-parameters-and-optimization.qmd
     - docs/contracts/index.qmd
+    - docs/contracts/circuit-plan-assembly.qmd
     - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
     - docs/contracts/parameter-system.qmd
     - docs/component-authoring.qmd
@@ -149,6 +152,8 @@ website:
           contents:
             - text: "Component Authoring Contract"
               href: docs/component-authoring.qmd
+            - text: "CircuitPlan Assembly"
+              href: docs/contracts/circuit-plan-assembly.qmd
             - text: "Automatic Semantic Circuit Diagram Layout"
               href: docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
             - text: "Parameter System"

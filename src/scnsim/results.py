@@ -7,23 +7,24 @@ decoder hook used after workspace receipt/artifact verification.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import MISSING, FrozenInstanceError, dataclass, field, fields
 from enum import Enum
 from html import escape
+import json
 from os import O_RDONLY, PathLike, fsync, link, open as os_open
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import MappingProxyType
-from typing import TypeVar, Literal
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 import numpy as np
 from pint import Quantity
 
 from . import units
 from ._scaffold import unavailable
-from .authoring import ParameterSet
-from .errors import HBCaseFailure
+from .authoring import ParameterRef, ParameterSet
+from .errors import HBCaseFailure, SCNSimError
 from .presentation import (
     Theme,
     _finish_figure,
@@ -31,6 +32,11 @@ from .presentation import (
     _require_theme,
     _themed_subplots,
 )
+
+if TYPE_CHECKING:
+    import schemdraw
+
+    from .composition import SchematicCompositionSnapshot
 
 
 T = TypeVar("T")
@@ -73,7 +79,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
     sequences, and NumPy/Pint arrays before the value becomes user-visible.
     """
 
-    if not isinstance(cls, type) or not issubclass(cls, (Result, MatrixView, ResultIdentity, ReconciliationEvidence, OptimizationBest, OperatorPointResult)):
+    if not isinstance(cls, type) or not issubclass(cls, (Result, MatrixView, ResultIdentity, ParameterPointIdentity, ReconciliationEvidence, OptimizationBest, OperatorPointResult)):
         raise TypeError("_verified_result only constructs SCNSim result values")
     if cls is HBCaseOutcome:
         expected = {
@@ -104,7 +110,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         if set(values) != {"identity", "cases", "topology_evidence"}:
             raise TypeError("verified HBBatchResult fields mismatch")
         identity, cases = values["identity"], values["cases"]
-        if not _is_verified_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
+        if not _is_verified_result_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
             raise TypeError("verified HBBatchResult requires identity and nonempty cases")
         materialized = dict(cases)
         if any(
@@ -136,13 +142,21 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
     if cls is ResultIdentity:
         for name, value in values.items():
             _sha256(value, name=name)
-    if issubclass(cls, AnalysisResult) and not _is_verified_identity(values.get("identity")):
-        raise TypeError("analysis results require a verified ResultIdentity")
+    if cls is ParameterPointIdentity:
+        batch = values.get("batch")
+        source_index = values.get("source_index")
+        if not _is_verified_identity(batch) or not _valid_source_index(source_index):
+            raise TypeError("parameter-point identity fields are invalid")
+        _sha256(values.get("parameters_sha256"), name="parameters_sha256")
+    if issubclass(cls, AnalysisResult) and not _is_verified_result_identity(values.get("identity")):
+        raise TypeError("analysis results require a verified batch or point identity")
     instance = object.__new__(cls)
     for name, value in values.items():
         object.__setattr__(instance, name, _freeze(value))
     if cls is ResultIdentity:
         object.__setattr__(instance, "_verified_identity_token", _VERIFIED_TOKEN)
+    if cls is ParameterPointIdentity:
+        object.__setattr__(instance, "_verified_point_identity_token", _VERIFIED_TOKEN)
     if issubclass(cls, AnalysisResult):
         object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
     return instance
@@ -155,6 +169,24 @@ def _is_verified_identity(value: object) -> bool:
     return type(value) is ResultIdentity and getattr(value, "_verified_identity_token", None) is _VERIFIED_TOKEN
 
 
+def _valid_source_index(value: object) -> bool:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value >= 0
+    return (
+        isinstance(value, tuple)
+        and bool(value)
+        and all(isinstance(item, int) and not isinstance(item, bool) and item >= 0 for item in value)
+    )
+
+
+def _is_verified_point_identity(value: object) -> bool:
+    return type(value) is ParameterPointIdentity and getattr(value, "_verified_point_identity_token", None) is _VERIFIED_TOKEN
+
+
+def _is_verified_result_identity(value: object) -> bool:
+    return _is_verified_identity(value) or _is_verified_point_identity(value)
+
+
 def _is_verified_analysis_result(value: object) -> bool:
     return (
         type(value) in (
@@ -164,9 +196,10 @@ def _is_verified_analysis_result(value: object) -> bool:
             OperatorResult,
             OptimizationResult,
             HBBatchResult,
+            ParameterSweepResult,
         )
         and getattr(value, "_verified_result_token", None) is _VERIFIED_TOKEN
-        and _is_verified_identity(getattr(value, "identity", None))
+        and _is_verified_result_identity(getattr(value, "identity", None))
     )
 
 
@@ -219,10 +252,23 @@ class ResultIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterPointIdentity:
+    """Identity derived from one verified batch without a fictitious receipt."""
+
+    batch: ResultIdentity
+    source_index: int | tuple[int, ...]
+    parameters_sha256: str
+    _verified_point_identity_token: object = field(init=False, repr=False, compare=False)
+
+    def __init__(self) -> None:
+        unavailable("ParameterPointIdentity construction")
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult(Result):
     """Receipt-backed terminal Result returned by solve, evaluate, or optimize."""
 
-    identity: ResultIdentity
+    identity: ResultIdentity | ParameterPointIdentity
     _verified_result_token: object = field(init=False, repr=False, compare=False)
 
     def __init__(self) -> None:
@@ -603,6 +649,384 @@ class HBBatchResult(AnalysisResult):
         return _finish_figure(figure, checked_theme)
 
 
+class ParameterPointOutcome(Result):
+    """One success or typed numerical non-success inside a verified batch."""
+
+    __slots__ = ("parameters", "source_index", "identity", "_result", "_failure")
+
+    def __init__(self) -> None:
+        unavailable("ParameterPointOutcome construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ParameterPointOutcome values are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("ParameterPointOutcome values are immutable")
+
+    @property
+    def succeeded(self) -> bool:
+        return self._failure is None
+
+    @property
+    def result(self) -> AnalysisResult:
+        if self._failure is not None:
+            raise self._failure
+        result = self._result() if callable(self._result) else self._result
+        if not _is_verified_analysis_result(result) or result.identity is not self.identity:
+            raise TypeError("parameter point Result has the wrong derived identity")
+        return result
+
+    @property
+    def failure(self) -> SCNSimError | None:
+        return self._failure
+
+
+class ParameterPointAccessor(Sequence[ParameterPointOutcome]):
+    """Read-only lazy point accessor retaining source-space indexing."""
+
+    __slots__ = (
+        "_loader", "_count", "_kind", "_shape", "_axis_parameters", "_ordinals"
+    )
+
+    def __init__(self) -> None:
+        unavailable("ParameterPointAccessor construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ParameterPointAccessor values are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("ParameterPointAccessor values are immutable")
+
+    def __len__(self) -> int:
+        return len(self._ordinals) if self._ordinals is not None else self._count
+
+    def _ordinal(self, index: object) -> int:
+        if self._ordinals is not None:
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise TypeError("selection point indices must be integers")
+            position = index + len(self._ordinals) if index < 0 else index
+            if position < 0 or position >= len(self._ordinals):
+                raise IndexError("parameter point index is out of range")
+            return self._ordinals[position]
+        if self._kind == "grid":
+            if len(self._shape) == 1 and isinstance(index, int) and not isinstance(index, bool):
+                multi = (index,)
+            elif isinstance(index, tuple):
+                multi = index
+            else:
+                raise TypeError("grid point indices must match the Cartesian rank")
+            if len(multi) != len(self._shape) or any(not isinstance(item, int) or isinstance(item, bool) for item in multi):
+                raise TypeError("grid point indices must be integer tuples")
+            ordinal = 0
+            for item, size in zip(multi, self._shape):
+                resolved = item + size if item < 0 else item
+                if resolved < 0 or resolved >= size:
+                    raise IndexError("parameter grid index is out of range")
+                ordinal = ordinal * size + resolved
+            return ordinal
+        if not isinstance(index, int) or isinstance(index, bool):
+            raise TypeError("listed point indices must be integers")
+        ordinal = index + self._count if index < 0 else index
+        if ordinal < 0 or ordinal >= self._count:
+            raise IndexError("parameter point index is out of range")
+        return ordinal
+
+    def __getitem__(self, index: object) -> ParameterPointOutcome:
+        return self._loader(self._ordinal(index))
+
+    def __iter__(self) -> Iterator[ParameterPointOutcome]:
+        ordinals = range(self._count) if self._ordinals is None else self._ordinals
+        for ordinal in ordinals:
+            yield self._loader(ordinal)
+
+
+class ParameterField(Result):
+    """Masked scalar samples retaining exact point and parameter identities."""
+
+    __slots__ = ("_samples", "_kind", "_shape", "_axis_parameters", "quantity")
+
+    def __init__(self) -> None:
+        unavailable("ParameterField construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ParameterField values are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("ParameterField values are immutable")
+
+    @property
+    def samples(self) -> tuple[Mapping[str, object], ...]:
+        # Pint quantities are mutable (for example through ``ito``).  Keep the
+        # verified samples private and return a detached view on every access.
+        return tuple(
+            MappingProxyType(
+                {**sample, "value": _detached_quantity(sample["value"])}
+            )
+            for sample in self._samples
+        )
+
+    def show(self, *, x: ParameterRef, y: ParameterRef | None = None) -> object:
+        if not isinstance(x, ParameterRef) or (y is not None and not isinstance(y, ParameterRef)):
+            raise TypeError("x and y must be ParameterRef values")
+        if y is x or (y is not None and y == x):
+            raise ValueError("x and y must name distinct parameters")
+        if not self._samples:
+            raise ValueError("an empty ParameterField has no plottable samples")
+        displayed = {x} if y is None else {x, y}
+        varying: set[ParameterRef] = set()
+        first = self._samples[0]["parameters"]
+        if not isinstance(first, ParameterSet):
+            raise TypeError("ParameterField sample parameters are malformed")
+        for parameter in first.values:
+            values = {
+                _parameter_value_bytes(sample["parameters"].values[parameter], parameter)
+                for sample in self._samples
+            }
+            if len(values) > 1:
+                varying.add(parameter)
+        if varying - displayed:
+            raise ValueError("every varying non-displayed parameter must be fixed by selection")
+
+        quantity_values = [sample["value"] for sample in self._samples if sample["value"] is not None]
+        if not quantity_values or any(not isinstance(value, Quantity) or np.asarray(value.magnitude).ndim != 0 for value in quantity_values):
+            raise ValueError("ParameterField.show() requires at least one scalar quantity")
+        unit = quantity_values[0].units
+        masked = np.ma.array(
+            [0.0 if sample["value"] is None else float(sample["value"].to(unit).magnitude) for sample in self._samples],
+            mask=[sample["value"] is None for sample in self._samples],
+        )
+        x_values = [float(sample["parameters"].values[x].to(x.spec.si_unit).magnitude) for sample in self._samples]
+        if y is None:
+            figure, axis = _themed_subplots(Theme.AUTO)
+            axis.plot(x_values, masked)
+            axis.set_xlabel(f"{x.definitions_id}.{x.id} ({x.spec.si_unit})")
+            axis.set_ylabel(str(unit))
+            return _finish_figure(figure, Theme.AUTO)
+
+        if self._kind != "grid":
+            raise ValueError("listed or scattered parameter samples do not define a Cartesian heatmap")
+        if x not in self._axis_parameters or y not in self._axis_parameters:
+            raise ValueError("heatmap axes must be declared ParameterSpace grid axes")
+
+        y_values = [float(sample["parameters"].values[y].to(y.spec.si_unit).magnitude) for sample in self._samples]
+        xs = tuple(dict.fromkeys(x_values))
+        ys = tuple(dict.fromkeys(y_values))
+        cells: dict[tuple[float, float], int] = {}
+        for index, cell in enumerate(zip(x_values, y_values)):
+            if cell in cells:
+                raise ValueError("repeated parameter cells remain indexed and cannot form a grid")
+            cells[cell] = index
+        if len(cells) != len(xs) * len(ys):
+            raise ValueError("listed, scattered, or incomplete samples cannot form a grid")
+        grid = np.ma.empty((len(ys), len(xs)))
+        for row, y_value in enumerate(ys):
+            for column, x_value in enumerate(xs):
+                grid[row, column] = masked[cells[(x_value, y_value)]]
+        figure, axis = _themed_subplots(Theme.AUTO)
+        axis.pcolormesh(xs, ys, grid, shading="nearest")
+        axis.set_xlabel(f"{x.definitions_id}.{x.id} ({x.spec.si_unit})")
+        axis.set_ylabel(f"{y.definitions_id}.{y.id} ({y.spec.si_unit})")
+        return _finish_figure(figure, Theme.AUTO)
+
+
+class ParameterSweepSelection(Result):
+    __slots__ = ("_parent", "points")
+
+    def __init__(self) -> None:
+        unavailable("ParameterSweepSelection construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ParameterSweepSelection values are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("ParameterSweepSelection values are immutable")
+
+    def collect(self, *, quantity: object) -> ParameterField:
+        return self._parent._collect(quantity, self.points)
+
+    def show(self) -> HtmlPresentation:
+        return _parameter_points_presentation(self.points)
+
+
+class ParameterSweepResult(AnalysisResult):
+    """One receipt-backed ordered parameter batch with lazy point payloads."""
+
+    __slots__ = ("identity", "points", "_selector_encoder", "_allowed_selectors", "_verified_result_token")
+
+    def __init__(self) -> None:
+        unavailable("ParameterSweepResult construction")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError("ParameterSweepResult values are immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("ParameterSweepResult values are immutable")
+
+    def select(self, *, parameters: ParameterSet) -> ParameterSweepSelection:
+        if not isinstance(parameters, ParameterSet):
+            raise TypeError("parameters must be a ParameterSet")
+        if parameters.values:
+            if not len(self.points):
+                raise ValueError("selection contains a parameter outside this sweep")
+            available = self.points._loader(0).parameters.values
+            for parameter in parameters.values:
+                match = next((current for current in available if current == parameter), None)
+                if match is None or match._definition_record() != parameter._definition_record():
+                    raise ValueError("selection contains a parameter outside this sweep")
+        ordinals: list[int] = []
+        for ordinal, point in enumerate(self.points):
+            available = point.parameters.values
+            for parameter, wanted in parameters.values.items():
+                matches = next((current for current in available if current == parameter), None)
+                if matches is None or matches._definition_record() != parameter._definition_record():
+                    raise TypeError("verified parameter batch has inconsistent definitions")
+                if _parameter_value_bytes(available[matches], matches) != _parameter_value_bytes(wanted, parameter):
+                    break
+            else:
+                ordinals.append(ordinal)
+        selection = object.__new__(ParameterSweepSelection)
+        object.__setattr__(selection, "_parent", self)
+        object.__setattr__(selection, "points", _point_accessor(
+            self.points._loader,
+            self.points._count,
+            self.points._kind,
+            self.points._shape,
+            self.points._axis_parameters,
+            tuple(ordinals),
+        ))
+        return selection
+
+    def collect(self, *, quantity: object) -> ParameterField:
+        return self._collect(quantity, self.points)
+
+    def _collect(self, quantity: object, points: Sequence[ParameterPointOutcome]) -> ParameterField:
+        key = self._selector_encoder(quantity)
+        if key not in self._allowed_selectors:
+            raise ValueError("quantity was not requested by this sweep")
+        projection = getattr(quantity, "projection", None)
+        if not isinstance(projection, str):
+            raise TypeError("quantity must be a QuantitySelector")
+        samples: list[Mapping[str, object]] = []
+        for point in points:
+            value = None if not point.succeeded else getattr(point.result, projection, None)
+            if point.succeeded and not isinstance(value, Quantity):
+                raise ValueError("requested quantity is absent from the point Result family")
+            samples.append(MappingProxyType({
+                "parameters": point.parameters,
+                "source_index": point.source_index,
+                "identity": point.identity,
+                "value": _freeze(value),
+                "failure": point.failure,
+            }))
+        result = object.__new__(ParameterField)
+        object.__setattr__(result, "_samples", tuple(samples))
+        object.__setattr__(result, "_kind", points._kind)
+        object.__setattr__(result, "_shape", points._shape)
+        object.__setattr__(result, "_axis_parameters", points._axis_parameters)
+        object.__setattr__(result, "quantity", quantity)
+        return result
+
+    def show(self) -> HtmlPresentation:
+        return _parameter_points_presentation(self.points)
+
+
+def _parameter_value_bytes(value: object, parameter: ParameterRef) -> bytes:
+    from ._canonical import canonical_json_bytes
+
+    record = ParameterSet({parameter: value})._record()["bindings"][0]["value"]
+    return canonical_json_bytes(record)
+
+
+def _detached_quantity(value: object) -> object:
+    """Return a caller-owned copy of a stored scalar/array Quantity."""
+
+    if not isinstance(value, Quantity):
+        return value
+    magnitude = value.magnitude
+    if isinstance(magnitude, np.ndarray):
+        magnitude = np.array(magnitude, copy=True)
+    return units.registry.Quantity(magnitude, value.units)
+
+
+def _point_accessor(
+    loader: Callable[[int], ParameterPointOutcome],
+    count: int,
+    kind: str,
+    shape: tuple[int, ...],
+    axis_parameters: tuple[ParameterRef, ...],
+    ordinals: tuple[int, ...] | None = None,
+) -> ParameterPointAccessor:
+    result = object.__new__(ParameterPointAccessor)
+    object.__setattr__(result, "_loader", loader)
+    object.__setattr__(result, "_count", count)
+    object.__setattr__(result, "_kind", kind)
+    object.__setattr__(result, "_shape", shape)
+    object.__setattr__(result, "_axis_parameters", axis_parameters)
+    object.__setattr__(result, "_ordinals", ordinals)
+    return result
+
+
+def _point_outcome(
+    *,
+    parameters: ParameterSet,
+    source_index: int | tuple[int, ...],
+    identity: ParameterPointIdentity,
+    result: AnalysisResult | Callable[[], AnalysisResult] | None,
+    failure: SCNSimError | None,
+) -> ParameterPointOutcome:
+    if not isinstance(parameters, ParameterSet) or not _valid_source_index(source_index) or not _is_verified_point_identity(identity):
+        raise TypeError("parameter point evidence is malformed")
+    if (result is None) == (failure is None):
+        raise TypeError("parameter point must contain exactly one result or failure")
+    if result is not None and not callable(result) and (
+        not _is_verified_analysis_result(result) or result.identity is not identity
+    ):
+        raise TypeError("parameter point Result has the wrong derived identity")
+    if failure is not None and not isinstance(failure, SCNSimError):
+        raise TypeError("parameter point failure must be typed")
+    outcome = object.__new__(ParameterPointOutcome)
+    object.__setattr__(outcome, "parameters", parameters)
+    object.__setattr__(outcome, "source_index", source_index)
+    object.__setattr__(outcome, "identity", identity)
+    object.__setattr__(outcome, "_result", result)
+    object.__setattr__(outcome, "_failure", failure)
+    return outcome
+
+
+def _parameter_sweep_result(
+    *,
+    identity: ResultIdentity,
+    points: ParameterPointAccessor,
+    selector_encoder: Callable[[object], bytes],
+    allowed_selectors: Sequence[bytes],
+) -> ParameterSweepResult:
+    if not _is_verified_identity(identity) or not isinstance(points, ParameterPointAccessor):
+        raise TypeError("parameter sweep identity or accessor is unverified")
+    result = object.__new__(ParameterSweepResult)
+    object.__setattr__(result, "identity", identity)
+    object.__setattr__(result, "points", points)
+    object.__setattr__(result, "_selector_encoder", selector_encoder)
+    object.__setattr__(result, "_allowed_selectors", frozenset(allowed_selectors))
+    object.__setattr__(result, "_verified_result_token", _VERIFIED_TOKEN)
+    return result
+
+
+def _parameter_points_presentation(points: Sequence[ParameterPointOutcome]) -> HtmlPresentation:
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(str(point.source_index))}</td>"
+        f"<td>{'success' if point.succeeded else 'failure'}</td>"
+        f"<td>{escape(point.identity.parameters_sha256)}</td>"
+        f"<td>{'—' if point.succeeded else escape(point.failure.kind)}</td>"
+        "</tr>"
+        for point in points
+    )
+    return HtmlPresentation(
+        "<table><thead><tr><th>source index</th><th>status</th><th>parameters</th><th>failure</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table>"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TraceResult(Result):
     frequencies: Quantity
@@ -765,12 +1189,214 @@ class ReportResult(Result):
 
 
 @dataclass(frozen=True, slots=True)
+class CircuitDiagramAudit:
+    """Read-only certificate for one frozen, independently checked scene."""
+
+    _data: object = field(repr=False, compare=False)
+
+    def __init__(self) -> None:
+        unavailable("CircuitDiagramAudit construction")
+
+    @classmethod
+    def _from_data(cls, data: object) -> "CircuitDiagramAudit":
+        from ._diagram.audit import DiagramAuditData
+
+        if not isinstance(data, DiagramAuditData):
+            raise TypeError("CircuitDiagramAudit requires DiagramAuditData")
+        data = DiagramAuditData(
+            representation=data.representation,
+            plan_id=data.plan_id,
+            plan_sha256=data.plan_sha256,
+            connectivity_sha256=data.connectivity_sha256,
+            semantic_sha256=data.semantic_sha256,
+            compiled_graph_sha256=data.compiled_graph_sha256,
+            expanded_graph_sha256=data.expanded_graph_sha256,
+            presentation_sha256=data.presentation_sha256,
+            observed_electrical=_freeze(data.observed_electrical),
+            observed_semantic=_freeze(data.observed_semantic),
+            observed_rows=_freeze(data.observed_rows),
+            verified_rows=_freeze(data.verified_rows),
+        )
+        result = object.__new__(cls)
+        object.__setattr__(result, "_data", data)
+        return result
+
+    @property
+    def representation(self) -> Literal["authoring", "compiled"]:
+        return self._data.representation
+
+    @property
+    def plan_id(self) -> str:
+        return self._data.plan_id
+
+    @property
+    def plan_sha256(self) -> str:
+        return self._data.plan_sha256
+
+    @property
+    def connectivity_sha256(self) -> str:
+        return self._data.connectivity_sha256
+
+    @property
+    def semantic_sha256(self) -> str:
+        return self._data.semantic_sha256
+
+    @property
+    def compiled_graph_sha256(self) -> str | None:
+        return self._data.compiled_graph_sha256
+
+    @property
+    def expanded_graph_sha256(self) -> str | None:
+        return self._data.expanded_graph_sha256
+
+    @property
+    def presentation_sha256(self) -> str | None:
+        return self._data.presentation_sha256
+
+    def show(self) -> "HtmlPresentation":
+        """Present observed scene rows separately from verified snapshot facts."""
+
+        from ._canonical import float64_from_hex
+
+        def text(value: object) -> str:
+            """Format certified records without exposing encoder JSON as UI."""
+
+            if value is None:
+                return "—"
+            if isinstance(value, str):
+                if value.startswith("{") and value.endswith("}"):
+                    try:
+                        decoded = json.loads(value)
+                    except json.JSONDecodeError:
+                        return value
+                    if isinstance(decoded, Mapping):
+                        return text(decoded)
+                return value
+            if isinstance(value, (int, float, bool)):
+                return str(value)
+            if isinstance(value, Mapping):
+                if value.get("type") == "quantity_f64":
+                    encoded, unit = value.get("si_value_f64"), value.get("si_unit")
+                    if not isinstance(encoded, str) or not isinstance(unit, str):
+                        raise ValueError("certificate contains a malformed canonical quantity")
+                    try:
+                        return f"{float64_from_hex(encoded)!r} {unit}"
+                    except ValueError as exc:
+                        raise ValueError("certificate contains an invalid canonical quantity") from exc
+                return "; ".join(
+                    f"{key.replace('_', ' ')}={text(item)}" for key, item in value.items()
+                ) or "—"
+            if isinstance(value, (tuple, list)):
+                return ", ".join(text(item) for item in value) or "—"
+            return type(value).__name__
+
+        def table(title: str, rows: object) -> str:
+            entries = tuple(row for row in rows if isinstance(row, Mapping)) if isinstance(rows, (tuple, list)) else ()
+            columns = tuple(dict.fromkeys(key for row in entries for key in row))
+            if not columns:
+                return f"<h4>{escape(title)}</h4><p>None</p>"
+            body = "".join(
+                "<tr>" + "".join(
+                    f"<td>{escape(text(row.get(column)))}</td>"
+                    for column in columns
+                ) + "</tr>"
+                for row in entries if isinstance(row, Mapping)
+            )
+            if not body:
+                body = f"<tr><td colspan=\"{len(columns)}\">None</td></tr>"
+            headings = "".join(f"<th>{escape(column.replace('_', ' '))}</th>" for column in columns)
+            return f"<h4>{escape(title)}</h4><table><tr>{headings}</tr>{body}</table>"
+
+        def values_by_identity(value: object) -> tuple[Mapping[str, object], ...]:
+            if not isinstance(value, Mapping):
+                return ()
+            return tuple({"identity": identity, "value": item} for identity, item in value.items())
+
+        def detail_rows(kind: str) -> tuple[Mapping[str, object], ...]:
+            return tuple(
+                row for row in self._data.observed_rows
+                if isinstance(row, Mapping) and row.get("kind") == kind
+            )
+
+        def verified_rows(kind: str) -> tuple[Mapping[str, object], ...]:
+            return tuple(
+                row
+                for row in self._data.verified_rows
+                if isinstance(row, Mapping) and row.get("kind") == kind
+            )
+
+        def verified_record_rows(kind: str) -> tuple[Mapping[str, object], ...]:
+            """Expose complete captured source records without calling them ink."""
+
+            rows: list[Mapping[str, object]] = []
+            for row in verified_rows(kind):
+                record = row.get("record")
+                rows.append(
+                    {
+                        key: value
+                        for key, value in row.items()
+                        if key not in {"category", "kind"}
+                    }
+                    if isinstance(record, Mapping)
+                    else dict(row)
+                )
+            return tuple(rows)
+
+        electrical = self._data.observed_electrical
+        semantic = self._data.observed_semantic
+        identity_row = next(iter(verified_rows("identity")), {})
+        identity = dict(identity_row)
+        identity["presentation_sha256"] = self.presentation_sha256
+        point_values = next(iter(verified_rows("canonical_point_values")), {})
+        compiled_expansion = next(iter(verified_rows("compiled_expansion")), {})
+        return HtmlPresentation(
+            "<section><h3>Observed electrical reconstruction (audit A)</h3>"
+            + table("Nets and exact contacts", electrical.get("nets", ()) if isinstance(electrical, Mapping) else ())
+            + table("Native physical bodies: visible contacts, references, and ownership", electrical.get("bodies", ()) if isinstance(electrical, Mapping) else ())
+            + table("Visible conductive junctions", electrical.get("junctions", ()) if isinstance(electrical, Mapping) else ())
+            + table("Ports: role, raw Z0, orientation, and contacts", electrical.get("ports", ()) if isinstance(electrical, Mapping) else ())
+            + table("Local physical ground glyphs and returns", electrical.get("grounds", ()) if isinstance(electrical, Mapping) else ())
+            + table("Transmission lines: visible CPW endpoints and ordered MTL conductors", electrical.get("transmission_lines", ()) if isinstance(electrical, Mapping) else ())
+            + table("Observed mutual couplings", electrical.get("couplings", ()) if isinstance(electrical, Mapping) else ())
+            + table("Displayed coupling coefficients and visible polarity", detail_rows("mutual_coupling"))
+            + table("Exact-zero omission evidence", electrical.get("omissions", ()) if isinstance(electrical, Mapping) else ())
+            + "<h3>Observed visible structure (audit B)</h3>"
+            + table("Visible regions, headers, and containment", semantic.get("regions", ()) if isinstance(semantic, Mapping) else ())
+            + table("Visible leaf ownership", semantic.get("leaf_ownership", ()) if isinstance(semantic, Mapping) else ())
+            + table("Visible Port ownership", semantic.get("port_ownership", ()) if isinstance(semantic, Mapping) else ())
+            + table("Visible cross-boundary electrical incidence", semantic.get("boundary_incidence", ()) if isinstance(semantic, Mapping) else ())
+            + "<h3>Observed displayed-point evidence</h3>"
+            + table("Displayed selected physical values", detail_rows("displayed_parameter_value"))
+            + table("Displayed Port reference impedances", detail_rows("port_impedance"))
+            + table("Displayed baseline values retained by a compiled ledger", detail_rows("displayed_baseline_value"))
+            + table("Full compiled rows", detail_rows("compiled_matrix_row"))
+            + table("All observed reconstruction rows", self._data.observed_rows)
+            + "<h3>Verified captured point evidence (separate from audit A/B)</h3>"
+            + table("Certificate identities, including complete effective parameters", (identity,))
+            + table("Verified selected-point physical values", values_by_identity(point_values.get("values") if isinstance(point_values, Mapping) else None))
+            + "<h3>Verified captured source records (not inferred from the drawing)</h3>"
+            + table("Authored operators", verified_record_rows("authored_operator"))
+            + table("Authored buses and taps", verified_record_rows("authored_bus"))
+            + table("Authored public exposures", verified_record_rows("authored_exposure"))
+            + table("Authored node aliases", verified_record_rows("authored_node_alias"))
+            + table("Parameter definitions", verified_record_rows("parameter_definition"))
+            + table("Physical parameter field bindings", verified_record_rows("parameter_field_binding"))
+            + table("Complete effective parameter point", verified_record_rows("effective_parameter_point"))
+            + table("Source-unit records", verified_record_rows("source_unit"))
+            + table("Ground-call records", verified_record_rows("ground_call_group"))
+            + table("Verified compiled expansion bindings", (compiled_expansion,))
+            + "</section>"
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CircuitDiagramResult(Result):
-    drawing: object
-    representation: Literal["authoring", "compiled"] = "authoring"
+    drawing: schemdraw.Drawing
+    audit: CircuitDiagramAudit
+    composition: SchematicCompositionSnapshot | None = None
 
     def __init__(self) -> None:
         unavailable("CircuitDiagramResult construction")
 
-    def show(self, **presentation: object) -> object:
+    def show(self) -> schemdraw.Drawing:
         return self.drawing

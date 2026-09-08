@@ -31,6 +31,12 @@ There is no mutable global current value, implicit Plan registry, expression
 engine, GUI authoring state, or hidden batch service. ASCDLS projects a Plan at
 one explicit point; it never chooses a View or executes analysis.
 
+The [shared assembly contract](circuit-plan-assembly.qmd) owns the physical
+model consumed here. Resolving a frozen Plan snapshot and `ParameterSet` uses
+shared physical-field validation, not a diagram import or render preflight.
+Parameter and Calculation use remain available when a diagram cannot be laid
+out; no presentation choice writes definitions, Plan state, or requests.
+
 ## Independent definitions and immutable refs {#independent-parameter-definitions}
 
 The target public declarations are:

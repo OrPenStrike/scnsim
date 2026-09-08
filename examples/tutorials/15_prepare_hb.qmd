@@ -1,13 +1,15 @@
 ---
 title: "Chapter 15 — Prepare pump-off HB"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> HB semantics are retained baseline teaching against the proposed declaration.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 The complete physical Plan comes first. This Chapter then requests the supported
 pump-off harmonic-balance response of a selected View, keeping the named case,
@@ -197,9 +199,18 @@ minus_branch = floating.branch(
     elements=(minus_shunt,),
     end=floating.ground,
 )
-floating_plus_pin = floating.expose_pin(id="floating_plus", at=plus_bus)
-floating_minus_pin = floating.expose_pin(id="floating_minus", at=minus_bus)
+plus_1 = floating.expose_pin(id="plus_1", at=plus_bus)
+plus_2 = floating.expose_pin(id="plus_2", at=plus_bus)
+minus_1 = floating.expose_pin(id="minus_1", at=minus_bus)
+minus_2 = floating.expose_pin(id="minus_2", at=minus_bus)
 ```
+
+Each pair exposes one intrinsic node through distinct ordinary public pins.
+The couplers connect directly to `plus_1` and `minus_1`; only `plus_2` and
+`minus_2` link to the existing root probe buses and coordinates. Left/right
+placement is a separate presentation choice, not a physical pin role. No
+component, Coordinate, or degree of freedom is added by these exposures.
+
 
 The root assembly next consumes only the two floating public pins, the readout
 terminal, and the three feedline pins while creating its coordinate aliases.
@@ -233,11 +244,11 @@ plan.link(
 plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
 plan.link(
     id="floating_plus_child",
-    endpoints=(floating_plus_bus, floating_plus_pin),
+    endpoints=(floating_plus_bus, plus_2),
 )
 plan.link(
     id="floating_minus_child",
-    endpoints=(floating_minus_bus, floating_minus_pin),
+    endpoints=(floating_minus_bus, minus_2),
 )
 ```
 
@@ -286,13 +297,13 @@ readout_floating_plus = plan.series(
     id="readout_floating_plus",
     start=readout_root_bus,
     elements=(plus_coupler,),
-    end=floating_plus_bus,
+    end=plus_1,
 )
 readout_floating_minus = plan.series(
     id="readout_floating_minus",
     start=readout_root_bus,
     elements=(minus_coupler,),
-    end=floating_minus_bus,
+    end=minus_1,
 )
 ```
 

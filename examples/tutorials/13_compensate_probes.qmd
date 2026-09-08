@@ -1,13 +1,15 @@
 ---
 title: "Chapter 13 — Assemble the capstone and compensate its probes"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> The complete model and retained numerical requests are documentation-only.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 This is the complete three-Subsystem capstone: a two-section feedline, a
 grounded readout LC, and a floating pair, with terminated feedline ends and
@@ -248,8 +250,8 @@ minus_shunt = floating.add(
 )
 ```
 
-These real leaf bodies feed the mutual path, grounded shunts, and two published
-pins in the next cell.
+These real leaf bodies feed the mutual path, grounded shunts, and four public
+pins over two intrinsic nodes in the next cell.
 
 ### Structure and expose the floating pair
 
@@ -273,12 +275,20 @@ minus_branch = floating.branch(
     elements=(minus_shunt,),
     end=floating.ground,
 )
-floating_plus_pin = floating.expose_pin(id="floating_plus", at=plus_bus)
-floating_minus_pin = floating.expose_pin(id="floating_minus", at=minus_bus)
+plus_1 = floating.expose_pin(id="plus_1", at=plus_bus)
+plus_2 = floating.expose_pin(id="plus_2", at=plus_bus)
+minus_1 = floating.expose_pin(id="minus_1", at=minus_bus)
+minus_2 = floating.expose_pin(id="minus_2", at=minus_bus)
 ```
 
-`floating_plus_pin` and `floating_minus_pin` are the public boundary; the
-root will link those pins to named coordinate buses rather than reaching inside.
+Each pair exposes one intrinsic node through distinct ordinary public pins.
+The couplers connect directly to `plus_1` and `minus_1`; only `plus_2` and
+`minus_2` link to the existing root probe buses and coordinates. Left/right
+placement is a separate presentation choice, not a physical pin role. No
+component, Coordinate, or degree of freedom is added by these exposures.
+
+Only the output pair links to the named root coordinate buses; the coupling
+inputs terminate directly at the other public pins without reaching inside.
 
 ## Lesson 13.4 — Assemble root couplers and probes {#ch13-root}
 
@@ -318,11 +328,11 @@ plan.link(
 plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
 plan.link(
     id="floating_plus_child",
-    endpoints=(floating_plus_bus, floating_plus_pin),
+    endpoints=(floating_plus_bus, plus_2),
 )
 plan.link(
     id="floating_minus_child",
-    endpoints=(floating_minus_bus, floating_minus_pin),
+    endpoints=(floating_minus_bus, minus_2),
 )
 ```
 
@@ -371,13 +381,13 @@ readout_floating_plus = plan.series(
     id="readout_floating_plus",
     start=readout_root_bus,
     elements=(plus_coupler,),
-    end=floating_plus_bus,
+    end=plus_1,
 )
 readout_floating_minus = plan.series(
     id="readout_floating_minus",
     start=readout_root_bus,
     elements=(minus_coupler,),
-    end=floating_minus_bus,
+    end=minus_1,
 )
 ```
 
@@ -442,74 +452,290 @@ requires nor creates a `CircuitRun`.
 ```{python}
 #| id: render-ptc-authoring-target
 from scnsim import CircuitDiagramSpec, SchematicLayout, Theme
+from scnsim.errors import SCNSimValidationError
+from IPython.display import display
 
-automatic = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",
-        theme=Theme.AUTO,
-        show_parameter_values=True,
-        show_provenance=True,
+automatic = None
+try:
+    automatic = plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="authoring",
+            theme=Theme.AUTO,
+            show_parameter_values=True,
+            show_provenance=True,
+        )
     )
-)
-automatic.show()
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({
+        "fixed Default layout unavailable": str(error),
+        "stage": error.stage,
+        "evidence": dict(error.evidence),
+    })
+if automatic is not None:
+    display(automatic.show())
 ```
 
-`automatic` shows the raw authored Plan. Its audit table is separate so the
-reader can review topology and declaration evidence independently.
+::: {.content-visible when-format="html"}
+
+![Default authoring projection of the complete raw-loaded capstone.](figures/13-ptc-authoring.svg){#fig-13-ptc-authoring .lightbox fig-alt="Feedline, readout, and floating subsystems with all four original Ports before probe compensation."}
+
+[Open the SVG](figures/13-ptc-authoring.svg).
+
+:::
+
+Fixed Default is not a universal embedding algorithm: this complete Plan can
+encounter an unsupported fixed track near a label. The cell reports an actual
+layout failure, if encountered, and continues to explicit controls below;
+other error stages propagate. It does not substitute a drawing or an audit.
+When rendering succeeds, `automatic` shows the raw authored Plan and its audit
+table is available separately.
 
 ```{python}
 #| id: inspect-ptc-authoring-audit
-automatic.audit.show()
+if automatic is not None:
+    display(automatic.audit.show())
 ```
 
-The authoring audit confirms Plan-specific input-to-physical-field bindings,
+An available authoring audit confirms Plan-specific input-to-physical-field bindings,
 declared buses, child boundaries, Ports, and three root Subsystems. The next
 projection expands each finite-pi CPW body without turning that compiler detail
 into an analysis View.
 
 ```{python}
 #| id: render-ptc-compiled-projection
-compiled = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="compiled",
-        theme=Theme.AUTO,
-        show_parameter_values=True,
-        show_provenance=True,
+compiled = None
+try:
+    compiled = plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="compiled",
+            theme=Theme.AUTO,
+            show_parameter_values=True,
+            show_provenance=True,
+        )
     )
-)
-compiled.show()
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({
+        "compiled schematic layout unavailable": str(error),
+        "stage": error.stage,
+        "evidence": dict(error.evidence),
+    })
+if compiled is not None:
+    display(compiled.show())
 ```
 
-`compiled` makes the finite-pi expansion inspectable. Its audit carries the
-expanded topology and RLGC provenance separately from the authored projection.
+`compiled` makes the finite-pi expansion inspectable when its fixed layout is
+available. A `schematic_layout` failure is reported without masking another
+error or preventing the later authored-composition cells from running.
 
 ```{python}
 #| id: inspect-ptc-compiled-audit
-compiled.audit.show()
+if compiled is not None:
+    display(compiled.audit.show())
 ```
 
-The two readout couplers attach to the same declared readout bus. The next
-optional layout hint changes only how the same authored Plan is read.
+### Compose the parent wiring without changing the Plan {#ch13-composition}
+
+The three root coupling structures and the one public `readout_terminal`
+meet at the same declared readout bus. The readout needs no second Pin to hang
+below a parent T: the renderer moves its whole Block and preserves its private
+parallel LC. The following recipe retains both terminated feedline Ports and
+both nonloading probes, along with all physical values and numerical requests.
+
+First create a partial composition, then inspect its explicit settings and
+omitted fields. The constructor, `automatic()`, and a missing layout share the
+same fixed Default completion; there is no whole-manual setup requirement.
+Inspection is read-only. Replacing a wiring group still requires every actual
+attachment and arm in that group; Default does not guess missing manual wires.
 
 ```{python}
-#| id: render-ptc-relative-layout
-relative_layout = SchematicLayout(
-    order={plan: (floating, readout, feedline)}
+#| id: create-ptc-automatic-composition
+from scnsim import DiagramAxis, DiagramSide, SchematicComposition
+
+composition = SchematicComposition(plan=plan)
+```
+
+```{python}
+#| id: inspect-ptc-automatic-composition
+composition.show()
+```
+
+### Set the feedline axes and root peer order
+
+The two ordered line sections run vertically. The root order names only the
+three independent child regions, not the root coupler structures; connectors
+are placed from their declared endpoints. These are drawing choices, not
+physical-flow directions.
+
+```{python}
+#| id: configure-ptc-composition-blocks
+composition.axis(feedline, DiagramAxis.VERTICAL)
+composition.axis(left_section, DiagramAxis.VERTICAL)
+composition.axis(right_section, DiagramAxis.VERTICAL)
+composition.order(plan, members=(feedline, readout, floating))
+```
+
+### Replace the readout group's wiring
+
+The inventory contains all four actual Block attachments even though the
+`readout_child` Link lists only the bus and one Pin. A Bus is not an extra arm.
+
+```{python}
+#| id: replace-ptc-readout-wiring
+wiring = composition.replace_wiring(at=readout_terminal)
+```
+
+The public Subsystem Pin selects the parent-facing wiring group. It aliases
+the same group as `readout_root_bus`, never the readout's private internal
+rail; if no legal outward group exists, selection fails instead of falling
+back inward. `endpoint(readout_terminal)` resolves in this selected group.
+
+```{python}
+#| id: declare-ptc-double-tee-and-elbow
+readout_t = wiring.tee(id="readout_attachment", branch=DiagramSide.BOTTOM)
+split_t = wiring.tee(id="floating_split", branch=DiagramSide.BOTTOM)
+lower_turn = wiring.elbow(
+    id="floating_minus_turn", sides=(DiagramSide.TOP, DiagramSide.RIGHT),
 )
+```
+
+```{python}
+#| id: connect-ptc-double-tee-and-elbow
+wiring.connect(composition.endpoint(feedline_readout, boundary="end"), readout_t.left)
+wiring.connect(readout_t.bottom, composition.endpoint(readout_terminal))
+wiring.connect(readout_t.right, split_t.left)
+wiring.connect(split_t.right, composition.endpoint(readout_floating_plus, boundary="start"))
+wiring.connect(split_t.bottom, lower_turn.top)
+wiring.connect(lower_turn.right, composition.endpoint(readout_floating_minus, boundary="start"))
+```
+
+Every attachment and requested arm is connected once. The two Ts and L choose
+local wire shapes on the existing node; they introduce no net, Tap, or analysis
+Coordinate. Default and this custom recipe use the same public composition
+path. The T sides constrain local arms, not global half-planes for distant
+children. Measured Block and connector strips reserve channels before the
+single routing realization; different-net crossings retain the existing jump
+convention. Shape verification checks the actual visible arms separately from
+A/B. Unsupported fixed geometry fails explicitly rather than retrying a
+different placement, pose, or wiring tree.
+
+### Choose complete Port poses
+
+Place the equivalent public input boundaries on the left and output boundaries
+on the right. This is presentation over ordinary pins, not a new pin role.
+
+```{python}
+#| id: orient-ptc-equivalent-public-pins
+composition.terminal_side(plus_1, DiagramSide.LEFT)
+composition.terminal_side(minus_1, DiagramSide.LEFT)
+composition.terminal_side(plus_2, DiagramSide.RIGHT)
+composition.terminal_side(minus_2, DiagramSide.RIGHT)
+```
+
+The existing four Ports keep their values and roles. Each setting below
+atomically chooses a root-frame hollow-marker side and perpendicular
+T-to-load/ground direction; it does not alter the PTC selection later.
+
+```{python}
+#| id: orient-ptc-port-blocks
+composition.port_orientation(
+    feedline_in_port, boundary_side=DiagramSide.TOP, load_side=DiagramSide.LEFT,
+)
+composition.port_orientation(
+    feedline_out_port, boundary_side=DiagramSide.BOTTOM, load_side=DiagramSide.LEFT,
+)
+composition.port_orientation(
+    probe_plus, boundary_side=DiagramSide.RIGHT, load_side=DiagramSide.TOP,
+)
+composition.port_orientation(
+    probe_minus, boundary_side=DiagramSide.RIGHT, load_side=DiagramSide.BOTTOM,
+)
+```
+
+### Keep each floating shunt's ground local
+
+```{python}
+#| id: set-ptc-local-ground-sides
+composition.ground_side(plus_branch, DiagramSide.TOP)
+composition.ground_side(minus_branch, DiagramSide.BOTTOM)
+```
+
+Each shunt retains its own ground occurrence rather than joining a scope-wide
+ground tree. The readout's shared Parallel rail retains one local ground, and
+Port loads keep their graphical roles. All glyphs denote the same electrical
+reference. A ground-side setting may rotate its structure without reversing
+the authored electrical endpoints.
+
+```{python}
+#| id: inspect-ptc-custom-composition
+composition.show()
+```
+
+### Draw and audit the captured composition
+
+```{python}
+#| id: render-ptc-custom-composition
 hinted = plan.render_schematic(
     CircuitDiagramSpec(
         representation="authoring",
         theme=Theme.AUTO,
         show_parameter_values=True,
         show_provenance=True,
-        layout=relative_layout,
+        layout=composition,
     )
 )
+```
+
+```{python}
+#| id: show-ptc-custom-composition
 hinted.show()
 ```
 
-The `order` key contains only direct root Subsystems. It changes reading order,
-not wiring, component ownership, or energy direction.
+::: {.content-visible when-format="html"}
+
+![Explicit parent wiring, public-pin sides, Port poses, and local grounds.](figures/13-ptc-custom-composition.svg){#fig-13-ptc-custom-composition .lightbox fig-alt="Capstone with a readout beneath parent wiring, left coupling inputs, and right probe outputs."}
+
+[Open the SVG](figures/13-ptc-custom-composition.svg).
+
+:::
+
+```{python}
+#| id: inspect-ptc-custom-composition-audit
+hinted.audit.show()
+```
+
+The recipe inspection is not itself an audited scene. The drawing and audit
+above are distinct surfaces; generating this zero-output Notebook does not
+establish runtime or gallery conformance. Once captured, later composition
+edits cannot mutate `hinted`.
+
+```{python}
+#| id: inspect-ptc-final-composition
+hinted.composition.show()
+```
+
+This detached final recipe remains inspectable after live Plan edits. It owns
+resolved public choices, not a second electrical model or private editable
+child contents. The same exact Plan can create a new fixed editable recipe:
+
+```{python}
+#| id: reuse-ptc-final-composition
+fixed_capstone_composition = hinted.composition.to_composition(plan=plan)
+```
+
+```{python}
+#| id: inspect-ptc-fixed-composition
+fixed_capstone_composition.show()
+```
+
+Fixed reuse remeasures and reroutes at any subsequently selected single
+parameter point and may fail if incompatible; it does not freeze pixels or
+change the old diagram. A fresh `SchematicComposition(plan=plan)` starts a
+new partial configuration with stable defaults. There is no global
+reset-to-auto operation or timing threshold.
 
 ```{python}
 #| id: compare-ptc-layout-audit-identities
@@ -517,7 +743,7 @@ from IPython.display import display
 
 display(
     {
-        "automatic": {
+        "automatic": None if automatic is None else {
             "plan": automatic.audit.plan_sha256,
             "connectivity": automatic.audit.connectivity_sha256,
             "semantic": automatic.audit.semantic_sha256,
@@ -531,8 +757,79 @@ display(
 )
 ```
 
-Matching audit identities show that both drawings project this same complete
-Plan. Only after that review does the next Lesson derive an analytical View.
+When both drawings exist, matching audit identities show that they project
+this same complete Plan. A missing Default drawing has no audit identity.
+
+### Compose the separate right-side probe groups {#ch13-probe-tee-sides}
+
+The coupling inputs and probe outputs share voltage through the child's real
+internal wires, not through one parent group. Each right-side group has exactly
+two attachments: its `*_2` public pin and the Probe on the original root bus.
+Replace that whole local group with a straight connection. The upper/lower
+load direction belongs to the Port pose, not an invented three-arm junction.
+
+```{python}
+#| id: create-ptc-plus-probe-wiring
+plus_wiring = composition.replace_wiring(at=floating_plus_bus)
+plus_output = plus_wiring.straight(id="probe_attachment", axis=DiagramAxis.HORIZONTAL)
+```
+
+```{python}
+#| id: connect-ptc-plus-probe-wiring
+plus_wiring.connect(composition.endpoint(plus_2), plus_output.left)
+plus_wiring.connect(plus_output.right, composition.endpoint(probe_plus))
+```
+
+```{python}
+#| id: create-ptc-minus-probe-wiring
+minus_wiring = composition.replace_wiring(at=floating_minus_bus)
+minus_output = minus_wiring.straight(id="probe_attachment", axis=DiagramAxis.HORIZONTAL)
+```
+
+```{python}
+#| id: connect-ptc-minus-probe-wiring
+minus_wiring.connect(composition.endpoint(minus_2), minus_output.left)
+minus_wiring.connect(minus_output.right, composition.endpoint(probe_minus))
+```
+
+```{python}
+#| id: inspect-ptc-probe-tee-composition
+composition.show()
+```
+
+```{python}
+#| id: render-ptc-probe-tee-composition
+probe_outputs = plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        theme=Theme.AUTO,
+        show_parameter_values=True,
+        show_provenance=True,
+        layout=composition,
+    )
+)
+```
+
+```{python}
+#| id: show-ptc-probe-tee-composition
+probe_outputs.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![Separate explicit right-side probe-output groups on the same Plan.](figures/13-ptc-probe-tee-composition.svg){#fig-13-ptc-probe-tee-composition .lightbox fig-alt="Capstone with straight local output connections from equivalent public pins to the two right-facing probes."}
+
+[Open the SVG](figures/13-ptc-probe-tee-composition.svg).
+
+:::
+
+```{python}
+#| id: inspect-ptc-probe-tee-audit
+probe_outputs.audit.show()
+```
+
+The earlier `hinted` drawing remains unchanged. Only after reviewing the
+physical declaration does the next Lesson derive an analytical View.
 
 ## Lesson 13.5 — Select a probe-compensated View {#ch13-ptc-view}
 

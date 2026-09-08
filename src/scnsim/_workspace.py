@@ -485,103 +485,6 @@ class WorkspaceBinding:
             )
         return success
 
-    def resolve_matching_success(
-        self,
-        *,
-        operation: str,
-        spec: Mapping[str, object],
-        parameters: Mapping[str, object],
-        runtime_semantic: Mapping[str, object],
-        lazy_lineage: Mapping[str, object],
-    ) -> VerifiedSuccess:
-        """Read one exact success without compiling, allocating, or selecting latest.
-
-        A View declaration deliberately does not contain compiler-realized
-        matrices.  This reader therefore compares its declarative projection
-        with each stored realized lineage, while every stored request and final
-        attempt remains fully chain-verified.  It is intentionally leaf-local
-        and cannot be repurposed as a workspace-wide ``current`` selector.
-        """
-
-        if not isinstance(operation, str) or not operation:
-            raise TypeError("operation must be a nonempty string")
-        for name, value in (
-            ("spec", spec),
-            ("parameters", parameters),
-            ("runtime_semantic", runtime_semantic),
-            ("lazy_lineage", lazy_lineage),
-        ):
-            if not isinstance(value, Mapping):
-                raise TypeError(f"{name} must be a mapping")
-
-        # The lock spans enumeration and all artifact reads.  No writer path,
-        # cleanup, request construction, or Julia preparation is reachable.
-        with self.reader():
-            plan = _load_canonical(self.leaf / "plan.json")
-            wanted_lineage = _lazy_lineage_projection(lazy_lineage, plan)
-            wanted_spec = _canonical_bytes(dict(spec))
-            wanted_parameters = _canonical_bytes(dict(parameters))
-            wanted_runtime = _canonical_bytes(dict(runtime_semantic))
-            requests = self.leaf / "requests"
-            if requests.is_symlink() or (requests.exists() and not requests.is_dir()):
-                raise _integrity("Workspace requests path is unsafe.", path=str(requests))
-
-            successes: list[VerifiedSuccess] = []
-            if requests.exists():
-                for request_directory in sorted(requests.iterdir(), key=lambda item: item.name):
-                    if (
-                        request_directory.is_symlink()
-                        or not request_directory.is_dir()
-                        or _SHA256.fullmatch(request_directory.name) is None
-                    ):
-                        raise _integrity("Workspace contains a malformed request directory.", path=str(request_directory))
-                    request_sha256 = request_directory.name
-                    request_path = request_directory / "request.json"
-                    if (
-                        request_path.is_symlink()
-                        or not request_path.is_file()
-                        or _sha256(request_path.read_bytes()) != request_sha256
-                    ):
-                        raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
-                    request = _load_canonical(request_path)
-                    _verify_request_document(request, self.plan_sha256, plan)
-                    attempts = request_directory / "attempts"
-                    if attempts.is_symlink() or not attempts.is_dir():
-                        raise _integrity("Resolve request has no final attempts.", request_sha256=request_sha256)
-                    finals = self._final_attempt_directories(attempts)
-                    if not finals:
-                        raise _integrity("Resolve request has no final attempts.", request_sha256=request_sha256)
-
-                    matches = (
-                        request.get("operation") == operation
-                        and _canonical_bytes(request["spec"]) == wanted_spec
-                        and _canonical_bytes(request["parameters"]) == wanted_parameters
-                        and _canonical_bytes(request["runtime_semantic"]) == wanted_runtime
-                        and _lazy_lineage_projection(request["ref_lineage"], plan) == wanted_lineage
-                    )
-                    for final in finals:
-                        attempt, receipt, result = self._verify_attempt(
-                            final, request_sha256, final.name, require_final_name=True
-                        )
-                        if matches and receipt["outcome"] == "success":
-                            if result is None:
-                                raise _integrity("Successful receipt lacks a Result.", attempt=str(final))
-                            successes.append(VerifiedSuccess(request, attempt, receipt, result, final))
-
-            if not successes:
-                raise ResultUnavailableError(
-                    "No verified success exists for this exact declared request.",
-                    stage="resolve",
-                    evidence={"operation": operation, "workspace": str(self.root)},
-                )
-            if len(successes) != 1:
-                raise _integrity(
-                    "Multiple verified successes match one declared request.",
-                    operation=operation,
-                    workspace=str(self.root),
-                )
-            return successes[0]
-
     def inventory_document(self) -> dict[str, object]:
         """Verify and summarize only this Run's bound immutable leaf.
 
@@ -882,13 +785,24 @@ class WorkspaceBinding:
             raise _integrity("Receipt source-unit evidence is malformed.", attempt=str(directory))
         if [item["identity"] for item in source_units] != sorted({item["identity"] for item in source_units}):
             raise _integrity("Receipt source-unit evidence is not sorted and unique.", attempt=str(directory))
+        parameter_source = request_document.get("parameter_source")
+        point_parameters = (
+            parameter_source.get("parameters")
+            if isinstance(parameter_source, Mapping) and parameter_source.get("kind") == "point"
+            else None
+        )
+        required_extrapolation = (
+            []
+            if request_document.get("operation") == "optimize_direct" or point_parameters is None
+            else _required_extrapolation_rows(
+                plan_document, point_parameters,
+                authorization_source="parameter_set", require_authorized=outcome == "success",
+            )
+        )
         _verify_extrapolation_evidence(
             evidence.get("extrapolation_evidence"),
             allowed_sources={"parameter_set"},
-            required_rows=[] if request_document.get("operation") == "optimize_direct" else _required_extrapolation_rows(
-                plan_document, request_document["parameters"],
-                authorization_source="parameter_set", require_authorized=outcome == "success",
-            ),
+            required_rows=required_extrapolation,
         )
         expected_provenance = _sha256(_canonical_bytes({"schema": "scnsim.receipt_provenance", "source_units": source_units}))
         if (
@@ -939,8 +853,14 @@ class WorkspaceBinding:
             result = _load_canonical(result_path)
             if _sha256(_canonical_bytes(result)) != result_sha:
                 raise _integrity("Success receipt result hash does not match result bytes.", attempt=str(directory))
+            parameter_source = request_document.get("parameter_source")
+            is_parameter_sweep = (
+                isinstance(parameter_source, Mapping)
+                and parameter_source.get("kind") in {"grid", "points"}
+            )
             expected_result_kind = (
-                "direct_response" if request_document.get("operation") == "solve_direct"
+                "parameter_sweep" if is_parameter_sweep
+                else "direct_response" if request_document.get("operation") == "solve_direct"
                 else "hb_batch" if request_document.get("operation") == "solve_hb"
                 else "optimization" if request_document.get("operation") == "optimize_direct"
                 else request_document.get("spec", {}).get("type") if request_document.get("operation") == "evaluate_direct" and isinstance(request_document.get("spec"), dict)
@@ -1040,8 +960,8 @@ def bind_workspace(
     if _sha256(plan_bytes) != plan_sha256:
         raise _integrity("Sealed Plan bytes do not match their identity.")
     plan = _decode_bytes(plan_bytes, "plan")
-    if plan.get("schema") != "scnsim.plan" or plan.get("schema_version") != 1:
-        raise _integrity("Plan bytes are not a V1 Plan envelope.")
+    if plan.get("schema") != "scnsim.plan" or plan.get("schema_version") != 2:
+        raise _integrity("Plan bytes are not a schema-version 2 Plan envelope.")
     root = Path(workspace).expanduser().resolve(strict=False)
     root.mkdir(parents=True, exist_ok=True)
     with _workspace_lock(root, exclusive=True):
@@ -1520,12 +1440,12 @@ def _verify_request_document(
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
-        set(request) != {"schema", "schema_version", "plan_sha256", "operation", "ref_lineage", "spec", "parameters", "runtime_semantic"}
+        set(request) != {"schema", "schema_version", "plan_sha256", "operation", "view", "spec", "parameter_source", "runtime_semantic"}
         or request.get("schema") != "scnsim.request"
-        or request.get("schema_version") != 1
+        or request.get("schema_version") != 2
         or request.get("plan_sha256") != plan_sha256
         or expected_algorithm is None
-        or any(not isinstance(request.get(field), dict) for field in ("ref_lineage", "spec", "parameters", "runtime_semantic"))
+        or any(not isinstance(request.get(field), dict) for field in ("view", "spec", "parameter_source", "runtime_semantic"))
         or runtime.get("algorithm_id") != expected_algorithm
     ):
         raise _integrity("Stored request envelope is open or inconsistent.")
@@ -1537,20 +1457,151 @@ def _verify_request_document(
         raise _integrity("Stored runtime semantic identity is open or malformed.")
     for field in ("python_source_sha256", "julia_source_sha256", "project_sha256", "manifest_sha256"):
         _valid_sha(runtime.get(field))
-    _verify_parameter_set_document(request["parameters"])
-    terminal, port_realizable = _verify_v1_lineage(request.get("ref_lineage"), plan)
+    _verify_parameter_source(request["parameter_source"], plan)
+    terminal, port_realizable = _verify_view_declaration(request["view"], plan)
     if operation == "solve_direct":
         _verify_v1_direct_spec(spec, terminal, port_realizable)
     elif operation == "solve_hb":
-        original = request["ref_lineage"].get("original") if isinstance(request["ref_lineage"], Mapping) else None
-        logical_ports = _identifiers(original.get("port_order"), field="HB original Port order", nonempty=False) if isinstance(original, Mapping) else []
+        logical_ports = [port["id"] for port in plan["connectivity"]["ports"]]
         _verify_v1_hb_spec(spec, terminal, port_realizable, logical_ports)
     elif operation == "evaluate_direct":
         _verify_v1_evaluation_spec(spec, terminal, port_realizable)
     else:
         _verify_v1_optimization_spec(spec, terminal, port_realizable)
-        if request["parameters"].get("allow_extrapolation") != spec.get("allow_extrapolation"):
-            raise _integrity("Optimization request has inconsistent extrapolation authorities.")
+        parameters = request["parameter_source"].get("parameters")
+        if not isinstance(parameters, Mapping):
+            raise _integrity("Optimization request requires one complete parameter point.")
+        active = {_parameter_key_integrity(item["parameter"]) for item in spec["variables"]}
+        declared = {_parameter_key_integrity(item) for item in spec["allow_extrapolation"]}
+        if declared != ({_parameter_key_integrity(item) for item in parameters["allow_extrapolation"]} & active):
+            raise _integrity("Optimization request has inconsistent active extrapolation authorities.")
+
+
+def _verify_parameter_source(source: object, plan: Mapping[str, object]) -> None:
+    if not isinstance(source, dict):
+        raise _integrity("Parameter source is malformed.")
+    try:
+        from ._canonical import canonical_parameter_source
+
+        if canonical_parameter_source(source) != source:
+            raise ValueError("noncanonical parameter source")
+    except Exception as error:
+        raise _integrity("Parameter source is open or noncanonical.") from error
+    definitions = plan.get("parameter_closure", {}).get("definitions")
+    if not isinstance(definitions, list):
+        raise _integrity("Plan parameter closure is malformed.")
+    expected = {
+        _parameter_key_integrity({
+            "definitions_id": item.get("definitions_id"),
+            "parameter_id": item.get("parameter_id"),
+        })
+        for item in definitions
+        if isinstance(item, Mapping)
+    }
+    if len(expected) != len(definitions):
+        raise _integrity("Plan parameter definitions are malformed.")
+
+    def parameter_set(value: object, *, complete: bool) -> None:
+        _verify_parameter_set_document(value)
+        keys = {_parameter_key_integrity(item["parameter"]) for item in value["bindings"]}
+        if not keys <= expected or (complete and keys != expected):
+            raise _integrity("Parameter source does not bind the Plan's consumed definitions.")
+
+    kind = source["kind"]
+    if kind == "point":
+        parameter_set(source["parameters"], complete=True)
+    elif kind == "grid":
+        parameter_set(source["base_parameters"], complete=True)
+        axis_keys = []
+        for axis in source["axes"]:
+            key = _parameter_key_integrity(axis["parameter"])
+            if key not in expected:
+                raise _integrity("Grid axis does not bind a consumed Plan parameter.")
+            axis_keys.append(key)
+            for value in axis["values"]:
+                _verify_parameter_value(value)
+        if len(set(axis_keys)) != len(axis_keys):
+            raise _integrity("Grid axes repeat a parameter.")
+    elif kind == "points":
+        parameter_set(source["baseline_parameters"], complete=True)
+        for point in source["points"]:
+            parameter_set(point, complete=False)
+
+
+def _verify_view_declaration(
+    view: object,
+    plan: Mapping[str, object],
+) -> tuple[list[str], bool]:
+    if not isinstance(view, dict) or set(view) != {"type", "ptc", "transforms", "retain"} or view.get("type") != "network_view":
+        raise _integrity("Declarative View is malformed.")
+    _, public = _plan_coordinates(plan)
+    available = list(sorted(public))
+    connectivity = plan.get("connectivity")
+    ports = connectivity.get("ports") if isinstance(connectivity, Mapping) else None
+    if not isinstance(ports, list):
+        raise _integrity("Plan Port inventory is malformed.")
+    port_ids = [port.get("id") for port in ports]
+    if any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in port_ids) or len(set(port_ids)) != len(port_ids):
+        raise _integrity("Plan Port IDs are malformed.")
+    net_to_compiler = {
+        node["final_net"]: node["compiler_node_id"]
+        for node in connectivity["node_coordinates"]
+    }
+    port_coordinates = {
+        net_to_compiler[port["net"]]
+        for port in ports
+        if port.get("net") in net_to_compiler
+    }
+    ptc = view.get("ptc")
+    if ptc is not None:
+        if not isinstance(ptc, dict) or set(ptc) != {"selected_ports"}:
+            raise _integrity("View PTC declaration is malformed.")
+        selected = ptc["selected_ports"]
+        if not isinstance(selected, list) or not selected or selected != [item for item in port_ids if item in selected] or len(set(selected)) != len(selected):
+            raise _integrity("View PTC Port order is malformed.")
+        by_id = {port["id"]: port for port in ports}
+        if any(by_id[item].get("role") != "nonloading_probe" for item in selected):
+            raise _integrity("View PTC selects a loading Port.")
+    transforms = view.get("transforms")
+    if not isinstance(transforms, list):
+        raise _integrity("View transforms are malformed.")
+    transform_ids: set[str] = set()
+    for transform in transforms:
+        if not isinstance(transform, dict) or set(transform) != {"id", "input_coordinates", "output_coordinates"}:
+            raise _integrity("View transform is malformed.")
+        identifier = transform.get("id")
+        inputs = transform.get("input_coordinates")
+        outputs = transform.get("output_coordinates")
+        expected_outputs = [f"{identifier}.common", f"{identifier}.differential"]
+        if (
+            not isinstance(identifier, str)
+            or _IDENTIFIER.fullmatch(identifier) is None
+            or identifier in transform_ids
+            or not isinstance(inputs, list)
+            or len(inputs) != 2
+            or len(set(inputs)) != 2
+            or any(item not in available for item in inputs)
+            or outputs != expected_outputs
+            or any(item in available for item in expected_outputs)
+        ):
+            raise _integrity("View transform basis transition is malformed.")
+        transform_ids.add(identifier)
+        index = min(available.index(item) for item in inputs)
+        both_ports = all(item in port_coordinates for item in inputs)
+        available = [item for item in available if item not in inputs]
+        available[index:index] = expected_outputs
+        port_coordinates.difference_update(inputs)
+        if both_ports:
+            port_coordinates.update(expected_outputs)
+    retain = view.get("retain")
+    if retain is None:
+        return list(port_ids), bool(port_ids)
+    if not isinstance(retain, dict) or set(retain) != {"retained_coordinates"}:
+        raise _integrity("View retain declaration is malformed.")
+    retained = retain["retained_coordinates"]
+    if not isinstance(retained, list) or not retained or len(set(retained)) != len(retained) or any(item not in available for item in retained):
+        raise _integrity("View retained basis is malformed.")
+    return list(retained), all(item in port_coordinates for item in retained)
 
 
 def _identifiers(value: object, *, field: str, nonempty: bool = True) -> list[str]:
@@ -1561,116 +1612,6 @@ def _identifiers(value: object, *, field: str, nonempty: bool = True) -> list[st
     if len(set(value)) != len(value):
         raise _integrity(f"{field} repeats an identifier.")
     return list(value)
-
-
-def _lazy_lineage_projection(
-    lineage: Mapping[str, object] | object,
-    plan: Mapping[str, object],
-) -> dict[str, object]:
-    """Project lazy and realized lineage into the resolve declaration key.
-
-    The lazy ``NetworkViewRef`` deliberately has only user declarations for
-    PTC, transforms, and retain.  Its compiler-realized counterpart includes
-    matrices, branch evidence, and reconstruction checks.  Resolve may bind
-    only the declaration the user actually made: original identity, selected
-    PTC ports, ordered transform inputs plus generated identities, and the
-    retained coordinate list.  This is not a second View implementation.
-    """
-
-    outer_fields = {
-        "type", "original", "ptc", "transforms", "retain",
-        "terminal_coordinates", "port_realizable", "lineage_sha256",
-    }
-    if not isinstance(lineage, Mapping) or set(lineage) != outer_fields or lineage.get("type") != "network_view_lineage":
-        raise _integrity("Resolve View declaration is open or malformed.")
-
-    original = lineage.get("original")
-    original_fields = {
-        "type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable",
-    }
-    if not isinstance(original, Mapping) or set(original) != original_fields or original.get("type") != "original":
-        raise _integrity("Resolve original View identity is malformed.")
-    _valid_sha(original.get("compiled_graph_sha256"))
-    coordinates = _identifiers(original.get("coordinate_order"), field="Resolve original coordinate order")
-    ports = _identifiers(original.get("port_order"), field="Resolve original Port order", nonempty=False)
-    plan_ports = plan.get("ports")
-    if (
-        not isinstance(plan_ports, list)
-        or ports != [item.get("port_id") for item in plan_ports if isinstance(item, Mapping)]
-        or not isinstance(original.get("port_realizable"), bool)
-    ):
-        raise _integrity("Resolve original View identity disagrees with the sealed Plan.")
-
-    ptc = lineage.get("ptc")
-    selected_ports: list[str] | None = None
-    if ptc is not None:
-        if not isinstance(ptc, Mapping) or ptc.get("type") != "ptc" or "selected_ports" not in ptc:
-            raise _integrity("Resolve PTC declaration is malformed.")
-        # Lazy declarations contain exactly these two fields; realized steps
-        # are separately validated by _verify_request_document before they
-        # reach this projection.
-        selected_ports = _identifiers(ptc.get("selected_ports"), field="Resolve PTC selected Ports")
-        if any(port not in ports for port in selected_ports):
-            raise _integrity("Resolve PTC selects a Port outside the original View.")
-
-    transforms = lineage.get("transforms")
-    if not isinstance(transforms, list):
-        raise _integrity("Resolve transform declaration is malformed.")
-    projected_transforms: list[dict[str, object]] = []
-    current = list(coordinates)
-    for step in transforms:
-        if not isinstance(step, Mapping) or step.get("type") != "transform_pair":
-            raise _integrity("Resolve transform declaration is malformed.")
-        inputs = _identifiers(step.get("input_coordinates"), field="Resolve transform input coordinates")
-        if len(inputs) != 2 or any(value not in current for value in inputs):
-            raise _integrity("Resolve transform inputs are not a current ordered pair.")
-        if "id" in step:
-            # This is the lazy Python declaration.  The generated names are
-            # authoritative rather than a reversible parsing convention.
-            identifier = step.get("id")
-            output = step.get("output_coordinates")
-            if (
-                set(step) != {"type", "id", "input_coordinates", "output_coordinates"}
-                or not isinstance(identifier, str)
-                or not identifier
-                or any(character.isspace() for character in identifier)
-                or output != [f"{identifier}.common", f"{identifier}.differential"]
-            ):
-                raise _integrity("Resolve lazy transform declaration is malformed.")
-            common, differential = output
-        else:
-            # This is the stored realized evidence.  Its closed shape is
-            # verified before projection, so select only the declared outputs.
-            common, differential = step.get("common_id"), step.get("differential_id")
-            if not isinstance(common, str) or not common or not isinstance(differential, str) or not differential:
-                raise _integrity("Resolve realized transform declaration is malformed.")
-        if common == differential or common in current or differential in current:
-            raise _integrity("Resolve generated transform identities collide with the current basis.")
-        current = [value for value in current if value not in inputs]
-        current.extend((common, differential))
-        projected_transforms.append(
-            {
-                "input_coordinates": inputs,
-                "common_id": common,
-                "differential_id": differential,
-            }
-        )
-
-    retain = lineage.get("retain")
-    retained: list[str] | None = None
-    if retain is not None:
-        if not isinstance(retain, Mapping) or retain.get("type") != "retain":
-            raise _integrity("Resolve retain declaration is malformed.")
-        retained = _identifiers(retain.get("retained_coordinates"), field="Resolve retained coordinates")
-        if any(value not in current for value in retained):
-            raise _integrity("Resolve retain declaration selects an unavailable coordinate.")
-
-    return {
-        "original": dict(original),
-        "ptc_selected_ports": selected_ports,
-        "transforms": projected_transforms,
-        "retained_coordinates": retained,
-    }
 
 
 def _verify_v1_lineage(lineage: object, plan: Mapping[str, object] | None) -> tuple[list[str], bool]:
@@ -1694,12 +1635,13 @@ def _verify_v1_lineage(lineage: object, plan: Mapping[str, object] | None) -> tu
     original_coordinates = _identifiers(original.get("coordinate_order"), field="Original coordinate order")
     if plan is not None and original_coordinates != _plan_coordinates(plan)[0]:
         raise _integrity("Original View coordinate order disagrees with the sealed Plan.")
-    plan_ports = plan.get("ports") if plan is not None else None
+    connectivity = plan.get("connectivity") if plan is not None else None
+    plan_ports = connectivity.get("ports") if isinstance(connectivity, Mapping) else None
     if plan is not None and not isinstance(plan_ports, list):
         raise _integrity("Sealed Plan ports are malformed.")
-    expected_ports = [port.get("port_id") for port in plan_ports if isinstance(port, dict)] if isinstance(plan_ports, list) else None
+    expected_ports = [port.get("id") for port in plan_ports if isinstance(port, dict)] if isinstance(plan_ports, list) else None
     port_roles = {
-        port.get("port_id"): port.get("role")
+        port.get("id"): port.get("role")
         for port in plan_ports or ()
         if isinstance(port, dict)
     }
@@ -2112,13 +2054,13 @@ def _verify_v1_optimization_spec(spec: object, terminal: list[str], port_realiza
         raise _integrity("Optimization controls are malformed.")
 
 
-def _parameter_key_integrity(value: object) -> tuple[tuple[str, ...], str]:
-    if not isinstance(value, dict) or set(value) != {"component_path", "parameter_id"}:
+def _parameter_key_integrity(value: object) -> tuple[str, str]:
+    if not isinstance(value, dict) or set(value) != {"definitions_id", "parameter_id"}:
         raise _integrity("ParameterRef is malformed.")
-    path = value.get("component_path"); identifier = value.get("parameter_id")
-    if not isinstance(path, list) or not path or any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in path) or not isinstance(identifier, str) or _IDENTIFIER.fullmatch(identifier) is None:
+    definitions = value.get("definitions_id"); identifier = value.get("parameter_id")
+    if not isinstance(definitions, str) or _IDENTIFIER.fullmatch(definitions) is None or not isinstance(identifier, str) or _IDENTIFIER.fullmatch(identifier) is None:
         raise _integrity("ParameterRef identity is malformed.")
-    return tuple(path), identifier
+    return definitions, identifier
 
 
 def _verify_branch_refs(value: object, *, field: str, nonempty: bool) -> None:
@@ -2181,229 +2123,36 @@ def _verify_selector(value: object, terminal: list[str], port_realizable: bool) 
 
 
 def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
-    """Return the compiler basis order and the public selection subset.
+    """Return the snapshot-owned compiler basis and public subset."""
 
-    The Python lineage must name the same full basis that the recursive Julia
-    compiler uses.  Public selection deliberately remains narrower: Plan
-    public nodes and coordinates exposed by immediate Composite children only.
-    """
-
-    from ._canonical import internal_node_id
-
-    nodes = plan.get("nodes")
-    components = plan.get("components")
-    if not isinstance(nodes, list) or not isinstance(components, list):
+    connectivity = plan.get("connectivity")
+    nodes = connectivity.get("node_coordinates") if isinstance(connectivity, Mapping) else None
+    if not isinstance(nodes, list) or not nodes:
         raise _integrity("Sealed Plan coordinate inventory is malformed.")
     order: list[str] = []
     public: set[str] = set()
     for node in nodes:
-        if not isinstance(node, dict) or not isinstance(node.get("node_id"), str) or not node["node_id"]:
+        if (
+            not isinstance(node, Mapping)
+            or set(node) != {"final_net", "compiler_node_id", "visibility", "public_aliases"}
+            or not isinstance(node.get("compiler_node_id"), str)
+            or not node["compiler_node_id"]
+            or node.get("compiler_node_id") != node.get("final_net")
+            or node.get("visibility") not in {"public", "internal"}
+            or not isinstance(node.get("public_aliases"), list)
+        ):
             raise _integrity("Sealed Plan node inventory is malformed.")
-        order.append(node["node_id"])
-        if node.get("visibility") in {"public", "port_promoted"}:
-            public.add(node["node_id"])
-
-    def component_path(component: Mapping[str, object]) -> tuple[str, ...]:
-        path = component.get("component_path")
-        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path):
-            raise _integrity("Sealed Component path is malformed.")
-        return tuple(path)
-
-    def realization(component: Mapping[str, object]) -> Mapping[str, object]:
-        value = component.get("realization")
-        if not isinstance(value, Mapping) or not isinstance(value.get("kind"), str):
-            raise _integrity("Sealed Component realization is malformed.")
-        return value
-
-    def records(value: object, *, label: str) -> list[Mapping[str, object]]:
-        if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
-            raise _integrity(f"{label} is malformed.")
-        return list(value)
-
-    def endpoint(value: object, *, label: str) -> tuple[tuple[str, ...], str]:
-        if not isinstance(value, Mapping):
-            raise _integrity(f"{label} is malformed.")
-        path = value.get("component_path")
-        pin = value.get("pin_id")
-        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path) or not isinstance(pin, str) or not pin:
-            raise _integrity(f"{label} is malformed.")
-        return tuple(path), pin
-
-    def private_nodes(container: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
-        values = records(realization(container).get("private_nodes"), label="Composite private-node inventory")
-        mapped: dict[str, Mapping[str, object]] = {}
-        for value in values:
-            identifier = value.get("id")
-            endpoints = value.get("endpoints")
-            if not isinstance(identifier, str) or not identifier or not isinstance(endpoints, list):
-                raise _integrity("Composite private-node record is malformed.")
-            if identifier in mapped:
-                raise _integrity("Composite private-node IDs are not unique.")
-            mapped[identifier] = value
-        return mapped
-
-    def expanded_node_id(container: Mapping[str, object], private_node: Mapping[str, object]) -> str:
-        leaves: list[dict[str, object]] = []
-
-        def expand(current: Mapping[str, object], value: object, ancestry: set[tuple[tuple[str, ...], str]]) -> None:
-            path, pin = endpoint(value, label="Composite private endpoint")
-            key = (path, pin)
-            if key in ancestry:
-                raise _integrity("Composite private-node expansion is cyclic or duplicates an endpoint.")
-            children = records(realization(current).get("children"), label="Composite child inventory")
-            matches = [child for child in children if component_path(child) == path]
-            if len(matches) != 1:
-                raise _integrity("Composite endpoint does not resolve to one immediate child.")
-            child = matches[0]
-            child_realization = realization(child)
-            if child_realization.get("kind") != "composite":
-                leaves.append({"component_path": list(path), "pin_id": pin})
-                return
-            maps = records(child_realization.get("public_pin_map"), label="Composite public-pin map")
-            mappings = [item for item in maps if item.get("public_id") == pin]
-            if len(mappings) != 1 or not isinstance(mappings[0].get("private_node_id"), str):
-                raise _integrity("Composite child endpoint lacks one public-pin map.")
-            nested = private_nodes(child).get(mappings[0]["private_node_id"])
-            if nested is None:
-                raise _integrity("Composite public pin targets no private node.")
-            nested_endpoints = nested.get("endpoints")
-            if not isinstance(nested_endpoints, list):
-                raise _integrity("Composite private-node record is malformed.")
-            next_ancestry = set(ancestry)
-            next_ancestry.add(key)
-            for nested_endpoint in nested_endpoints:
-                expand(child, nested_endpoint, next_ancestry)
-
-        endpoints = private_node.get("endpoints")
-        if not isinstance(endpoints, list) or not endpoints:
-            raise _integrity("Composite private-node record is malformed.")
-        for item in endpoints:
-            expand(container, item, set())
-        try:
-            return internal_node_id(leaves)
-        except Exception as error:
-            raise _integrity("Composite private-node expansion is malformed.") from error
-
-    def visit(component: object, *, top_level: bool) -> None:
-        if not isinstance(component, Mapping):
-            raise _integrity("Sealed Plan Component inventory is malformed.")
-        path = component_path(component)
-        component_realization = realization(component)
-        if component_realization.get("kind") == "transmission_line":
-            conductors = component_realization.get("pin_conductors")
-            sections = component_realization.get("n_sections")
-            if (
-                not isinstance(conductors, list)
-                or not conductors
-                or any(not isinstance(item, str) or not item for item in conductors)
-                or len(set(conductors)) != len(conductors)
-                or not isinstance(sections, int)
-                or isinstance(sections, bool)
-                or sections < 1
-            ):
-                raise _integrity("Transmission-line station declaration is malformed.")
-            for station in range(1, sections):
-                for conductor in conductors:
-                    order.append(
-                        "internal-"
-                        + _sha256(
-                            _canonical_bytes(
-                                {
-                                    "schema": "scnsim.line_station",
-                                    "schema_version": 1,
-                                    "component_path": list(path),
-                                    "station": station,
-                                    "conductor": conductor,
-                                }
-                            )
-                        )
-                    )
-            return
-        if component_realization.get("kind") != "composite":
-            return
-        node_map = private_nodes(component)
-        pins = records(component_realization.get("public_pin_map"), label="Composite public-pin map")
-        pin_targets: set[str] = set()
-        for record in pins:
-            public_id = record.get("public_id")
-            private_id = record.get("private_node_id")
-            if not isinstance(public_id, str) or not public_id or not isinstance(private_id, str) or private_id not in node_map:
-                raise _integrity("Composite public-pin map is malformed.")
-            pin_targets.add(private_id)
-        coordinate_targets: dict[str, str] = {}
-        coordinates = records(component_realization.get("public_coordinate_map"), label="Composite coordinate inventory")
-        for record in coordinates:
-            public_id = record.get("public_id")
-            private_id = record.get("private_node_id")
-            if not isinstance(public_id, str) or not public_id or not isinstance(private_id, str) or private_id not in node_map:
-                raise _integrity("Composite public-coordinate map is malformed.")
-            if top_level:
-                coordinate_targets[private_id] = public_id
-                public.add(public_id)
-        for private_id, private_node in node_map.items():
-            if private_id not in pin_targets:
-                order.append(coordinate_targets.get(private_id, expanded_node_id(component, private_node)))
-        for child in records(component_realization.get("children"), label="Composite child inventory"):
-            visit(child, top_level=False)
-
-    for component in components:
-        visit(component, top_level=True)
-    return sorted(set(order)), public
-
-
-def _verify_direct_request(
-    request: Mapping[str, object],
-    plan: Mapping[str, object] | None = None,
-) -> tuple[list[str], int]:
-    lineage = request.get("ref_lineage")
-    spec = request.get("spec")
-    if not isinstance(lineage, dict) or not isinstance(spec, dict):
-        raise _integrity("Direct request View or Spec is malformed.")
-    original = lineage.get("original")
-    lineage_without_hash = {key: value for key, value in lineage.items() if key != "lineage_sha256"}
-    if (
-        set(lineage) != {"type", "original", "ptc", "transforms", "retain", "terminal_coordinates", "port_realizable", "lineage_sha256"}
-        or lineage.get("type") != "network_view_lineage"
-        or lineage.get("ptc") is not None
-        or lineage.get("transforms") != []
-        or lineage.get("retain") is not None
-        or lineage.get("port_realizable") is not True
-        or lineage.get("lineage_sha256") != _sha256(_canonical_bytes(lineage_without_hash))
-        or not isinstance(original, dict)
-        or set(original) != {"type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable"}
-        or original.get("type") != "original"
-        or original.get("port_realizable") is not True
-    ):
-        raise _integrity("Dev3 Direct request does not name the exact original View.")
-    _valid_sha(original.get("compiled_graph_sha256"))
-    coordinates = original.get("coordinate_order")
-    ports = original.get("port_order")
-    plan_ports = plan.get("ports") if plan is not None else None
-    expected_coordinates = _plan_coordinates(plan)[0] if plan is not None else coordinates
-    expected_ports = [port.get("port_id") for port in plan_ports if isinstance(port, dict)] if isinstance(plan_ports, list) else ports
-    if (
-        not isinstance(coordinates, list)
-        or not coordinates
-        or any(not isinstance(item, str) or not item for item in coordinates)
-        or len(set(coordinates)) != len(coordinates)
-        or not isinstance(ports, list)
-        or len(ports) != 1
-        or any(not isinstance(item, str) or not item for item in ports)
-        or lineage.get("terminal_coordinates") != ports
-        or coordinates != expected_coordinates
-        or ports != expected_ports
-    ):
-        raise _integrity("Dev3 Direct original coordinate order is malformed.")
-    frequencies = spec.get("frequencies")
-    if set(spec) != {"type", "frequencies", "traces"} or spec.get("type") != "direct_solve" or spec.get("traces") != [] or not isinstance(frequencies, list) or not frequencies:
-        raise _integrity("Dev3 Direct Spec is open or malformed.")
-    values: list[float] = []
-    for frequency in frequencies:
-        _verify_quantity_role(frequency, complex_value=False, unit="hertz", dimensionality="inverse_time")
-        values.append(_f64_value(frequency["si_value_f64"]))
-    if any(value <= 0.0 for value in values) or any(right <= left for left, right in zip(values, values[1:])):
-        raise _integrity("Dev3 Direct frequency grid is not positive and strictly increasing.")
-    return ports, len(values)
+        compiler_id = node["compiler_node_id"]
+        if compiler_id in order:
+            raise _integrity("Sealed Plan compiler coordinates are not unique.")
+        order.append(compiler_id)
+        if node["visibility"] == "public":
+            if not node["public_aliases"]:
+                raise _integrity("Public compiler coordinate has no public alias.")
+            public.add(compiler_id)
+        elif node["public_aliases"]:
+            raise _integrity("Internal compiler coordinate exposes a public alias.")
+    return order, public
 
 
 def _lineage_matrix(label: str, values: list[list[float]], applicability: str) -> dict[str, object]:
@@ -2419,130 +2168,6 @@ def _lineage_matrix(label: str, values: list[list[float]], applicability: str) -
         "row_major_f64": bits,
     }))
     return {"rows": rows, "columns": columns, "sha256": digest}
-
-
-def _verify_retained_request(request: Mapping[str, object], plan: Mapping[str, object]) -> str:
-    lineage = request.get("ref_lineage")
-    if not isinstance(lineage, dict):
-        raise _integrity("Retained request View is malformed.")
-    original = lineage.get("original")
-    retain = lineage.get("retain")
-    ports = plan.get("ports")
-    if not isinstance(ports, list) or len(ports) != 1:
-        raise _integrity("Dev3 retained request Plan is not one-Port.")
-    node_order, public_coordinates = _plan_coordinates(plan)
-    port_order = [port.get("port_id") for port in ports if isinstance(port, dict)]
-    if (
-        not node_order
-        or len(port_order) != 1
-        or not isinstance(original, dict)
-        or set(original) != {"type", "compiled_graph_sha256", "coordinate_order", "port_order", "port_realizable"}
-        or original.get("type") != "original"
-        or original.get("coordinate_order") != node_order
-        or original.get("port_order") != port_order
-        or original.get("port_realizable") is not True
-    ):
-        raise _integrity("Retained request original lineage disagrees with the sealed Plan.")
-    _valid_sha(original.get("compiled_graph_sha256"))
-    if (
-        set(lineage) != {"type", "original", "ptc", "transforms", "retain", "terminal_coordinates", "port_realizable", "lineage_sha256"}
-        or lineage.get("type") != "network_view_lineage"
-        or lineage.get("ptc") is not None
-        or lineage.get("transforms") != []
-        or not isinstance(retain, dict)
-        or lineage.get("lineage_sha256") != _sha256(_canonical_bytes({key: value for key, value in lineage.items() if key != "lineage_sha256"}))
-    ):
-        raise _integrity("Dev3 retained View lineage is open or inconsistent.")
-    fields = {
-        "type", "retained_coordinates", "eliminated_coordinates", "output_coordinate_order",
-        "a_matrix", "b_matrix", "r_matrix", "d_matrix", "q_matrix",
-        "selected_projector", "omitted_projector", "omitted_matched_loads",
-        "source_boundary_sha256", "deembedding_evidence_sha256",
-    }
-    retained = retain.get("retained_coordinates")
-    if not isinstance(retained, list) or len(retained) != 1 or not isinstance(retained[0], str):
-        raise _integrity("Dev3 retain() must name exactly one coordinate.")
-    coordinate = retained[0]
-    if (
-        set(retain) != fields
-        or retain.get("type") != "retain"
-        or coordinate not in public_coordinates
-        or retain.get("eliminated_coordinates") != [item for item in node_order if item != coordinate]
-        or retain.get("output_coordinate_order") != retained
-        or lineage.get("terminal_coordinates") != retained
-    ):
-        raise _integrity("Dev3 retained coordinate boundary is inconsistent with the sealed Plan.")
-    matching = [index for index, port in enumerate(ports) if isinstance(port, dict) and port.get("node_id") == coordinate]
-    port_realizable = len(matching) == 1
-    if lineage.get("port_realizable") is not port_realizable:
-        raise _integrity("Retained View port-realizability disagrees with its Plan attachment.")
-    labels = {
-        "a_matrix": "a", "b_matrix": "b", "r_matrix": "r", "d_matrix": "d", "q_matrix": "q",
-        "selected_projector": "selected_projector", "omitted_projector": "omitted_projector",
-        "omitted_matched_loads": "omitted_matched_loads",
-    }
-    if port_realizable:
-        _verify_quantity_role(ports[0].get("reference_impedance"), complex_value=False, unit="ohm", dimensionality="resistance")
-        impedance = _f64_value(ports[0]["reference_impedance"]["si_value_f64"])
-        if impedance <= 0.0:
-            raise _integrity("Logical Port reference impedance is not strictly positive.")
-        root = math.sqrt(impedance)
-        b = [[1.0] if item == coordinate else [0.0] for item in node_order]
-        matrices = {
-            "a_matrix": _lineage_matrix("a", [[1.0]], "port_realizable"),
-            "b_matrix": _lineage_matrix("b", b, "port_realizable"),
-            "r_matrix": _lineage_matrix("r", [[impedance]], "port_realizable"),
-            "d_matrix": _lineage_matrix("d", [[root]], "port_realizable"),
-            "q_matrix": _lineage_matrix("q", [[1.0]], "port_realizable"),
-            "selected_projector": _lineage_matrix("selected_projector", [[1.0]], "port_realizable"),
-            "omitted_projector": _lineage_matrix("omitted_projector", [[0.0]], "port_realizable"),
-            "omitted_matched_loads": _lineage_matrix("omitted_matched_loads", [[0.0]], "port_realizable"),
-        }
-        source = {"schema": "scnsim.source_boundary", "schema_version": 1, "applicability": "port_realizable", "b": matrices["b_matrix"], "r": matrices["r_matrix"]}
-        deembedding = {"schema": "scnsim.deembedding", "schema_version": 1, "applicability": "port_realizable", "d": matrices["d_matrix"], "q": matrices["q_matrix"]}
-    else:
-        matrices = {field: _lineage_matrix(label, [], "not_port_realizable") for field, label in labels.items()}
-        source = {"schema": "scnsim.source_boundary", "schema_version": 1, "applicability": "not_port_realizable"}
-        deembedding = {"schema": "scnsim.deembedding", "schema_version": 1, "applicability": "not_port_realizable"}
-    if (
-        any(retain.get(field) != value for field, value in matrices.items())
-        or retain.get("source_boundary_sha256") != _sha256(_canonical_bytes(source))
-        or retain.get("deembedding_evidence_sha256") != _sha256(_canonical_bytes(deembedding))
-    ):
-        raise _integrity("Retained View wave-boundary evidence is not canonical for its capability.")
-    return coordinate
-
-
-def _verify_diagonal_root_spec(spec: object, coordinate: str) -> None:
-    if not isinstance(spec, dict) or set(spec) != {"type", "coordinate", "root_hint"} or spec.get("type") != "diagonal_root" or spec.get("coordinate") != coordinate:
-        raise _integrity("Diagonal-root Spec does not match its retained coordinate.")
-    _verify_quantity_role(spec.get("root_hint"), complex_value=False, unit="hertz", dimensionality="inverse_time")
-    if _f64_value(spec["root_hint"]["si_value_f64"]) <= 0.0:
-        raise _integrity("Diagonal-root hint is not strictly positive.")
-
-
-def _verify_optimization_selector_coordinates(spec: object, coordinate: str) -> None:
-    if not isinstance(spec, dict) or spec.get("type") != "optimization" or not isinstance(spec.get("objectives"), list):
-        raise _integrity("Optimization Spec is malformed.")
-
-    def verify(value: object) -> None:
-        if not isinstance(value, dict):
-            raise _integrity("Optimization scalar selector is malformed.")
-        if value.get("type") == "quantity_sum":
-            terms = value.get("terms")
-            if not isinstance(terms, list) or not terms:
-                raise _integrity("Optimization QuantitySum is empty.")
-            for term in terms:
-                verify(term)
-            return
-        if set(value) != {"type", "spec", "projection"} or value.get("type") != "diagonal_root_projection" or value.get("projection") not in {"frequency", "linewidth"}:
-            raise _integrity("Optimization selector is outside the Direct quantity family.")
-        _verify_diagonal_root_spec(value.get("spec"), coordinate)
-
-    for objective in spec["objectives"]:
-        if not isinstance(objective, dict):
-            raise _integrity("Optimization objective is malformed.")
-        verify(objective.get("quantity"))
 
 
 def _verify_failure_document(value: object, operation: object) -> None:
@@ -2607,7 +2232,125 @@ def _verify_result_document(
     attempt_sha256: str,
     plan: Mapping[str, object],
 ) -> None:
-    """Close every dev5 Direct Result before typed public decoding."""
+    """Close one schema-version 2 single or batch result."""
+
+    if result.get("result_kind") == "parameter_sweep":
+        _verify_parameter_sweep_result(result, request, request_sha256, attempt_sha256)
+        return
+    common = {
+        "schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256",
+        "parameters", "parameters_sha256", "ref_lineage",
+    }
+    if (
+        result.get("schema") != "scnsim.result"
+        or result.get("schema_version") != 2
+        or result.get("request_sha256") != request_sha256
+        or result.get("attempt_sha256") != attempt_sha256
+        or not common <= set(result)
+    ):
+        raise _integrity("Result envelope does not bind its request and attempt.")
+    parameters = result.get("parameters")
+    _verify_parameter_set_document(parameters)
+    from ._canonical import canonical_parameters_sha256
+
+    if result.get("parameters_sha256") != canonical_parameters_sha256(parameters):
+        raise _integrity("Result parameter identity is malformed.")
+    source = request.get("parameter_source")
+    if not isinstance(source, Mapping) or source.get("kind") != "point" or parameters != source.get("parameters"):
+        raise _integrity("Single-point Result does not bind its requested point.")
+    _verify_v1_lineage(result.get("ref_lineage"), plan)
+    scientific_result = dict(result)
+    for field in ("parameters", "parameters_sha256", "ref_lineage"):
+        scientific_result.pop(field)
+    scientific_result["schema_version"] = 1
+    scientific_request = dict(request)
+    scientific_request["schema_version"] = 1
+    scientific_request["ref_lineage"] = result["ref_lineage"]
+    scientific_request["parameters"] = parameters
+    scientific_request.pop("view", None)
+    scientific_request.pop("parameter_source", None)
+    _verify_single_result_document(
+        scientific_result, scientific_request, request_sha256, attempt_sha256, plan
+    )
+
+
+def _verify_parameter_sweep_result(
+    result: Mapping[str, object],
+    request: Mapping[str, object],
+    request_sha256: str,
+    attempt_sha256: str,
+) -> None:
+    expected = {
+        "schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256",
+        "parameter_source_sha256", "point_count", "chunk_size", "manifest", "chunks",
+    }
+    source = request.get("parameter_source")
+    from ._canonical import sha256_hex
+
+    if (
+        set(result) != expected
+        or result.get("schema") != "scnsim.result"
+        or result.get("schema_version") != 2
+        or result.get("result_kind") != "parameter_sweep"
+        or result.get("request_sha256") != request_sha256
+        or result.get("attempt_sha256") != attempt_sha256
+        or not isinstance(source, Mapping)
+        or source.get("kind") not in {"grid", "points"}
+        or result.get("parameter_source_sha256") != sha256_hex(source)
+        or result.get("chunk_size") != 64
+        or not isinstance(result.get("point_count"), int)
+        or isinstance(result.get("point_count"), bool)
+        or result["point_count"] < 1
+        or not isinstance(result.get("manifest"), Mapping)
+        or not isinstance(result.get("chunks"), list)
+    ):
+        raise _integrity("Parameter-sweep Result envelope is malformed.")
+    expected_count = (
+        math.prod(source["shape"])
+        if source["kind"] == "grid"
+        else len(source["points"])
+    )
+    if result["point_count"] != expected_count:
+        raise _integrity("Parameter-sweep point count disagrees with its source.")
+    manifest = result["manifest"]
+    if (
+        set(manifest) != {"id", "path", "sha256", "media_type", "byte_length"}
+        or manifest.get("id") != "parameter_points"
+        or manifest.get("path") != "artifacts/parameter_points.manifest.json"
+        or manifest.get("media_type") != "application/json"
+        or not isinstance(manifest.get("byte_length"), int)
+        or isinstance(manifest.get("byte_length"), bool)
+        or manifest["byte_length"] < 1
+    ):
+        raise _integrity("Parameter-sweep manifest link is malformed.")
+    _valid_sha(manifest.get("sha256"))
+    chunks = result["chunks"]
+    expected_chunks = (expected_count + 63) // 64
+    if len(chunks) != expected_chunks:
+        raise _integrity("Parameter-sweep chunk count is malformed.")
+    for index, chunk in enumerate(chunks):
+        first = index * 64
+        count = min(64, expected_count - first)
+        if (
+            not isinstance(chunk, Mapping)
+            or set(chunk) != {"chunk_ordinal", "first_point", "point_count", "path", "sha256"}
+            or chunk.get("chunk_ordinal") != index
+            or chunk.get("first_point") != first
+            or chunk.get("point_count") != count
+            or chunk.get("path") != f"artifacts/parameter_points/chunks/{index:06d}.json"
+        ):
+            raise _integrity("Parameter-sweep chunk link is malformed.")
+        _valid_sha(chunk.get("sha256"))
+
+
+def _verify_single_result_document(
+    result: Mapping[str, object],
+    request: Mapping[str, object],
+    request_sha256: str,
+    attempt_sha256: str,
+    plan: Mapping[str, object],
+) -> None:
+    """Verify the unchanged inner scientific result records."""
 
     spec = request.get("spec")
     kind = (
@@ -2905,27 +2648,28 @@ def _verify_hb_batch_result(
     original_coordinates = _identifiers(
         original.get("coordinate_order"), field="HB original coordinate order"
     ) if isinstance(original, Mapping) else []
-    plan_ports = plan.get("ports")
+    connectivity = plan.get("connectivity")
+    plan_ports = connectivity.get("ports") if isinstance(connectivity, Mapping) else None
     if not isinstance(plan_ports, list):
         raise _integrity("HB sealed Plan has no Port inventory.")
     expected_injection_sha256: dict[str, str] = {}
     for port in plan_ports:
         if (
             not isinstance(port, Mapping)
-            or not isinstance(port.get("port_id"), str)
-            or not isinstance(port.get("node_id"), str)
-            or port["port_id"] in expected_injection_sha256
-            or port["node_id"] not in original_coordinates
+            or not isinstance(port.get("id"), str)
+            or not isinstance(port.get("net"), str)
+            or port["id"] in expected_injection_sha256
+            or port["net"] not in original_coordinates
         ):
             raise _integrity("HB sealed Port cannot reproduce its compiler injection map.")
         incidence = [0.0] * len(original_coordinates)
-        incidence[original_coordinates.index(port["node_id"])] = 1.0
-        expected_injection_sha256[port["port_id"]] = _sha256(
+        incidence[original_coordinates.index(port["net"])] = 1.0
+        expected_injection_sha256[port["id"]] = _sha256(
             _canonical_bytes(
                 {
                     "schema": "scnsim.hb_injection_map",
                     "schema_version": 1,
-                    "port_id": port["port_id"],
+                    "port_id": port["id"],
                     "incidence_f64": [float64_hex(item) for item in incidence],
                 }
             )
@@ -3707,43 +3451,79 @@ def _canonical_quantity_roles() -> frozenset[tuple[str, str]]:
 
 
 def _verify_parameter_set_document(value: object, *, require_empty_authorization: bool = False) -> None:
-    if not isinstance(value, dict) or set(value) != {"type", "bindings", "allow_extrapolation"} or value.get("type") != "parameter_set":
+    if not isinstance(value, dict) or set(value) != {"type", "bindings", "allow_extrapolation"} or value.get("type") != "parameter_set_v2":
         raise _integrity("ParameterSet envelope is open or malformed.")
     bindings = value.get("bindings")
     authorizations = value.get("allow_extrapolation")
     if not isinstance(bindings, list) or not isinstance(authorizations, list):
         raise _integrity("ParameterSet arrays are malformed.")
-    keys: list[tuple[tuple[str, ...], str]] = []
-    units = _canonical_quantity_roles()
+    keys: list[tuple[str, str]] = []
     for binding in bindings:
         if not isinstance(binding, dict) or set(binding) != {"parameter", "value"}:
             raise _integrity("ParameterSet binding is open or malformed.")
         reference = binding.get("parameter")
-        quantity = binding.get("value")
-        if not isinstance(reference, dict) or set(reference) != {"component_path", "parameter_id"}:
-            raise _integrity("ParameterSet reference is malformed.")
-        path = reference.get("component_path")
-        parameter_id = reference.get("parameter_id")
-        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path) or not isinstance(parameter_id, str) or not parameter_id:
-            raise _integrity("ParameterSet reference identity is malformed.")
-        if not isinstance(quantity, dict) or set(quantity) != {"type", "si_value_f64", "si_unit", "dimensionality"} or quantity.get("type") != "quantity_f64" or not _finite_f64(quantity.get("si_value_f64")) or (quantity.get("si_unit"), quantity.get("dimensionality")) not in units:
-            raise _integrity("ParameterSet value has an unsupported physical role.")
-        keys.append((tuple(path), parameter_id))
+        keys.append(_parameter_key_integrity(reference))
+        _verify_parameter_value(binding.get("value"))
     if keys != sorted(set(keys)):
         raise _integrity("ParameterSet bindings are not sorted and unique.")
-    authorization_keys: list[tuple[tuple[str, ...], str]] = []
+    authorization_keys: list[tuple[str, str]] = []
     for reference in authorizations:
-        if not isinstance(reference, dict) or set(reference) != {"component_path", "parameter_id"}:
-            raise _integrity("ParameterSet authorization is malformed.")
-        path = reference.get("component_path")
-        parameter_id = reference.get("parameter_id")
-        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path) or not isinstance(parameter_id, str) or not parameter_id:
-            raise _integrity("ParameterSet authorization identity is malformed.")
-        authorization_keys.append((tuple(path), parameter_id))
+        authorization_keys.append(_parameter_key_integrity(reference))
     if authorization_keys != sorted(set(authorization_keys)) or any(key not in keys for key in authorization_keys):
         raise _integrity("ParameterSet authorizations are not sorted active references.")
     if require_empty_authorization and authorization_keys:
         raise _integrity("Optimization candidate ParameterSet inherited extrapolation authorization.")
+
+
+def _verify_parameter_value(value: object) -> None:
+    if isinstance(value, dict) and value.get("type") == "quantity_f64":
+        _verify_quantity_any(value)
+        return
+    matrix_fields = {
+        "resistance_per_length": ("ohm / meter", "resistance_per_length"),
+        "inductance_per_length": ("henry / meter", "inductance_per_length"),
+        "conductance_per_length": ("siemens / meter", "conductance_per_length"),
+        "capacitance_per_length": ("farad / meter", "capacitance_per_length"),
+    }
+    required = {
+        "type", "conductors", "reference_conductor", "orientation", "source",
+        *matrix_fields, "extraction_frequency",
+    }
+    if not isinstance(value, dict) or set(value) != required or value.get("type") != "rlgc":
+        raise _integrity("ParameterSet value has an unsupported physical role.")
+    conductors = value.get("conductors")
+    if (
+        not isinstance(conductors, list)
+        or not conductors
+        or any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in conductors)
+        or len(set(conductors)) != len(conductors)
+        or not isinstance(value.get("reference_conductor"), str)
+        or _IDENTIFIER.fullmatch(value["reference_conductor"]) is None
+        or value["reference_conductor"] in conductors
+        or value.get("orientation") != "extractor_positive_z_is_head_to_tail"
+        or not isinstance(value.get("source"), dict)
+    ):
+        raise _integrity("RLGC parameter basis or provenance is malformed.")
+    size = len(conductors)
+    for field, (unit, dimensionality) in matrix_fields.items():
+        matrix = value[field]
+        if (
+            not isinstance(matrix, dict)
+            or set(matrix) != {"type", "shape", "values_f64", "si_unit", "dimensionality"}
+            or matrix.get("type") != "quantity_matrix_f64"
+            or matrix.get("shape") != [size, size]
+            or matrix.get("si_unit") != unit
+            or matrix.get("dimensionality") != dimensionality
+            or not isinstance(matrix.get("values_f64"), list)
+            or len(matrix["values_f64"]) != size * size
+            or any(not _finite_f64(item) for item in matrix["values_f64"])
+        ):
+            raise _integrity("RLGC parameter matrix is malformed.")
+    frequency = value.get("extraction_frequency")
+    if frequency is not None:
+        _verify_quantity_role(
+            frequency, complex_value=False, unit="hertz", dimensionality="inverse_time"
+        )
 
 
 def _verify_extrapolation_evidence(
@@ -3756,12 +3536,18 @@ def _verify_extrapolation_evidence(
 
     if not isinstance(value, list):
         raise _integrity("Extrapolation evidence is not an array.")
-    keys: list[tuple[tuple[tuple[str, ...], str], tuple[tuple[str, ...], str]]] = []
+    keys: list[tuple[tuple[str, str], tuple[tuple[str, ...], str]]] = []
     for row in value:
         if not isinstance(row, dict) or set(row) != {"parameter", "consumer_target", "support", "input_value", "side", "distance", "authorization_source"}:
             raise _integrity("Extrapolation evidence row is malformed.")
         parameter = _parameter_key_integrity(row.get("parameter"))
-        target = _parameter_key_integrity(row.get("consumer_target"))
+        target_record = row.get("consumer_target")
+        if not isinstance(target_record, Mapping) or set(target_record) != {"path", "field"}:
+            raise _integrity("Extrapolation consumer target is malformed.")
+        path, field = target_record.get("path"), target_record.get("field")
+        if not isinstance(path, list) or not path or any(not isinstance(item, str) or _IDENTIFIER.fullmatch(item) is None for item in path) or not isinstance(field, str) or _IDENTIFIER.fullmatch(field) is None:
+            raise _integrity("Extrapolation consumer target is malformed.")
+        target = (tuple(path), field)
         support = row.get("support")
         if not isinstance(support, list) or len(support) != 2:
             raise _integrity("Extrapolation support interval is malformed.")
@@ -3792,164 +3578,79 @@ def _required_extrapolation_rows(
     optimization_authorizations: object | None = None,
     require_authorized: bool = True,
 ) -> list[dict[str, object]]:
-    """Derive every out-of-support affine edge from sealed authorities.
-
-    This mirrors the fixed binding order without becoming a second compiler:
-    it resolves only scalar parameter bindings needed to identify support
-    crossings.  Receipt evidence uses the request's ParameterSet authority;
-    candidate evidence uses the complete OptimizationSpec authorization set.
-    An unauthorized candidate still owns a ``none`` row, so a typed ``+Inf``
-    outcome cannot silently erase the rejected fan-out that caused it.
-    """
+    """Derive affine support crossings from normalized physical-field bindings."""
 
     if authorization_source not in {"parameter_set", "optimization_spec"}:
         raise _integrity("Extrapolation evidence authority is unknown.")
     _verify_parameter_set_document(parameters)
-    assert isinstance(parameters, Mapping)  # narrowed by the closed verifier
-    bindings = parameters.get("bindings")
-    if not isinstance(bindings, list):
-        raise _integrity("ParameterSet bindings are malformed.")
-    values: dict[tuple[tuple[str, ...], str], dict[str, object]] = {}
-    for binding in bindings:
-        if not isinstance(binding, Mapping):
-            raise _integrity("ParameterSet binding is malformed.")
-        key = _parameter_key_integrity(binding.get("parameter"))
-        raw_value = binding.get("value")
-        _verify_quantity_any(raw_value)
-        values[key] = dict(raw_value)
-
-    if authorization_source == "parameter_set":
-        raw_authorizations = parameters.get("allow_extrapolation")
-    else:
-        raw_authorizations = optimization_authorizations
+    assert isinstance(parameters, Mapping)
+    values = {
+        _parameter_key_integrity(binding["parameter"]): binding["value"]
+        for binding in parameters["bindings"]
+    }
+    raw_authorizations = (
+        parameters["allow_extrapolation"]
+        if authorization_source == "parameter_set"
+        else optimization_authorizations
+    )
     if not isinstance(raw_authorizations, list):
         raise _integrity("Extrapolation authorization collection is malformed.")
-    authorized = {_parameter_key_integrity(reference) for reference in raw_authorizations}
+    authorized = {_parameter_key_integrity(item) for item in raw_authorizations}
+    leaves = plan.get("physical_leaves")
+    if not isinstance(leaves, list):
+        raise _integrity("Plan physical-field inventory is malformed.")
     rows: list[dict[str, object]] = []
-    resolved_targets: set[tuple[tuple[str, ...], str]] = set()
+    from ._canonical import float64_hex
 
-    def resolve(binding: object, target: Mapping[str, object]) -> dict[str, object]:
-        if not isinstance(binding, Mapping) or not isinstance(binding.get("kind"), str):
-            raise _integrity("Sealed parameter binding is malformed.")
-        kind = binding["kind"]
-        if kind == "constant":
-            if set(binding) != {"kind", "value"}:
-                raise _integrity("Constant parameter binding is malformed.")
-            value = binding.get("value")
-            _verify_quantity_any(value)
-            return dict(value)
-        input_reference = binding.get("input")
-        input_key = _parameter_key_integrity(input_reference)
-        input_value = values.get(input_key)
-        if input_value is None:
-            raise _integrity("Sealed affine input has no resolved public value.")
-        if kind == "identity":
-            if set(binding) != {"kind", "input"}:
-                raise _integrity("Identity parameter binding is malformed.")
-            return dict(input_value)
-        if kind != "affine" or set(binding) != {"kind", "input", "slope", "intercept", "support"}:
-            raise _integrity("Affine parameter binding is malformed.")
-        support = binding.get("support")
-        if not isinstance(support, list) or len(support) != 2:
-            raise _integrity("Affine support interval is malformed.")
-        _verify_quantity_compatible(support[0], support[1])
-        _verify_quantity_compatible(support[0], input_value)
-        slope, intercept = binding.get("slope"), binding.get("intercept")
-        _verify_quantity_any(slope); _verify_quantity_any(intercept)
-        lower = _f64_value(support[0]["si_value_f64"])
-        upper = _f64_value(support[1]["si_value_f64"])
-        input_scalar = _f64_value(input_value["si_value_f64"])
-        if lower >= upper:
-            raise _integrity("Affine support interval is not ordered.")
-        if input_scalar < lower or input_scalar > upper:
-            source = authorization_source if input_key in authorized else "none"
-            if authorization_source == "parameter_set" and source == "none":
-                if require_authorized:
-                    raise _integrity("Successful request has unauthorized affine extrapolation.")
+    for leaf in leaves:
+        if not isinstance(leaf, Mapping) or not isinstance(leaf.get("path"), list) or not isinstance(leaf.get("fields"), list):
+            raise _integrity("Plan physical leaf is malformed.")
+        path = list(leaf["path"])
+        for field in leaf["fields"]:
+            binding = field.get("binding") if isinstance(field, Mapping) else None
+            if not isinstance(binding, Mapping) or binding.get("kind") != "affine":
+                continue
+            if set(binding) != {"kind", "input", "slope", "intercept", "support"}:
+                raise _integrity("Affine physical-field binding is malformed.")
+            parameter = _parameter_key_integrity(binding["input"])
+            input_value = values.get(parameter)
+            if not isinstance(input_value, Mapping) or input_value.get("type") != "quantity_f64":
+                raise _integrity("Affine input has no scalar resolved parameter value.")
+            support = binding["support"]
+            if not isinstance(support, list) or len(support) != 2:
+                raise _integrity("Affine support interval is malformed.")
+            _verify_quantity_compatible(support[0], support[1])
+            _verify_quantity_compatible(support[0], input_value)
+            lower = _f64_value(support[0]["si_value_f64"])
+            upper = _f64_value(support[1]["si_value_f64"])
+            selected = _f64_value(input_value["si_value_f64"])
+            if lower >= upper:
+                raise _integrity("Affine support interval is not ordered.")
+            if lower <= selected <= upper:
+                continue
+            authority = authorization_source if parameter in authorized else "none"
+            if require_authorized and authority == "none":
+                raise _integrity("Successful request has unauthorized affine extrapolation.")
             side, distance = (
-                ("lower", lower - input_scalar)
-                if input_scalar < lower else ("upper", input_scalar - upper)
+                ("lower", lower - selected)
+                if selected < lower
+                else ("upper", selected - upper)
             )
-            if distance <= 0.0:
-                raise _integrity("Affine extrapolation distance is not positive.")
-            from ._canonical import float64_hex
-
             distance_record = dict(input_value)
             distance_record["si_value_f64"] = float64_hex(distance)
-            if source != "none" or authorization_source == "optimization_spec":
-                rows.append(
-                    {
-                        "parameter": dict(input_reference),
-                        "consumer_target": dict(target),
-                        "support": [dict(support[0]), dict(support[1])],
-                        "input_value": dict(input_value),
-                        "side": side,
-                        "distance": distance_record,
-                        "authorization_source": source,
-                    }
-                )
-        from ._canonical import float64_hex
-
-        mapped = _f64_value(slope["si_value_f64"]) * input_scalar + _f64_value(intercept["si_value_f64"])
-        if not math.isfinite(mapped):
-            raise _integrity("Affine mapping is non-finite.")
-        output = dict(intercept)
-        output["si_value_f64"] = float64_hex(mapped)
-        return output
-
-    def apply(target: Mapping[str, object], binding: object) -> None:
-        target_key = _parameter_key_integrity(target)
-        if target_key in values:
-            return
-        if target_key in resolved_targets:
-            raise _integrity("Sealed parameter graph repeats one consumer target.")
-        resolved_targets.add(target_key)
-        values[target_key] = resolve(binding, target)
-
-    def visit(component: object) -> None:
-        if not isinstance(component, Mapping):
-            raise _integrity("Sealed Plan component is malformed.")
-        path = component.get("component_path")
-        if not isinstance(path, list) or not path or any(not isinstance(item, str) or not item for item in path):
-            raise _integrity("Sealed component path is malformed.")
-        entries = component.get("parameter_bindings")
-        realization = component.get("realization")
-        if not isinstance(entries, list) or not isinstance(realization, Mapping):
-            raise _integrity("Sealed component parameter inventory is malformed.")
-        for entry in entries:
-            if not isinstance(entry, Mapping) or set(entry) != {"id", "binding"} or not isinstance(entry.get("id"), str) or not entry["id"]:
-                raise _integrity("Sealed bound parameter is malformed.")
-            apply({"component_path": list(path), "parameter_id": entry["id"]}, entry.get("binding"))
-        if realization.get("kind") != "composite":
-            return
-        maps = realization.get("public_parameter_maps")
-        children = realization.get("children")
-        if not isinstance(maps, list) or not isinstance(children, list):
-            raise _integrity("Sealed Composite parameter graph is malformed.")
-        for parameter_map in maps:
-            if not isinstance(parameter_map, Mapping) or set(parameter_map) != {"parameter", "consumers"}:
-                raise _integrity("Sealed Composite public parameter map is malformed.")
-            source = _parameter_key_integrity(parameter_map.get("parameter"))
-            if source not in values:
-                raise _integrity("Composite public parameter map has no resolved source.")
-            consumers = parameter_map.get("consumers")
-            if not isinstance(consumers, list):
-                raise _integrity("Composite public parameter consumers are malformed.")
-            for consumer in consumers:
-                if not isinstance(consumer, Mapping) or set(consumer) != {"target", "binding"}:
-                    raise _integrity("Composite public parameter consumer is malformed.")
-                apply(consumer.get("target"), consumer.get("binding"))
-        for child in children:
-            visit(child)
-
-    components = plan.get("components")
-    if not isinstance(components, list):
-        raise _integrity("Sealed Plan components are malformed.")
-    for component in components:
-        visit(component)
-    rows.sort(key=lambda row: (_parameter_key_integrity(row["parameter"]), _parameter_key_integrity(row["consumer_target"])))
-    if len({(_parameter_key_integrity(row["parameter"]), _parameter_key_integrity(row["consumer_target"])) for row in rows}) != len(rows):
-        raise _integrity("Sealed affine fan-out evidence is ambiguous.")
+            rows.append({
+                "parameter": dict(binding["input"]),
+                "consumer_target": {"path": path, "field": field["id"]},
+                "support": [dict(support[0]), dict(support[1])],
+                "input_value": dict(input_value),
+                "side": side,
+                "distance": distance_record,
+                "authorization_source": authority,
+            })
+    rows.sort(key=lambda row: (
+        _parameter_key_integrity(row["parameter"]),
+        (tuple(row["consumer_target"]["path"]), row["consumer_target"]["field"]),
+    ))
     return rows
 
 
@@ -4040,7 +3741,9 @@ def _compare_artifacts(left: object, right: object, *, operation: object) -> Non
         for entry in inventory:
             if not isinstance(entry, dict):
                 raise _integrity("Artifact inventory entry is malformed.")
-            if operation == "solve_hb":
+            if operation == "solve_hb" and set(entry) != {
+                "id", "path", "sha256", "media_type", "byte_length"
+            }:
                 if set(entry) != {"case_id", "id", "path", "sha256"} or not isinstance(entry.get("case_id"), str) or _IDENTIFIER.fullmatch(entry["case_id"]) is None or not isinstance(entry.get("id"), str) or _IDENTIFIER.fullmatch(entry["id"]) is None or not isinstance(entry.get("path"), str):
                     raise _integrity("HB artifact reference is malformed.")
                 identity = (entry["case_id"], entry["id"], entry["path"])
@@ -4048,6 +3751,30 @@ def _compare_artifacts(left: object, right: object, *, operation: object) -> Non
                     raise _integrity("HB artifact references repeat an identity or path.")
                 identities.add(identity); paths.add(entry["path"])
                 entries.append((*identity, _valid_sha(entry.get("sha256"))))
+            elif set(entry) == {"id", "path", "sha256", "media_type", "byte_length"}:
+                if (
+                    not isinstance(entry.get("id"), str)
+                    or not entry["id"]
+                    or not isinstance(entry.get("path"), str)
+                    or not entry["path"]
+                    or not isinstance(entry.get("media_type"), str)
+                    or not entry["media_type"]
+                    or not isinstance(entry.get("byte_length"), int)
+                    or isinstance(entry.get("byte_length"), bool)
+                    or entry["byte_length"] < 1
+                ):
+                    raise _integrity("Artifact inventory entry is malformed.")
+                identity = (entry["id"], entry["path"])
+                if identity in identities or entry["path"] in paths:
+                    raise _integrity("Artifact inventory contains a duplicate identity or path.")
+                identities.add(identity)
+                paths.add(entry["path"])
+                entries.append((
+                    *identity,
+                    _valid_sha(entry.get("sha256")),
+                    entry["media_type"],
+                    entry["byte_length"],
+                ))
             else:
                 if set(entry) != {"id", "sha256"} or not isinstance(entry.get("id"), str) or not entry["id"]:
                     raise _integrity("Artifact inventory entry is malformed.")
@@ -4156,6 +3883,9 @@ def _verify_hb_artifact_inventory(directory: Path, result: Mapping[str, object],
 
 
 def _verify_artifact_inventory(directory: Path, result: Mapping[str, object], receipt: Mapping[str, object]) -> None:
+    if result.get("result_kind") == "parameter_sweep":
+        _verify_parameter_sweep_artifacts(directory, result, receipt)
+        return
     if result.get("result_kind") == "hb_batch":
         _verify_hb_artifact_inventory(directory, result, receipt)
         return
@@ -4253,6 +3983,255 @@ def _verify_artifact_inventory(directory: Path, result: Mapping[str, object], re
             raise _integrity("Result artifact directory contains undeclared entries.")
     elif expected_top:
         raise _integrity("Result artifact directory is missing.")
+
+
+def _merge_parameter_records(
+    base: Mapping[str, object], overlay: Mapping[str, object]
+) -> dict[str, object]:
+    by_key = {
+        _parameter_key_integrity(row["parameter"]): dict(row)
+        for row in base["bindings"]
+    }
+    order = [_parameter_key_integrity(row["parameter"]) for row in base["bindings"]]
+    for row in overlay["bindings"]:
+        key = _parameter_key_integrity(row["parameter"])
+        if key not in by_key:
+            raise _integrity("Listed point references a parameter outside its baseline.")
+        by_key[key] = dict(row)
+    authorizations = {
+        _parameter_key_integrity(item): dict(item)
+        for item in (*base["allow_extrapolation"], *overlay["allow_extrapolation"])
+    }
+    return {
+        "type": "parameter_set_v2",
+        "bindings": [by_key[key] for key in order],
+        "allow_extrapolation": [authorizations[key] for key in sorted(authorizations)],
+    }
+
+
+def _parameter_source_points(source: Mapping[str, object]) -> Iterator[tuple[object, dict[str, object]]]:
+    if source["kind"] == "points":
+        for ordinal, overlay in enumerate(source["points"]):
+            yield ordinal, _merge_parameter_records(source["baseline_parameters"], overlay)
+        return
+    axes = source["axes"]
+    shape = source["shape"]
+    for indices in product(*(range(size) for size in shape)):
+        overlay = {
+            "type": "parameter_set_v2",
+            "bindings": [
+                {"parameter": axis["parameter"], "value": axis["values"][index]}
+                for axis, index in zip(axes, indices)
+            ],
+            "allow_extrapolation": [],
+        }
+        yield list(indices), _merge_parameter_records(source["base_parameters"], overlay)
+
+
+def _verify_parameter_sweep_artifacts(
+    directory: Path,
+    result: Mapping[str, object],
+    receipt: Mapping[str, object],
+) -> None:
+    from ._canonical import canonical_parameters_sha256
+
+    link = result["manifest"]
+    if receipt.get("artifacts") != [link]:
+        raise _integrity("Parameter-sweep receipt does not bind its sole manifest.")
+    manifest_path = _inside(directory, link["path"])
+    if (
+        manifest_path.is_symlink()
+        or not manifest_path.is_file()
+        or manifest_path.stat().st_size != link["byte_length"]
+        or _sha256(manifest_path.read_bytes()) != link["sha256"]
+    ):
+        raise _integrity("Parameter-sweep manifest link does not bind its file.")
+    manifest = _load_canonical(manifest_path)
+    if (
+        set(manifest) != {"schema", "schema_version", "request_sha256", "attempt_sha256", "point_count", "files"}
+        or manifest.get("schema") != "scnsim.parameter_points_manifest"
+        or manifest.get("schema_version") != 2
+        or manifest.get("request_sha256") != result["request_sha256"]
+        or manifest.get("attempt_sha256") != result["attempt_sha256"]
+        or manifest.get("point_count") != result["point_count"]
+        or not isinstance(manifest.get("files"), list)
+    ):
+        raise _integrity("Parameter-sweep manifest is malformed.")
+    root = _inside(directory, "artifacts/parameter_points")
+    if root.is_symlink() or not root.is_dir():
+        raise _integrity("Parameter-sweep artifact root is missing or unsafe.")
+    actual_files = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    )
+    if any(path.is_symlink() for path in root.rglob("*")):
+        raise _integrity("Parameter-sweep artifact tree contains a symlink.")
+    rows = manifest["files"]
+    if [row.get("path") if isinstance(row, Mapping) else None for row in rows] != actual_files:
+        raise _integrity("Parameter-sweep manifest does not exactly cover its file tree.")
+    manifest_by_path: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"path", "sha256", "byte_length"}
+            or not isinstance(row.get("byte_length"), int)
+            or isinstance(row.get("byte_length"), bool)
+            or row["byte_length"] < 1
+        ):
+            raise _integrity("Parameter-sweep file manifest row is malformed.")
+        path = _inside(root, row["path"])
+        if path.stat().st_size != row["byte_length"] or _sha256(path.read_bytes()) != _valid_sha(row["sha256"]):
+            raise _integrity("Parameter-sweep file manifest hash is incorrect.")
+        manifest_by_path[row["path"]] = row
+
+    request = _load_canonical(directory.parent.parent / "request.json")
+    plan = _load_canonical(directory.parent.parent.parent.parent / "plan.json")
+    source = request.get("parameter_source")
+    if not isinstance(source, Mapping):
+        raise _integrity("Parameter-sweep request source is unavailable.")
+    expected_points = list(_parameter_source_points(source))
+    point_ordinal = 0
+    for chunk_link in result["chunks"]:
+        relative = str(chunk_link["path"])[len("artifacts/parameter_points/"):]
+        row = manifest_by_path.get(relative)
+        if row is None or row["sha256"] != chunk_link["sha256"]:
+            raise _integrity("Parameter-sweep chunk is absent from its manifest.")
+        chunk = _load_canonical(_inside(directory, chunk_link["path"]))
+        if (
+            set(chunk) != {"schema", "schema_version", "request_sha256", "attempt_sha256", "chunk_ordinal", "first_point", "points"}
+            or chunk.get("schema") != "scnsim.parameter_point_chunk"
+            or chunk.get("schema_version") != 2
+            or chunk.get("request_sha256") != result["request_sha256"]
+            or chunk.get("attempt_sha256") != result["attempt_sha256"]
+            or chunk.get("chunk_ordinal") != chunk_link["chunk_ordinal"]
+            or chunk.get("first_point") != chunk_link["first_point"]
+            or not isinstance(chunk.get("points"), list)
+            or len(chunk["points"]) != chunk_link["point_count"]
+        ):
+            raise _integrity("Parameter-sweep chunk envelope is malformed.")
+        for point in chunk["points"]:
+            expected_source_index, expected_parameters = expected_points[point_ordinal]
+            common = {"ordinal", "source_index", "parameters", "parameters_sha256", "status"}
+            if (
+                not isinstance(point, Mapping)
+                or point.get("ordinal") != point_ordinal
+                or point.get("source_index") != expected_source_index
+                or point.get("parameters") != expected_parameters
+                or point.get("parameters_sha256") != canonical_parameters_sha256(expected_parameters)
+                or point.get("status") not in {"success", "failure"}
+            ):
+                raise _integrity("Parameter-sweep point identity is malformed.")
+            _verify_parameter_set_document(point["parameters"])
+            if point["status"] == "failure":
+                failure_fields = set(point)
+                if failure_fields != common | {"failure"} and failure_fields != common | {"failure", "ref_lineage"}:
+                    raise _integrity("Failed parameter point leaks success evidence.")
+                _verify_failure_document(point["failure"], request["operation"])
+                if "ref_lineage" in point:
+                    _verify_v1_lineage(point["ref_lineage"], plan)
+            else:
+                if set(point) != common | {"ref_lineage", "payload_path"}:
+                    raise _integrity("Successful parameter point is incomplete.")
+                payload_path = f"artifacts/parameter_points/points/{point_ordinal:06d}/payload.json"
+                if point.get("payload_path") != payload_path:
+                    raise _integrity("Successful parameter point payload path is malformed.")
+                payload = _load_canonical(_inside(directory, payload_path))
+                if payload.get("schema") != "scnsim.parameter_point_payload" or payload.get("schema_version") != 2:
+                    raise _integrity("Parameter point payload envelope is malformed.")
+                point_prefix = f"artifacts/parameter_points/points/{point_ordinal:06d}/"
+
+                def verify_nested_artifacts(value: object) -> None:
+                    if isinstance(value, Mapping):
+                        if "file_manifest" in value:
+                            artifact_id = value.get("id")
+                            artifact_path = value.get("path")
+                            file_manifest = value.get("file_manifest")
+                            digest = value.get("sha256")
+                            if (
+                                not isinstance(artifact_id, str)
+                                or not artifact_id
+                                or not isinstance(artifact_path, str)
+                                or not artifact_path.startswith(point_prefix + "artifacts/")
+                                or not isinstance(file_manifest, str)
+                                or not file_manifest.startswith(point_prefix + "artifacts/")
+                            ):
+                                raise _integrity("Parameter point artifact path is malformed.")
+                            artifact_relative = artifact_path[len("artifacts/parameter_points/"):]
+                            manifest_relative = file_manifest[len("artifacts/parameter_points/"):]
+                            row = manifest_by_path.get(manifest_relative)
+                            manifest_file = _inside(directory, file_manifest)
+                            artifact_root = _inside(directory, artifact_path)
+                            if (
+                                row is None
+                                or row.get("sha256") != digest
+                                or manifest_file.is_symlink()
+                                or not manifest_file.is_file()
+                                or artifact_root.is_symlink()
+                                or not artifact_root.is_dir()
+                            ):
+                                raise _integrity("Parameter point artifact is not bound by its batch manifest.")
+                            artifact_manifest = _load_canonical(manifest_file)
+                            if (
+                                artifact_manifest.get("schema") != "scnsim.artifact_manifest"
+                                or artifact_manifest.get("artifact_id") != artifact_id
+                                or artifact_manifest.get("artifact_path") != artifact_path
+                            ):
+                                raise _integrity("Parameter point artifact manifest identity is malformed.")
+                            _verify_manifest_tree(artifact_root, artifact_manifest)
+                            if artifact_relative not in manifest_by_path and not any(
+                                name.startswith(artifact_relative.rstrip("/") + "/")
+                                for name in manifest_by_path
+                            ):
+                                raise _integrity("Parameter point artifact tree is absent from the batch manifest.")
+                        for nested in value.values():
+                            verify_nested_artifacts(nested)
+                    elif isinstance(value, list):
+                        for nested in value:
+                            verify_nested_artifacts(nested)
+
+                def localize_artifact_paths(value: object) -> object:
+                    if isinstance(value, Mapping):
+                        return {
+                            key: (
+                                item[len(point_prefix):]
+                                if key in {"path", "file_manifest"}
+                                and isinstance(item, str)
+                                and item.startswith(point_prefix)
+                                else localize_artifact_paths(item)
+                            )
+                            for key, item in value.items()
+                        }
+                    if isinstance(value, list):
+                        return [localize_artifact_paths(item) for item in value]
+                    return value
+
+                verify_nested_artifacts(payload)
+                point_request = dict(request)
+                point_request["parameter_source"] = {
+                    "kind": "point",
+                    "parameters": point["parameters"],
+                }
+                localized = localize_artifact_paths(payload)
+                if not isinstance(localized, dict):
+                    raise _integrity("Parameter point payload is malformed.")
+                point_result = localized
+                point_result["schema"] = "scnsim.result"
+                point_result["request_sha256"] = result["request_sha256"]
+                point_result["attempt_sha256"] = result["attempt_sha256"]
+                point_result["parameters"] = point["parameters"]
+                point_result["parameters_sha256"] = point["parameters_sha256"]
+                point_result["ref_lineage"] = point["ref_lineage"]
+                _verify_result_document(
+                    point_result,
+                    point_request,
+                    result["request_sha256"],
+                    result["attempt_sha256"],
+                    plan,
+                )
+            point_ordinal += 1
+    if point_ordinal != result["point_count"]:
+        raise _integrity("Parameter-sweep chunks do not cover every point.")
 
 
 def _verify_attempt_layout(directory: Path, *, outcome: str, has_authoritative_outcome: bool) -> None:

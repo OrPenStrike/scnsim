@@ -1,1 +1,1 @@
-"""Construction-only fixtures shared by adjacent SCNSim micro-lessons."""
+"""Construction-only alternatives; canonical Tutorials author plans inline."""

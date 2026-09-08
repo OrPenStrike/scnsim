@@ -1,13 +1,15 @@
 ---
 title: "Chapter 9 — Build a Composite factory"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.** This
-> factory declaration is documentation-only.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 ## Lesson 9.1 — Define the factory boundary {#ch9-factory}
 
@@ -58,6 +60,7 @@ class ResonatorLibrary(Library):
 
         # Publish the supported boundary and build one immutable instance.
         composite.expose_pin(id="terminal", at=terminal_bus)
+        composite.expose_pin(id="alternate_terminal", at=terminal_bus)
         composite.expose_coordinate(id="terminal_node", at=terminal_bus)
         return composite.build()
 
@@ -112,6 +115,7 @@ resonator = plan.add(
     )
 )
 resonator_terminal = resonator.pin("terminal")
+resonator_alternate_terminal = resonator.pin("alternate_terminal")
 resonator_coordinate = resonator.coordinate("terminal_node")
 resonator_capacitance = resonator.parameter("capacitance")
 resonator_inductance = resonator.parameter("inductance")
@@ -120,6 +124,14 @@ resonator_inductance = resonator.parameter("inductance")
 `resonator_terminal` is the `PinRef` parent wiring boundary. The public
 `resonator_coordinate` is a `CoordinateRef` for analysis selection and cannot
 wire; the ParameterRefs support parameter work.
+
+`resonator_alternate_terminal` is a differently named ordinary Pin on the
+same intrinsic node. This lesson deliberately leaves it externally open;
+the boundary remains visible without an added wire, load, or analysis
+coordinate. Even an entirely externally open Composite interface is legal
+when its native internal assembly is complete, though numerical solvability
+is a separate question. Selecting these equivalent pins with `.between()`
+would reject rather than manufacture a two-terminal path.
 
 ### Wire the published terminal and promote the Port
 
@@ -172,6 +184,14 @@ diagram = plan.render_schematic(
 )
 diagram.show()
 ```
+
+::: {.content-visible when-format="html"}
+
+![The reusable Composite and its open equivalent public boundary.](figures/09-composite-factory.svg){#fig-09-composite-factory .lightbox fig-alt="Factory-built grounded LC with an externally open alternate terminal, coupling capacitor, and Port."}
+
+[Open the SVG](figures/09-composite-factory.svg).
+
+:::
 
 The drawing shows the assembled outer declaration; inspect factory publication
 and audit evidence separately.

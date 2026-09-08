@@ -17,9 +17,9 @@ from names, numerical values, a picture, or a calculated mode.
 The model-first course works toward a complete review package: a diagram
 generated from the authored circuit, its independent A/B correspondence audit,
 and typed analytical Results that point back to the same Plan while recording
-their separately selected View and request. The current structured-authoring
-cells describe that target honestly; they do not fabricate an implemented
-diagram or solver output.
+their separately selected View and request. Tutorial authoring figures are
+genuine exports tied to their source checkpoints; they are not solver outputs
+or evidence that every course cell has executed successfully.
 
 If you prefer to see the destination before learning each part, start by
 reading the complete
@@ -68,10 +68,12 @@ simulation remain SCGSim responsibilities.
 
 > **Current status:** accepted Direct/HB numerical algorithms and physical
 > models are not reopened. Structured authoring, the independent Parameter
-> System, and parameterized diagrams are `CONVERGING` documentation targets.
-> Their runtime implementation is paused, so the TARGET Tutorial cells are
-> reviewable but not executable on the current runtime. This is neither Human
-> acceptance of the target API nor a release claim.
+> System, and parameterized diagrams remain `CONVERGING`. Implementation
+> candidates and their validation are in progress; this is not a release or
+> acceptance claim.
+> Tutorial authoring figures bind genuine exported diagrams to selected source
+> checkpoints; they do not prove that every cell is supported or validated by
+> an installed build. Compiled-diagram limitations remain separately reported.
 
 ## Install for development
 
@@ -91,15 +93,15 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-
 Teammates then clone that consuming repository and run `uv sync --locked`;
 they do not repeat `uv add`.
 
-## Inspect the frozen runtime baseline
+## Inspect your installed version
 
 ```bash
 uv run python -c "import scnsim; print(scnsim.__version__)"
 uv run python -c "from scnsim import CircuitPlan, components; help(components.capacitor); help(CircuitPlan)"
 ```
 
-These commands inspect the last implemented package surface. They do not make
-the structured-authoring TARGET Tutorial executable. The retained numerical
+These commands inspect the installed package surface. They do not establish
+that the complete TARGET Tutorial is executable. The retained numerical
 contracts still cover Direct, HB, optimization, views, exact resolution, and
 reports; this documentation rewrite does not change those meanings or add HB
 optimization, interpolation, release delivery, or a SCQGate handoff.
@@ -122,8 +124,12 @@ optimization, interpolation, release delivery, or a SCQGate handoff.
 
 Each Chapter also has a zero-output generated Notebook in
 [`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)
-for GitHub or VS Code/Jupyter review. Do not execute the TARGET cells until the
-runtime implementation is aligned and separately accepted.
+for GitHub or VS Code/Jupyter review. QMD is the only editable lesson source;
+the Notebook is a derived transport artifact, not an execution record.
+The website displays separately generated authoring SVGs without executing
+kernels or solvers. See the [source and figure workflow](examples/README.md)
+for the execution boundary. Neither a figure nor a Notebook establishes
+whole-course support, Human acceptance, or release status.
 
 ## Preview locally
 

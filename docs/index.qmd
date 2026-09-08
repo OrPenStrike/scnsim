@@ -4,16 +4,20 @@ description: "A model-first SCNSim course from an explicit circuit and diagram t
 anchor-sections: false
 ---
 
-The numbered files are complete, clean-kernel Chapters. TARGET cells are
-`CONVERGING`, non-executable documentation: generated notebooks are zero-output
-review artifacts, not runtime or scientific evidence. Each Chapter declares
-the circuit it needs before selecting a View, parameter point, or request.
+The numbered files are complete, clean-kernel Chapters in a `CONVERGING`
+course candidate. Each declares the circuit it needs before selecting a View,
+parameter point, or request. Authoring figures are real SVG exports from the
+corresponding source checkpoints; their evidence does not establish execution
+of every cell or scientific correctness. Generated notebooks remain zero-output
+review artifacts, and the website does not execute kernels or solvers.
 
 ::: {.callout-warning title="TARGET course · CONVERGING" appearance="simple"}
 Structured authoring, parameter binding, and certified diagrams are proposed
 API surfaces. Direct/HB, View, optimization, workspace, Result, and report
 meanings remain their established numerical teaching; a diagram never chooses
-an analytical View or performs a calculation.
+an analytical View or performs a calculation. Authoring figures and reported
+compiled-diagram limitations are distinct; neither is whole-course acceptance
+or a release claim.
 :::
 
 ## Build a circuit and get a result
@@ -87,7 +91,7 @@ Short Lessons: [factory recap](../examples/tutorials/10_use_custom_component.qmd
 :::: {.card .course-card}
 ::: {.card-body}
 ### [Chapter 11 — Review and customize a schematic](../examples/tutorials/11_review_customize_schematic.qmd) {.course-card-title .unlisted}
-Short Lessons: [model](../examples/tutorials/11_review_customize_schematic.qmd#ch11-model) · [layout](../examples/tutorials/11_review_customize_schematic.qmd#ch11-layout) · [stitch](../examples/tutorials/11_review_customize_schematic.qmd#ch11-stitch) · [parent grounding](../examples/tutorials/11_review_customize_schematic.qmd#ch11-parent-ground) · [return commoning](../examples/tutorials/11_review_customize_schematic.qmd#ch11-common-returns) · [validation](../examples/tutorials/11_review_customize_schematic.qmd#ch11-validation)
+Short Lessons: [model](../examples/tutorials/11_review_customize_schematic.qmd#ch11-model) · [layout](../examples/tutorials/11_review_customize_schematic.qmd#ch11-layout) · [stitch](../examples/tutorials/11_review_customize_schematic.qmd#ch11-stitch) · [parent grounding](../examples/tutorials/11_review_customize_schematic.qmd#ch11-parent-ground) · [return commoning](../examples/tutorials/11_review_customize_schematic.qmd#ch11-common-returns) · [validation](../examples/tutorials/11_review_customize_schematic.qmd#ch11-validation) · [four-arm model](../examples/tutorials/11_review_customize_schematic.qmd#ch11-four-arm-model) · [Cross composition](../examples/tutorials/11_review_customize_schematic.qmd#ch11-cross-composition) · [fixed recipe reuse](../examples/tutorials/11_review_customize_schematic.qmd#ch11-fixed-composition)
 :::
 ::::
 
@@ -102,7 +106,7 @@ Short Lessons: [coupled line](../examples/tutorials/12_model_n_trace_line.qmd#ch
 :::: {.card .course-card}
 ::: {.card-body}
 ### [Chapter 13 — Assemble the capstone and compensate probes](../examples/tutorials/13_compensate_probes.qmd) {.course-card-title .unlisted}
-Short Lessons: [feedline](../examples/tutorials/13_compensate_probes.qmd#ch13-feedline) · [readout](../examples/tutorials/13_compensate_probes.qmd#ch13-readout) · [floating subsystem](../examples/tutorials/13_compensate_probes.qmd#ch13-floating) · [root assembly](../examples/tutorials/13_compensate_probes.qmd#ch13-root) · [PTC View](../examples/tutorials/13_compensate_probes.qmd#ch13-ptc-view)
+Short Lessons: [feedline](../examples/tutorials/13_compensate_probes.qmd#ch13-feedline) · [readout](../examples/tutorials/13_compensate_probes.qmd#ch13-readout) · [floating subsystem](../examples/tutorials/13_compensate_probes.qmd#ch13-floating) · [root assembly](../examples/tutorials/13_compensate_probes.qmd#ch13-root) · [parent wiring composition](../examples/tutorials/13_compensate_probes.qmd#ch13-composition) · [PTC View](../examples/tutorials/13_compensate_probes.qmd#ch13-ptc-view)
 :::
 ::::
 :::: {.card .course-card}

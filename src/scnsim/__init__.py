@@ -1,15 +1,17 @@
 """SCNSim — Superconducting Circuit Network Simulation.
 
-This package implements the Human-accepted and stabilized Full V1 public
-semantics taught in Lessons 1--13. Stabilization remains separate from release
-delivery.
+Numerical execution remains separately accepted where documented.  Structured
+authoring, parameter closure, and semantic diagram capture are an actively
+converging V1 candidate.
 
 Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
 with :class:`CircuitRun` plus a model package supplied by your team if you only
 consume an existing model.
 """
 
+from importlib import import_module
 from importlib.metadata import version as metadata_version
+from typing import TYPE_CHECKING
 
 from . import units
 from .authoring import (
@@ -22,11 +24,24 @@ from .authoring import (
     ElectricNodeRef,
     InductiveBranchRef,
     Library,
+    ParameterDefinitions,
     ParameterRef,
     ParameterSet,
+    ParameterSpace,
     ParameterSpec,
+    RLGCParameterSpec,
+    BusRef,
+    TapRef,
+    TwoTerminalUse,
+    GroundRef,
+    SeriesRef,
+    ParallelRef,
+    BranchRef,
+    LinkRef,
+    CouplingRef,
     PinRef,
     PortRef,
+    SubsystemPlan,
     components,
 )
 from .errors import (
@@ -62,7 +77,6 @@ from .presentation import Theme
 from .results import (
     AnalysisResult,
     BiasState,
-    CircuitDiagramResult,
     DiagonalRootResult,
     DirectQuantityResult,
     DirectSolveResult,
@@ -77,6 +91,12 @@ from .results import (
     OperatorResult,
     OptimizationBest,
     OptimizationResult,
+    ParameterField,
+    ParameterPointAccessor,
+    ParameterPointIdentity,
+    ParameterPointOutcome,
+    ParameterSweepResult,
+    ParameterSweepSelection,
     PumpState,
     ReconciliationEvidence,
     ReportResult,
@@ -87,7 +107,6 @@ from .results import (
 )
 from .runtime import CircuitRun, NetworkViewRef, ReductionPipeline
 from .specs import (
-    CircuitDiagramSpec,
     CMAESSpec,
     CostObjective,
     CurrentDrive,
@@ -105,13 +124,44 @@ from .specs import (
     ReportSpec,
     ResidueNormalizedCouplingSpec,
     ResponseElementSpec,
-    DiagramSide,
     SParameterTrace,
-    SchematicGroup,
-    SchematicLayout,
-    SchematicPath,
     TransferZeroSpec,
 )
+
+
+# Diagram declarations remain lazy at runtime so numerical consumers do not
+# import rendering modules.  These explicit type-only reexports keep the
+# documented package names visible to static ``py.typed`` consumers.
+if TYPE_CHECKING:
+    from ._diagram_spec import CircuitDiagramSpec
+    from .composition import SchematicComposition, SchematicCompositionSnapshot
+    from .results import CircuitDiagramAudit, CircuitDiagramResult
+    from .schematic import DiagramAxis, SchematicLayout
+    from .specs import DiagramSide
+
+
+_LAZY_DIAGRAM_EXPORTS = {
+    "CircuitDiagramAudit": (".results", "CircuitDiagramAudit"),
+    "CircuitDiagramResult": (".results", "CircuitDiagramResult"),
+    "CircuitDiagramSpec": (".specs", "CircuitDiagramSpec"),
+    "DiagramAxis": (".schematic", "DiagramAxis"),
+    "DiagramSide": (".specs", "DiagramSide"),
+    "SchematicComposition": (".composition", "SchematicComposition"),
+    "SchematicCompositionSnapshot": (".composition", "SchematicCompositionSnapshot"),
+    "SchematicLayout": (".schematic", "SchematicLayout"),
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve diagram presentation names only when a caller asks for one."""
+
+    target = _LAZY_DIAGRAM_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute = target
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
 
 __version__ = metadata_version("scnsim")
 
@@ -121,7 +171,10 @@ __all__ = [
     "AnalysisResult",
     "BackendProtocolError",
     "BiasState",
+    "BranchRef",
+    "BusRef",
     "CMAESSpec",
+    "CircuitDiagramAudit",
     "CircuitDiagramResult",
     "CircuitDiagramSpec",
     "CircuitPlan",
@@ -130,6 +183,7 @@ __all__ = [
     "ComponentInstance",
     "CompositePlan",
     "CoordinateRef",
+    "CouplingRef",
     "CostObjective",
     "CurrentDrive",
     "DiagonalRootResult",
@@ -143,6 +197,7 @@ __all__ = [
     "EliminatedBlockSolveFailure",
     "EvidenceIntegrityError",
     "ExplanationResult",
+    "GroundRef",
     "HBBatchResult",
     "HBCaseFailure",
     "HBCaseOutcome",
@@ -168,9 +223,18 @@ __all__ = [
     "OptimizationResult",
     "OptimizationSpec",
     "OptimizationVariable",
+    "ParameterField",
     "ParameterRef",
+    "ParameterDefinitions",
+    "ParameterPointAccessor",
+    "ParameterPointIdentity",
+    "ParameterPointOutcome",
     "ParameterSet",
+    "ParameterSpace",
     "ParameterSpec",
+    "ParameterSweepResult",
+    "ParameterSweepSelection",
+    "ParallelRef",
     "PinRef",
     "PlanSealedError",
     "PortRealizabilityError",
@@ -180,6 +244,7 @@ __all__ = [
     "QuantitySum",
     "ReconciliationEvidence",
     "ReductionPipeline",
+    "RLGCParameterSpec",
     "ReportResult",
     "ReportSpec",
     "ResidueNormalizedCouplingSpec",
@@ -196,13 +261,18 @@ __all__ = [
     "SCNSimStateError",
     "SCNSimValidationError",
     "SParameterTrace",
-    "SchematicGroup",
+    "DiagramAxis",
     "SchematicLayout",
-    "SchematicPath",
+    "SchematicComposition",
+    "SchematicCompositionSnapshot",
+    "SeriesRef",
     "ScaffoldUnavailableError",
     "ScatteringMatrixResult",
     "TraceResult",
     "Theme",
+    "SubsystemPlan",
+    "TapRef",
+    "TwoTerminalUse",
     "TransferZeroSpec",
     "UnsupportedRuntimePlatformError",
     "UnsupportedSingularCapacitanceForDiagonalRootV1",

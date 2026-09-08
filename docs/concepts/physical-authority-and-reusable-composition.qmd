@@ -8,12 +8,13 @@ title: "Circuit Models, Subsystems, and Reuse"
 This page explains the `CONVERGING` target for structured circuit authoring.
 The authoring API, its structural identity integration, and certified diagrams
 are not implemented or accepted; the TARGET examples are not executable on the
-current runtime, whose implementation work is paused.
+current runtime. Implementation alignment remains pending.
 
 Accepted numerical operations, physical component models, units, evidence
-workspace, and existing Result meanings are not reopened. Exact structure and
-diagram behavior belongs to the [Structured Circuit Authoring and Certified
-Diagrams contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd);
+workspace, and existing Result meanings are not reopened. Exact assembly
+belongs to the [CircuitPlan Assembly Contract](../contracts/circuit-plan-assembly.qmd);
+diagram behavior belongs to the
+[diagram contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd);
 exact input and batch behavior belongs to the
 [Parameter System contract](../contracts/parameter-system.qmd).
 :::
@@ -34,11 +35,12 @@ coordinate, or a plotted response is an analysis result or analysis choice;
 none can supply the missing model structure after the fact.
 
 The intended review outcome has two related but noninterchangeable parts. The
-diagram must be generated from that authored Plan and checked for electrical
-and structural correspondence. Any analytical Result must separately name the
-View and request selected from the same Plan. A hand-maintained picture cannot
-replace the generated projection, and the generated projection cannot stand in
-for an analysis Result.
+diagram must be generated from that authored Plan and checked for visible
+electrical and ownership correspondence, while complete invisible declarations
+remain verified source evidence. Any analytical Result must separately name
+the View and request selected from the same Plan. A hand-maintained picture
+cannot replace the generated projection, and the generated projection cannot
+stand in for an analysis Result.
 
 ## One Plan supplies two projections {#plan-as-physical-authority}
 
@@ -133,6 +135,14 @@ it was authored. A multi-pin `ground_pins()` call may ground several legitimate
 return nets, but its tuple order and batching do not create another ground
 domain or a shared drawing rail.
 
+The diagram derives separate ground occurrences from structural terminations,
+not one ground tree per scope. A Parallel's shared grounded end rail has one
+glyph; separate shunts, including those at both terminals of a floating
+network, keep local glyphs of their own. `composition.ground_side(...)` chooses
+the displayed side of an eligible grounded structure or parent-applied ground
+pin. It may rotate a structure but never reverses its electrical reference or
+creates another ground domain. Port loads keep their own graphical role.
+
 `link()` and `ground_pins()` respect ownership. A parent may use its own bus or
 tap and an immediate child's public pin; it may not reach through that pin to a
 private child bus. Electrical aliases do not erase those owner-local handles.
@@ -157,22 +167,37 @@ Other public boundaries are deliberately different:
 - a Library Composite may publish an independently defined, physically bound
   parameter that a later operation may vary.
 
-Private buses, taps, and leaves remain private. One internal node
-can expose at most one public pin, although that node may have several
-graphical taps.
+Private buses, taps, and leaves remain private. One internal node may expose
+several differently named ordinary public pins. For example, `plus_1` and
+`plus_2` can denote the same internal bus while providing distinct public
+boundaries. No component, Coordinate, or degree of freedom is added, and the
+names do not assign physical input/output roles. Their external wiring groups
+remain owner-local: a left coupling and a right probe can share voltage through
+the child's real internal wire without becoming one parent wiring group.
 
 Selecting two terminals of a complete multi-terminal part with `.between()` is
 needed only when the author uses that whole body once inside a structure. It is
-optional when the fully bound body remains an independent scope peer. In either
+optional when the complete body remains an independent scope peer. Selecting
+intrinsically equivalent pins rejects; parent-commoned nets alone do not make
+two child pins intrinsically equivalent. In either
 case it does not replace an IDC or multi-conductor line with a scalar equivalent;
 all public terminals and native coefficients remain explicit.
 
 An ordinary two-terminal native body must belong to exactly one structure. A
 complete Composite occurrence or native multi-terminal body may instead remain
-an independent peer after all required pins are bound. A one-public-pin
+an independent peer. Native required pins remain bound; Composite public pins
+may be partially or entirely externally open without inventing a load or wire.
+A one-public-pin
 grounded Composite is already structurally complete because its private native
-leaves were assembled inside its ownership boundary; after its public pin is
-bound, it needs no second structural wrapper.
+leaves were assembled inside its ownership boundary; whether its public pin
+is bound or open, it needs no second structural wrapper. Open boundaries remain
+visible. A legal assembly need not be numerically solvable.
+
+The [shared assembly contract](../contracts/circuit-plan-assembly.qmd) owns
+these modeling rules. Parameter resolution, Calculation, and diagrams consume
+that model independently: numerical use does not load diagram modules or
+require a successful drawing. Presentation settings and rendering failures
+never change the Plan or its numerical requests.
 
 ## Fixed values come before public parameters
 
@@ -220,30 +245,139 @@ invariance promise.
 
 ## A diagram checks the declaration, not the research intent
 
-The authoring diagram shows native parts, ownership regions, branches, buses,
-taps, public boundaries, Ports, and couplings. The compiled diagram instead
-explains deterministic compiler expansion. Neither projection is another
-circuit definition.
+The clean authoring diagram shows conventional native parts, wires, junctions,
+local grounds, Ports, physical couplings, ownership regions, and visible
+cross-boundary incidence. It does not cover the schematic with operator IDs,
+link-call history, bus/tap names, or exposure metadata. Those complete authored
+facts remain separately available in the audit's verified source rows. The
+compiled diagram instead explains deterministic compiler expansion. Neither
+projection is another circuit definition.
 
-Optional `SchematicLayout` hints may choose presentation axes, complete local
-orders, terminal sides, Port sides, and the relative order of explicitly named
-taps on one bus through live authored handles. They cannot change connectivity,
-ownership, electrical order, or compiler input. Direct bus contacts remain
-automatic; a tap-order hint does not name them or turn a drawing direction into
-current flow.
+Automatic layout gives every parallel group a vertical electrical path by
+default, with its branches left-to-right. A hint on that parallel may rotate it
+to horizontal paths; changing the parent scope axis does not rotate the child
+parallel implicitly. These are reading conventions only and never reverse
+ordered pins or series members.
+
+### Compose the drawing without reauthoring the circuit
+
+`SchematicComposition` is a presentation recipe over existing Blocks and their
+attachment boundaries. Blocks are the Plan's scope peers and assembly
+structures, not new physical components. A structure's start/end attachment is
+different from another structure's attachment on the same Bus. Public Pins,
+Ports, and authored Taps select their existing contacts; the Bus itself adds no
+extra arm. These attachments are not electrical nodes or analysis coordinates.
+
+`SchematicComposition(plan=plan)`, `automatic(plan=plan, hints=None)`, and
+a missing layout share one fixed Default path. Explicit per-field settings win;
+omitted fields receive stable defaults. The constructor is useful for changing
+just one axis or Port side: it does not require a complete manual configuration.
+`show()` and inventory/wiring reads remain nonmutating.
+
+Wiring replacement is a complete-group operation. Use
+`replace_wiring(at=bus_or_link_or_public_pin)` to specify connected straight,
+L, T, and Cross primitives for that group. Every actual attachment and requested
+arm must be connected once; Default never guesses wires missing from an
+explicit replacement. A Subsystem Pin selects parent-facing wiring; a
+ComponentInstance Pin selects its occurrence-owner group, not child-private
+wiring. Aliases share one authority. An ambiguous Tap requires an explicit
+structure boundary rather than an arbitrary contact choice.
+
+The existing single-pin readout can hang beneath a parent T while another T
+and L connect to the floating network's coupling structures. No second public
+Pin or electrical change is needed. Resolve boundary directions from explicit
+settings or parent arms first; the child then supplies one complete measured
+payload with upright labels, final public anchors, local grounds, and reserved
+exits. The parent translates it whole without rewriting private contents.
+
+Port presentation retains eight root-frame poses:
+`port_orientation(port, boundary_side=..., load_side=...)` atomically sets the
+hollow-marker side and perpendicular T-to-load/ground direction.
+`port_side()` preserves an explicit compatible load side; incompatible changes
+reject without partial update. `ground_side()` is not a Port control.
+Without explicit settings, the selected wiring arm or intrinsic incidence
+determines the marker side, then the scope's leading side if needed. Horizontal
+Ports default loads downward; vertical Ports default them rightward. Outside
+wiring attaches to the complete Port's circuit-facing lead end.
+
+Default keeps horizontal Series, vertical Parallel with branches left-to-right,
+and declared peer order along the scope axis. Applicable explicit tap order
+precedes stable declared contact order. Two contacts use straight/L, three use
+a compatible T or the fixed scope branch, four distinct directions use Cross
+and other four-contact groups use connected Ts, and larger groups use a fixed
+T chain. Compatible arms are assigned first, then remaining contacts and arms
+in stable source/cardinal order. Default uses the same public builders as
+explicit recipes; it does not enumerate or score alternatives.
+
+Placement reserves measured Blocks, junction subtrees, Ports/loads/text,
+connectors, and coupling-guide strips before drawing. Branch extents can offset
+rows and enlarge later columns rather than forcing top-aligned boxes. A stable
+spanning traversal places each body once while all remaining edges and cycles
+retain reserved closure tracks. Channels and lanes follow stable
+group/connection order; direct paths, prescribed bends, and channel/perimeter
+routes are constructed arithmetically.
+
+There is no authoring visibility-graph search, pose candidate selection,
+backtracking, routing-order retry, or readability score. Different-net crossings
+retain jumps; same-net routes cannot acquire incidental bridges or lose
+requested junction arms or loop edges. Unsupported fixed geometry fails with
+its actual scope, Block, junction, or constraint. It neither falls back to
+search nor labels the physical circuit invalid. No universal placement or
+numerical timing threshold is promised.
+
+The existing five-map `SchematicLayout` convenience feeds the same fixed
+Default setters. No entry point exposes coordinates, lengths, sizes, or gaps.
+A changed Plan makes an old composition stale. Rendering captures one exact
+Plan, effective point, and settings without mutating caller state or old results.
+Authoring `diagram.composition` is the detached immutable completed recipe;
+compiled diagrams expose `None`. Its inspection survives live Plan edits.
+`to_composition(plan=plan)` checks exact Plan identity and returns a new fixed
+editable recipe without exposing private editable contents. Reuse at another
+single point remeasures/reroutes, not pixels, and may be incompatible. There is
+no global reset-to-auto; create a fresh partial composition for new settings.
+
+The exact public operations and capstone recipe remain in the
+[composition contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd#schematic-composition).
+
+### Keep composition checks separate from circuit review
+
+Authoring labels are readable projections, not rounded model inputs. Scalar
+values use six significant digits with Decimal half-even rounding and supported
+engineering prefixes; exact values remain in source evidence. The audit checks
+the displayed text and units in that same display projection, not a numerical
+tolerance. Compiled scientific coefficients retain their exact evidence path.
+
+An N=1 CPW Box shows kind/local ID, length when values are enabled, and
+the section count (`1 section` or `<N> sections`) always. Its two visible ends
+do not claim ordered head/tail names;
+the exact identities and RLGC stay source-verified. MTL keeps its necessary
+ordered conductor/terminal evidence. Compact child frames reserve only needed
+route lanes and measured labels, grounds, borders, and escapes before the
+parent translates the complete child. Open public stubs are checked from real
+ink and terminal incidence; a cut required wire is not an open-pin exception.
 
 Review remains three separate questions:
 
-1. **A — electrical correspondence:** do visible parts and connections match
-   the declared or compiled electrical evidence?
-2. **B — structural correspondence:** do visible ownership and assembly roles
-   match what the author declared?
+1. **A — electrical correspondence:** do visible bodies, terminals, wires,
+   grounds, Ports, couplings, and enabled values match the declared or compiled
+   electrical evidence?
+2. **B — visible ownership correspondence:** do visible regions, containment,
+   leaf and Port ownership, and boundary crossings match the expected visible
+   ownership evidence?
 3. **C — design intent:** is this actually the circuit the Human meant to
    model?
 
-A/B can detect a projection mismatch. Only the Human can answer C. None of the
-three proves that a selected View, parameter override, solver, optimization,
-or physical approximation is correct.
+Separate layout-constraint verification checks that requested shapes and sides
+actually appear in the visible geometry: two Ts can pass electrical A yet
+violate an explicit Cross request. A/B still reconstruct actual visible ink,
+not hidden expected composition or ownership maps.
+
+A/B can detect a projection mismatch. They do not pretend that invisible
+authoring history was reconstructed from the image: complete operator,
+exposure, bus/tap, and parameter-binding records are labelled source/provenance
+evidence. Only the Human can answer C. None of the three proves that a selected
+View, unrelated calculation/request override, solver, optimization, or physical
+approximation is correct.
 
 ## Reader path
 
@@ -265,7 +399,8 @@ or physical approximation is correct.
   only then selects a probe-compensated analysis View.
 - [Compilation, Coordinates, and Network Views](compilation-coordinates-and-network-views.qmd)
   explains why analysis coordinates remain separate from wiring endpoints.
-- [Structured authoring contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd)
+- [Shared assembly contract](../contracts/circuit-plan-assembly.qmd)
+- [Diagram contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd)
   owns the exact grammar, layout, identity, audits, and failures.
 - [Parameter System contract](../contracts/parameter-system.qmd) owns
   definition, binding, point, space, sweep-result, and optimization-binding

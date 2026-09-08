@@ -1,14 +1,15 @@
 ---
 title: "Chapter 14 — Transform and retain coordinates"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> This Chapter repeats the complete physical declaration from a fresh kernel before its
-> selected numerical View.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 The same feedline, readout LC, and floating pair are physical assembly facts.
 The analysis question is different: retain feedline outputs and derive floating
@@ -198,12 +199,20 @@ minus_branch = floating.branch(
     elements=(minus_shunt,),
     end=floating.ground,
 )
-floating_plus_pin = floating.expose_pin(id="floating_plus", at=plus_bus)
-floating_minus_pin = floating.expose_pin(id="floating_minus", at=minus_bus)
+plus_1 = floating.expose_pin(id="plus_1", at=plus_bus)
+plus_2 = floating.expose_pin(id="plus_2", at=plus_bus)
+minus_1 = floating.expose_pin(id="minus_1", at=minus_bus)
+minus_2 = floating.expose_pin(id="minus_2", at=minus_bus)
 ```
 
-`floating_plus_pin` and `floating_minus_pin` are the child-facing results; the
-root assembly next creates the matching coordinate buses and node aliases.
+Each pair exposes one intrinsic node through distinct ordinary public pins.
+The couplers connect directly to `plus_1` and `minus_1`; only `plus_2` and
+`minus_2` link to the existing root probe buses and coordinates. Left/right
+placement is a separate presentation choice, not a physical pin role. No
+component, Coordinate, or degree of freedom is added by these exposures.
+
+The root assembly next creates coordinate buses and node aliases for the
+output pair only.
 
 ## Lesson 14.4 — Assemble root couplers and probes {#ch14-root}
 
@@ -237,11 +246,11 @@ plan.link(
 plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
 plan.link(
     id="floating_plus_child",
-    endpoints=(floating_plus_bus, floating_plus_pin),
+    endpoints=(floating_plus_bus, plus_2),
 )
 plan.link(
     id="floating_minus_child",
-    endpoints=(floating_minus_bus, floating_minus_pin),
+    endpoints=(floating_minus_bus, minus_2),
 )
 ```
 
@@ -291,13 +300,13 @@ readout_floating_plus = plan.series(
     id="readout_floating_plus",
     start=readout_root_bus,
     elements=(plus_coupler,),
-    end=floating_plus_bus,
+    end=plus_1,
 )
 readout_floating_minus = plan.series(
     id="readout_floating_minus",
     start=readout_root_bus,
     elements=(minus_coupler,),
-    end=floating_minus_bus,
+    end=minus_1,
 )
 ```
 
@@ -379,6 +388,6 @@ analysis_explanation.show()
 ```
 
 The explanation displays the selected View lineage and retained coordinates;
-it is the final review of this target-only request.
+it is the final review of this request, not a stored execution result.
 
 [Previous](13_compensate_probes.qmd) · [Next](15_prepare_hb.qmd)

@@ -1,14 +1,15 @@
 ---
 title: "Chapter 11 — Review and customize a schematic"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> Layout references live authored handles and does not create independent
-> topology.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 Two coupled grounded LC subsystems can be electrically clear yet visually hard
 to read. This Chapter reviews the complete literal-value circuit first, then
@@ -181,6 +182,14 @@ automatic = plan.render_schematic(
 automatic.show()
 ```
 
+::: {.content-visible when-format="html"}
+
+![Default composition of the two coupled subsystems.](figures/11-automatic-structured.svg){#fig-11-automatic-structured .lightbox fig-alt="Two grounded LC subsystems and their root coupling and Ports in Default layout."}
+
+[Open the SVG](figures/11-automatic-structured.svg).
+
+:::
+
 `automatic` records the declaration-order presentation without a layout hint;
 keep it to compare with the next, explicitly hinted rendering.
 
@@ -189,7 +198,9 @@ keep it to compare with the next, explicitly hinted rendering.
 Scope `order` names only direct peer subsystems and must list every eligible
 peer exactly once; omitting a peer is a layout validation failure, not a
 partial hint. ParallelRef keys may permute only their complete `.branches`
-tuples; electrical series order is immutable.
+tuples; electrical series order is immutable. Every parallel group defaults to
+vertical paths from top to bottom with branches left-to-right; a scope axis does
+not rotate a nested parallel group.
 
 ```{python}
 #| id: construct-structured-schematic-layout
@@ -197,6 +208,7 @@ layout = SchematicLayout(
     axes={
         readout: DiagramAxis.VERTICAL,
         storage: DiagramAxis.VERTICAL,
+        readout_parallel: DiagramAxis.HORIZONTAL,
     },
     order={
         plan: (readout, storage),
@@ -214,8 +226,12 @@ layout = SchematicLayout(
 )
 ```
 
-`layout` changes only axes, peer order, branch order, and terminal/Port sides;
-it consumes authored handles without creating topology.
+`layout` constrains scope axes, complete peer and branch order, terminal sides,
+and Port sides. The scope axes arrange peer regions only. The
+`readout_parallel` `ParallelRef` has the explicit `HORIZONTAL` axis hint, so
+its paths run horizontally and stack top-to-bottom; `storage_parallel` remains
+at the vertical default. These hints consume authored handles without creating
+topology.
 
 ### Render the hinted layout
 
@@ -233,6 +249,14 @@ hinted = plan.render_schematic(
 hinted_drawing = hinted.show()
 ```
 
+::: {.content-visible when-format="html"}
+
+![Explicit layout controls applied to the same Plan.](figures/11-hinted-structured.svg){#fig-11-hinted-structured .lightbox fig-alt="The two-subsystem circuit with explicitly selected axes, peer order, and terminal and Port sides."}
+
+[Open the SVG](figures/11-hinted-structured.svg).
+
+:::
+
 `hinted` is a second presentation of the same Plan. Review its audit alongside
 the automatic drawing before comparing their declaration identities. Prepare
 the relative export directory explicitly in a fresh kernel before saving it.
@@ -248,7 +272,7 @@ export_path.parent.mkdir(parents=True, exist_ok=True)
 hinted_drawing.save(export_path)
 ```
 
-`export_path` names a target-only artifact location. The next cells remain the
+`export_path` names the explicit execution artifact location. The next cells remain the
 separate audit and declaration-identity reviews.
 
 ### Inspect the drawings' audit tables
@@ -278,11 +302,12 @@ assert automatic.audit.semantic_sha256 == hinted.audit.semantic_sha256
 Matching digests confirm that the layout hints did not alter the Plan,
 connectivity, or semantic declaration.
 
-Hints alter only presentation. By default, scope peers and series run
-horizontally; each parallel branch runs horizontally from start to end, and
-the branches stack top-to-bottom in declared order. `DiagramAxis.VERTICAL`
-rotates that local group, so branches run top-to-bottom and stack left-to-right.
-It is not inferred from a main bus, weighted diameter, or physical flow.
+Hints alter only presentation. Scope peers and series run horizontally by
+default. Every parallel group instead defaults to top-to-bottom paths with
+branches left-to-right in declared order; a `HORIZONTAL` hint on that
+`ParallelRef` rotates only that group into horizontal paths stacked top-to-bottom.
+A scope-axis hint does not rotate nested parallel groups. Geometry is not
+inferred from a main bus, weighted diameter, or physical flow.
 
 ## Lesson 11.3 — Stitch two public terminals {#ch11-stitch}
 
@@ -429,7 +454,7 @@ is rejected by authoring validation.
 
 ### Read each safety diagnostic before correcting the declaration
 
-The following target-only cases are complete small declarations. They keep the
+The following validation examples are complete small declarations. They keep the
 failed mutation visible, preserve its reusable structure id, and then use a
 legal public boundary or corrected physical relation. No cell assumes the
 current runtime executes these target validations.
@@ -575,9 +600,361 @@ return_diagram = return_plan.render_schematic(CircuitDiagramSpec())
 return_diagram.show()
 ```
 
+::: {.content-visible when-format="html"}
+
+![Ground applied by the parent at a public return pin.](figures/11-parent-applied-grounding.svg){#fig-11-parent-applied-grounding .lightbox fig-alt="Child capacitor path with an externally open signal boundary and a parent-grounded public return."}
+
+[Open the SVG](figures/11-parent-applied-grounding.svg).
+
+:::
+
 ```{python}
 #| id: inspect-parent-applied-grounding-audit
 return_diagram.audit.show()
+```
+
+## Lesson 11.7 — Declare a four-arm illustration {#ch11-four-arm-model}
+
+This separate fixed-value circuit illustrates wiring composition; it does not
+replace either LC model above. One central Bus joins four capacitor Series,
+each ending at its own terminated-Port bus. The labels A–D identify branches,
+not physical signal or energy flow. No solver question is needed.
+
+### Declare the Plan and its five buses
+
+```{python}
+#| id: declare-four-arm-plan-and-buses
+from scnsim import SchematicComposition
+
+four_arm_plan = CircuitPlan(id="four_arm_composition")
+central_bus = four_arm_plan.bus(id="central")
+bus_a = four_arm_plan.bus(id="a")
+bus_b = four_arm_plan.bus(id="b")
+bus_c = four_arm_plan.bus(id="c")
+bus_d = four_arm_plan.bus(id="d")
+```
+
+### Register four real capacitors
+
+```{python}
+#| id: register-four-arm-capacitors
+capacitor_a = four_arm_plan.add(
+    components.capacitor(id="capacitor_a", capacitance=4.0 * u.fF)
+)
+capacitor_b = four_arm_plan.add(
+    components.capacitor(id="capacitor_b", capacitance=5.0 * u.fF)
+)
+capacitor_c = four_arm_plan.add(
+    components.capacitor(id="capacitor_c", capacitance=6.0 * u.fF)
+)
+capacitor_d = four_arm_plan.add(
+    components.capacitor(id="capacitor_d", capacitance=7.0 * u.fF)
+)
+```
+
+### Bind each capacitor to a distinct outer bus
+
+```{python}
+#| id: structure-four-capacitor-arms
+arm_a = four_arm_plan.series(
+    id="arm_a", start=central_bus, elements=(capacitor_a,), end=bus_a,
+)
+arm_b = four_arm_plan.series(
+    id="arm_b", start=central_bus, elements=(capacitor_b,), end=bus_b,
+)
+arm_c = four_arm_plan.series(
+    id="arm_c", start=central_bus, elements=(capacitor_c,), end=bus_c,
+)
+arm_d = four_arm_plan.series(
+    id="arm_d", start=central_bus, elements=(capacitor_d,), end=bus_d,
+)
+```
+
+### Complete the four terminated boundaries
+
+```{python}
+#| id: add-four-arm-terminated-ports
+port_a = four_arm_plan.add_port(
+    id="port_a", at=bus_a, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+port_b = four_arm_plan.add_port(
+    id="port_b", at=bus_b, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+port_c = four_arm_plan.add_port(
+    id="port_c", at=bus_c, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+port_d = four_arm_plan.add_port(
+    id="port_d", at=bus_d, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+Each Port retains its declared load/reference. The four central Series
+boundaries are four presentation attachments on one existing node; the central
+Bus is not a fifth arm.
+
+### Begin with fixed Default completion
+
+```{python}
+#| id: create-four-arm-automatic-composition
+four_arm_composition = SchematicComposition.automatic(plan=four_arm_plan)
+```
+
+```{python}
+#| id: inspect-four-arm-automatic-composition
+four_arm_composition.show()
+```
+
+This read-only inspection distinguishes explicit settings from omitted fields
+that receive Default values. It is not an audited drawing. The constructor,
+`automatic()`, and a missing layout use the same fixed completion and public
+builders, not different rendering engines or a cost-ranked search. The next
+cell measures the actual point and labels, places each body once, and constructs
+one routing realization.
+
+```{python}
+#| id: render-four-arm-automatic-composition
+four_arm_automatic = four_arm_plan.render_schematic(
+    CircuitDiagramSpec(layout=four_arm_composition)
+)
+```
+
+```{python}
+#| id: show-four-arm-automatic-drawing
+four_arm_automatic.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![Default composition of the independently declared four-arm circuit.](figures/11-four-arm-automatic.svg){#fig-11-four-arm-automatic .lightbox fig-alt="Four capacitor arms connecting a central bus to four terminated Ports in Default layout."}
+
+[Open the SVG](figures/11-four-arm-automatic.svg).
+
+:::
+
+```{python}
+#| id: audit-four-arm-automatic-drawing
+four_arm_automatic.audit.show()
+```
+
+## Lesson 11.8 — Request one visible Cross {#ch11-cross-composition}
+
+### Choose Block axes and complete Port orientations
+
+These settings describe presentation only. A horizontal or vertical axis does
+not reverse the ordered endpoints authored above.
+
+```{python}
+#| id: set-four-arm-composition-axes-and-sides
+four_arm_composition.axis(arm_a, DiagramAxis.HORIZONTAL)
+four_arm_composition.axis(arm_b, DiagramAxis.HORIZONTAL)
+four_arm_composition.axis(arm_c, DiagramAxis.VERTICAL)
+four_arm_composition.axis(arm_d, DiagramAxis.VERTICAL)
+four_arm_composition.port_orientation(
+    port_a, boundary_side=DiagramSide.LEFT, load_side=DiagramSide.BOTTOM,
+)
+four_arm_composition.port_orientation(
+    port_b, boundary_side=DiagramSide.RIGHT, load_side=DiagramSide.BOTTOM,
+)
+four_arm_composition.port_orientation(
+    port_c, boundary_side=DiagramSide.TOP, load_side=DiagramSide.RIGHT,
+)
+four_arm_composition.port_orientation(
+    port_d, boundary_side=DiagramSide.BOTTOM, load_side=DiagramSide.RIGHT,
+)
+```
+
+Each Port has two perpendicular directions in the root frame: its hollow
+marker side and the direction from its T toward its load/ground. Four marker
+sides times two perpendicular load sides give eight poses. The complete setter
+replaces both atomically. `port_side()` changes only the marker boundary while
+preserving an explicit load side; an incompatible change rejects without a
+partial update. `ground_side()` cannot target a Port. Wiring attaches to the
+Port's circuit-facing lead end, not its marker or internal T.
+
+### Replace only the central wiring group
+
+```{python}
+#| id: replace-four-arm-central-wiring
+central_wiring = four_arm_composition.replace_wiring(at=central_bus)
+```
+
+```{python}
+#| id: declare-four-arm-cross
+central_cross = central_wiring.cross(id="central_cross")
+```
+
+```{python}
+#| id: connect-four-arm-cross
+central_wiring.connect(
+    four_arm_composition.endpoint(arm_a, boundary="start"), central_cross.left,
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arm_b, boundary="start"), central_cross.right,
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arm_c, boundary="start"), central_cross.top,
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arm_d, boundary="start"), central_cross.bottom,
+)
+```
+
+The explicit structure boundaries distinguish all four contacts. Every contact
+and Cross arm is used once. A graphical junction adds no electrical net, Tap,
+or Coordinate. When a Tap aliases several actual contacts, select the intended
+structure boundary explicitly rather than guessing an unused contact.
+
+### Inspect, render, and audit separately
+
+```{python}
+#| id: inspect-four-arm-cross-composition
+four_arm_composition.show()
+```
+
+```{python}
+#| id: render-four-arm-cross-composition
+four_arm_custom = four_arm_plan.render_schematic(
+    CircuitDiagramSpec(layout=four_arm_composition)
+)
+```
+
+```{python}
+#| id: show-four-arm-cross-drawing
+four_arm_custom.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![An explicit Cross at the four-arm circuit's central bus.](figures/11-four-arm-cross.svg){#fig-11-four-arm-cross .lightbox fig-alt="Four capacitor arms connected by one explicitly requested central Cross."}
+
+[Open the SVG](figures/11-four-arm-cross.svg).
+
+:::
+
+```{python}
+#| id: audit-four-arm-cross-drawing
+four_arm_custom.audit.show()
+```
+
+Layout verification must find one actual four-arm Cross. Two Ts can preserve
+electrical witness A yet violate that requested shape; A/B remain checks of
+visible electrical and ownership evidence, not hidden recipe metadata. These
+TARGET cells do not claim a runtime-verified gallery from notebook generation.
+
+A new `SchematicComposition(plan=four_arm_plan)` permits partial settings:
+omitted fields use stable defaults, while explicit choices win. There is no
+whole-manual completeness requirement. Replacing a wiring group still means
+specifying every attachment and arm in that group; Default never guesses
+missing manual wires. The caller's settings and refs remain unchanged on
+render success or failure. Unsupported fixed geometry reports the affected
+scope, Block, junction, or constraint without fallback search or partial success.
+
+## Lesson 11.9 — Reuse the final recipe, not the pixels {#ch11-fixed-composition}
+
+### Inspect the detached completed composition
+
+```{python}
+#| id: inspect-four-arm-final-composition
+four_arm_custom.composition.show()
+```
+
+Unlike inspection before rendering, this describes the completed public choices
+bound to the same verified scene. It is immutable and detached: inspection
+still works after the live Plan changes, without exposing private editable
+contents or live handles. Compiled diagrams instead have `composition is None`.
+
+### Create a new fixed editable recipe
+
+```{python}
+#| id: reuse-four-arm-final-composition
+fixed_four_arm = four_arm_custom.composition.to_composition(plan=four_arm_plan)
+```
+
+```{python}
+#| id: inspect-four-arm-fixed-composition
+fixed_four_arm.show()
+```
+
+The exact captured Plan identity must match. All Default-completed public
+choices are now fixed, while hidden internals remain nonaddressable. The new
+recipe is independent of both the original intent and the captured diagram.
+
+```{python}
+#| id: render-four-arm-fixed-composition
+fixed_four_arm_diagram = four_arm_plan.render_schematic(
+    CircuitDiagramSpec(layout=fixed_four_arm)
+)
+```
+
+```{python}
+#| id: show-four-arm-fixed-drawing
+fixed_four_arm_diagram.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![The completed Cross recipe reused at the same parameter point.](figures/11-four-arm-fixed.svg){#fig-11-four-arm-fixed .lightbox fig-alt="Four-arm circuit rendered again from its detached fixed Cross composition."}
+
+[Open the SVG](figures/11-four-arm-fixed.svg).
+
+:::
+
+```{python}
+#| id: audit-four-arm-fixed-drawing
+fixed_four_arm_diagram.audit.show()
+```
+
+Fixed reuse is not a pixel freeze. Rendering remeasures labels and geometry and
+reroutes at the selected single parameter point; an incompatible point may
+fail. This fixed-value illustration does not add a parameter or numerical
+request to demonstrate that distinction.
+
+There is no global reset-to-auto operation. A fresh partial constructor can
+change one field while leaving all other fields at Default, without changing
+the saved diagram:
+
+```{python}
+#| id: create-fresh-four-arm-intent
+fresh_four_arm = SchematicComposition(plan=four_arm_plan)
+fresh_four_arm.port_side(port_a, DiagramSide.LEFT)
+```
+
+```{python}
+#| id: inspect-fresh-four-arm-intent
+fresh_four_arm.show()
+```
+
+No complete manual axis/order/wiring setup is needed for that single override.
+Its Port side is not reselected to avoid obstacles; other omitted fields follow
+the same stable rules used by `automatic()` and `layout=None`.
+
+```{python}
+#| id: render-partial-default-four-arm
+partial_default_diagram = four_arm_plan.render_schematic(
+    CircuitDiagramSpec(layout=fresh_four_arm)
+)
+```
+
+```{python}
+#| id: show-partial-default-four-arm
+partial_default_diagram.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![One explicit Port side with the remaining choices supplied by Default.](figures/11-four-arm-partial-default.svg){#fig-11-four-arm-partial-default .lightbox fig-alt="Four-arm circuit rendered from a partial composition with one explicit Port-side setting."}
+
+[Open the SVG](figures/11-four-arm-partial-default.svg).
+
+:::
+
+```{python}
+#| id: audit-partial-default-four-arm
+partial_default_diagram.audit.show()
 ```
 
 [Previous](10_use_custom_component.qmd) · [Next](12_model_n_trace_line.qmd)

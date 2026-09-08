@@ -15,8 +15,10 @@ batch identities are reopened only in the linked Parameter System target.
 The public assembly grammar, recursive inline ownership, its Plan-identity
 integration, and certified diagrams are reopened as a `CONVERGING` target.
 Implementation alignment remains pending, so the target examples are not yet
-executable. Their one normative authority is
-[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+executable. Common modeling belongs to the
+[CircuitPlan Assembly Contract](contracts/circuit-plan-assembly.qmd);
+composition and visual certification belong to the
+[diagram contract](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 :::
 
 ## Contract scope
@@ -181,7 +183,7 @@ factory registration.
 
 The target replaces flat node assembly with explicit authoring structure. The
 one detailed authority is the
-[structured-authoring grammar](contracts/automatic-semantic-circuit-diagram-layout.qmd#structured-authoring-grammar).
+[structured-authoring grammar](contracts/circuit-plan-assembly.qmd#structured-authoring-grammar).
 
 In summary:
 
@@ -200,7 +202,8 @@ In summary:
 Registration, terminal completeness, and structural use are distinct. Every
 ordinary two-terminal native body belongs to exactly one component-containing
 structure. A complete Composite occurrence or native multi-terminal body may
-instead remain one independent peer after every required pin is bound, or may
+instead remain one independent peer; required native pins stay bound, while
+Composite public pins may be partially or entirely externally open. A body may
 be used once in a structure when its terminal schema permits. `.between()`
 selects an ordered pair only for that one structural use; it is optional for an
 independent peer and never reduces the body's physical model.
@@ -502,8 +505,11 @@ a typed failure rather than falling back to a baseline.
 pin is a parent wiring endpoint. A `CoordinateRef` is an observation/analysis
 handle for `retain()`, Direct quantity selection, evaluation, and optimization;
 it cannot be wired or carry a logical Port. A composite author may expose the
-same internal bus once through each surface, but hidden children, parameters,
-and buses never become consumer API by inference:
+same internal bus through several differently named ordinary public pins and
+an explicit coordinate. Equivalent pins retain distinct boundary identities;
+they add no electrical node. Public Composite pins may remain partly or
+entirely externally open without changing native completeness requirements.
+Hidden children, parameters, and buses never become consumer API by inference:
 
 ```python
 resonator.pin("terminal")
@@ -956,8 +962,9 @@ incompatible collection of individually plausible pairwise coefficients.
 
 The Plan owns authoring and compiler-expanded inspection projections, but
 neither projection is another circuit definition. The target structure,
-automatic and handle-based layout, independent electrical/structural
-reconstruction, snapshot provenance, and code-free review packet belong to
+automatic and handle-based layout, independent visible electrical/ownership
+reconstruction, separately verified source rows, snapshot provenance, and
+code-free review packet belong to
 [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
 That authoring/identity/diagram scope is `CONVERGING`, with implementation
@@ -1009,7 +1016,7 @@ Plan seal or deterministic preflight fails before backend execution for:
 
 - any authoring-grammar, endpoint, ownership, component-consumption, exposure,
   Port, or structural-layout violation enumerated by the
-  [target fail-closed contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#authoring-diagram-failures);
+  [target fail-closed contract](contracts/circuit-plan-assembly.qmd#assembly-failures);
 - duplicate component, parameter, or Port IDs; duplicate pin/public-parameter
   names inside one component schema; or an unknown/foreign Library instance;
 - a bare physical number, foreign Pint registry, non-finite Quantity, or

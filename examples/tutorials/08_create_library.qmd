@@ -1,13 +1,15 @@
 ---
 title: "Chapter 8 — Start a reusable Library"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> Library composition is proposed; runtime implementation is paused.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 `Library` organizes reusable physical factories. This Chapter establishes only
 project-catalog preparation, not a reusable physical declaration or component.

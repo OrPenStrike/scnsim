@@ -1,14 +1,15 @@
 ---
 title: "Chapter 6 — Tune a physical parameter"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> This Chapter uses the inline subsystem’s public `ParameterRef`, never a
-> private capacitor.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 The first three lessons analyzed a fixed 110 fF / 5.8 nH circuit. Here the
 physical question changes: which actual capacitor setting best meets the named
@@ -231,6 +232,14 @@ winner_diagram = plan.render_schematic(
 )
 winner_diagram.show()
 ```
+
+::: {.content-visible when-format="html"}
+
+![Authoring diagram at the genuine optimization winner.](figures/06-optimized-winner.svg){#fig-06-optimized-winner .lightbox fig-alt="Resonator diagram using the winning parameter set returned by the declared optimization."}
+
+[Open the SVG](figures/06-optimized-winner.svg).
+
+:::
 
 ```{python}
 #| id: inspect-optimized-winner-audit

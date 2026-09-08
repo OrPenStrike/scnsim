@@ -45,6 +45,16 @@ calculation is recomputed. Exact target behavior belongs to the
 
 ## Keep the runtime dependency boundary explicit
 
+The reopened [assembly contract](../contracts/circuit-plan-assembly.qmd)
+separates three consumers: Parameter, Calculation, and ASCDLS. Shared immutable
+assembly, units, and physical values sit below them. Diagram public reexports
+and diagram-spec validation load diagram modules lazily without changing public
+names. Pure `_parameter_resolution.py` resolves a frozen snapshot and
+`ParameterSet`; `_physical_values.py` remains the single physical field
+validator. CircuitPlan convenience delegates and Runtime uses its own frozen
+snapshot directly. No numerical operation depends on rendering success, and
+compiled diagrams remain one-way evidence consumers.
+
 The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Matplotlib, and Schemdraw
 in Python. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
 JosephsonCircuits, and Julia standard libraries. The lockfile and committed

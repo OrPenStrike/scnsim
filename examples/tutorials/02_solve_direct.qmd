@@ -1,13 +1,15 @@
 ---
 title: "Chapter 2 — Ask for a Direct response"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> The current runtime does not implement this authoring grammar.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 Use the same fixed physical circuit from Lesson 1. This Chapter asks a new
 question: what Direct frequency response would its original Plan produce?
@@ -104,7 +106,7 @@ coordinate retained by later numerical lessons.
 
 ### Prepare, solve, and inspect a Direct response
 
-Construct the numerical request separately from its target-only execution.
+Construct the numerical request separately from its execution.
 
 ```{python}
 #| id: prepare-direct-response
@@ -137,6 +139,6 @@ direct.s.show(magnitude="db")
 ```
 
 `CircuitRun`, request, and response semantics are retained baseline behavior.
-The last two cells are target-only because this Plan uses the proposed grammar.
+The displayed source is not a stored execution record for the last two cells.
 
 [Previous](01_author_primitive.qmd) · [Next](03_evaluate_quantity.qmd)

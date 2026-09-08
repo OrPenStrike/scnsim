@@ -201,22 +201,22 @@ def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
         f"<style>{css}"
         f"{selector}{{box-sizing:border-box;color:var(--scnsim-fg);"
         f"background:var(--scnsim-bg);color-scheme:{color_scheme};"
-        "border:1px solid var(--scnsim-grid);font:13px system-ui,sans-serif}}"
+        "border:1px solid var(--scnsim-grid);font:13px system-ui,sans-serif}"
         f"{selector} .scnsim-viewer-toolbar{{display:flex;gap:.4rem;"
         "align-items:center;padding:.4rem;border-bottom:1px solid var(--scnsim-grid);"
-        "background:var(--scnsim-bg);position:sticky;top:0;z-index:2}}"
+        "background:var(--scnsim-bg);position:sticky;top:0;z-index:2}"
         f"{selector} button,{selector} a{{box-sizing:border-box;border:1px solid "
         "var(--scnsim-grid);border-radius:.25rem;padding:.25rem .5rem;"
         "font:inherit;color:var(--scnsim-fg);background:var(--scnsim-bg);"
-        "text-decoration:none;cursor:pointer}}"
+        "text-decoration:none;cursor:pointer}"
         f"{selector} button:hover,{selector} a:hover{{border-color:var(--scnsim-accent)}}"
         f"{selector} .scnsim-viewer-status{{margin-left:auto;color:var(--scnsim-secondary)}}"
         f"{selector} .scnsim-viewer-viewport{{overflow:auto;max-height:72vh;"
-        "overscroll-behavior:contain;cursor:grab;background:var(--scnsim-bg)}}"
+        "overscroll-behavior:contain;cursor:grab;background:var(--scnsim-bg)}"
         f"{selector} .scnsim-viewer-viewport.scnsim-dragging{{cursor:grabbing;user-select:none}}"
         f"{selector} .scnsim-viewer-canvas{{width:100%;min-width:1px}}"
         f"{selector} .scnsim-viewer-canvas>svg{{display:block;width:100%;"
-        "max-width:none;height:auto;background:var(--scnsim-bg)}}"
+        "max-width:none;height:auto;background:var(--scnsim-bg)}"
         "</style>"
         f'<div class="{class_name}" data-scnsim-svg-viewer>'
         '<div class="scnsim-viewer-toolbar" role="toolbar" '
@@ -224,6 +224,7 @@ def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
         '<button type="button" data-action="copy">Copy image</button>'
         '<button type="button" data-action="out" aria-label="Zoom out">−</button>'
         '<button type="button" data-action="in" aria-label="Zoom in">+</button>'
+        '<button type="button" data-action="fit">Fit</button>'
         '<button type="button" data-action="reset">Reset</button>'
         f'<a href="{source}" target="_blank" rel="noopener" '
         'download="scnsim-figure.svg">Open SVG</a>'
@@ -241,6 +242,14 @@ def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
         "let scale=1;let drag=null;"
         "const apply=()=>{canvas.style.width=(scale*100)+'%';"
         "status.textContent=Math.round(scale*100)+'%';};"
+        "const fit=()=>{const svg=canvas.querySelector('svg');"
+        "const box=svg&&svg.viewBox&&svg.viewBox.baseVal;"
+        "const width=box&&box.width?box.width:svg&&svg.clientWidth;"
+        "const height=box&&box.height?box.height:svg&&svg.clientHeight;"
+        "const availableWidth=viewport.clientWidth;const availableHeight=viewport.clientHeight;"
+        "if(!(width>0&&height>0&&availableWidth>0&&availableHeight>0))return;"
+        "scale=Math.min(1,availableHeight*width/(availableWidth*height));apply();"
+        "viewport.scrollTo(0,0);};"
         "const zoom=(factor)=>{const rect=viewport.getBoundingClientRect();"
         "const x=viewport.scrollLeft+rect.width/2;const y=viewport.scrollTop+rect.height/2;"
         "const old=scale;scale=Math.min(8,Math.max(.25,scale*factor));apply();"
@@ -249,6 +258,7 @@ def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
         "root.addEventListener('click',event=>{"
         "const action=event.target.dataset&&event.target.dataset.action;"
         "if(action==='in')zoom(1.25);else if(action==='out')zoom(.8);"
+        "else if(action==='fit')fit();"
         "else if(action==='reset'){scale=1;apply();viewport.scrollTo(0,0);}});"
         "viewport.addEventListener('wheel',event=>{if(!(event.ctrlKey||event.metaKey))return;"
         "event.preventDefault();zoom(event.deltaY<0?1.12:1/1.12);},{passive:false});"

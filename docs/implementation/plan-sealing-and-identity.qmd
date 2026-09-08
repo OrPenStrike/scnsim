@@ -20,7 +20,7 @@ on either sealed authoring graph raises `PlanSealedError`; SCNSim does not keep
 a hidden mutable copy. This paragraph describes the executable baseline:
 `net()` and callable `ground()` are not the current TARGET authoring spelling.
 
-The target [structured-authoring contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd#structured-authoring-grammar)
+The target [structured-authoring contract](../contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
 replaces that frozen mutator vocabulary with buses, structures, N-endpoint
 `link()`, and dedicated `ground_pins()`. It retains the same seal boundary:
 each operation validates before atomic commit, complete validation runs at
@@ -34,8 +34,12 @@ page does not claim those TARGET bytes are implemented.
 
 Complete validation distinguishes registration, terminal binding, and
 structural use. Ordinary two-terminal native bodies must belong to exactly one
-structure; a fully bound Composite occurrence or native multi-terminal body may
-remain an independent peer or be used once when its schema permits. The seal
+structure; a complete Composite occurrence or native multi-terminal body may
+remain an independent peer or be used once when its schema permits. Required
+native terminals remain bound; Composite public pins may be partly or entirely
+externally open. Equivalent differently named public pins retain distinct
+interface identities, and adding one changes Plan identity without adding a
+physical node. The seal
 records that choice rather than inferring it from connectivity or layout.
 
 The current Run supports any number of Refs, Specs, and ParameterSets against

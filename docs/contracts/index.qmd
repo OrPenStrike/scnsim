@@ -12,8 +12,9 @@ stabilization are not release claims.
 
 The public authoring grammar, structured Plan identity, certified diagrams,
 and independent Parameter System are reopened in documentation-first targets.
-[Structured Circuit Authoring and Certified Diagrams](automatic-semantic-circuit-diagram-layout.qmd)
-contract owns structure and diagrams; [Parameter System, Sweeps, and Bound
+[CircuitPlan Assembly](circuit-plan-assembly.qmd) owns the common model;
+[Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+owns composition and visual evidence; [Parameter System, Sweeps, and Bound
 Results](parameter-system.qmd) owns definitions, physical bindings, points,
 spaces, sweep Results, and optimization binding. Both remain `CONVERGING`;
 target runtime implementation is paused and the Tutorial examples are not
@@ -35,9 +36,11 @@ and resolve.
 - [Component Authoring Contract](../component-authoring.qmd) retains catalogs,
   physical component fields and public boundaries, RLGC, Josephson/SQUID,
   mutual coupling, and Direct/HB lowering semantics.
-- [Structured Circuit Authoring and Certified Diagrams](automatic-semantic-circuit-diagram-layout.qmd)
-  defines root/inline/reusable assembly, public boundaries, target Plan
-  identity, handle-based layout including named-tap presentation order,
+- [CircuitPlan Assembly](circuit-plan-assembly.qmd) defines root/inline/reusable
+  assembly, equivalent ordinary public pins, open boundaries, completeness,
+  and shared Plan identity for independent consumers.
+- [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+  defines handle-based layout including named-tap presentation order,
   independent audits, and code-free review.
 - [Parameter System, Sweeps, and Bound Results](parameter-system.qmd) defines
   independent input identities, physical Plan adoption, immutable points and

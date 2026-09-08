@@ -1,14 +1,15 @@
 ---
 title: "Chapter 4 — Define and bind physical parameters"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> This Chapter distinguishes an independent input definition, its physical Plan
-> binding, and a selected operation-time value.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 A tunable value starts as an independent, named input—not as a property of a
 subsystem or a component. It becomes part of a particular `CircuitPlan` only
@@ -156,6 +157,14 @@ selected_diagram = plan.render_schematic(
 )
 selected_diagram.show()
 ```
+
+::: {.content-visible when-format="html"}
+
+![The same Plan at the explicitly selected capacitance.](figures/04-selected-parameter.svg){#fig-04-selected-parameter .lightbox fig-alt="Authoring diagram of the resonator at the selected parameter point."}
+
+[Open the SVG](figures/04-selected-parameter.svg).
+
+:::
 
 ```{python}
 #| id: inspect-selected-parameter-audit

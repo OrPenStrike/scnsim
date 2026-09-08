@@ -62,6 +62,13 @@ numeric nesting-depth limit or truncating fallback.
 
 ## Seal the complete public and private graph
 
+The [assembly contract](../contracts/circuit-plan-assembly.qmd) permits several
+ordinary public pin IDs to map to the same intrinsic node. This applies to all
+Composite kinds, not named catalog exceptions. Their public classes may remain
+partly or entirely externally open; expansion preserves the complete intrinsic
+graph and never fabricates external bindings. Required native pin completeness
+and intrinsic short checks remain unchanged.
+
 The snapshot records the following exact data before Plan sealing:
 
 | Surface | Frozen content |

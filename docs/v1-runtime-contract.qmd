@@ -20,8 +20,10 @@ integration, and certified authoring/compiled diagrams are reopened as one
 `CONVERGING` target. This is not presentation-only: it changes how a future
 Plan explicitly declares structure while preserving the accepted physical and
 numerical meanings above. Implementation alignment remains pending, and the
-TARGET Tutorial cells are not yet executable. Its single authority
-is [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+TARGET Tutorial cells are not yet executable. Common modeling authority is
+the [CircuitPlan Assembly Contract](contracts/circuit-plan-assembly.qmd);
+composition and visual certification belong to the
+[diagram contract](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
 Independent parameter definitions, physical Plan binding, parameter spaces,
 sweep Results, optimization binding, and parameterized diagrams are another
@@ -116,7 +118,7 @@ SCNSim does not own:
 
 - consumer Design Targets, optimization Gates, or consumer application
   notebook source;
-- D3/IPF/NCUAS values, layouts, manifests, artifacts, or evidence;
+- private consumer values, layouts, manifests, artifacts, or evidence;
 - SCGSim layout/EM execution or OrPen PDK source;
 - JosephsonCircuits as a library;
 - quantization; or
@@ -183,11 +185,17 @@ receive the same typed SCNSim Results and exact receipt identities.
 `ReducedCircuitPlan`; a Schur-complement model is an analysis reference derived
 from the Plan, not a second circuit.
 
+Calculation and Parameter resolution consume the shared frozen assembly model
+without importing diagram modules or requiring a successful layout. Diagram
+state cannot mutate the Plan, parameter definitions, or numerical requests.
+An externally open Composite interface is legal assembly, not a promise of
+numerical solvability; required native terminals and physical checks remain.
+
 ### Component authoring supplies the Plan
 
 The [Component Authoring Contract](component-authoring.qmd) retains immutable
 built-in/custom Libraries and physical factory/lowering semantics. The
-[structured-authoring target](contracts/automatic-semantic-circuit-diagram-layout.qmd#structured-authoring-grammar)
+[structured-authoring target](contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
 owns the proposed public assembly grammar. Its shortest target route is:
 
 ```python
@@ -2333,8 +2341,8 @@ target product contract is
 It defines the target structured declarations, `CircuitDiagramSpec`, directly
 constructible `SchematicLayout`, recursive native expansion,
 `CircuitDiagramAudit`, Plan/compiler/expanded/presentation identities,
-independent electrical/structural reconstruction, provenance, and code-free
-review packet.
+independent visible electrical/ownership reconstruction, separately verified
+source rows, provenance, and code-free review packet.
 
 The layout target includes a pure-presentation `tap_order` mapping for complete
 permutations of explicitly named taps on an authored bus. It does not publish
@@ -2371,9 +2379,10 @@ or numerical Result.
 
 All structured grammar, automatic and handle-based local layout, native
 Subsystem/Composite expansion, Port and ground projection, certified digests,
-independent A/B reconstruction audits, provenance, and diagram failure
-behavior belong only to the linked contract. A current-runtime diagram is
-useful diagnostic output but is not a certified projection under that target.
+independent visible A/B reconstruction, separately verified source rows,
+provenance, and diagram failure behavior belong only to the linked contract. A
+current-runtime diagram is useful diagnostic output but is not a certified
+projection under that target.
 
 The target failure boundary has two explicit preflight stages. Invalid hints,
 unplaceable required marks, collisions, illegal obstacle crossings, broken
@@ -2430,11 +2439,12 @@ SCNSim fails closed for:
   workspace; or an attempt that would overwrite prior evidence;
 - any target authoring violation involving duplicate IDs, an ordinary
   two-terminal native body outside exactly one structure, a multiply consumed
-  body, an incomplete independent body, unbound pins, foreign/hidden endpoints,
+  body, an internally incomplete independent body, unbound required native pins,
+  foreign/hidden endpoints,
   invalid series/parallel/branch/N-link declarations, invalid `ground_pins()` use,
   public exposure, transitive same-scope bus conflicts, physical-terminal
   shorts, or root Port attachment, as enumerated by the
-  [structured fail-closed contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#authoring-diagram-failures);
+  [structured fail-closed contract](contracts/circuit-plan-assembly.qmd#assembly-failures);
 - a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
   conductor/reference identity, matrix shape/order/units, inexact symmetry,
   invalid Maxwell sign/row sum, failed C/L Cholesky, negative G/R minimum

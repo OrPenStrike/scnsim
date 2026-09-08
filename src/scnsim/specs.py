@@ -14,7 +14,7 @@ from enum import Enum
 from html import escape
 from math import isfinite
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pint import Quantity
@@ -23,7 +23,6 @@ from . import units
 from ._canonical import _identifier
 from ._scaffold import unavailable
 from .authoring import (
-    ComponentInstance,
     CoordinateRef,
     ElectricNodeRef,
     ParameterRef,
@@ -32,6 +31,9 @@ from .authoring import (
 from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec, SCNSimValidationError
 from .presentation import Theme, _require_theme
 from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_result
+
+if TYPE_CHECKING:
+    from ._diagram_spec import CircuitDiagramSpec
 
 
 Coordinate = str | ElectricNodeRef | CoordinateRef
@@ -44,75 +46,6 @@ class DiagramSide(str, Enum):
     RIGHT = "right"
     TOP = "top"
     BOTTOM = "bottom"
-
-
-@dataclass(frozen=True, slots=True)
-class SchematicPath:
-    """A relational hard constraint for an authoring-schematic route.
-
-    The Plan resolves ownership and electrical adjacency when the diagram is
-    rendered.  Keeping handles rather than strings prevents a layout hint from
-    becoming a second topology declaration.
-    """
-
-    waypoints: tuple[PortRef | ElectricNodeRef | ComponentInstance, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.waypoints, tuple):
-            raise TypeError("SchematicPath.waypoints must be a tuple")
-        if len(self.waypoints) < 3 or len(self.waypoints) % 2 == 0:
-            raise ValueError("SchematicPath requires odd node/component/node waypoints")
-
-
-@dataclass(frozen=True, slots=True)
-class SchematicGroup:
-    """Optional non-visual packing group for authoring component blocks."""
-
-    id: str
-    members: tuple[ComponentInstance, ...]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "id", _identifier(self.id, field="schematic group id"))
-        if not isinstance(self.members, tuple) or not self.members:
-            raise ValueError("SchematicGroup.members must be a nonempty tuple")
-        if len(set(self.members)) != len(self.members):
-            raise SCNSimValidationError(
-                "SchematicGroup.members cannot repeat a component",
-                stage="schematic_layout",
-            )
-
-
-@dataclass(frozen=True, slots=True)
-class SchematicLayout:
-    """Presentation-only relational layout hints for an authoring diagram."""
-
-    primary_paths: tuple[SchematicPath, ...] = ()
-    port_sides: Mapping[PortRef, DiagramSide] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
-    branch_order: Mapping[ElectricNodeRef, tuple[ComponentInstance, ...]] = field(
-        default_factory=lambda: MappingProxyType({})
-    )
-    groups: tuple[SchematicGroup, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.primary_paths, tuple) or not all(
-            isinstance(path, SchematicPath) for path in self.primary_paths
-        ):
-            raise TypeError("SchematicLayout.primary_paths must be a tuple of SchematicPath")
-        if not isinstance(self.groups, tuple) or not all(
-            isinstance(group, SchematicGroup) for group in self.groups
-        ):
-            raise TypeError("SchematicLayout.groups must be a tuple of SchematicGroup")
-        if len({group.id for group in self.groups}) != len(self.groups):
-            raise SCNSimValidationError(
-                "SchematicLayout group IDs must be unique",
-                stage="schematic_layout",
-            )
-        if not isinstance(self.port_sides, Mapping) or not isinstance(self.branch_order, Mapping):
-            raise TypeError("SchematicLayout maps must be Mapping values")
-        object.__setattr__(self, "port_sides", MappingProxyType(dict(self.port_sides)))
-        object.__setattr__(self, "branch_order", MappingProxyType(dict(self.branch_order)))
 
 
 def _coordinate_id(value: Coordinate) -> str:
@@ -132,10 +65,10 @@ def _parameter_key(value: ParameterRef) -> tuple[str, str]:
             "optimization parameters must be ParameterRef values",
             stage="spec_validation",
         )
-    component_id = getattr(value, "component_id", None)
+    definitions_id = getattr(value, "definitions_id", None)
     parameter_id = getattr(value, "id", None)
-    if isinstance(component_id, str) and isinstance(parameter_id, str):
-        return component_id, parameter_id
+    if isinstance(definitions_id, str) and isinstance(parameter_id, str):
+        return definitions_id, parameter_id
     raise InvalidOptimizationSpec(
         "optimization parameters must be ParameterRef values",
         stage="spec_validation",
@@ -1117,33 +1050,12 @@ def _canonical_value(value: object) -> object:
     return record() if callable(record) else value
 
 
-@dataclass(frozen=True, slots=True)
-class CircuitDiagramSpec:
-    representation: Literal["authoring", "compiled"] = "authoring"
-    theme: Theme = Theme.AUTO
-    show_parameter_values: bool = False
-    layout: SchematicLayout | None = None
+def __getattr__(name: str) -> object:
+    """Load diagram-only declarations only for explicit diagram consumers."""
 
-    def __init__(
-        self,
-        *,
-        representation: Literal["authoring", "compiled"] = "authoring",
-        theme: Theme = Theme.AUTO,
-        show_parameter_values: bool = False,
-        layout: SchematicLayout | None = None,
-    ) -> None:
-        object.__setattr__(self, "representation", representation)
-        object.__setattr__(self, "theme", _require_theme(theme))
-        object.__setattr__(self, "show_parameter_values", show_parameter_values)
-        if layout is not None and not isinstance(layout, SchematicLayout):
-            raise TypeError("layout must be a SchematicLayout or None")
-        object.__setattr__(self, "layout", layout)
-        self.__post_init__()
+    if name != "CircuitDiagramSpec":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from ._diagram_spec import CircuitDiagramSpec
 
-    def __post_init__(self) -> None:
-        if self.representation not in {"authoring", "compiled"}:
-            raise ValueError("invalid diagram representation")
-        if self.representation == "compiled" and self.layout is not None:
-            raise ValueError("schematic layout hints apply only to authoring diagrams")
-        if not isinstance(self.show_parameter_values, bool):
-            raise TypeError("show_parameter_values must be bool")
+    globals()[name] = CircuitDiagramSpec
+    return CircuitDiagramSpec

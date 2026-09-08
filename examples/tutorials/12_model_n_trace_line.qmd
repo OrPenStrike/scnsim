@@ -1,14 +1,15 @@
 ---
 title: "Chapter 12 — Model ordered RLGC lines"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> RLGC physical and numerical meanings remain settled; structured authoring
-> and ASCDLS implementation are the paused CONVERGING surface.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 A coupled feedline needs conductor order and matrix-valued per-length data,
 not a scalar wire approximation. This Chapter authors that physical line before
@@ -28,10 +29,12 @@ from scnsim import (
     CircuitDiagramSpec,
     CircuitPlan,
     RLGC,
+    SCNSimValidationError,
     SchematicLayout,
     components,
     units as u,
 )
+from IPython.display import display
 
 rlgc = RLGC(
     conductors=("readout", "filter"),
@@ -158,33 +161,54 @@ authoring = plan.render_schematic(
 authoring.show()
 ```
 
+::: {.content-visible when-format="html"}
+
+![The complete ordered two-conductor line as one structured body.](figures/12-n-trace-authoring.svg){#fig-12-n-trace-authoring .lightbox fig-alt="Two-conductor transmission-line authoring diagram with its ordered public terminals."}
+
+[Open the SVG](figures/12-n-trace-authoring.svg).
+
+:::
+
 The authoring drawing shows the declared body and bindings. Render the compiled
 expansion separately so its finite-section detail is not mistaken for authoring.
 
 ```{python}
 #| id: render-n-trace-compiled
-expanded = plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="compiled",
-        show_parameter_values=True,
+expanded = None
+try:
+    expanded = plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="compiled",
+            show_parameter_values=True,
+        )
     )
-)
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({
+        "compiled schematic layout unavailable": str(error),
+        "stage": error.stage,
+        "evidence": dict(error.evidence),
+    })
 ```
 
-`expanded` is the compiled presentation; the next cell displays its picture
-and audit table together for topology and matrix evidence.
+`expanded` is the compiled presentation when the fixed layout is available.
+An unavailable compiled layout reports only its `schematic_layout` failure;
+other errors still propagate and the later authoring cells remain independent.
 
 ```{python}
 #| id: show-n-trace-compiled
-expanded.show()
+if expanded is not None:
+    display(expanded.show())
 ```
 
 ```{python}
 #| id: inspect-n-trace-compiled
-expanded.audit.show()
+if expanded is not None:
+    display(expanded.audit.show())
 ```
 
-The compiled picture shows complete topology, sections, and conductor order.
+When available, the compiled picture shows complete topology, sections, and conductor order.
 Its audit table carries matrix, provenance, and exact-zero evidence.
 
 ### Bind an independent complete N=2 body
@@ -263,6 +287,14 @@ independent_authoring = independent_plan.render_schematic(
 #| id: show-independent-n-trace-authoring
 independent_authoring.show()
 ```
+
+::: {.content-visible when-format="html"}
+
+![The same complete line model authored as an independent body.](figures/12-independent-n-trace-authoring.svg){#fig-12-independent-n-trace-authoring .lightbox fig-alt="Independently bound two-conductor line retaining every public terminal."}
+
+[Open the SVG](figures/12-independent-n-trace-authoring.svg).
+
+:::
 
 ```{python}
 #| id: inspect-independent-n-trace-authoring-audit
@@ -385,16 +417,36 @@ TapRef or changes series order.
 
 ```{python}
 #| id: render-tapped-feedline-automatic
-automatic_feedline = feedline_plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",
-        show_parameter_values=True,
+automatic_feedline = None
+automatic_feedline_error = None
+try:
+    automatic_feedline = feedline_plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="authoring",
+            show_parameter_values=True,
+        )
     )
-)
-automatic_feedline.show()
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    automatic_feedline_error = error
+    display({
+        "authoring schematic layout unavailable": str(error),
+        "stage": error.stage,
+    })
+if automatic_feedline is not None:
+    display(automatic_feedline.show())
 ```
 
-`automatic_feedline` is the unhinted drawing of the complete standalone Plan.
+::: {.callout-note title="Current authoring layout limitation"}
+This exact Default checkpoint currently reports `schematic_layout`:
+`fixed connector intersects occupied geometry`. No successful SVG or audit is
+published for this checkpoint. This is a presentation limitation, not evidence
+that the declared electrical circuit is invalid.
+:::
+
+When available, `automatic_feedline` is the unhinted drawing of the complete
+standalone Plan.
 The next cell uses every explicit tap on `tap_bus` once to describe only their
 geometric progression along that bus.
 
@@ -409,15 +461,33 @@ tap_layout = SchematicLayout(
         ),
     }
 )
-hinted_feedline = feedline_plan.render_schematic(
-    CircuitDiagramSpec(
-        representation="authoring",
-        show_parameter_values=True,
-        layout=tap_layout,
+hinted_feedline = None
+hinted_feedline_error = None
+try:
+    hinted_feedline = feedline_plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="authoring",
+            show_parameter_values=True,
+            layout=tap_layout,
+        )
     )
-)
-hinted_feedline.show()
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    hinted_feedline_error = error
+    display({
+        "hinted authoring schematic layout unavailable": str(error),
+        "stage": error.stage,
+    })
+if hinted_feedline is not None:
+    display(hinted_feedline.show())
 ```
+
+::: {.callout-note title="The explicit tap-order checkpoint is also unavailable"}
+This exact hinted recipe currently reports the same `schematic_layout` failure:
+`fixed connector intersects occupied geometry`. The hint and circuit remain
+unchanged; neither a Default image nor another circuit is substituted here.
+:::
 
 `tap_order` is complete for the named taps of this bus. It controls graphical
 contact order only; it does not infer physical flow from source order or alter
@@ -529,19 +599,31 @@ else:
 
 ```{python}
 #| id: render-selected-whole-rlgc-compiled
-selected_compiled = parameterized_line_plan.render_schematic(
-    CircuitDiagramSpec(representation="compiled"),
-    parameters=rlgc_point.parameters,
-)
-selected_compiled.show()
+selected_compiled = None
+try:
+    selected_compiled = parameterized_line_plan.render_schematic(
+        CircuitDiagramSpec(representation="compiled"),
+        parameters=rlgc_point.parameters,
+    )
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({
+        "selected compiled schematic layout unavailable": str(error),
+        "stage": error.stage,
+        "evidence": dict(error.evidence),
+    })
+if selected_compiled is not None:
+    display(selected_compiled.show())
 ```
 
 ```{python}
 #| id: inspect-selected-whole-rlgc-audit
-selected_compiled.audit.show()
+if selected_compiled is not None:
+    display(selected_compiled.audit.show())
 ```
 
-The selected compiled audit shows the exact structured input and expanded line
+When available, the selected compiled audit shows the exact structured input and expanded line
 at that stored Direct point. Chapters 15–16 introduce supported HB parameter
 spaces after their pump axes, drives, cases, and truncation are established.
 

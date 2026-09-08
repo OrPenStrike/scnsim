@@ -1,13 +1,15 @@
 ---
 title: "Chapter 3 — Select a coordinate and evaluate"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> Numerical method cells are retained as target-only requests.
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
 The same fixed resonator model now supports evaluation rather than a full
 frequency response: what is a named quantity at its public retained resonator

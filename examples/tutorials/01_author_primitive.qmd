@@ -1,14 +1,15 @@
 ---
 title: "Chapter 1 — Model a coupled grounded resonator"
-subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-> **TARGET API / CONVERGING — not executable on the current runtime.**
-> This Chapter authors a proposed circuit model and reviews its proposed diagram;
-> it does not run a simulation.
+> **Source candidate / CONVERGING.** Authoring figures are genuine exports
+> bound to the corresponding source checkpoints, not evidence that every cell
+> or numerical request has executed. The website runs no kernels or solvers;
+> the generated Notebook remains zero-output.
 
 This Chapter begins with the circuit diagram SCNSim will help you produce, then
 teaches how to declare and render it. Its outcome is one fully assembled Plan
@@ -33,8 +34,9 @@ analysis. This author chooses to group the capacitor and inductor into a
 resonator subsystem so it is one understandable part of the complete circuit.
 Lesson 1.2 completes the circuit, and Lesson 1.3 reviews its authored diagram.
 
-*Expected/design-intent sketch only—not current ASCDLS output or certified
-evidence; any eventual real figure must derive from this same complete Plan.*
+This text sketch summarizes the intended connections. The
+[diagram review lesson](#ch1-diagram-review) later in this Chapter
+shows the actual ASCDLS output from the completed Plan.
 
 ```text
 50 ohm terminated Port ── signal boundary ── 6 fF ── resonator terminal
@@ -209,6 +211,15 @@ authored components, wiring, hierarchy, public terminal, and port facts.
 Automatic geometry is software work; it cannot infer unwritten engineering
 intent or select an analytical View.
 
+With no layout hint, the target is a clean conventional schematic: a hollow
+Port endpoint reaches a short signal lead and filled T, with the Port-owned
+50-ohm load descending to its local ground. A horizontal 6 fF coupler leads to
+a pale-blue titled resonator region. Its 110 fF capacitor and 5.8 nH inductor
+stand vertically side-by-side on common top and bottom buses with a local
+ground. The Port and resonator use separate local ground glyphs for the same
+canonical reference. This describes the intended native presentation, not a
+hand image or current-runtime output.
+
 ```{python}
 #| id: render-inline-resonator-target
 from scnsim import CircuitDiagramSpec, Theme
@@ -226,10 +237,22 @@ diagram = plan.render_schematic(
 The next cells review the picture, its separate Plan-projection audit, and the
 few boundary handles that were intentionally authored.
 
+The learner-facing authoring picture uses native symbols and conventional
+wiring only: it has no `S:`, `P:`, `LINK:`, or `REGION:` debug marks and no
+routing guides.
+
 ```{python}
 #| id: show-inline-resonator-drawing
 diagram.show()
 ```
+
+::: {.content-visible when-format="html"}
+
+![Baseline grounded LC with its coupling capacitor and terminated Port.](figures/01-inline-resonator.svg){#fig-01-inline-resonator .lightbox fig-alt="Grounded parallel capacitor and inductor connected through a coupling capacitor to a terminated Port."}
+
+[Open the SVG](figures/01-inline-resonator.svg).
+
+:::
 
 ```{python}
 #| id: review-inline-resonator-target
@@ -251,15 +274,18 @@ display(
 ```
 
 Read the diagram in three layers. **Audit A** independently reconstructs the
-electrical connectivity from the drawing and compares it with the Plan/model.
-**Audit B** independently reconstructs subsystem ownership, assembly, and
-terminal semantics from the drawing and compares them with authored structure.
-**Human review C** asks whether this is the intended circuit. The visible
-labelled region boundary/header witnesses inline ownership; color is only a
-presentation aid. This render call omits `parameters`, so its shown values are
-Plan baselines, not a selected parameter override, solve, or View. The
-[selected-point Chapter](04_define_parameters.qmd#ch4-point) shows how a diagram can use
-an explicit point. Provenance binds the Plan, connectivity, and semantic
+visible bodies, terminal incidence, wires, junctions, local grounds, Port
+shapes, physical coupling, and enabled displayed effective values. **Audit B**
+independently reconstructs visible regions, headers, containment, leaf and Port
+ownership, and cross-boundary electrical incidence. **Human review C** asks
+whether this is the intended circuit. The visible labelled region boundary/header
+witnesses inline ownership; color is only a presentation aid. Full
+series/parallel/link, bus/tap, exposure, and parameter provenance remain in a
+separate verified source table; neither audit reconstructs them from the image.
+This render call omits `parameters`, so its shown values are Plan baselines, not
+a selected parameter override, solve, or View. The [selected-point
+Chapter](04_define_parameters.qmd#ch4-point) shows how a diagram can use an
+explicit point. Provenance binds the Plan, connectivity, and semantic
 declaration identities; it does not certify intended circuit C or an analysis
 request.
 
