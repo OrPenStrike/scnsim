@@ -200,8 +200,25 @@ class RLGC:
         extraction_frequency: Quantity | None = None,
         source: Mapping[str, object] | None = None,
     ) -> None:
+        # The public physical value retains its typed authoring failures even
+        # though parameter specifications share the basis validation below.
+        if isinstance(conductors, (str, bytes)) or not isinstance(conductors, Sequence):
+            raise TypeError("conductors must be a nonempty sequence of identifiers")
+        names = tuple(identifier(name, field="conductor") for name in conductors)
+        if not names:
+            raise ValueError("RLGC requires at least one conductor")
+        if len(set(names)) != len(names):
+            raise SCNSimValidationError(
+                "RLGC conductor names must be unique", stage="authoring"
+            )
+        reference = identifier(reference_conductor, field="reference_conductor")
+        if reference in names:
+            raise SCNSimValidationError(
+                "reference_conductor cannot occur in the RLGC conductor basis",
+                stage="authoring",
+            )
         spec = RLGCParameterSpec(
-            conductors=tuple(conductors), reference_conductor=reference_conductor
+            conductors=names, reference_conductor=reference
         )
         n = len(spec.conductors)
         matrices = (

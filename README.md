@@ -106,6 +106,23 @@ contracts still cover Direct, HB, optimization, views, exact resolution, and
 reports; this documentation rewrite does not change those meanings or add HB
 optimization, interpolation, release delivery, or a SCQGate handoff.
 
+## Candidate CI scope
+
+While structured authoring and parameters converge, CI uses the current public
+assembly API for portable-wheel identity and a small Direct/pump-off HB/resolve
+smoke. Package, runtime preparation, Notebook parity, source-bound figure and
+static-site checks remain active. Existing public RLGC rejection and standalone
+HB failure-classifier regressions run unchanged and must pass.
+
+The other retained Full V1 tests depend on the superseded `net()` assembly,
+implicit parameters, or private snapshot records. They remain preserved as
+historical diagnostics, not a claim of current full-suite coverage. Their
+downstream numerical and integrity assertions are not invalidated by a broken
+fixture; migrating those tests awaits acceptance of the replacement contracts.
+The obsolete assertion rejecting differently named public pins on the same
+node has been removed; the remaining checks have not been rewritten.
+Candidate CI success is neither full V1 stabilization nor Human acceptance.
+
 ## Read the documentation
 
 - [Overview](README.md) — the model-first workflow, product boundary, status,
