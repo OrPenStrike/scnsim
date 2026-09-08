@@ -1,0 +1,452 @@
+---
+title: "Parameter System, Sweeps, and Bound Results"
+subtitle: "TARGET API · CONVERGING · implementation alignment pending"
+---
+
+::: {.callout-warning}
+## Documentation target, not implemented behavior
+
+This page is the sole target authority for SCNSim parameter definitions,
+physical Plan binding, operation-time points and spaces, sweep Results,
+optimization binding, and parameterized diagrams. The target is
+`CONVERGING`, is not executable on the current runtime, and is not
+Human-accepted or integrated. Accepted physical models, numerical algorithms,
+Views, quantities, and evidence rules remain unchanged unless this page
+explicitly reopens their parameter identity or batching boundary.
+:::
+
+## Ownership model {#parameter-ownership-model}
+
+Five owners remain separate:
+
+| Owner | Owns |
+|---|---|
+| `ParameterDefinitions` | independent names, schemas, and immutable baseline values |
+| `CircuitPlan` | the exact definition-and-consumer closure reached through registered physical fields |
+| `ParameterSet` or `ParameterSpace` | one selected point or an ordered collection of selected points |
+| calculation request | one Plan, one View, one Spec, and the operation to perform |
+| Result and receipt | the effective point, request identity, evidence, outcome, and stored artifacts |
+
+There is no mutable global current value, implicit Plan registry, expression
+engine, GUI authoring state, or hidden batch service. ASCDLS projects a Plan at
+one explicit point; it never chooses a View or executes analysis.
+
+## Independent definitions and immutable refs {#independent-parameter-definitions}
+
+The target public declarations are:
+
+```text
+ParameterValue := ScalarPintQuantity | RLGC
+ParameterSpec(*, unit: Unit) -> ParameterSpec
+RLGCParameterSpec(
+    *, conductors: tuple[str, ...], reference_conductor: str,
+) -> RLGCParameterSpec
+ParameterDefinitions(*, id: str) -> ParameterDefinitions
+ParameterDefinitions.parameter(
+    *, id: str, baseline: ParameterValue,
+    spec: ParameterSpec | RLGCParameterSpec,
+) -> ParameterRef
+ParameterRef.show() -> HtmlPresentation
+ParameterDefinitions.show() -> HtmlPresentation
+```
+
+`ScalarPintQuantity` is contract notation for a scalar `pint.Quantity` that
+passes the existing dimensional, unit, and finite-value validation. It is not
+a new importable wrapper class.
+
+A `ParameterRef` identity key is exactly its definitions-collection ID and
+local parameter ID. Exact schema and canonical baseline-definition agreement
+are compatibility facts for that key, not extra identity fields that permit
+conflicting definitions to coexist. Its identity is not a Python address,
+component occurrence, child path, or display label. One collection may
+accumulate definitions, but an existing definition cannot be rebound, mutated,
+or silently overwritten.
+
+`ParameterSpec` validates one scalar Quantity's unit and dimensionality. It
+does not own optimization bounds, a target, a Gate, or mutability.
+`RLGCParameterSpec` validates one complete fixed-basis RLGC value: the declared
+non-reference conductor order and reference conductor determine the matrix
+shape; R/L/G/C retain their existing per-length dimensions. It does not own
+matrices, extraction provenance, `n_sections`, or optimizer bounds.
+
+`show()` on a ref or definitions collection displays that independent
+definition only. It cannot claim a global list of consuming Plans or private
+children.
+
+## Physical fields bind refs to a Plan {#physical-parameter-binding}
+
+Creating a definition does not assign it to a Plan. A Plan adopts a ref only
+when both conditions hold:
+
+1. a compatible physical factory field receives that ref; and
+2. the resulting component is registered in the root Plan or one of its owned
+   inline or reusable component scopes.
+
+For example, `components.capacitor(..., capacitance=capacitance_ref)` creates
+the physical consumer. Registering that capacitor in an owned subsystem makes
+the binding part of the containing Plan. `ParameterSet` never registers a ref,
+and there is no `CircuitPlan(parameters=...)` or scope-level target
+`parameter(...)` declaration.
+
+The Plan captures only the transitive closure of consumed definitions and
+physical-field bindings. Adding an unused definition later cannot change its
+snapshot. A ref may intentionally feed several fields or several Plans; every
+Plan records only its own consumers. Equal-valued distinct refs remain
+independent. A literal remains fixed and creates no ref automatically.
+
+Plan-specific inspection, including fan-out, appears in the exact diagram
+audit or an existing Plan/Run explanation bound to that Plan. Evidence names
+the input identity, consuming component occurrence, physical field, baseline,
+schema, and any accepted scalar `AffineMap`.
+
+Unknown or unconsumed refs, incompatible schema or units, conflicting
+definitions, unsupported physical fields, and bindings that become nonphysical
+after mapping fail before execution. No ref is ignored or rebound by value.
+
+## Reusable component boundary {#reusable-parameter-boundary}
+
+A Library factory accepts compatible literals or `ParameterRef`s at its
+declared inputs. Private physical fields consume them within the
+`CompositePlan`. The factory may expose an already-bound ref:
+
+```text
+CompositePlan.expose_parameter(
+    *, id: str, parameter: ParameterRef,
+) -> ParameterRef
+ComponentInstance.parameter(name: str) -> ParameterRef
+```
+
+The lookup returns the original public ref. It does not create a definition,
+derive identity from the component path, or expose a hidden child. Literal-only
+inputs have no public ref to retrieve.
+
+One public ref may deliberately fan out to several fields. Existing
+`AffineMap` support remains scalar-only and preserves its accepted support and
+request-local extrapolation rules. Shared aliases of one ref cannot be treated
+as independent optimization variables. Arbitrary Python callbacks,
+expressions, and implicit interpolation are not parameter bindings.
+
+## One immutable point {#parameter-set}
+
+```text
+ParameterSet(
+    values: Mapping[ParameterRef, ParameterValue] | None = None,
+    *, allow_extrapolation: tuple[ParameterRef, ...] = (),
+) -> ParameterSet
+```
+
+A `ParameterSet` represents one point. At an operation boundary, omitted refs
+consumed by the Plan use their captured baselines, producing one complete
+effective ParameterSet. The caller's object and incoming mutable containers are
+defensively copied and frozen.
+
+A scalar ref accepts one compatible finite scalar Quantity, not an array.
+Structured refs accept one compatible complete structured value. Unknown,
+unconsumed, foreign, incompatible, non-finite, or multiply conflicting values
+fail closed. Extrapolation authorization remains request-local and cannot be
+inherited by a later request.
+
+The effective point changes physical values, not authored pins, conductor
+basis or order, reference conductor, section count, ownership, or topology.
+
+## Ordered parameter spaces {#parameter-space}
+
+```text
+ParameterSpace.grid(
+    *, axes: Mapping[ParameterRef, ParameterAxisValues],
+    fixed: ParameterSet = ParameterSet(),
+) -> ParameterSpace
+ParameterSpace.points(
+    points: Sequence[ParameterSet],
+) -> ParameterSpace
+```
+
+`ParameterAxisValues` means a one-dimensional Quantity array or a finite
+sequence of compatible scalar Quantities or complete `RLGC` values. The ref's
+schema selects the scalar or structured form; one axis cannot mix them.
+
+`grid()` forms a Cartesian product. Axes retain author order and iterate as
+ordered nested axes: the first declared axis is outermost and the last declared
+axis is fastest. Every axis is nonempty and one-dimensional. Scalar axes may use
+Quantity arrays or sequences of compatible quantities. Structured axes use
+sequences of complete compatible values. `fixed` and `axes` must be disjoint.
+
+`points()` preserves the supplied ordinal order and duplicate positions. It is
+not a Cartesian product. Both constructors freeze their inputs. Neither form
+changes a Plan, creates a parameter definition, or attaches itself to one
+Plan.
+
+Each request that uses a space independently binds one Plan, one selected View,
+and one calculation Spec and revalidates that Plan's consumption and definition
+compatibility. The same immutable space may therefore be reused by another
+compatible Plan request. Full effective values are captured at every point.
+Frequency samples, Direct matrix channels, HB cases/modes, and Result array axes
+remain calculation dimensions rather than parameter axes.
+
+## Operations and exact resolution {#parameterized-operations}
+
+The target extends the corresponding supported operations and exact resolution
+with one keyword. `SolveSpec`, `EvaluationSpec`, and their single-point Result
+unions are the existing operation-specific types in the Runtime Contract, not
+new constructible classes:
+
+```text
+CircuitRun.solve(
+    ref: NetworkViewRef, spec: SolveSpec,
+    *, parameters: ParameterSet | ParameterSpace | None = None,
+) -> SolveResult | ParameterSweepResult
+CircuitRun.evaluate(
+    ref: NetworkViewRef, spec: EvaluationSpec,
+    *, parameters: ParameterSet | ParameterSpace | None = None,
+) -> EvaluationResult | ParameterSweepResult
+CircuitRun.resolve(
+    ref: NetworkViewRef, spec: SolveSpec | EvaluationSpec,
+    *, parameters: ParameterSet | ParameterSpace | None = None,
+) -> SolveResult | EvaluationResult | ParameterSweepResult
+CircuitRun.optimize(
+    ref: NetworkViewRef, spec: OptimizationSpec,
+    *, parameters: ParameterSet | None = None,
+) -> OptimizationResult
+```
+
+`None` and `ParameterSet` return the operation's ordinary typed single-point
+Result. Supplying a `ParameterSpace` always returns
+`ParameterSweepResult`, including for a one-point space. The request identity
+binds the exact Plan, View, Spec, operation, parameter-space form and order,
+effective points, runtime, and dependency identities.
+
+One sweep or optimization request executes its points in one Julia process.
+SCNSim may reuse compatible topology/index preparation and type
+specializations. It must rebind values and recompute every affected native
+assembly, factorization, transform weight, and reduction at every point. It may
+not reuse a nominal reduced matrix, create per-value generated types, or start
+one Julia process per point.
+
+`resolve(..., parameters=space)` reconstructs the same request and verifies the
+stored batch. It never solves, retries, searches for a latest result, changes
+point order, or substitutes another space. Lazy point access and chunked
+artifacts avoid eager materialization without changing identity.
+
+## Sweep Result and point outcomes {#parameter-sweep-result}
+
+The public read-only surface is:
+
+```text
+ParameterSweepResult.points -> ParameterPointAccessor
+ParameterSweepResult.show() -> HtmlPresentation
+ParameterSweepResult.select(
+    *, parameters: ParameterSet,
+) -> ParameterSweepSelection
+ParameterSweepResult.collect(
+    *, quantity: QuantitySelector,
+) -> ParameterField
+ParameterSweepSelection.show() -> HtmlPresentation
+ParameterSweepSelection.collect(
+    *, quantity: QuantitySelector,
+) -> ParameterField
+ParameterSweepSelection.points -> Sequence[ParameterPointOutcome]
+ParameterField.show(
+    *, x: ParameterRef, y: ParameterRef | None = None,
+) -> matplotlib.figure.Figure
+```
+
+`ParameterPointAccessor` is a read-only lazy accessor with deterministic
+iteration and length. Grid points support their Cartesian multi-index, such
+as `points[2, 0]`; one integer is sufficient for a one-axis grid. Listed
+points support their ordinal integer index. A selection's read-only lazy
+sequence retains matching source-enumeration order.
+
+Each immutable `ParameterPointOutcome` exposes:
+
+- `parameters: ParameterSet`, the complete effective point;
+- `source_index: int | tuple[int, ...]`;
+- `succeeded: bool`;
+- `result`, discriminated on success as the operation's existing
+  `DirectSolveResult`, `HBBatchResult`, `DiagonalRootResult`,
+  `DirectQuantityResult`, or `OperatorResult`; and
+- `failure`, discriminated on numerical non-success as the preserved typed
+  point failure.
+
+Its derived `ParameterPointIdentity` binds exactly the batch
+`ResultIdentity`, `source_index`, and `parameters_sha256`. The ordinary typed
+point result carries this derived identity rather than claiming an independent
+`ResultIdentity`. These accessor and identity types are not user-constructible
+receipt or Result APIs; standalone operation Results retain their existing
+`ResultIdentity`.
+
+Reading success data from a failed point raises that preserved failure. It does
+not return zero, NaN-as-success, a partial fake Result, or data from another
+point. HB case outcomes remain nested inside the point's ordinary HB Result and
+do not replace the outer point status. Every point Result remains a derived
+view of the one batch receipt and exact point identity; it is not assigned a
+fabricated independent attempt or receipt.
+
+`select()` treats supplied entries as exact canonical-unit filters; omitted
+refs are wildcards, not baseline defaults. It returns an immutable read-only
+view of all exact matches. Its lazy ordered `points` preserve each outcome's
+original source index, batch point identity, and duplicate position; selection
+ordinals do not replace those identities. Empty matches produce an empty
+selection and table, never a nearest or baseline fallback.
+
+`collect()` accepts an existing typed `QuantitySelector`, never a string or
+callback. Parent-sweep and selection collection use the same rule. A selector
+absent from the request's Spec or Result family fails without execution. A
+quantity that was requested but is missing at a numerically failed point
+instead produces a masked entry linked to that preserved point failure. The
+field retains units, original parameter-axis order and sample positions,
+source indices, batch and point identities, and repeats.
+
+A complete Cartesian slice may be shown as a one-axis curve or labeled
+two-axis grid after every other varying parameter axis has been fixed by exact
+selection. Repeated parameter values remain distinct sample cells rather than
+interpolation intervals. A listed, scattered, empty, or incomplete slice stays
+an indexed point collection; it is not reshaped, averaged, or interpolated.
+For `ParameterField.show()`, leaving a non-displayed varying parameter axis
+ambiguous, requesting this minimal plot surface for a non-scalar quantity, or
+having no selected samples raises `ValueError`. Wrong argument types raise
+`TypeError`. Frequency, channel, and HB axes cannot be implicitly dropped.
+`HtmlPresentation` and the Matplotlib `Figure` are the existing real
+presentation surfaces; displaying them never starts analysis.
+
+An exact fixed-axis workflow is therefore:
+
+```python
+selected = sweep.select(
+    parameters=ParameterSet({capacitance: 110.0 * u.fF})
+)
+selected.show()
+line = selected.collect(quantity=root_spec.frequency)
+line.show(x=inductance)
+```
+
+The selection keeps the original point identities; collecting from it neither
+renumbers the points nor creates a receipt. Showing an empty collected
+selection may report that no samples were selected; it cannot fabricate a
+curve or numerical value.
+
+## Failure boundary {#parameter-system-failures}
+
+Wrong Python argument/container types raise `TypeError`. Well-typed but invalid
+definitions, refs, units, schemas, shapes, consumption, Plan compatibility,
+axis overlap, empty axes or point lists, duplicate axis identities, or
+unsupported operation combinations raise the existing validation family before
+execution.
+
+Expected numerical non-success is retained at its exact sweep point while
+other points may complete. If shared preparation encounters an expected
+baseline-root numerical failure, that failure is retained at every dependent
+sweep point; sharing the preparation does not reclassify it as a process or
+protocol failure. Optimization retains its existing stricter boundary: failure
+while evaluating its mandatory baseline fails the whole optimization request.
+A malformed protocol, process failure, corrupt batch, receipt or artifact
+mismatch, stale request, or integrity violation aborts or rejects the whole
+request rather than fabricating per-point numerical failures. Nothing falls
+back to a baseline, another Plan, an independent root, or a nearest stored
+request.
+
+## Optimization binding {#parameter-optimization-binding}
+
+`OptimizationVariable` continues to identify one scalar ref, finite physical
+bounds, and its accepted transform. Bounds are not inferred from grid extrema,
+the `ParameterSpec`, or the baseline. A parameter space is not an implicit set
+of optimization requests.
+
+Supported optimization accepts `parameters=ParameterSet(...)` for non-active
+fixed refs. Active-variable and fixed-ref overlap is rejected; omitted
+non-active consumed refs use the Plan baseline. Existing active initial value,
+baseline root-continuation, objective, scaling, seed, population, candidate
+failure, and extrapolation semantics remain owned by the Runtime Contract.
+
+Every candidate and winner binds a complete effective ParameterSet. A caller
+may explicitly pass the winner to a later calculation or parameterized diagram
+without mutating the Plan baseline. No optimization score, plot, or diagram is
+scientific acceptance or a Gate.
+
+## Parameterized diagrams {#parameterized-diagrams}
+
+```text
+CircuitPlan.render_schematic(
+    spec: CircuitDiagramSpec = CircuitDiagramSpec(),
+    *, parameters: ParameterSet | None = None,
+) -> CircuitDiagramResult
+```
+
+Rendering defaults to captured baselines and rejects `ParameterSpace`. The
+same explicit point drives native values, compiled expansion, labels, expected
+evidence, and independent observed A/B audit. The audit displays baseline
+versus selected values, Plan-specific physical consumers, and
+`parameters_sha256`, which identifies the complete effective point after
+operation-time baseline filling rather than the caller's sparse override map.
+
+Changing values does not mutate `plan_sha256`. It may change expanded,
+omission, numerical, and presentation identities. For one exact Plan, complete
+effective point, and representation, layout and Theme cannot change electrical
+or structural facts. No promise is made that all digests are invariant across
+points. Baseline-versus-selected labels are display provenance, not a
+substitute for effective-point identity.
+
+A diagram certifies only the supported authoring or compiled projection at
+that point. It does not select or certify a View, solver Result, optimization,
+or every request-local override. `show()` and existing read-only Schemdraw
+Drawing/save and Notebook viewer surfaces serialize the same frozen audited
+scene; they never execute analysis or patch stale evidence.
+
+## Structured RLGC support boundary {#parameterized-rlgc-scope}
+
+A complete compatible existing `RLGC` object is one structured parameter value.
+Its R/L/G/C matrices preserve fixed conductor order, reference conductor,
+shape, physical dimensions, source extraction, and provenance. Matrix rows and
+columns are not separate sweep axes. `n_sections` remains authored structure.
+
+The target supports one or several complete RLGC values for Direct/HB response
+and applicable operator requests, subject to existing backend capabilities.
+Every point performs its own full matrix stamps, both half-shunts, and required
+value-dependent analysis. Scalar sweeps and baseline-root tracking at a fixed
+Plan-baseline RLGC value remain supported.
+
+This target does not support baseline-root continuation across changing RLGC
+values, continuous whole-matrix optimization, or implicit interpolation.
+Unsupported requests fail explicitly instead of replacing tracking with
+independent root selection. This is the candidate's supported scope, not a
+claim of mathematical impossibility.
+
+## Identity and implementation alignment {#parameter-identity-alignment}
+
+Canonical SI value encoding remains the physical identity mechanism. Target
+parameter identity uses exactly definitions-collection ID plus local ID;
+schema and canonical baseline remain immutable compatibility facts. Plan
+snapshots add only consumed definitions and their physical-field bindings.
+Batch identities preserve space kind, ordered axes or listed positions,
+complete effective points, and duplicate ordinals.
+
+Existing runtime encoders and schemas that identify a public parameter by
+component path describe the frozen executable baseline only. They are not the
+TARGET identity and imply no compatibility guarantee. Runtime and schema work
+must align explicitly after Human review; documentation does not rewrite JSON
+schemas or source bytes to pretend that alignment has happened.
+
+## Performance and nonclaims {#parameter-system-nonclaims}
+
+Lazy Cartesian enumeration and chunked storage avoid constructing one enormous
+point list. Cold runtime preparation, Julia compilation, and per-point work are
+different costs. This contract promises no timing threshold, JIT elimination,
+daemon, distributed execution, or numerical-result cache across incompatible
+points.
+
+The Parameter System does not alter pins, topology, Views, physical models,
+Direct/HB algorithms, objective definitions, Design Targets, scientific
+interpretation, or Human acceptance. It creates no interpolation, tolerance
+Gate, success threshold, or release claim.
+
+## Reader path
+
+- [Chapter 4 — Define and bind physical parameters](../../examples/tutorials/04_define_parameters.qmd)
+- [Chapter 5 — Sweep parameter points](../../examples/tutorials/05_sweep_parameters.qmd)
+- [Chapter 6 — Tune a physical parameter](../../examples/tutorials/06_optimize_primitive.qmd)
+- [Chapter 9 — Build a Composite factory](../../examples/tutorials/09_add_composite_factory.qmd)
+- [Chapter 12 — Model ordered RLGC lines](../../examples/tutorials/12_model_n_trace_line.qmd)
+- [Chapter 13 — Assemble the capstone](../../examples/tutorials/13_compensate_probes.qmd)
+- [Definitions, Bound Inputs, Points, and Optimization](../concepts/units-parameters-and-optimization.qmd)
+- [Component Authoring Contract](../component-authoring.qmd)
+- [Structured Circuit Authoring and Certified Diagrams](automatic-semantic-circuit-diagram-layout.qmd)
+- [V1 Runtime Contract](../v1-runtime-contract.qmd)

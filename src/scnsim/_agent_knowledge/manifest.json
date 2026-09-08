@@ -1,0 +1,541 @@
+{
+  "schema_version": "1.0",
+  "distribution": "scnsim",
+  "distribution_version": "1.0.0.dev6",
+  "resources": [
+    {
+      "id": "concept/compilation-coordinates-and-network-views",
+      "kind": "concept",
+      "title": "Wiring Endpoints, Coordinates, and Network Views",
+      "summary": "Physical endpoints versus selected analytical coordinates.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/concept--compilation-coordinates-and-network-views.qmd",
+      "content_sha256": "d7308441609f9c42955d5e8b18905718c582bf686abf49fb282cebdfcec57033",
+      "provenance": {
+        "source_ref": "docs/concepts/compilation-coordinates-and-network-views.qmd",
+        "source_sha256": "d7308441609f9c42955d5e8b18905718c582bf686abf49fb282cebdfcec57033"
+      }
+    },
+    {
+      "id": "concept/direct-and-hb-realizations",
+      "kind": "concept",
+      "title": "One Selected Network, Direct and HB Realizations",
+      "summary": "Selected-network and backend realization responsibilities.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/concept--direct-and-hb-realizations.qmd",
+      "content_sha256": "a871df913b93e40951163be6c1579369cd67c3d015708094f8a3802ba875c55e",
+      "provenance": {
+        "source_ref": "docs/concepts/direct-and-hb-realizations.qmd",
+        "source_sha256": "a871df913b93e40951163be6c1579369cd67c3d015708094f8a3802ba875c55e"
+      }
+    },
+    {
+      "id": "concept/physical-authority-and-reusable-composition",
+      "kind": "concept",
+      "title": "Circuit Models, Subsystems, and Reuse",
+      "summary": "Authored circuit ownership, reusable composition, and target grammar.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/concept--physical-authority-and-reusable-composition.qmd",
+      "content_sha256": "aa4b2a39e739a89725fcc25d757264a915258ae93e0463b88ddfd1a1a24d5eb9",
+      "provenance": {
+        "source_ref": "docs/concepts/physical-authority-and-reusable-composition.qmd",
+        "source_sha256": "aa4b2a39e739a89725fcc25d757264a915258ae93e0463b88ddfd1a1a24d5eb9"
+      }
+    },
+    {
+      "id": "concept/requests-execution-and-result-ownership",
+      "kind": "concept",
+      "title": "From an Analysis Question to a Result",
+      "summary": "Requests, execution, and typed Result ownership.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/concept--requests-execution-and-result-ownership.qmd",
+      "content_sha256": "ab753ea51815497852da271964ff8dc6045c00d6f7c569fb94543d3d8135b209",
+      "provenance": {
+        "source_ref": "docs/concepts/requests-execution-and-result-ownership.qmd",
+        "source_sha256": "ab753ea51815497852da271964ff8dc6045c00d6f7c569fb94543d3d8135b209"
+      }
+    },
+    {
+      "id": "concept/units-parameters-and-optimization",
+      "kind": "concept",
+      "title": "Definitions, Bound Inputs, Points, and Optimization",
+      "summary": "Units and target parameter-system distinctions.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/concept--units-parameters-and-optimization.qmd",
+      "content_sha256": "660d56e596c4c085e940ee1c4759a1930b3378c9dd820a24291580f57d9d1622",
+      "provenance": {
+        "source_ref": "docs/concepts/units-parameters-and-optimization.qmd",
+        "source_sha256": "660d56e596c4c085e940ee1c4759a1930b3378c9dd820a24291580f57d9d1622"
+      }
+    },
+    {
+      "id": "contract/component-authoring",
+      "kind": "contract",
+      "title": "Component Authoring Contract",
+      "summary": "Physical component models and the structured-authoring target boundary.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/contract--component-authoring.qmd",
+      "content_sha256": "695a753ba27981da13bfa7950ff04e0a8c768a80d3ac5393125d42bd45741def",
+      "provenance": {
+        "source_ref": "docs/component-authoring.qmd",
+        "source_sha256": "695a753ba27981da13bfa7950ff04e0a8c768a80d3ac5393125d42bd45741def"
+      }
+    },
+    {
+      "id": "contract/index",
+      "kind": "contract",
+      "title": "Public contract index",
+      "summary": "Public behavior and implementation reference navigation.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/contract--index.qmd",
+      "content_sha256": "68813e0efd4ca8f7a9742c6e564fd9aa30b6603da4aa55047631286fb75dd2a7",
+      "provenance": {
+        "source_ref": "docs/contracts/index.qmd",
+        "source_sha256": "68813e0efd4ca8f7a9742c6e564fd9aa30b6603da4aa55047631286fb75dd2a7"
+      }
+    },
+    {
+      "id": "contract/parameters",
+      "kind": "target-contract",
+      "title": "Parameter System, Sweeps, and Bound Results",
+      "summary": "Target independent parameter definitions, physical binding, spaces, and Results.",
+      "status": "CONVERGING target contract; not a generic runtime support claim.",
+      "path": "resources/contract--parameters.qmd",
+      "content_sha256": "5319e83db8181dd164e16325af5772c60faa4636e9621f2c0663d96935092b8f",
+      "provenance": {
+        "source_ref": "docs/contracts/parameter-system.qmd",
+        "source_sha256": "5319e83db8181dd164e16325af5772c60faa4636e9621f2c0663d96935092b8f"
+      }
+    },
+    {
+      "id": "contract/runtime",
+      "kind": "contract",
+      "title": "V1 Runtime Contract",
+      "summary": "Public numerical/runtime contract and separately converging authoring and parameter targets.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/contract--runtime.qmd",
+      "content_sha256": "964939b9c95c9721fe3c7ef3eecb5d658603d22cc38156aabc7bfd5cd18a64e1",
+      "provenance": {
+        "source_ref": "docs/v1-runtime-contract.qmd",
+        "source_sha256": "964939b9c95c9721fe3c7ef3eecb5d658603d22cc38156aabc7bfd5cd18a64e1"
+      }
+    },
+    {
+      "id": "contract/structured-authoring",
+      "kind": "target-contract",
+      "title": "Structured Circuit Authoring and Certified Diagrams",
+      "summary": "Target authoring and diagram semantics, with implementation alignment qualified by its source.",
+      "status": "CONVERGING target contract; not a generic runtime support claim.",
+      "path": "resources/contract--structured-authoring.qmd",
+      "content_sha256": "43567d04ededc233170b09395eea19fc0d4a153d61a7029b84572516cd4f4071",
+      "provenance": {
+        "source_ref": "docs/contracts/automatic-semantic-circuit-diagram-layout.qmd",
+        "source_sha256": "43567d04ededc233170b09395eea19fc0d4a153d61a7029b84572516cd4f4071"
+      }
+    },
+    {
+      "id": "example/direct-response",
+      "kind": "example",
+      "title": "Standalone Direct response",
+      "summary": "Explicit resonator declaration, Direct response, exact resolution, and invalid-frequency error handling.",
+      "status": "Runnable Direct example with declared Julia/runtime prerequisites; not evidence for the complete TARGET course.",
+      "path": "resources/example--direct-response.py",
+      "content_sha256": "241d7417b173c92c535cf79b8b9f5a2e3ba83c344f70c9c5fabf65ad31b20c77",
+      "provenance": {
+        "source_ref": "examples/agent_direct.py",
+        "source_sha256": "241d7417b173c92c535cf79b8b9f5a2e3ba83c344f70c9c5fabf65ad31b20c77"
+      }
+    },
+    {
+      "id": "guide/agent-usage",
+      "kind": "guide",
+      "title": "Use installed SCNSim knowledge",
+      "summary": "Installed version and bundle discovery, capability boundaries, and a real Direct workflow.",
+      "status": "CONVERGING package-use guide; executable support is limited to its explicitly described capability and prerequisites.",
+      "path": "resources/guide--agent-usage.md",
+      "content_sha256": "d1df2bf445966e7a9ef878b13d86d9ee354a3965b791bec0efa6656bdec72c68",
+      "provenance": {
+        "source_ref": "docs/agent-usage.md",
+        "source_sha256": "d1df2bf445966e7a9ef878b13d86d9ee354a3965b791bec0efa6656bdec72c68"
+      }
+    },
+    {
+      "id": "overview",
+      "kind": "overview",
+      "title": "SCNSim overview",
+      "summary": "Product boundary, model-first workflow, installation, documentation, and scoped support.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/overview.md",
+      "content_sha256": "f5e8f85928c96e4b49b7b62d9731fb4293bd199b54645002d0e0b440728430c6",
+      "provenance": {
+        "source_ref": "README.md",
+        "source_sha256": "f5e8f85928c96e4b49b7b62d9731fb4293bd199b54645002d0e0b440728430c6"
+      }
+    },
+    {
+      "id": "reference/compilation-ports-and-views",
+      "kind": "reference",
+      "title": "Compilation, Ports, and Network Views",
+      "summary": "Compilation and Port/network responsibilities.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--compilation-ports-and-views.qmd",
+      "content_sha256": "5fbbecabe706ebdc2d3a16aedb6b60ee5e91c3d76177539bbcbbbeeac83fd690",
+      "provenance": {
+        "source_ref": "docs/implementation/compilation-ports-and-views.qmd",
+        "source_sha256": "5fbbecabe706ebdc2d3a16aedb6b60ee5e91c3d76177539bbcbbbeeac83fd690"
+      }
+    },
+    {
+      "id": "reference/diagonal-root-numerical-procedure",
+      "kind": "reference",
+      "title": "Diagonal-Root Numerical Procedure",
+      "summary": "Documented diagonal-root numerical method.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--diagonal-root-numerical-procedure.qmd",
+      "content_sha256": "591099eee15d03183b147c2e60a79b9d2480287eb374fcf35bb06580b1e46923",
+      "provenance": {
+        "source_ref": "docs/implementation/diagonal-root-numerical-procedure.qmd",
+        "source_sha256": "591099eee15d03183b147c2e60a79b9d2480287eb374fcf35bb06580b1e46923"
+      }
+    },
+    {
+      "id": "reference/direct-poles-zeros-and-operators",
+      "kind": "reference",
+      "title": "Direct Poles, Zeros, Couplings, and Operators",
+      "summary": "Direct operator and quantity numerical definitions.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--direct-poles-zeros-and-operators.qmd",
+      "content_sha256": "9097141a925720b569b9f902bdf3e40e91e2f2a7d4ef99db878ecd107ee7c577",
+      "provenance": {
+        "source_ref": "docs/implementation/direct-poles-zeros-and-operators.qmd",
+        "source_sha256": "9097141a925720b569b9f902bdf3e40e91e2f2a7d4ef99db878ecd107ee7c577"
+      }
+    },
+    {
+      "id": "reference/direct-quantities-and-optimization",
+      "kind": "reference",
+      "title": "Direct Quantities and Optimization",
+      "summary": "Quantity and optimization reference with target binding qualifications.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--direct-quantities-and-optimization.qmd",
+      "content_sha256": "32d31cfe3a6cb63dab62c403306cc419341bf483cda7b8c1b3bb83ea2abe73c5",
+      "provenance": {
+        "source_ref": "docs/implementation/direct-quantities-and-optimization.qmd",
+        "source_sha256": "32d31cfe3a6cb63dab62c403306cc419341bf483cda7b8c1b3bb83ea2abe73c5"
+      }
+    },
+    {
+      "id": "reference/hb-realization-and-outcomes",
+      "kind": "reference",
+      "title": "HB Realization and Case Outcomes",
+      "summary": "HB realization and per-case outcome semantics.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--hb-realization-and-outcomes.qmd",
+      "content_sha256": "adf2f6a3b67d178780a53484b8ec71a90daa63e371fa83a3c1b4974dd30b4443",
+      "provenance": {
+        "source_ref": "docs/implementation/hb-realization-and-outcomes.qmd",
+        "source_sha256": "adf2f6a3b67d178780a53484b8ec71a90daa63e371fa83a3c1b4974dd30b4443"
+      }
+    },
+    {
+      "id": "reference/julia-runtime-preparation",
+      "kind": "reference",
+      "title": "Julia Runtime Preparation",
+      "summary": "Julia preparation and runtime dependency requirements.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--julia-runtime-preparation.qmd",
+      "content_sha256": "97ad2bf79a1ea24e0def32db33f19130a84cbd50e16bb68622a4e93db822025f",
+      "provenance": {
+        "source_ref": "docs/implementation/julia-runtime-preparation.qmd",
+        "source_sha256": "97ad2bf79a1ea24e0def32db33f19130a84cbd50e16bb68622a4e93db822025f"
+      }
+    },
+    {
+      "id": "reference/results-reports-and-diagrams",
+      "kind": "reference",
+      "title": "Results, Reports, and Diagrams",
+      "summary": "Typed Results, reports, and separately scoped diagram targets.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--results-reports-and-diagrams.qmd",
+      "content_sha256": "9836d8a0b991a4b980032b182d200221b8656097271d06d09ffef2b0441c0f0c",
+      "provenance": {
+        "source_ref": "docs/implementation/results-reports-and-diagrams.qmd",
+        "source_sha256": "9836d8a0b991a4b980032b182d200221b8656097271d06d09ffef2b0441c0f0c"
+      }
+    },
+    {
+      "id": "reference/rlgc-q2d-and-pi-expansion",
+      "kind": "reference",
+      "title": "RLGC, Q2D, and Pi Expansion",
+      "summary": "RLGC input interpretation and circuit expansion.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--rlgc-q2d-and-pi-expansion.qmd",
+      "content_sha256": "649c3ab5837cb39856ffbeaf64c3c3a462043456ff653b827ed692979d24a7cd",
+      "provenance": {
+        "source_ref": "docs/implementation/rlgc-q2d-and-pi-expansion.qmd",
+        "source_sha256": "649c3ab5837cb39856ffbeaf64c3c3a462043456ff653b827ed692979d24a7cd"
+      }
+    },
+    {
+      "id": "reference/view-lineage-and-selected-networks",
+      "kind": "reference",
+      "title": "View Lineage and Selected Networks",
+      "summary": "View lineage and selected analytical network reference.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--view-lineage-and-selected-networks.qmd",
+      "content_sha256": "9f6fe0c7e07c984ddf3df4d1a6e7735c056d38aae49d4bc2e8e70159b8cf72b2",
+      "provenance": {
+        "source_ref": "docs/implementation/view-lineage-and-selected-networks.qmd",
+        "source_sha256": "9f6fe0c7e07c984ddf3df4d1a6e7735c056d38aae49d4bc2e8e70159b8cf72b2"
+      }
+    },
+    {
+      "id": "reference/workspace-attempts-and-artifacts",
+      "kind": "reference",
+      "title": "Workspace, Attempts, Receipts, and Artifacts",
+      "summary": "Workspace ownership, requests, attempts, and result evidence.",
+      "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+      "path": "resources/reference--workspace-attempts-and-artifacts.qmd",
+      "content_sha256": "7ba082ab6d0baf29c014d18cd2c5afb3119dd5a6271504a5b80456c5222ed693",
+      "provenance": {
+        "source_ref": "docs/implementation/workspace-attempts-and-artifacts.qmd",
+        "source_sha256": "7ba082ab6d0baf29c014d18cd2c5afb3119dd5a6271504a5b80456c5222ed693"
+      }
+    },
+    {
+      "id": "tutorial/add-composite-factory",
+      "kind": "target-tutorial",
+      "title": "Chapter 9 \u2014 Build a Composite factory",
+      "summary": "Target factory boundary and component instance.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--add-composite-factory.qmd",
+      "content_sha256": "b4c1240424c210fd8eaaf4960b121ae4dac18aee9fb82b4c54cf8323d6137b46",
+      "provenance": {
+        "source_ref": "examples/tutorials/09_add_composite_factory.qmd",
+        "source_sha256": "b4c1240424c210fd8eaaf4960b121ae4dac18aee9fb82b4c54cf8323d6137b46"
+      }
+    },
+    {
+      "id": "tutorial/author-primitive",
+      "kind": "target-tutorial",
+      "title": "Chapter 1 \u2014 Model a coupled grounded resonator",
+      "summary": "Target primitive declaration and circuit review.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--author-primitive.qmd",
+      "content_sha256": "84af101662f64b9168dadb1554f8ae76c757e6870fa110eb53a7f9181da4915c",
+      "provenance": {
+        "source_ref": "examples/tutorials/01_author_primitive.qmd",
+        "source_sha256": "84af101662f64b9168dadb1554f8ae76c757e6870fa110eb53a7f9181da4915c"
+      }
+    },
+    {
+      "id": "tutorial/compare-direct-hb",
+      "kind": "target-tutorial",
+      "title": "Chapter 16 \u2014 Read Direct and pump-off HB",
+      "summary": "Target comparison on independently declared grids.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--compare-direct-hb.qmd",
+      "content_sha256": "1b04fddbf9f28731a4c6405a4af0281078cf1fc74a4d24be66ad087f88d13dbc",
+      "provenance": {
+        "source_ref": "examples/tutorials/16_compare_direct_hb.qmd",
+        "source_sha256": "1b04fddbf9f28731a4c6405a4af0281078cf1fc74a4d24be66ad087f88d13dbc"
+      }
+    },
+    {
+      "id": "tutorial/compensate-probes",
+      "kind": "target-tutorial",
+      "title": "Chapter 13 \u2014 Assemble the capstone and compensate its probes",
+      "summary": "Target complete capstone and probe compensation.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--compensate-probes.qmd",
+      "content_sha256": "0579d2b26fdc977a4236ba1adae76ce5d39c3df984e6bf6ec1084652c06f5681",
+      "provenance": {
+        "source_ref": "examples/tutorials/13_compensate_probes.qmd",
+        "source_sha256": "0579d2b26fdc977a4236ba1adae76ce5d39c3df984e6bf6ec1084652c06f5681"
+      }
+    },
+    {
+      "id": "tutorial/create-library",
+      "kind": "target-tutorial",
+      "title": "Chapter 8 \u2014 Start a reusable Library",
+      "summary": "Target reusable Library declaration.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--create-library.qmd",
+      "content_sha256": "7f858253914a9a105fc430caaf170ab7cd880601a557ecf40ed6100ee8bd40c5",
+      "provenance": {
+        "source_ref": "examples/tutorials/08_create_library.qmd",
+        "source_sha256": "7f858253914a9a105fc430caaf170ab7cd880601a557ecf40ed6100ee8bd40c5"
+      }
+    },
+    {
+      "id": "tutorial/define-parameters",
+      "kind": "target-tutorial",
+      "title": "Chapter 4 \u2014 Define and bind physical parameters",
+      "summary": "Target parameter definitions and physical binding.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--define-parameters.qmd",
+      "content_sha256": "33671a85f94283c417b0ee8cb42f8d500b3472f520c933d63823730cb993ee2e",
+      "provenance": {
+        "source_ref": "examples/tutorials/04_define_parameters.qmd",
+        "source_sha256": "33671a85f94283c417b0ee8cb42f8d500b3472f520c933d63823730cb993ee2e"
+      }
+    },
+    {
+      "id": "tutorial/evaluate-quantity",
+      "kind": "target-tutorial",
+      "title": "Chapter 3 \u2014 Select a coordinate and evaluate",
+      "summary": "Target model, coordinate View, and evaluation.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--evaluate-quantity.qmd",
+      "content_sha256": "ba83be372a951169f1b663c1dbece61bc4ebe8ec9f4a725f14d5e370f45a9d89",
+      "provenance": {
+        "source_ref": "examples/tutorials/03_evaluate_quantity.qmd",
+        "source_sha256": "ba83be372a951169f1b663c1dbece61bc4ebe8ec9f4a725f14d5e370f45a9d89"
+      }
+    },
+    {
+      "id": "tutorial/index",
+      "kind": "target-tutorial",
+      "title": "TARGET Tutorial index",
+      "summary": "Navigation for the sixteen model-first TARGET Chapters.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--index.qmd",
+      "content_sha256": "29eeefe5081402bd75443a77ae50550f83fbb69b7726023e89b17d32f2de1ae5",
+      "provenance": {
+        "source_ref": "docs/index.qmd",
+        "source_sha256": "29eeefe5081402bd75443a77ae50550f83fbb69b7726023e89b17d32f2de1ae5"
+      }
+    },
+    {
+      "id": "tutorial/model-n-trace-line",
+      "kind": "target-tutorial",
+      "title": "Chapter 12 \u2014 Model ordered RLGC lines",
+      "summary": "Target ordered coupled lines and tapped feedline.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--model-n-trace-line.qmd",
+      "content_sha256": "dfa2a1d551d5fb57a2cd41eca1a2cc42fd2757e6760edfb3b7d2402d8f19c590",
+      "provenance": {
+        "source_ref": "examples/tutorials/12_model_n_trace_line.qmd",
+        "source_sha256": "dfa2a1d551d5fb57a2cd41eca1a2cc42fd2757e6760edfb3b7d2402d8f19c590"
+      }
+    },
+    {
+      "id": "tutorial/optimize-primitive",
+      "kind": "target-tutorial",
+      "title": "Chapter 6 \u2014 Tune a physical parameter",
+      "summary": "Target parameterized model and tuning request.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--optimize-primitive.qmd",
+      "content_sha256": "1905e939393f1556f36fe0cd09bca9bf5d3ea5c51870b5879cea8cd8ffd8df18",
+      "provenance": {
+        "source_ref": "examples/tutorials/06_optimize_primitive.qmd",
+        "source_sha256": "1905e939393f1556f36fe0cd09bca9bf5d3ea5c51870b5879cea8cd8ffd8df18"
+      }
+    },
+    {
+      "id": "tutorial/prepare-hb",
+      "kind": "target-tutorial",
+      "title": "Chapter 15 \u2014 Prepare pump-off HB",
+      "summary": "Target pump-off HB request preparation.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--prepare-hb.qmd",
+      "content_sha256": "420347011906347d32cc33f09644210b38ad37b2b48ff45982df0309283826ed",
+      "provenance": {
+        "source_ref": "examples/tutorials/15_prepare_hb.qmd",
+        "source_sha256": "420347011906347d32cc33f09644210b38ad37b2b48ff45982df0309283826ed"
+      }
+    },
+    {
+      "id": "tutorial/report-resolve",
+      "kind": "target-tutorial",
+      "title": "Chapter 7 \u2014 Report and resolve exact requests",
+      "summary": "Target report and exact request resolution.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--report-resolve.qmd",
+      "content_sha256": "0faec6e0b89aa921ef2faed551d29d011720de7ddb34beb525c39ceb98bbb9f9",
+      "provenance": {
+        "source_ref": "examples/tutorials/07_report_resolve.qmd",
+        "source_sha256": "0faec6e0b89aa921ef2faed551d29d011720de7ddb34beb525c39ceb98bbb9f9"
+      }
+    },
+    {
+      "id": "tutorial/review-customize-schematic",
+      "kind": "target-tutorial",
+      "title": "Chapter 11 \u2014 Review and customize a schematic",
+      "summary": "Target layout, grounding, diagram review, and validation.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--review-customize-schematic.qmd",
+      "content_sha256": "2e736a41ccf20adbcf66cc21d15683a3bde755bf6fee5535e6696bb540435b8d",
+      "provenance": {
+        "source_ref": "examples/tutorials/11_review_customize_schematic.qmd",
+        "source_sha256": "2e736a41ccf20adbcf66cc21d15683a3bde755bf6fee5535e6696bb540435b8d"
+      }
+    },
+    {
+      "id": "tutorial/solve-direct",
+      "kind": "target-tutorial",
+      "title": "Chapter 2 \u2014 Ask for a Direct response",
+      "summary": "Target fixed-circuit declaration and Direct request.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--solve-direct.qmd",
+      "content_sha256": "fe1d12ba6336c28510dfac9635465bbe0bfbac2036f9d921f7412e8a878c44d9",
+      "provenance": {
+        "source_ref": "examples/tutorials/02_solve_direct.qmd",
+        "source_sha256": "fe1d12ba6336c28510dfac9635465bbe0bfbac2036f9d921f7412e8a878c44d9"
+      }
+    },
+    {
+      "id": "tutorial/source-guide",
+      "kind": "target-tutorial",
+      "title": "TARGET course source guide",
+      "summary": "QMD authority and zero-output derived Notebook boundaries.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--source-guide.md",
+      "content_sha256": "6cb7da58a7974fa0f329d81eff74f895e17a4855c955b547fb5644cdb5350990",
+      "provenance": {
+        "source_ref": "examples/README.md",
+        "source_sha256": "6cb7da58a7974fa0f329d81eff74f895e17a4855c955b547fb5644cdb5350990"
+      }
+    },
+    {
+      "id": "tutorial/sweep-parameters",
+      "kind": "target-tutorial",
+      "title": "Chapter 5 \u2014 Sweep parameter points",
+      "summary": "Target spaces, selections, and sweep Results.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--sweep-parameters.qmd",
+      "content_sha256": "35297b5570646706b1e252741ea3369935c5849cc4d4aa270f416195fd368475",
+      "provenance": {
+        "source_ref": "examples/tutorials/05_sweep_parameters.qmd",
+        "source_sha256": "35297b5570646706b1e252741ea3369935c5849cc4d4aa270f416195fd368475"
+      }
+    },
+    {
+      "id": "tutorial/transform-retain",
+      "kind": "target-tutorial",
+      "title": "Chapter 14 \u2014 Transform and retain coordinates",
+      "summary": "Target transformed and retained coordinates.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--transform-retain.qmd",
+      "content_sha256": "9079077f98a01917a33a769b0e7d9f77230574a675f95b9e51af9a127a0877e3",
+      "provenance": {
+        "source_ref": "examples/tutorials/14_transform_retain.qmd",
+        "source_sha256": "9079077f98a01917a33a769b0e7d9f77230574a675f95b9e51af9a127a0877e3"
+      }
+    },
+    {
+      "id": "tutorial/use-custom-component",
+      "kind": "target-tutorial",
+      "title": "Chapter 10 \u2014 Reuse a component in a circuit",
+      "summary": "Target composition inside a larger circuit.",
+      "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+      "path": "resources/tutorial--use-custom-component.qmd",
+      "content_sha256": "b32f7d2352dc3b0e0c6513c12659176b8e9769e441b0ee2d5d78781c59ec0aef",
+      "provenance": {
+        "source_ref": "examples/tutorials/10_use_custom_component.qmd",
+        "source_sha256": "b32f7d2352dc3b0e0c6513c12659176b8e9769e441b0ee2d5d78781c59ec0aef"
+      }
+    }
+  ],
+  "bundle_id": "sha256:5e92525e89d1f8cc355a85760429607548628a61b79b2fafc8139a22a507451f"
+}

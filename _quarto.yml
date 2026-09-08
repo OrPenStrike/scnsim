@@ -4,9 +4,11 @@ project:
   resources:
     - src/scnsim/_schemas/identity-v2.schema.json
     - src/scnsim/_schemas/identity-v1.schema.json
+    - examples/agent_direct.py
   render:
     - README.md
     - examples/README.md
+    - docs/agent-usage.md
     - docs/index.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd

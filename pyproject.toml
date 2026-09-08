@@ -1,6 +1,7 @@
 [build-system]
 requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+build-backend = "_build_backend"
+backend-path = ["."]
 
 [project]
 name = "scnsim"
@@ -39,4 +40,6 @@ scnsim = [
   "_julia/*.json",
   "_julia/bin/*.jl",
   "_julia/src/*.jl",
+  "_agent_knowledge/manifest.json",
+  "_agent_knowledge/resources/*",
 ]

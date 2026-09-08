@@ -1,0 +1,7 @@
+include _build_backend.py
+include scripts/generate_agent_knowledge.py
+include scripts/agent_knowledge_sources.json
+recursive-include src/scnsim/_agent_knowledge *.json *.md *.qmd *.py
+# The sdist rebuild uses verified embedded text, not a source documentation tree.
+prune docs
+prune examples

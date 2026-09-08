@@ -1,0 +1,142 @@
+---
+title: "Chapter 2 — Ask for a Direct response"
+subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+> **TARGET API / CONVERGING — not executable on the current runtime.**
+> The current runtime does not implement this authoring grammar.
+
+Use the same fixed physical circuit from Lesson 1. This Chapter asks a new
+question: what Direct frequency response would its original Plan produce?
+It repeats the declaration so a fresh kernel has no hidden earlier state.
+
+## Lesson 2.1 — Rebuild the fixed circuit {#ch2-model}
+
+### Rebuild the physical declaration
+
+Start with the root Plan and the owned resonator subsystem.
+
+```{python}
+#| id: build-direct-root-and-subsystem
+from scnsim import CircuitPlan, components, units as u
+
+plan = CircuitPlan(id="primitive_resonator")
+resonator = plan.subsystem(id="resonator")
+```
+
+The root owns later Port wiring; the child owns the local physical parts.
+
+Add the native two-terminal elements. Each registered capacitor or inductor is
+its own `ElementUse` with the fixed values being analyzed.
+
+```{python}
+#| id: add-direct-native-parts
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=110.0 * u.fF)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=5.8 * u.nH)
+)
+```
+
+Both returned handles are ordinary two-pin `ElementUse`s.
+
+Declare the grounded parallel LC structure from its local terminal bus.
+
+```{python}
+#| id: declare-direct-parallel-lc
+resonator_bus = resonator.bus(id="terminal")
+parallel_lc = resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+```
+
+The two branches now share `resonator_bus` and the child's ground.
+
+Expose that local bus as the subsystem's sole public electrical terminal.
+
+```{python}
+#| id: expose-direct-resonator-terminal
+terminal = resonator.expose_pin(id="terminal", at=resonator_bus)
+```
+
+Only this terminal crosses from child ownership into root wiring.
+
+At the root, couple the public terminal to a signal bus and promote the input
+Port. `resonator_node` is the public root analysis coordinate.
+
+```{python}
+#| id: declare-direct-root-wiring
+signal_bus = plan.bus(id="signal_boundary")
+resonator_root_bus = plan.bus(id="resonator_node")
+coupling_cap = plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+coupling = plan.series(
+    id="coupling",
+    start=signal_bus,
+    elements=(coupling_cap,),
+    end=resonator_root_bus,
+)
+plan.link(
+    id="resonator_terminal",
+    endpoints=(resonator_root_bus, terminal),
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+resonator_node = resonator_root_bus.node
+```
+
+`signal_port` is the terminated boundary, while `resonator_node` is the root
+coordinate retained by later numerical lessons.
+
+## Lesson 2.2 — State the response question {#ch2-direct-request}
+
+### Prepare, solve, and inspect a Direct response
+
+Construct the numerical request separately from its target-only execution.
+
+```{python}
+#| id: prepare-direct-response
+from scnsim import CircuitRun, DirectSolveSpec
+
+run = CircuitRun(plan=plan, workspace="workspaces/primitive-course")
+original = run.original
+direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz
+)
+```
+
+`CircuitRun` is not a request handle: construction seals the Plan and owns the
+execution and evidence workspace. `run.original` selects the original network
+View. `DirectSolveSpec` states the frequency-grid response question, and
+`run.solve(original, direct_spec)` combines that View and question to return a
+typed Direct result.
+
+```{python}
+#| id: solve-direct-response
+direct = run.solve(original, direct_spec)
+```
+
+Inspect the returned response separately so the request and its presentation
+remain easy to distinguish.
+
+```{python}
+#| id: inspect-direct-response
+direct.s.show(magnitude="db")
+```
+
+`CircuitRun`, request, and response semantics are retained baseline behavior.
+The last two cells are target-only because this Plan uses the proposed grammar.
+
+[Previous](01_author_primitive.qmd) · [Next](03_evaluate_quantity.qmd)

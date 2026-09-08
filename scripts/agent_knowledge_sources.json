@@ -1,0 +1,371 @@
+[
+  {
+    "id": "concept/compilation-coordinates-and-network-views",
+    "kind": "concept",
+    "title": "Wiring Endpoints, Coordinates, and Network Views",
+    "summary": "Physical endpoints versus selected analytical coordinates.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/concept--compilation-coordinates-and-network-views.qmd",
+    "source_ref": "docs/concepts/compilation-coordinates-and-network-views.qmd"
+  },
+  {
+    "id": "concept/direct-and-hb-realizations",
+    "kind": "concept",
+    "title": "One Selected Network, Direct and HB Realizations",
+    "summary": "Selected-network and backend realization responsibilities.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/concept--direct-and-hb-realizations.qmd",
+    "source_ref": "docs/concepts/direct-and-hb-realizations.qmd"
+  },
+  {
+    "id": "concept/physical-authority-and-reusable-composition",
+    "kind": "concept",
+    "title": "Circuit Models, Subsystems, and Reuse",
+    "summary": "Authored circuit ownership, reusable composition, and target grammar.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/concept--physical-authority-and-reusable-composition.qmd",
+    "source_ref": "docs/concepts/physical-authority-and-reusable-composition.qmd"
+  },
+  {
+    "id": "concept/requests-execution-and-result-ownership",
+    "kind": "concept",
+    "title": "From an Analysis Question to a Result",
+    "summary": "Requests, execution, and typed Result ownership.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/concept--requests-execution-and-result-ownership.qmd",
+    "source_ref": "docs/concepts/requests-execution-and-result-ownership.qmd"
+  },
+  {
+    "id": "concept/units-parameters-and-optimization",
+    "kind": "concept",
+    "title": "Definitions, Bound Inputs, Points, and Optimization",
+    "summary": "Units and target parameter-system distinctions.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/concept--units-parameters-and-optimization.qmd",
+    "source_ref": "docs/concepts/units-parameters-and-optimization.qmd"
+  },
+  {
+    "id": "contract/component-authoring",
+    "kind": "contract",
+    "title": "Component Authoring Contract",
+    "summary": "Physical component models and the structured-authoring target boundary.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/contract--component-authoring.qmd",
+    "source_ref": "docs/component-authoring.qmd"
+  },
+  {
+    "id": "contract/index",
+    "kind": "contract",
+    "title": "Public contract index",
+    "summary": "Public behavior and implementation reference navigation.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/contract--index.qmd",
+    "source_ref": "docs/contracts/index.qmd"
+  },
+  {
+    "id": "contract/parameters",
+    "kind": "target-contract",
+    "title": "Parameter System, Sweeps, and Bound Results",
+    "summary": "Target independent parameter definitions, physical binding, spaces, and Results.",
+    "status": "CONVERGING target contract; not a generic runtime support claim.",
+    "path": "resources/contract--parameters.qmd",
+    "source_ref": "docs/contracts/parameter-system.qmd"
+  },
+  {
+    "id": "contract/runtime",
+    "kind": "contract",
+    "title": "V1 Runtime Contract",
+    "summary": "Public numerical/runtime contract and separately converging authoring and parameter targets.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/contract--runtime.qmd",
+    "source_ref": "docs/v1-runtime-contract.qmd"
+  },
+  {
+    "id": "contract/structured-authoring",
+    "kind": "target-contract",
+    "title": "Structured Circuit Authoring and Certified Diagrams",
+    "summary": "Target authoring and diagram semantics, with implementation alignment qualified by its source.",
+    "status": "CONVERGING target contract; not a generic runtime support claim.",
+    "path": "resources/contract--structured-authoring.qmd",
+    "source_ref": "docs/contracts/automatic-semantic-circuit-diagram-layout.qmd"
+  },
+  {
+    "id": "example/direct-response",
+    "kind": "example",
+    "title": "Standalone Direct response",
+    "summary": "Explicit resonator declaration, Direct response, exact resolution, and invalid-frequency error handling.",
+    "status": "Runnable Direct example with declared Julia/runtime prerequisites; not evidence for the complete TARGET course.",
+    "path": "resources/example--direct-response.py",
+    "source_ref": "examples/agent_direct.py"
+  },
+  {
+    "id": "guide/agent-usage",
+    "kind": "guide",
+    "title": "Use installed SCNSim knowledge",
+    "summary": "Installed version and bundle discovery, capability boundaries, and a real Direct workflow.",
+    "status": "CONVERGING package-use guide; executable support is limited to its explicitly described capability and prerequisites.",
+    "path": "resources/guide--agent-usage.md",
+    "source_ref": "docs/agent-usage.md"
+  },
+  {
+    "id": "overview",
+    "kind": "overview",
+    "title": "SCNSim overview",
+    "summary": "Product boundary, model-first workflow, installation, documentation, and scoped support.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/overview.md",
+    "source_ref": "README.md"
+  },
+  {
+    "id": "reference/compilation-ports-and-views",
+    "kind": "reference",
+    "title": "Compilation, Ports, and Network Views",
+    "summary": "Compilation and Port/network responsibilities.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--compilation-ports-and-views.qmd",
+    "source_ref": "docs/implementation/compilation-ports-and-views.qmd"
+  },
+  {
+    "id": "reference/diagonal-root-numerical-procedure",
+    "kind": "reference",
+    "title": "Diagonal-Root Numerical Procedure",
+    "summary": "Documented diagonal-root numerical method.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--diagonal-root-numerical-procedure.qmd",
+    "source_ref": "docs/implementation/diagonal-root-numerical-procedure.qmd"
+  },
+  {
+    "id": "reference/direct-poles-zeros-and-operators",
+    "kind": "reference",
+    "title": "Direct Poles, Zeros, Couplings, and Operators",
+    "summary": "Direct operator and quantity numerical definitions.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--direct-poles-zeros-and-operators.qmd",
+    "source_ref": "docs/implementation/direct-poles-zeros-and-operators.qmd"
+  },
+  {
+    "id": "reference/direct-quantities-and-optimization",
+    "kind": "reference",
+    "title": "Direct Quantities and Optimization",
+    "summary": "Quantity and optimization reference with target binding qualifications.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--direct-quantities-and-optimization.qmd",
+    "source_ref": "docs/implementation/direct-quantities-and-optimization.qmd"
+  },
+  {
+    "id": "reference/hb-realization-and-outcomes",
+    "kind": "reference",
+    "title": "HB Realization and Case Outcomes",
+    "summary": "HB realization and per-case outcome semantics.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--hb-realization-and-outcomes.qmd",
+    "source_ref": "docs/implementation/hb-realization-and-outcomes.qmd"
+  },
+  {
+    "id": "reference/julia-runtime-preparation",
+    "kind": "reference",
+    "title": "Julia Runtime Preparation",
+    "summary": "Julia preparation and runtime dependency requirements.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--julia-runtime-preparation.qmd",
+    "source_ref": "docs/implementation/julia-runtime-preparation.qmd"
+  },
+  {
+    "id": "reference/results-reports-and-diagrams",
+    "kind": "reference",
+    "title": "Results, Reports, and Diagrams",
+    "summary": "Typed Results, reports, and separately scoped diagram targets.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--results-reports-and-diagrams.qmd",
+    "source_ref": "docs/implementation/results-reports-and-diagrams.qmd"
+  },
+  {
+    "id": "reference/rlgc-q2d-and-pi-expansion",
+    "kind": "reference",
+    "title": "RLGC, Q2D, and Pi Expansion",
+    "summary": "RLGC input interpretation and circuit expansion.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--rlgc-q2d-and-pi-expansion.qmd",
+    "source_ref": "docs/implementation/rlgc-q2d-and-pi-expansion.qmd"
+  },
+  {
+    "id": "reference/view-lineage-and-selected-networks",
+    "kind": "reference",
+    "title": "View Lineage and Selected Networks",
+    "summary": "View lineage and selected analytical network reference.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--view-lineage-and-selected-networks.qmd",
+    "source_ref": "docs/implementation/view-lineage-and-selected-networks.qmd"
+  },
+  {
+    "id": "reference/workspace-attempts-and-artifacts",
+    "kind": "reference",
+    "title": "Workspace, Attempts, Receipts, and Artifacts",
+    "summary": "Workspace ownership, requests, attempts, and result evidence.",
+    "status": "Version-bound source reference; capability and lifecycle statements are scoped by the document, not an execution claim.",
+    "path": "resources/reference--workspace-attempts-and-artifacts.qmd",
+    "source_ref": "docs/implementation/workspace-attempts-and-artifacts.qmd"
+  },
+  {
+    "id": "tutorial/add-composite-factory",
+    "kind": "target-tutorial",
+    "title": "Chapter 9 — Build a Composite factory",
+    "summary": "Target factory boundary and component instance.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--add-composite-factory.qmd",
+    "source_ref": "examples/tutorials/09_add_composite_factory.qmd"
+  },
+  {
+    "id": "tutorial/author-primitive",
+    "kind": "target-tutorial",
+    "title": "Chapter 1 — Model a coupled grounded resonator",
+    "summary": "Target primitive declaration and circuit review.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--author-primitive.qmd",
+    "source_ref": "examples/tutorials/01_author_primitive.qmd"
+  },
+  {
+    "id": "tutorial/compare-direct-hb",
+    "kind": "target-tutorial",
+    "title": "Chapter 16 — Read Direct and pump-off HB",
+    "summary": "Target comparison on independently declared grids.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--compare-direct-hb.qmd",
+    "source_ref": "examples/tutorials/16_compare_direct_hb.qmd"
+  },
+  {
+    "id": "tutorial/compensate-probes",
+    "kind": "target-tutorial",
+    "title": "Chapter 13 — Assemble the capstone and compensate its probes",
+    "summary": "Target complete capstone and probe compensation.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--compensate-probes.qmd",
+    "source_ref": "examples/tutorials/13_compensate_probes.qmd"
+  },
+  {
+    "id": "tutorial/create-library",
+    "kind": "target-tutorial",
+    "title": "Chapter 8 — Start a reusable Library",
+    "summary": "Target reusable Library declaration.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--create-library.qmd",
+    "source_ref": "examples/tutorials/08_create_library.qmd"
+  },
+  {
+    "id": "tutorial/define-parameters",
+    "kind": "target-tutorial",
+    "title": "Chapter 4 — Define and bind physical parameters",
+    "summary": "Target parameter definitions and physical binding.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--define-parameters.qmd",
+    "source_ref": "examples/tutorials/04_define_parameters.qmd"
+  },
+  {
+    "id": "tutorial/evaluate-quantity",
+    "kind": "target-tutorial",
+    "title": "Chapter 3 — Select a coordinate and evaluate",
+    "summary": "Target model, coordinate View, and evaluation.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--evaluate-quantity.qmd",
+    "source_ref": "examples/tutorials/03_evaluate_quantity.qmd"
+  },
+  {
+    "id": "tutorial/index",
+    "kind": "target-tutorial",
+    "title": "TARGET Tutorial index",
+    "summary": "Navigation for the sixteen model-first TARGET Chapters.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--index.qmd",
+    "source_ref": "docs/index.qmd"
+  },
+  {
+    "id": "tutorial/model-n-trace-line",
+    "kind": "target-tutorial",
+    "title": "Chapter 12 — Model ordered RLGC lines",
+    "summary": "Target ordered coupled lines and tapped feedline.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--model-n-trace-line.qmd",
+    "source_ref": "examples/tutorials/12_model_n_trace_line.qmd"
+  },
+  {
+    "id": "tutorial/optimize-primitive",
+    "kind": "target-tutorial",
+    "title": "Chapter 6 — Tune a physical parameter",
+    "summary": "Target parameterized model and tuning request.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--optimize-primitive.qmd",
+    "source_ref": "examples/tutorials/06_optimize_primitive.qmd"
+  },
+  {
+    "id": "tutorial/prepare-hb",
+    "kind": "target-tutorial",
+    "title": "Chapter 15 — Prepare pump-off HB",
+    "summary": "Target pump-off HB request preparation.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--prepare-hb.qmd",
+    "source_ref": "examples/tutorials/15_prepare_hb.qmd"
+  },
+  {
+    "id": "tutorial/report-resolve",
+    "kind": "target-tutorial",
+    "title": "Chapter 7 — Report and resolve exact requests",
+    "summary": "Target report and exact request resolution.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--report-resolve.qmd",
+    "source_ref": "examples/tutorials/07_report_resolve.qmd"
+  },
+  {
+    "id": "tutorial/review-customize-schematic",
+    "kind": "target-tutorial",
+    "title": "Chapter 11 — Review and customize a schematic",
+    "summary": "Target layout, grounding, diagram review, and validation.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--review-customize-schematic.qmd",
+    "source_ref": "examples/tutorials/11_review_customize_schematic.qmd"
+  },
+  {
+    "id": "tutorial/solve-direct",
+    "kind": "target-tutorial",
+    "title": "Chapter 2 — Ask for a Direct response",
+    "summary": "Target fixed-circuit declaration and Direct request.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--solve-direct.qmd",
+    "source_ref": "examples/tutorials/02_solve_direct.qmd"
+  },
+  {
+    "id": "tutorial/source-guide",
+    "kind": "target-tutorial",
+    "title": "TARGET course source guide",
+    "summary": "QMD authority and zero-output derived Notebook boundaries.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--source-guide.md",
+    "source_ref": "examples/README.md"
+  },
+  {
+    "id": "tutorial/sweep-parameters",
+    "kind": "target-tutorial",
+    "title": "Chapter 5 — Sweep parameter points",
+    "summary": "Target spaces, selections, and sweep Results.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--sweep-parameters.qmd",
+    "source_ref": "examples/tutorials/05_sweep_parameters.qmd"
+  },
+  {
+    "id": "tutorial/transform-retain",
+    "kind": "target-tutorial",
+    "title": "Chapter 14 — Transform and retain coordinates",
+    "summary": "Target transformed and retained coordinates.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--transform-retain.qmd",
+    "source_ref": "examples/tutorials/14_transform_retain.qmd"
+  },
+  {
+    "id": "tutorial/use-custom-component",
+    "kind": "target-tutorial",
+    "title": "Chapter 10 — Reuse a component in a circuit",
+    "summary": "Target composition inside a larger circuit.",
+    "status": "CONVERGING TARGET/reference course; retained callouts are not per-build execution evidence. See guide/agent-usage for capability-scoped guidance.",
+    "path": "resources/tutorial--use-custom-component.qmd",
+    "source_ref": "examples/tutorials/10_use_custom_component.qmd"
+  }
+]

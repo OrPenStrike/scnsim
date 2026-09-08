@@ -17,9 +17,9 @@ from names, numerical values, a picture, or a calculated mode.
 The model-first course works toward a complete review package: a diagram
 generated from the authored circuit, its independent A/B correspondence audit,
 and typed analytical Results that point back to the same Plan while recording
-their separately selected View and request. Tutorial authoring figures are
-genuine exports tied to their source checkpoints; they are not solver outputs
-or evidence that every course cell has executed successfully.
+their separately selected View and request. The current structured-authoring
+cells describe that target honestly; they do not fabricate an implemented
+diagram or solver output.
 
 If you prefer to see the destination before learning each part, start by
 reading the complete
@@ -71,10 +71,9 @@ simulation remain SCGSim responsibilities.
 > System, and parameterized diagrams remain `CONVERGING`. Implementation
 > candidates and their validation are in progress; this is not a release or
 > acceptance claim. The [installed-package usage guide](docs/agent-usage.md)
-> scopes a runnable Direct example separately from the TARGET course.
-> Tutorial authoring figures bind genuine exported diagrams to selected source
-> checkpoints; they do not prove that every cell is supported or validated by
-> an installed build. Compiled-diagram limitations remain separately reported.
+> scopes a runnable Direct example separately from the TARGET course. A
+> packaged Tutorial is design reference material, not proof that every cell
+> is supported or validated by that installed build.
 
 ## Install for development
 
@@ -134,12 +133,9 @@ support boundaries, and a complete Direct example.
 
 Each Chapter also has a zero-output generated Notebook in
 [`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)
-for GitHub or VS Code/Jupyter review. QMD is the only editable lesson source;
-the Notebook is a derived transport artifact, not an execution record.
-The website displays separately generated authoring SVGs without executing
-kernels or solvers. See the [source and figure workflow](examples/README.md)
-for the execution boundary. Neither a figure nor a Notebook establishes
-whole-course support, Human acceptance, or release status.
+for GitHub or VS Code/Jupyter review. Their TARGET callouts and zero-output
+format distinguish the design curriculum from per-build execution evidence;
+do not infer whole-course support from the presence of a Notebook.
 
 ## Preview locally
 

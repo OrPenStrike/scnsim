@@ -1,0 +1,171 @@
+---
+title: "Definitions, Bound Inputs, Points, and Optimization"
+---
+
+::: {.callout-warning}
+## CONVERGING Parameter System concept
+
+The independent definition, Plan-binding, parameter-space, sweep-result, and
+parameterized-diagram surface described here is a documentation target. It is
+not executable on the current runtime and is not Human-accepted. Accepted unit,
+physical-model, numerical-algorithm, and objective meanings are not reopened.
+:::
+
+## A number, a named input, and a search variable are different things
+
+A literal such as `110 * u.fF` is already a complete physical value. It should
+remain literal when no external operation needs to vary it. Naming that value
+as an input does not make it an optimization variable, and choosing a search
+variable does not make the computed quantity a circuit input.
+
+The Parameter System keeps seven layers distinct:
+
+| Layer | Meaning |
+|---|---|
+| baseline value | the definition's immutable default physical value |
+| `ParameterSpec` | scalar unit and dimensional validation |
+| `ParameterRef` | one input identity: definitions-collection ID plus local ID |
+| physical binding | one or more registered component fields that consume the ref |
+| `ParameterSet` | one immutable operation-time point |
+| `ParameterSpace` | an ordered Cartesian grid or explicit list of points |
+| `OptimizationVariable` | one scalar ref plus request-local finite bounds and transform |
+
+The output selected by an objective is a typed quantity, not a `ParameterRef`.
+`root_hint` remains a numerical branch locator, not a parameter value, target,
+bound, or Gate.
+
+## Definitions are independent; physical fields assign them to a Plan
+
+`ParameterDefinitions(id="readout_design")` owns a namespace. Its
+`parameter(id=..., baseline=..., spec=...)` method returns an immutable ref but
+does not register that ref with a Plan. The ref becomes an input of a specific
+Plan only when a real component field consumes it and that component is added
+to the Plan or one of its owned subsystems.
+
+The ref's identity key is exactly the definitions-collection ID plus local ID.
+Its schema and canonical baseline must agree wherever that key is reused; a
+conflict is rejected rather than becoming another same-named parameter.
+The collection ID is a stable logical namespace, not a Notebook caption or
+Python variable name. Recreating the same compatible collection/local-ID key is
+intentional; a conflicting definition is rejected when a Plan or operation
+consumes it. Unrelated designs should not reuse a key casually, and no mutable
+global registry is implied.
+
+```text
+definition -> ParameterRef -> component physical field -> registered Plan
+                                      |
+                                      +-> visible Plan-specific consumer evidence
+```
+
+Merely constructing a definition, putting a ref in a `ParameterSet`, or using
+the same Python object in a Notebook creates no Plan binding. A Plan captures
+only its consumed definition-and-binding closure. An unused definition added
+later therefore cannot change that Plan snapshot.
+
+One ref may feed several physical fields or several Plans. Those Plans inspect
+their own consumers independently. Conversely, equal values held by different
+refs remain separate inputs. Literals never acquire refs automatically, and
+there is no mutable global current value.
+
+## Reusable components publish a boundary, not their private children
+
+A Library factory accepts compatible literals or refs through its declared
+input arguments. Inside the factory, native fields consume those values.
+`CompositePlan.expose_parameter(id=..., parameter=...)` publishes the original
+bound ref; the resulting component's `parameter("capacitance")` lookup returns
+that same public ref without exposing a private child path.
+
+This boundary can represent deliberate fan-out or an accepted scalar
+`AffineMap`. It cannot turn one shared ref into several independent variables,
+infer a parameter from a literal, or accept arbitrary Python callback
+expressions.
+
+## A point fills values; a space orders points
+
+A `ParameterSet` supplies one point. Values omitted for consumed refs use the
+captured Plan baseline. Unknown, unconsumed, or dimensionally incompatible refs
+are rejected rather than ignored.
+
+`ParameterSpace.grid(axes=..., fixed=...)` forms a Cartesian product. Axis
+order is author order; fixed refs and axis refs must be disjoint.
+`ParameterSpace.points(...)` instead preserves an explicit ordered list,
+including duplicate positions. Incoming arrays and containers are copied and
+frozen, so later mutation cannot rewrite request identity.
+
+An operation with a space returns a `ParameterSweepResult`. Every point stores
+its complete effective `ParameterSet`, success state, typed Result or failure,
+and exact batch/point identity. Exact selection may use a partial
+`ParameterSet` as filters: supplied refs must match, while omitted refs are
+wildcards. This differs deliberately from operation-time baseline filling.
+
+Collection is also read-only. A typed `QuantitySelector` gathers only a
+quantity the request already computed, preserving units, axes, source indices,
+duplicates, and a failure mask. One-axis grids can be shown as curves and
+two-axis grids as labeled sample-cell heatmaps after other axes are fixed.
+Empty selections stay empty, repeated values keep separate sample positions,
+and incomplete or listed samples remain indexed points rather than being
+silently reshaped, averaged, or interpolated. A quantity absent because its
+point failed numerically is masked with that failure; one not requested by the
+Spec is rejected without execution.
+
+## Optimization uses the same binding boundary
+
+`OptimizationVariable` adds finite bounds and an existing transform to one
+scalar ref. Bounds are not inferred from a parameter-space grid. An
+Optimization request may take a `ParameterSet` for non-active fixed inputs;
+overlap with active variables is rejected, and omitted non-active inputs use
+their sealed baseline.
+
+Every candidate and the winner record a complete effective `ParameterSet`.
+The winner can therefore be re-evaluated or rendered explicitly without
+changing the Plan baseline. A `ParameterSpace` is not an implicit batch of
+optimizations, and a low cost does not create scientific or Human acceptance.
+
+## Structured RLGC values have a bounded support scope
+
+`RLGCParameterSpec` describes one complete fixed-basis R/L/G/C value. Its
+conductor labels, reference conductor, matrix shapes, dimensions, and source
+provenance remain explicit. Matrix rows and columns are not sweep axes, and
+`n_sections` remains authored component structure.
+
+This candidate supports compatible complete RLGC values for declared Direct,
+HB, and applicable operator calculations. It does not support continuous
+whole-matrix optimization, implicit interpolation, or tracking one baseline
+root across changing RLGC matrices. That is the current support boundary, not
+a claim that another mathematical method is impossible. Scalar sweeps and
+root tracking at a fixed baseline RLGC value remain separate supported uses.
+
+## Diagrams show one selected physical point
+
+A parameterized schematic takes one `ParameterSet`, never a space. It derives
+native values, compiler expansion, labels, and audit evidence from that exact
+point. The Plan identity does not change, while expanded and numerical
+identities may. The audit distinguishes baseline from selected values and binds
+`parameters_sha256` for the complete effective point after baseline filling;
+it does not certify a View, solver Result, or optimization.
+
+## Reader path and authority
+
+- [Chapter 4](../../examples/tutorials/04_define_parameters.qmd) demonstrates
+  independent definition, physical-field binding, Plan inspection, one selected
+  calculation, and one selected diagram.
+- [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) demonstrates a
+  Cartesian grid, listed points, exact selection, point failures, and read-only
+  collection.
+- [Chapter 6](../../examples/tutorials/06_optimize_primitive.qmd) fixes a
+  non-active input, reads back the winning effective point, and renders that
+  point without changing the Plan baseline.
+- [Chapters 9–10](../../examples/tutorials/09_add_composite_factory.qmd)
+  publish original bound refs through a reusable component while keeping
+  literal factory inputs fixed.
+- [Chapter 12](../../examples/tutorials/12_model_n_trace_line.qmd) introduces a
+  complete fixed-basis RLGC value only after teaching its matrix meaning.
+- [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) makes the
+  advanced feedline, readout, and floating-subsystem bindings visible in the
+  Plan audit.
+- [Parameter System contract](../contracts/parameter-system.qmd) owns the exact
+  signatures, identities, supported values, Result surface, and failures.
+- [Component authoring](../component-authoring.qmd#pins-and-public-parameters)
+  owns reusable public-boundary placement.
+- [Runtime Contract](../v1-runtime-contract.qmd#optimization-and-numerical-scaling)
+  retains accepted numerical algorithms and objective semantics.

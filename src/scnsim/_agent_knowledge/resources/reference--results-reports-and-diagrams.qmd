@@ -1,0 +1,351 @@
+---
+title: "Results, Reports, and Diagrams"
+subtitle: "How does verified evidence become a Python-facing presentation?"
+toc-depth: 2
+---
+
+**Status:** accepted numerical Result/report mechanics remain `STABILIZED`.
+Structured authoring, its identity integration, and certified diagrams are a
+`CONVERGING` target with implementation alignment pending. Adaptive
+presentation-theme semantics remain a separate `CONVERGING` candidate.
+
+## Separate materialized values from analysis evidence
+
+`Result` is the shared immutable, already-materialized value role.
+`AnalysisResult` is the receipt-backed terminal subset and exposes immutable
+`ResultIdentity(plan_sha256, request_sha256, attempt_sha256, result_sha256)`.
+`DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and
+`HBBatchResult` derive from it. Each HB batch contains one `HBCaseOutcome` for
+every declared case. The outcome is a derived view of its parent receipt: a
+success exposes matrices and states; a numerical failure exposes its stored
+`HBCaseFailure`. `ExplanationResult`, `CircuitDiagramResult`, and
+`ReportResult` remain derived values and do not fabricate operation receipts.
+
+## Reconstruct typed Results in Python
+
+Python verifies the receipt and manifest before constructing an
+`AnalysisResult`. Scalars and axes become SCNSim-registry Pint Quantities;
+matrix payloads become labeled NumPy arrays with ordered coordinate, mode,
+frequency, unit, and load-state metadata. An Analysis Result retains request,
+attempt, artifact, and runtime identity even when its chunks load lazily.
+
+Direct matrix channels use `(coordinate, ())`. HB input and output channels use
+flattened `(coordinate, mode)` pairs in coordinate-major/mode-minor order.
+`MatrixView.input_channels` and `output_channels` expose those exact stored-axis
+labels; presentation never infers a reshape or relabels a mode.
+
+HB operating-point arrays use the separate structured axes
+`(pump_mode, node_coordinate)`. Each pump-mode label is an ordered integer tuple
+in request pump-axis order, and each node-coordinate label is the sealed
+compiler identity recorded by `state_node_map`. These labels are evidence, not
+new View selectors or Port aliases.
+
+The Result catalog describes artifact meaning: role, dtype, shape, axes, units,
+and channel order. HB links carry case-local `{case_id, id, path, sha256}`
+references. The manifest instead seals the byte tree. A repeated local ID or
+SHA-256 across cases is valid; only the complete receipt-bound reference has an
+addressable role.
+
+No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
+unit disagreement, forbidden non-finite values, or a real/imag manifest
+mismatch fails verification instead of returning a partial typed object.
+
+## Keep presentation downstream of execution
+
+Matplotlib renders numerical `show()` surfaces. `magnitude="linear" | "db"`
+changes only displayed S magnitude; source arrays remain unchanged. Every
+theme entry accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK` and
+raises `TypeError` for raw strings. Matplotlib still returns a real `Figure`,
+Schemdraw a real `Drawing`, and HTML presentation its HTML object.
+
+`Theme.AUTO` uses a light-styled portable static fallback and a self-contained
+SVG/HTML rich representation whose foreground and background switch together
+under `prefers-color-scheme: dark`. `Theme.LIGHT` and `Theme.DARK` remain
+fixed. Existing `Drawing.save()` and `Figure.savefig()` preserve an explicit
+theme; `AUTO` saves the light fallback. Presentation does not read environment
+variables or mutate global Matplotlib/Schemdraw configuration.
+
+Notebook rich display wraps the same SVG in self-contained zoom, pan, copy,
+reset, and open controls. If JavaScript or clipboard access is blocked,
+ordinary scrolling and the static SVG remain readable. These controls do not
+alter the returned object, its geometry, a report, or static output.
+
+The light and dark palettes share one paired ten-color cycle. Changing theme
+cannot change arrays, curve/case order, line count, labels, diagram geometry,
+layout, topology, or Plan/request/Result identity.
+
+| Role | Light | Dark |
+|---|---|---|
+| background | `#ffffff` | `#111827` |
+| foreground | `#243044` | `#eaf2fb` |
+| secondary text | `#5b677a` | `#a8b7ca` |
+| grid/border | `#d8e1ec` | `#2b3a4f` |
+| primary accent | `#2f80d1` | `#7bb7f0` |
+
+The paired line cycle, in order, is
+`#2f80d1/#7bb7f0`, `#c76b00/#f2a65a`, `#2e7d32/#7dcc8a`,
+`#7e57c2/#b39ddb`, `#c44536/#ff8a80`, `#0f766e/#2dd4bf`,
+`#a16207/#facc15`, `#be185d/#f472b6`, `#0e7490/#22d3ee`, and
+`#475569/#cbd5e1`. Each pair is the light/dark rendering of one trace index.
+
+## Structured diagram implementation target
+
+[Structured Circuit Authoring and Certified Diagrams](../contracts/automatic-semantic-circuit-diagram-layout.qmd)
+is the sole `CONVERGING` semantic authority. It replaces the prior inferred
+neighbor partition and pre-render catalog with explicit series, parallel,
+branch, bus, tap, link, exposure, coupling, and recursive ownership facts.
+
+Runtime alignment is pending. The design below records how an implementation
+must preserve the contract; it does not describe completed behavior or
+establish implementation conformance.
+
+### Package and capture boundaries
+
+Implementation remains separated behind private diagram boundaries:
+
+| Boundary | Responsibility |
+|---|---|
+| snapshot and expected evidence | capture one immutable structured Plan; derive visible expectations and separate complete source rows |
+| authoring IR | retain recursive scopes and explicit structured operators without intent inference |
+| scene and local layout | expand native parts, pack child scenes, and emit one neutral scene |
+| independent witnesses | reconstruct only visible electrical and ownership observations from the scene |
+| frozen serialization | expose the checked scene through one immutable result |
+
+Capture must be pure. Coordinate promotion and normalization operate on copied
+records; the renderer cannot mutate a Plan temporarily and restore it. The
+same capture feeds compiler preflight. The existing canonical encoder remains
+the current implementation baseline. Target identity integration must
+deliberately add the structural declarations rather than claiming compatibility
+by similarity.
+
+The expected-visible manifests derive independently from the structured source
+snapshot or compiled expansion. Complete authored operator, exposure,
+alias, parameter-definition, parameter-binding, effective-point, unit, bus,
+tap, ground-provenance, and ownership records remain separate verified source
+rows. Observed witnesses derive only from emitted neutral geometry and may not
+read placement tables, source rows, or hidden answers.
+
+### Compiled matrix-stamp projection
+
+The compiled projection remains a complete **matrix-stamp** view, never a
+scalar-equivalent circuit. With the existing `exp(-i omega t)` convention and
+$s=-i\omega$, each series station contributes
+
+$$
+Y_{\mathrm{series}} =
+B_s (R + sL)^{-1} B_s^{\mathsf T},
+$$
+
+and each terminal half-shunt contributes
+
+$$
+Y_{\mathrm{half\text{-}shunt}} =
+B_t (G/2 + sC/2) B_t^{\mathsf T}.
+$$
+
+The expansion evidence rows already contain half-scaled shunt coefficients;
+the renderer must not divide them again. Both half-shunt contributions remain
+visible and auditable. Symmetric entries describe one reciprocal coefficient
+relation, not duplicate physical couplings.
+
+Native diagonal glyphs associate a matrix coefficient with its station and
+conductor. They are not independent executable scalar branches. Off-diagonal
+$R$ is not a galvanic resistor, and off-diagonal $L$ remains a signed,
+oriented mutual term. The visible table/legend retains every coefficient,
+sign, unit, incidence, section/end/station, conductor order, and exact zero.
+The observed witness reconstructs these facts from the neutral scene instead
+of copying the expected table.
+
+### Structured native scene and local layout
+
+Authoring IR mirrors the declared hierarchy and operators. It does not derive
+S/P/M interfaces, a quotient topology, a global physical flow, or a second
+electrical graph. Every inline Subsystem and reusable Composite expands its
+native child diagram in a measured ownership region with a visible ID.
+
+The renderer first measures native/operator blocks, complete independent
+multi-terminal or Composite peers, and complete child regions. A parent then
+packs those units without rewriting child internals and attaches connectors at
+authored endpoints or public anchors. Buses and links remain conductive routing
+demands rather than component slots or inferred pairwise relations. This also
+supports scopes containing native peers but no child Subsystem.
+
+Automatic layout uses local conventions for the authored operator:
+
+- a single series defaults horizontal and retains electrical order;
+- every parallel defaults to a vertical start-to-end path with branches
+  left-to-right; a parallel-local horizontal hint rotates those paths without
+  reversing pins or members, while a scope axis does not rotate them;
+- branch members depart their declared bus/tap without severing it;
+- bus taps share one net while retaining separate attachment sites;
+- each N-link remains one zero-component conductive relation whose shared
+  geometry is emitted once;
+- intrinsic, parent-applied, and Port-local ground structures remain at their
+  authored locality while resolving to one canonical reference; and
+- mutual couplings remain nonconductive and oriented.
+
+An optional `SchematicLayout` applies strict axes, complete local permutations,
+terminal sides, Port sides, and named-tap order over live authored handles. The
+tap mapping constrains only explicitly declared taps within the owning bus
+segment; implicit direct-bus contacts remain automatic. No hint can introduce
+topology, raw coordinates, current flow, or a new electrical order. Parent
+layout treats each measured child scene as one packed unit and connects only
+registered public anchors.
+
+The current renderer revision retains the local `U = 2.2` setting, actual font
+metrics, separate readable name/value boxes, registered anchors, obstacle
+clearance, continuous same-net paths, true T junctions, and other-net jump
+arcs. `U = 2.2` is an implementation setting, not a TARGET semantic threshold
+or user Gate. The main authoring image uses conventional native symbols, wires,
+junctions, Ports, local grounds, physical coupling marks, and subtle titled
+ownership regions. Operator/debug marks, routing guides, and private aliases do
+not appear in that image. Ownership regions and labels remain unmistakably
+nonconductive. Literal authored local IDs remain literal display identities;
+the renderer neither title-cases them nor invents compact aliases. The existing
+`show_provenance=True` default emits a compact separated footer that can be
+hidden without changing the circuit scene or evidence.
+
+An authoring `NodeMark` may be unlabelled; required compiled-marker labels stay
+visible. A connected two-ray bend or contact may harmlessly carry a filled dot,
+and every true three-or-more-ray wire junction carries one. Isolated dots and
+marks that imply a different-net connection are invalid, but the renderer does
+not reject a dot merely because it has only two incident rays. Mutual winding
+dots are separate marks whose orientation evidence remains visible.
+
+Ordinary L/JJ glyphs in the normal schematic need neither direction arrows nor
+`+`/`−` reference-polarity signs. Ordered model endpoints and branch reference
+conventions remain intact through rotation without being claimed as visible
+facts of an unmarked symmetric body. Mutual winding dots, their endpoint
+incidence, and coupling information retain sufficient visible relative polarity.
+A presentation of signed branch current, voltage, or phase must explain its
+reference endpoints. This is a presentation responsibility, not a new
+signed-result API or a claim that diagram rendering computes those quantities.
+
+Layout is deterministic only for the same renderer revision, inputs, Theme,
+font files, and metrics environment. The contract does not prescribe a global
+graph-search algorithm or promise all graphs are layoutable. Failure reports
+the affected declaration or constraints and returns no partial/best-effort
+certified result.
+
+### Independent witnesses and frozen output
+
+Witness A reconstructs electrical bodies, terminals, wires, zero-wire
+equivalence, grounds, Ports, couplings, and compiled matrix associations. It
+checks authoring geometry against the exact Plan and point, or compiled geometry
+against the exact compiler-emitted expansion for that Plan and point. This is
+projection correspondence. With `show_parameter_values=True`, A also
+reconstructs every displayed effective scalar physical value and displayed unit
+and compares them with that same resolved point. Hidden value labels make no
+visible-scalar-label claim, although the certificate still binds the exact
+effective point. This qualification does not weaken the compiled projection's
+matrix, coefficient, sign, unit, half-shunt, or omission evidence.
+
+For unmarked ordinary symmetric two-terminal bodies, including L/JJ, A may
+compare electrical evidence modulo endpoint-reference reversal. It does not
+reconstruct an ordered endpoint pair from hidden placement, source rows, or
+expected metadata, and missing polarity signs are not an audit failure.
+Complete ordered model orientation remains separately verified source/provenance
+evidence. For mutually coupled branches, A reconstructs relative polarity from
+actual visible winding dots, their endpoint incidence, and coupling information;
+a consistent reference reversal carries the corresponding coupling-sign
+transformation, never deletion of sign evidence. Required oriented compiled
+evidence remains unchanged.
+
+With `show_parameter_values=True`, the mutual annotation exposes its signed
+numerical coefficient. With values hidden, sign-only coupling information
+(negative, positive, or zero) remains alongside visible dot/incidence evidence;
+the hidden magnitude remains source-verified. A observes the sign in both modes
+and the magnitude only when shown.
+
+The witness is not an independent proof of numerical compiler lowering,
+stamping, View/PTC realization, or solver correctness.
+
+Witness B reconstructs visible child regions and headers, containment,
+native-leaf and Port ownership, and cross-boundary electrical incidence. The
+undrawn root envelope is scene bounds, not an observed ownership region. For a
+single unlabelled child-boundary crossing, B checks visible wire incidence and
+does not recover a hidden `PinRef` identity. It does not reconstruct invisible
+operator IDs, link-call history, bus/tap names, or coordinate/branch/exposure
+names. Internally, each B boundary record contains the visible region path,
+parent, and literal local title; either an unlabelled-only boundary mode or its
+visible named boundary; the electrical net; and the visible inside/outside
+contact sets. It never stores a hidden exposure ID as an observed fact. Complete
+aliases, parameter definitions and bindings, effective point, units, ground
+provenance, and other authoring facts remain separately available as verified
+source/provenance rows rather than being smuggled into scene metadata.
+`audit.show()` labels observed A, observed B, visible-value checks, and captured
+source/provenance as distinct evidence classes. Human review C alone decides
+whether the Plan is the intended circuit.
+
+Only after A/B agree is the neutral scene frozen. `CircuitDiagramResult.show()`
+returns a real Schemdraw `Drawing` through a supported read-only facade. The
+existing `Drawing.save()` remains the static API; there is no new save/export
+method. Notebook controls and static fallback serialize the same scene.
+
+The optional `presentation_sha256` excludes its own displayed annotation. It
+is presentation identity, not an authenticity/security signature, and does
+not alter Plan, compiler, request, Result, connectivity, semantic, or
+expanded-graph identities.
+
+### TARGET Tutorial alignment
+
+The 16 canonical QMD Chapter containers and generated zero-output Notebooks
+teach the target proposal through short model-first Lessons. Each Chapter is a
+complete clean-kernel document; Lessons may share preceding state only inside
+that Chapter. They are documentation artifacts, not runtime evidence:
+
+- Chapters 1–3 repeat one complete fixed-value inline-resonator circuit, inspect
+  its Plan projection, and only then ask Direct and retained-node questions.
+- Chapter 4 defines independent inputs, binds them through registered physical
+  fields, and inspects the Plan-specific consumers before selecting one point.
+- Chapter 5 requests Cartesian and listed spaces, then inspects exact point
+  outcomes and collects one already-computed typed quantity.
+- Chapters 6–7 preserve the accepted optimization, report, and restart/resolve
+  routes on the same physical model.
+- Chapters 8–10 introduce Library and Composite only after the inline subsystem
+  is familiar.
+- Chapter 11 builds two inline LC scopes, compares automatic/hinted diagrams,
+  and uses a separate complete Plan for a direct stitch.
+- Chapter 12 teaches transmission-line context before complete matrix RLGC,
+  compiled evidence, a tapped two-section feedline, and a selected whole-RLGC
+  response point.
+- Chapter 13 first assembles and reviews the complete
+  parameter-bound feedline/readout/floating capstone before selecting probe
+  PTC. Chapters
+  14–16 repeat that complete model before independently selecting
+  transformed/retained Views, HB, and Direct/HB requests.
+
+Every ASCDLS diagram remains a projection of the explicit authored or compiled
+Plan. It may bind one explicit `ParameterSet`, including an optimization
+winner supplied by the caller; it rejects `ParameterSpace`. It does not create,
+select, or depict a request-specific View, PTC-effective topology, or solver
+Result. Exact point/audit identity belongs to the
+[Parameter System Contract](../contracts/parameter-system.qmd#parameterized-diagrams).
+
+TARGET Tutorial cells do not claim execution against the frozen runtime
+baseline. Runtime implementation alignment, exact Human acceptance, and durable
+stabilization tests remain later lifecycle steps.
+
+## Assemble reports from explicit inputs
+
+`ReportSpec.inputs` contains exact `AnalysisResult` objects already held by the
+caller, and `ReportSpec.theme` selects the same strict presentation enum used
+by diagrams and figures. Report assembly verifies result identities, preserves
+each native grid, and records every failed outcome carried by an input HB
+batch. Its HTML, tables, and embedded Direct/HB SVG use one theme; `AUTO`
+adapts in the browser while explicit themes remain fixed. It does not search
+the workspace, infer a latest Result, run an analysis, interpolate curves, or
+decide whether a Design Target passed.
+
+`ReportResult` is pure derived data, not a terminal operation. Its `save(path)`
+accepts a new `.html` file beneath an existing parent, refuses overwrite,
+writes atomically, and returns `Path`. The file is standalone and self-contained:
+it embeds figures, summary tables, and complete source identities, but excludes
+complete large raw arrays, workspace links, timestamps, and inferred PASS/FAIL.
+Additional formats wait for a named consumer.
+
+Suffix, missing-parent, and existing-target checks use `ValueError`,
+`FileNotFoundError`, and `FileExistsError`; other filesystem failures retain
+their ordinary `OSError` subtype. Export creates no operation receipt.
+
+[Next: External inputs and delivery](external-inputs-and-delivery.qmd)

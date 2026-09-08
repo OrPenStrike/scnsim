@@ -1,0 +1,116 @@
+---
+title: "From an Analysis Question to a Result"
+---
+
+::: {.callout-warning}
+## Accepted single requests; CONVERGING sweep Results
+
+The Run, single-point request, receipt, and typed Result meanings on this page
+remain accepted. Ordered `ParameterSpace` requests and
+`ParameterSweepResult` are a separate `CONVERGING` target. Exact signatures,
+receipt fields, workspace validation, and failure behavior belong to the linked
+contracts.
+:::
+
+## Finish the model before asking for a number
+
+After the complete `CircuitPlan` has been authored, an analysis begins by
+stating five things:
+
+1. the sealed circuit and evidence workspace, owned by `CircuitRun`;
+2. `run.original` or a deliberately derived `NetworkViewRef`;
+3. a typed Spec describing the question;
+4. an optional exact parameter point or ordered parameter space; and
+5. the operation that answers that kind of question.
+
+This keeps “what circuit exists?” separate from “what should be calculated?”
+A diagram review is the recommended Tutorial step, but it is not an execution
+prerequisite: the analysis API requires a complete Plan, not a prior
+render/show/audit call. A diagram request does not choose the View or perform
+the analysis.
+
+## Ref, Spec, operation, Result {#run-request-result-ownership}
+
+| Part | Reader question |
+|---|---|
+| Ref | Which original or transformed/retained network should this question use? |
+| Spec | Which response, physical quantity, or optimization is requested? |
+| operation | Is this a Solve, Evaluate, or Optimization action? |
+| typed Result | What verified answer and evidence did that exact request produce? |
+
+`solve()` returns a response-like Result, `evaluate()` returns a typed
+physical quantity or operator Result, and `optimize()` returns an
+Optimization Result. These are separate actions because they own different
+requests and outputs; one is not inferred from another.
+
+With no parameter argument or one `ParameterSet`, the operation returns its
+ordinary typed single-point Result. A `ParameterSpace` always returns a
+`ParameterSweepResult`, even when it contains one point. Each point keeps a
+complete effective `ParameterSet`, exact point identity, and either the typed
+Result or its failure. Numerical failure at one point does not fabricate zero
+data or hide successful neighbors; protocol and integrity failures abort the
+request.
+
+`explain()` is the review step before execution. It performs deterministic
+binding and compile preflight, then describes the selected Plan, Ref, Spec,
+parameters, runtime, and dependencies without launching a solver or writing a
+request workspace.
+
+## Results are returned, not hidden on the Run
+
+A Result owns one materialized answer and the exact identities needed to
+interpret it. The Run does not keep a mutable “current Result,” “current
+View,” or “latest request.” A Notebook can therefore hold a Direct response,
+a loaded root, and an Optimization Result at the same time without one changing
+the meaning of another.
+
+The broader `Result` role also covers derived explanations, diagrams, and
+reports. Those values preserve their explicit inputs but do not fabricate an
+analysis-operation receipt.
+
+## Resolve exact evidence after restart
+
+The question and each execution attempt have separate identities. Repeating a
+failed or interrupted request appends an immutable attempt; it does not
+overwrite the earlier evidence. A verified success can be reused.
+
+`resolve()` reconstructs the expected request identity from the same Ref,
+Spec, and exact `ParameterSet` or `ParameterSpace`, then verifies the sealed
+workspace evidence.
+It performs no computation, retry, latest-result search, or process-cache
+lookup. This is why a lesson can restart the kernel, recreate the same model
+and request, skip the execution cell, and still resolve one exact prior Result.
+
+By default, a workspace is replaceable for Notebook iteration. A caller that
+needs several Plan topologies opts into versioned workspaces. In either mode,
+the workspace stores evidence; it does not become the physical circuit
+authority.
+
+## What this separation prevents
+
+This ownership model prevents:
+
+- a presentation call from silently executing;
+- a changed View or ParameterSet from resolving stale evidence;
+- a plot from becoming the source of a physical quantity;
+- a failed retry from erasing an earlier attempt; and
+- Notebook cell order or in-memory state from selecting a result implicitly.
+
+Receipts prove what SCNSim executed and stored. They do not prove that the
+Human chose the right circuit, View, target, or scientific interpretation.
+
+Sweep inspection is read-only. Exact selection retains source indices and
+duplicate point identities; collection accepts an existing typed quantity
+selector and never launches a new calculation or interpolates scattered data.
+
+## Contract sections
+
+- [Runtime ownership model](../v1-runtime-contract.qmd#runtime-ownership-model)
+- [Seal one Plan into one Run](../v1-runtime-contract.qmd#seal-one-plan-into-one-run)
+- [One execution owner](../v1-runtime-contract.qmd#solve-versus-evaluate)
+- [Explain before execution](../v1-runtime-contract.qmd#explain-before-execution)
+- [Resolve without execution](../v1-runtime-contract.qmd#resolve-without-execution)
+- [Request identity and immutable attempts](../v1-runtime-contract.qmd#request-identity-and-immutable-attempts)
+- [Typed Quantity results](../v1-runtime-contract.qmd#typed-quantity-results)
+- [Failure and evidence contract](../v1-runtime-contract.qmd#failure-and-evidence-contract)
+- [Parameter System contract](../contracts/parameter-system.qmd)

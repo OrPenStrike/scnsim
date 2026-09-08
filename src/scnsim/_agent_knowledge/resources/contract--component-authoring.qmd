@@ -1,0 +1,1079 @@
+---
+title: "Component Authoring Contract"
+subtitle: "Physical component models and the CONVERGING structured-authoring boundary"
+toc-depth: 3
+---
+
+::: {.callout-warning}
+## Mixed lifecycle: accepted physical models, CONVERGING authoring target
+
+The Library provenance, primitive R/L/C/JJ models, RLGC/transmission-line
+meaning, mutual coupling, and Direct/HB lowering semantics on this page retain
+their accepted Full V1 authority. Parameter definition, physical binding, and
+batch identities are reopened only in the linked Parameter System target.
+
+The public assembly grammar, recursive inline ownership, its Plan-identity
+integration, and certified diagrams are reopened as a `CONVERGING` target.
+Implementation alignment remains pending, so the target examples are not yet
+executable. Their one normative authority is
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+:::
+
+## Contract scope
+
+The target keeps one route from reusable physical definitions to a sealed Plan:
+
+```text
+immutable Library
+-> component instances with exact source identity
+-> structured root, inline Subsystem, and reusable Composite declarations
+-> explicit series, parallel, branch, bus, tap, N-link, grounding,
+   and coupling roles
+-> deliberately exposed pins, coordinates, branches,
+   and already-bound parameters
+-> root-owned logical Ports
+-> CircuitPlan
+```
+
+The `CircuitPlan` remains the only physical authority. A schematic, compiled
+backend row, reduced view, or solver result is evidence derived from that Plan,
+not another circuit definition.
+
+A native component may bind a fixed Quantity directly. It receives a
+`ParameterRef` only when the author deliberately supports operation-time
+variation. The model-first Tutorial therefore uses literal C/L values in
+Chapters 1–3 and introduces independent definitions plus real physical-field
+bindings in Chapter 4. The [Parameter System contract](contracts/parameter-system.qmd)
+owns those target identities and their operation-time values.
+
+This page owns physical factory and lowering semantics. The linked structured
+contract owns the proposed assembly signatures, ownership, layout, identity,
+and authoring/diagram failures. The
+[Parameter System Contract](contracts/parameter-system.qmd) owns independent
+definitions, physical-field Plan adoption, points, spaces, and parameterized
+Results. The
+[V1 Runtime Contract](v1-runtime-contract.qmd) owns Plan sealing, Ref lineages,
+Direct/HB execution, Results, receipts, and resolution.
+
+For a user-led introduction, begin with
+[authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
+and then [creating a custom Library](../examples/tutorials/08_create_library.qmd)
+before [adding its first Composite factory](../examples/tutorials/09_add_composite_factory.qmd).
+For the design reasoning behind the boundary, read
+[Physical authority and structured composition](concepts/physical-authority-and-reusable-composition.qmd).
+This Contract retains exact signatures, invariants, failure behavior, and
+evidence requirements; it is not the guided Tutorial.
+
+## One component-catalog model {#one-library-model}
+
+Built-in and custom catalogs are immutable `Library` objects imported directly:
+
+```python
+from scnsim import CircuitPlan, components, units as u
+import my_components
+
+plan = CircuitPlan(id="example")
+```
+
+Every component instance carries the exact catalog name, version, source, and
+component-schema identity that created it. SCNSim does not provide string-based
+component discovery, a Notebook-global registry, or a mutable
+`CircuitLibrary.register_component(...)` workflow.
+
+`Library` is the constructible base for a project's custom catalog. A package
+subclasses it and ordinarily exports one constructed catalog instance:
+
+```python
+from scnsim import Library
+
+class ResonatorLibrary(Library):
+    """Project-specific reusable resonator components."""
+
+components = ResonatorLibrary()
+```
+
+The caller supplies no catalog ID or version argument. SCNSim derives the
+catalog name from the concrete module and qualified class, then seals exact
+distribution or source provenance when a component is created. Missing or
+ambiguous exact source identity fails closed before a `ComponentInstance` is
+returned.
+
+An empty custom catalog may therefore be constructed and inspected without
+source proof. Component creation resolves one portable provenance form:
+normalized wheel `RECORD`, editable-Git package source plus dirty overlay,
+normalized source for an ordinary imported `.py` module, or normalized Notebook
+class/factory source. Absolute paths, execution counts, temporary filenames,
+and memory addresses never enter identity. The exact rules are maintained in
+[Catalog and Runtime Identity](implementation/catalog-and-runtime-identity.qmd).
+
+A catalog subclass may inherit only from `Library`-derived bases and may not
+declare instance storage. This keeps each catalog object and its factory surface
+immutable; multiple inheritance that could reintroduce mutable state fails at
+class declaration. The API does not enforce process-wide singleton identity.
+
+The public base does not inherit SCNSim's built-in factories. The package-level
+`scnsim.components` object is a separate private concrete implementation of
+the same `Library` contract. A custom factory therefore calls
+`scnsim.components.capacitor(...)` or another built-in factory explicitly;
+the custom catalog exposes only the factories its package owns.
+
+Built-in and custom components use the same authoring surface:
+
+```python
+capacitor = plan.add(
+    components.capacitor(
+        id="capacitor",
+        capacitance=92.0 * u.fF,
+    )
+)
+
+fixture = plan.add(
+    my_components.components.fixture(
+        id="fixture",
+        coupling_capacitance=8.0 * u.fF,
+    )
+)
+```
+
+`plan.add(components.factory(...))` is the only route for catalog-created
+physical components. There are no convenience methods such as
+`plan.capacitor(...)` that could become a second catalog or parameter
+authority. Logical Ports are specialized Plan components with their own
+`plan.add_port(...)` boundary because they are not Library primitives.
+
+### Pins and public parameters
+
+Electrical terminals are addressed only by declared pin names:
+
+```python
+capacitor.pin("terminal_1")
+capacitor.pin("terminal_2")
+```
+
+Generic two-terminal components use this ordered pair. Their branch voltage is
+`V(terminal_1) - V(terminal_2)` and positive branch current flows from
+`terminal_1` to `terminal_2`. The same orientation owns JJ phase and
+inductive-branch coupling signs. Directional components keep semantic names
+such as transmission-line `head`/`tail`, and domain-specific composites may
+publish names such as `feedline_in` rather than generic terminal numbers.
+
+Consumer-visible parameters are addressed only through the component's public
+schema:
+
+```python
+capacitance = capacitor.parameter("capacitance")
+```
+
+A composite may contain primitive children, but child IDs and child parameters
+are inspection evidence, not automatically a consumer API. The factory must
+deliberately expose every supported, already-physically-bound `ParameterRef`.
+The lookup returns that original independent ref; it does not create one from a
+child path or literal. Composite public-parameter IDs are unique and retain
+their factory declaration order. This keeps refactoring an internal expansion
+from silently changing Notebook contracts.
+
+Custom libraries use `scnsim.units` and declare the same pin,
+public-parameter, provenance, and lowering evidence. V1 does not add a second
+unit registry, a global plugin mechanism, manual catalog metadata, or mutable
+factory registration.
+
+## Structured topology and logical Ports
+
+The target replaces flat node assembly with explicit authoring structure. The
+one detailed authority is the
+[structured-authoring grammar](contracts/automatic-semantic-circuit-diagram-layout.qmd#structured-authoring-grammar).
+
+In summary:
+
+- `add()` registers a physical component without wiring it;
+- `bus()` declares one net; ordinary connections use that `BusRef` directly,
+  while `tap()` names an attachment site only when the user needs an
+  independently addressable contact;
+- `series()`, `parallel()`, and `branch()` place ordinary two-terminal bodies
+  and any structurally used complete body in explicit authored roles;
+- `link(endpoints=(...))` declares one direct zero-component connection among
+  two or more eligible buses, taps, or public pins;
+- `ground_pins(pins=(...))` explicitly grounds one or more eligible pins; and
+- `scope.ground` remains the canonical reference endpoint for structured
+  series, parallel, and branch declarations.
+
+Registration, terminal completeness, and structural use are distinct. Every
+ordinary two-terminal native body belongs to exactly one component-containing
+structure. A complete Composite occurrence or native multi-terminal body may
+instead remain one independent peer after every required pin is bound, or may
+be used once in a structure when its terminal schema permits. `.between()`
+selects an ordered pair only for that one structural use; it is optional for an
+independent peer and never reduces the body's physical model.
+
+A named root bus publishes an `ElectricNodeRef` through `.node`. An anonymous
+root bus remains unavailable through `.node` until `add_port()` promotes it to
+the Port-named public coordinate; that promotion is an authoring declaration,
+not a render side effect. A private child bus instead requires explicit
+`expose_coordinate()`. Taps delegate `.node` to the same bus identity.
+`CoordinateRef` is never a wiring endpoint.
+
+The four related handles remain distinct: a `BusRef` is the net, a `TapRef` is
+a named contact on that net, a `PinRef` is a native terminal or an exposed
+parent-facing boundary, and a `CoordinateRef` selects an electrical coordinate
+for analysis. A public pin named `tap` is still a `PinRef`. Tap IDs and creation
+order never imply graphical direction; the structured diagram contract owns
+the optional `SchematicLayout.tap_order` presentation hint.
+
+Only the root `CircuitPlan` adds logical Ports. `add_port()` accepts a root
+`BusRef` or `TapRef`, retains the existing node-to-ground voltage/current
+orientation and reference load, and returns a `PortRef` for PTC and HB drive
+declarations:
+
+```python
+signal_bus = plan.bus(id="signal")
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+One electrical node owns at most one logical Port after resolving aliases
+through taps, public child exposures, and N-endpoint links. Port IDs and node
+IDs remain separate
+namespaces, even when the same spelling is chosen. A Port cannot attach to
+ground, a component pin, a foreign handle, or an already-port-bound node.
+Multiple drive contributions remain separate `CurrentDrive` declarations on
+the one Port. A Port's load supplies its reference-to-ground behavior; there is
+no separately wireable Port ground pin.
+
+The three grounding roles stay distinct. A physical branch ending at
+`scope.ground` is intrinsic to its owning scope. A module with an ordinary
+return bus exposes a public return pin so its parent can apply
+`ground_pins()`. A logical Port owns its load/reference behavior. All resolve to
+the same canonical ground, but authoring provenance and diagram locality retain
+which layer declared the connection.
+
+## Built-in leaves
+
+All public physical parameters are SCNSim-registry Quantities. R/L/C/JJ leaves
+use the fixed pins `"terminal_1"` and `"terminal_2"`, with the common ordered
+branch convention defined above.
+
+| Factory | Public physical parameters | Additional public reference | Realization |
+|---|---|---|---|
+| `resistor` | `resistance` | none | one R branch |
+| `capacitor` | `capacitance` | none | one C branch |
+| `inductor` | `inductance` | `inductive_branch("self")` | one linear L branch |
+| `josephson_junction` | `josephson_inductance`, `junction_capacitance=0 * u.F` | none | nonlinear JJ plus optional parallel C row |
+
+```python
+r = plan.add(components.resistor(id="loss", resistance=2.0 * u.kohm))
+c = plan.add(components.capacitor(id="shunt", capacitance=90.0 * u.fF))
+l = plan.add(components.inductor(id="coil", inductance=1.2 * u.nH))
+j = plan.add(
+    components.josephson_junction(
+        id="junction",
+        josephson_inductance=320.0 * u.pH,
+        junction_capacitance=2.0 * u.fF,
+    )
+)
+```
+
+`josephson_inductance` always means the per-junction small-signal
+`L_J0` at the stable zero-phase, zero-bias operating point. It is also the
+parameter from which the HB backend obtains the nonlinear Josephson
+constitutive strength. SCNSim does not interpret it as an arbitrary
+bias-point inductance.
+
+A nonzero `junction_capacitance` lowers as an independent capacitor in parallel
+with the ideal Josephson element. Exact `0 * u.F` records that this model omits
+the capacitor. SCNSim never estimates `Cj` from `Lj`, and adding `Cj` does not
+add resistance or turn the component into an RCSJ model. The canonical physics
+is documented in
+[Josephson Current, Phase, Energy, and Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#independent-parallel-junction-capacitance).
+
+The target primitive form of a grounded parallel LC makes its one
+non-reference bus and two parallel branches explicit:
+
+```python
+capacitor = plan.add(components.capacitor(id="resonator_c", capacitance=110.0 * u.fF))
+inductor = plan.add(components.inductor(id="resonator_l", inductance=5.8 * u.nH))
+
+resonator_node = plan.bus(id="resonator_node")
+parallel_lc = plan.parallel(
+    id="parallel_lc",
+    start=resonator_node,
+    branches=((capacitor,), (inductor,)),
+    end=plan.ground,
+)
+```
+
+Both branches terminate at the same canonical ground. Their visual bus/glyph
+grammar is defined once in
+the [diagram layout contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#native-branches-and-ground).
+
+## General composites
+
+### General N-conductor RLGC transmission line {#general-rlgc}
+
+`transmission_line` accepts one immutable `RLGC` value. Its four per-length
+matrices share one ordered conductor basis; `N=1` is simply the `1 x 1` case:
+
+```python
+from scnsim import RLGC
+
+readout_rlgc = RLGC(
+    conductors=("readout",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.2]] * u.ohm / u.m,
+    inductance_per_length=[[410.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[165.0]] * u.pF / u.m,
+)
+
+readout_line = plan.add(
+    components.transmission_line(
+        id="readout_line",
+        length=4.0 * u.mm,
+        rlgc=readout_rlgc,
+        n_sections=40,
+    )
+)
+
+readout_line.pin("head", conductor="readout")
+readout_line.pin("tail", conductor="readout")
+```
+
+An N-trace line exposes exactly `2N` pins through the same qualified access;
+even `N=1` requires `conductor=`. The reference conductor is not a matrix row,
+column, or pin. This makes conductor order and the shunt reference explicit
+instead of recovering either from component names.
+
+The matrix basis also fixes orientation. For every declared conductor `i`,
+
+$$
+V_i=V(\text{conductor }i)-V(\text{reference conductor}),
+\qquad I_i>0\text{ from head to tail}.
+$$
+
+The carrier always maps positive series current to head-to-tail. A manual
+author therefore declares R/L in that oriented basis. The supported AEDT Q2D
+producer profile uses an XY cross-section and the solver's longitudinal `+z`
+current convention; the 2D Extractor formulation assumes longitudinal
+z-directed currents and distributed line position `z` ([Ansys eddy-current
+solver](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/EddyCurrentSolver.htm),
+[distributed model](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/DistributedModels.htm)).
+Consequently the signs of off-diagonal L/R entries and every derived HB
+mutual-inductor row are meaningful only in that ordered, oriented basis;
+SCNSim never guesses or silently flips an unknown source direction.
+
+Manual declarations may omit `extraction_frequency`. Their receipt says
+`manual / source frequency unspecified / frozen coefficients`; it does not
+claim broadband validity. A solver-native AEDT Q2D raw CSV produces the same
+typed carrier:
+
+```python
+from scnsim import load_q2d_rlgc
+
+coupled_rlgc = load_q2d_rlgc(
+    q2d_result.primary_csv,
+    reference_conductor="ground",
+    conductor_map={
+        "T1": "readout",
+        "T2": "filter",
+    },
+)
+```
+
+`conductor_map` must name every extracted signal conductor exactly once and be
+bijective. It changes public labels only: it cannot reorder rows, discard a
+conductor, select a diagonal, or remove mutual terms. SCNSim parses exactly one
+primary C, G, L, and R block with identical source order; the supported native
+Spice-capacitance or capacitance-coupling blocks never replace those matrices.
+It preserves native
+labels/order, units, extraction frequency, file-content SHA-256, canonical
+values, and the fixed producer convention
+`aedt_q2d_xy_cross_section_positive_z`.
+
+The raw CSV contains no independent per-file direction field. Direction
+therefore comes from the caller's choice of this specialized loader: invoking
+`load_q2d_rlgc()` explicitly asserts that the file was produced by the
+supported AEDT Q2D XY-cross-section profile and maps extractor `+z` to line
+head-to-tail. The parser verifies the strict `Problem Type: CG, RL` schema but
+cannot independently prove file origin or direction; the receipt labels the
+profile `caller_asserted`, never solver-verified. A caller unable to make that
+assertion must not use this loader.
+
+`reference_conductor` is the public name assigned to the Q2D reference group
+omitted from matrix rows; it does not claim that the raw CSV carries that name.
+The loader does not run AEDT, import PyAEDT, or infer that an SCGSim/AEDT run
+converged from the CSV alone.
+
+For `N = len(conductors) >= 1`, every matrix is a finite SCNSim-registry
+Quantity-valued `N x N` array. C and G are reciprocal Maxwell shunt matrices:
+C is positive definite, G positive semidefinite, off-diagonal entries are
+nonpositive, and row sums are nonnegative. L is symmetric positive definite;
+R is symmetric positive semidefinite. The V1 carrier is frozen at its recorded
+extraction frequency. SCNSim does not interpolate or extrapolate RLGC over
+frequency and does not call one extraction broadband.
+
+`n_sections` is a fixed positive Python integer, not a physical Quantity or
+optimization variable. With `dx = length / n_sections`, each pi section uses
+the complete series matrices `R * dx` and `L * dx`, plus `C * dx / 2` and
+`G * dx / 2` shunts at both ends. Adjacent sections accumulate their half
+shunts at one physical node. Length optimization changes `dx`, never section
+count, topology, conductor order, or matrix rank.
+
+Direct supports the complete validated R/L/G/C matrices. HB supports complete
+C/G, complete L, and diagonal R. Any nonzero off-diagonal R in an HB request
+fails preflight; SCNSim does not silently drop, diagonalize, or approximate it.
+Exact zero branches may be omitted in lowering while their declared matrix and
+section-boundary provenance remain in the receipt.
+
+The continuum-to-ladder physics and refinement obligation remain canonical in
+[Telegrapher Model: From RLGC Continuum to a Finite LC Ladder](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/transmission-lines/telegrapher-rlgc-distributed-line.qmd#finite-symmetric-pi-section).
+
+### Declarative custom composites {#declarative-composites}
+
+A custom Library factory uses `CompositePlan` to make its physical structure
+and consumer boundary explicit before exposing one `ComponentInstance`. The
+target uses the same `add`, `bus`, `parallel`, and exposure grammar as an inline
+Subsystem:
+
+```python
+from scnsim import CompositePlan, ParameterRef, components
+
+def parallel_linear_lc_resonator(
+    self,
+    *,
+    id,
+    capacitance,
+    inductance,
+):
+    composite = CompositePlan(id=id, library=self)
+    capacitor = composite.add(
+        components.capacitor(id="capacitor", capacitance=capacitance)
+    )
+    inductor = composite.add(
+        components.inductor(id="inductor", inductance=inductance)
+    )
+    terminal = composite.bus(id="terminal")
+    composite.parallel(
+        id="parallel_lc",
+        start=terminal,
+        branches=((capacitor,), (inductor,)),
+        end=composite.ground,
+    )
+    composite.expose_pin(id="terminal", at=terminal)
+    if isinstance(capacitance, ParameterRef):
+        composite.expose_parameter(
+            id="capacitance", parameter=capacitance
+        )
+    if isinstance(inductance, ParameterRef):
+        composite.expose_parameter(
+            id="inductance", parameter=inductance
+        )
+    return composite.build()
+```
+
+The caller defines these refs independently with `ParameterDefinitions` before
+invoking the factory. The capacitor and inductor fields create the physical
+bindings; only a supplied `ParameterRef` is then published at the Composite
+boundary. A supplied Quantity remains a fixed literal and creates no public
+parameter lookup.
+
+`ParameterSpec` owns only independent scalar schema identity and dimensional
+validation. It does not contain an optimizer, search bounds, or a separate
+mutability flag. An `OptimizationSpec` separately chooses active scalar refs
+and supplies finite request-specific bounds.
+
+Passing one public `ParameterRef` directly to several child slots is exact
+identity fan-out: one binding changes every declared consumer together. It does
+not create coincidentally equal child parameters. Definition inspection shows
+the independent baseline and schema; Plan-specific fan-out and physical
+consumers belong to that Plan's audit or explanation.
+
+`AffineMap(input=x, slope=a, intercept=b, support=(lo, hi))` means exactly
+`y = a*x + b`. SCNSim validates the units of input, slope, intercept, output,
+and finite ordered support; the baseline must lie inside support. Mapping is
+resolved after each ParameterSet binding inside the same future Julia
+candidate process. It is not an arbitrary Python callback, expression AST,
+or interpolation table. A mapped nonphysical child value makes that candidate
+a typed failure rather than falling back to a baseline.
+
+`expose_pin()` and `expose_coordinate()` are deliberately different. A public
+pin is a parent wiring endpoint. A `CoordinateRef` is an observation/analysis
+handle for `retain()`, Direct quantity selection, evaluation, and optimization;
+it cannot be wired or carry a logical Port. A composite author may expose the
+same internal bus once through each surface, but hidden children, parameters,
+and buses never become consumer API by inference:
+
+```python
+resonator.pin("terminal")
+resonator.parameter("capacitance")
+```
+
+An otherwise external-facing internal bus is valid only when the Composite
+explicitly exposes its supported pin or analysis coordinate. An unbound native
+terminal or hidden endpoint that remains accidentally open fails seal.
+
+### Snapshot boundary and recursive expansion {#composite-snapshot-boundary}
+
+A factory executes only while Python is authoring a component. Its final
+`build()` call freezes the complete private child graph into the returned
+immutable `ComponentInstance`; sealing a parent Plan later records that
+snapshot, rather than retaining a Python factory, callback, or expression tree
+to invoke again. A factory exception or invalid graph creates no partial
+component, and a sealed Plan never re-runs a factory.
+
+The target frozen boundary includes every public and hidden child, ordered
+native pin, bus/tap, structured series/parallel/branch/link declaration,
+owner-local canonical-ground endpoint and `ground_pins()` declaration, adopted
+parameter definition/spec/baseline evidence and physical-field binding map,
+explicitly exposed pin/coordinate/parameter/inductive branch, and nested scope.
+Public parameter IDs map to the original independently defined `ParameterRef`
+and this snapshot's consumers; the Composite does not own a second parameter
+definition authority.
+
+The snapshot also distinguishes a body registered in the scope, its complete
+terminal binding, and whether it is consumed once by a structure or remains a
+complete independent peer. A containing Plan may connect only the published
+boundary of the resulting occurrence; it cannot assign a second structural
+role to hidden native leaves that were already assembled inside the Composite.
+
+A containing Plan records later caller links and grounding over public pins,
+root Ports, and global electrical closure as its own overlay. Those declarations
+can common exposed returns without rewriting the built child or reapplying the
+child's intrinsic exposure-uniqueness check. The physical private expansion
+and declared structure contribute to future Plan identity. Layout and Theme do
+not. The target requires deliberate alignment of a successor Plan schema, the
+maintainer snapshot, and one data-only Julia expansion path before execution.
+The frozen baseline is described in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+
+### Interdigitated capacitor
+
+`interdigitated_capacitor` preserves the complete two-terminal lumped
+capacitance model:
+
+```python
+idc = plan.add(
+    components.interdigitated_capacitor(
+        id="coupler",
+        terminal_1_to_reference_capacitance=18.0 * u.fF,
+        terminal_2_to_reference_capacitance=21.0 * u.fF,
+        terminal_mutual_capacitance=7.0 * u.fF,
+    )
+)
+```
+
+Its pins are `"terminal_1"` and `"terminal_2"`. The expansion contains
+`C_1G`, `C_2G`, and `C_12`; it does not collapse all three into one series or
+mutual capacitor. Both ground branches bind the Plan's canonical ground.
+
+### Finite-loop symmetric SQUID
+
+`symmetric_squid` is an explicit two-junction finite-loop component:
+
+```python
+squid = plan.add(
+    components.symmetric_squid(
+        id="squid",
+        josephson_inductance=310.0 * u.pH,
+        junction_capacitance=2.0 * u.fF,
+        loop_inductance=45.0 * u.pH,
+    )
+)
+```
+
+Its pins are `"terminal_1"` and `"terminal_2"`. Both junction rows share the
+same public `josephson_inductance` `ParameterRef` and the same public
+`junction_capacitance` `ParameterRef`; V1 does not expose per-arm overrides.
+Both values are per-junction values, so the expansion contains two equal
+Josephson rows and, when nonzero, two equal parallel `Cj` rows.
+The exact oriented expansion is:
+
+```text
+J1 || Cj1 : terminal_1 -> terminal_2
+L_loop    : terminal_1 -> loop_node
+J2 || Cj2 : loop_node  -> terminal_2
+```
+
+`loop_node` is private inspection evidence, not a public pin. `L_loop` is the
+finite loop self-inductance and is addressable as
+`squid.inductive_branch("loop")` with the shown orientation. This is the
+executable finite-loop topology, not the negligible-loop effective-cosine
+surrogate.
+
+The physical distinction and branch conventions are canonical in
+[DC SQUID Flux Tunability](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid).
+
+## Six resonator factories
+
+SCNSim exposes six explicit factories rather than one topology enum or an
+ambiguous `parallel_lc_resonator`:
+
+| Grounding | Branch | Factory | Pins |
+|---|---|---|---|
+| Grounded | linear L | `grounded_parallel_linear_lc_resonator` | `terminal` |
+| Floating | linear L | `floating_parallel_linear_lc_resonator` | `terminal_1`, `terminal_2` |
+| Grounded | one nonlinear JJ | `grounded_parallel_single_junction_resonator` | `terminal` |
+| Floating | one nonlinear JJ | `floating_parallel_single_junction_resonator` | `terminal_1`, `terminal_2` |
+| Grounded | finite-loop symmetric SQUID | `grounded_parallel_symmetric_squid_resonator` | `terminal` |
+| Floating | finite-loop symmetric SQUID | `floating_parallel_symmetric_squid_resonator` | `terminal_1`, `terminal_2` |
+
+Grounded variants expose one non-reference `terminal`; their internal return
+group binds to the automatic Plan ground. A linear
+factory exposes `inductance`; a single-junction factory exposes
+`josephson_inductance` and `junction_capacitance`; a SQUID factory exposes
+`josephson_inductance`, `junction_capacitance`, `loop_inductance`, and
+`inductive_branch("loop")`.
+
+Grounded factories use one ordinary `capacitance` branch from `terminal` to
+ground. Floating factories instead require all three branch-specific
+capacitances:
+
+```python
+resonator.parameter("capacitance")
+```
+
+- `terminal_1_to_reference_capacitance`;
+- `terminal_2_to_reference_capacitance`; and
+- `terminal_mutual_capacitance`.
+
+For a nonlinear resonator the ordinary `capacitance` branch remains separate
+from every junction's own parallel `junction_capacitance`. The standard names
+`josephson_inductance` and `junction_capacitance` distinguish the Josephson
+constitutive parameter from the independent junction Cj. Composite expansions
+do not publish `branch1`, `branch2`, arbitrary child injection, or a generic
+topology selector.
+
+### Grounded linear example
+
+```python
+from scnsim import CircuitPlan, components, units as u
+
+plan = CircuitPlan(id="grounded_linear")
+
+coupling_cap = plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+resonator = plan.add(
+    components.grounded_parallel_linear_lc_resonator(
+        id="resonator",
+        capacitance=110.0 * u.fF,
+        inductance=5.8 * u.nH,
+    )
+)
+
+resonator_node = plan.bus(id="resonator_node")
+signal_boundary = plan.bus(id="signal_boundary")
+plan.series(
+    id="coupling",
+    start=signal_boundary,
+    elements=(coupling_cap,),
+    end=resonator_node,
+)
+plan.link(
+    id="resonator_terminal",
+    endpoints=(resonator_node, resonator.pin("terminal")),
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_boundary,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+### Floating linear example
+
+```python
+floating = plan.add(
+    components.floating_parallel_linear_lc_resonator(
+        id="floating_mode",
+        terminal_1_to_reference_capacitance=52.0 * u.fF,
+        terminal_2_to_reference_capacitance=47.0 * u.fF,
+        terminal_mutual_capacitance=16.0 * u.fF,
+        inductance=7.0 * u.nH,
+    )
+)
+
+island_1 = plan.bus(id="island_1")
+island_2 = plan.bus(id="island_2")
+plan.series(
+    id="floating_mode",
+    start=island_1,
+    elements=(floating,),
+    end=island_2,
+)
+```
+
+The two terminal-to-reference capacitances are real branches even though the
+component has no ground pin. They bind the automatic Plan ground.
+
+### Single-junction examples
+
+```python
+grounded_jj = plan.add(
+    components.grounded_parallel_single_junction_resonator(
+        id="grounded_jj",
+        capacitance=85.0 * u.fF,
+        josephson_inductance=420.0 * u.pH,
+        junction_capacitance=2.5 * u.fF,
+    )
+)
+
+floating_jj = plan.add(
+    components.floating_parallel_single_junction_resonator(
+        id="floating_jj",
+        terminal_1_to_reference_capacitance=41.0 * u.fF,
+        terminal_2_to_reference_capacitance=39.0 * u.fF,
+        terminal_mutual_capacitance=14.0 * u.fF,
+        josephson_inductance=420.0 * u.pH,
+        junction_capacitance=2.5 * u.fF,
+    )
+)
+```
+
+The two factories share the JJ model contract; only their capacitive subsystem
+and external pins differ.
+
+### Finite-loop SQUID flux-pump example
+
+The pump coil is an ordinary Plan component. Mutual coupling refers to exact
+oriented inductive branches, while drive current belongs to an HB case:
+
+```python
+from scnsim import (
+    CircuitPlan,
+    CircuitRun,
+    CurrentDrive,
+    HBCaseSpec,
+    HBTruncation,
+    HBSolveSpec,
+    PumpAxis,
+    components,
+    units as u,
+)
+
+plan = CircuitPlan(id="flux_pumped_resonator")
+
+jpa = plan.add(
+    components.grounded_parallel_symmetric_squid_resonator(
+        id="jpa",
+        capacitance=95.0 * u.fF,
+        josephson_inductance=300.0 * u.pH,
+        junction_capacitance=2.0 * u.fF,
+        loop_inductance=40.0 * u.pH,
+    )
+)
+pump_inductor = plan.add(
+    components.inductor(id="pump_coil", inductance=1.0 * u.nH)
+)
+
+signal_node = plan.bus(id="signal")
+pump_node = plan.bus(id="pump_drive")
+plan.link(
+    id="signal_component",
+    endpoints=(signal_node, jpa.pin("terminal")),
+)
+plan.branch(
+    id="pump_coil",
+    at=pump_node,
+    elements=(pump_inductor,),
+    end=plan.ground,
+)
+signal_port = plan.add_port(
+    id="signal",
+    at=signal_node,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+pump_port = plan.add_port(
+    id="pump",
+    at=pump_node,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+
+plan.couple_inductive(
+    id="flux_pump",
+    inductor_a=jpa.inductive_branch("loop"),
+    inductor_b=pump_inductor.inductive_branch("self"),
+    coupling_coefficient=0.98 * u.dimensionless,
+)
+
+run = CircuitRun(plan=plan, workspace="results/flux_pumped_resonator")
+pump_axis = PumpAxis(id="pump", frequency=7.0 * u.GHz)
+dc_bias = CurrentDrive(id="dc_bias", at=pump_port, mode=(0,))
+pump_drive = CurrentDrive(id="pump_drive", at=pump_port, mode=(1,))
+
+hb = run.solve(
+    run.original,
+    HBSolveSpec(
+        pump_axes=(pump_axis,),
+        drives=(dc_bias, pump_drive),
+        frequencies=signal_grid,
+        cases=(
+            HBCaseSpec(id="unbiased", currents={}),
+            HBCaseSpec(
+                id="dc_only",
+                currents={dc_bias: 120.0 * u.uA},
+            ),
+            HBCaseSpec(
+                id="dc_pump",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_drive: 0.4 * u.uA,
+                },
+            ),
+        ),
+        truncation=HBTruncation(
+            pump_harmonics=(3,),
+            modulation_harmonics=(1,),
+            three_wave_mixing=True,
+            four_wave_mixing=True,
+        ),
+    ),
+)
+```
+
+`pump_axis`, `signal_grid`, and each `CurrentDrive` are ordinary Runtime
+request objects defined by the
+[HB drive/case contract](v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing).
+The cases bind DC and AC Fourier-current coefficients without mutating the
+component or turning a drive current into a component parameter.
+
+The physical coupling identity is
+`M = k * sqrt(L1 * L2)`, with signed `k` supplying the V1 authoring authority.
+The canonical orientation, energy, and passivity semantics remain in
+[Inductive Coupling Coefficient, Mutual Inductance, and Self Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
+
+## Direct and HB realization
+
+The same Plan and component identities feed both backends:
+
+| Component content | Direct | HB |
+|---|---|---|
+| R, L, C | Linear physical rows | Corresponding linear rows |
+| General RLGC ladder | Complete R/L/G/C matrices | Complete C/G and L; R must be diagonal |
+| JJ | Explicit `L_J0` small-signal branch plus declared parallel `Cj` | Nonlinear Josephson row plus declared parallel `Cj` |
+| Finite-loop SQUID | Both junctions linearized at their zero-phase, zero-bias `L_J0`, with loop and mutual coupling retained | Both nonlinear junctions, finite loop, and mutual pump coupling retained |
+| Logical Port | Node selector/incidence column `B`, raw source stamp `B Y0 B^T`, and power-wave relation; no fake `P` row | Exact JosephsonCircuits `P_i` marker plus colocated `R_port_i` source resistor |
+
+The Port source/load boundary and wave reference are separately auditable. The
+selected source resistor participates in raw damping but is de-embedded from
+public network Y/Z/S; PTC removes only a proved probe-load stamp while
+preserving Port identity, node coordinate, and reference impedance. A Direct receipt therefore records
+`P row = not applicable` plus the actual `B`, `Y0`, and load mapping; an HB
+receipt records the exact `P_i` and `R_port_i` rows and solver indices.
+The Runtime's
+[selected-network equations](v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
+define how that load state, retained injection map, and reference matrix produce
+the public S/Y/Z families; backend-native S is only reconciliation evidence.
+
+V1 Direct analysis does not accept an arbitrary supplied bias phase or claim a
+finite-bias JJ/SQUID linearization. A future operating-point linearization must
+define and evidence its bias solution before changing that contract.
+
+JosephsonCircuits is an HB backend, not the topology authority. Its official
+[flux-pumped JPA example](https://josephsoncircuits.org/stable/#Flux-pumped-Josephson-parametric-amplifier-(JPA))
+shows the relevant two-junction, loop-inductor, pump-inductor, and mutual-coupling
+path, while also describing flux-bias and three-wave-mixing support as
+relatively untested. SCNSim preserves that limitation rather than expanding
+the backend's guarantee.
+
+### Snapshot-backed nonlinear and coupled expansion
+
+Built-in and custom components share one recursive snapshot expansion; neither
+receives a special Python lowering path. Direct expands every JJ into its
+zero-phase, zero-bias `L_J0` row and independently declared parallel `Cj` row.
+HB instead receives the nonlinear Josephson row plus that same independently
+declared `Cj` row. A finite-loop SQUID expands to both junction paths, its
+oriented loop branch, and every declared mutual coupling; no effective-cosine
+replacement or synthetic bias-dependent inductance is permitted.
+
+Exact-zero declared terms may be omitted from backend rows only with their
+component path, value, and `omitted-as-zero` evidence preserved for compiled
+inspection. The terminal receipt binds the sealed Plan and exact runtime
+identity instead of duplicating compiler-row diagnostics. The same rule applies
+to a zero derived mutual term: it never becomes an unrecorded disappearance.
+Signed branch orientation,
+`M = k * sqrt(L1 * L2)`, and complete reciprocal positive-definite inductance
+validation remain the existing public coupling contract, not new tolerances.
+The implementation-facing recursive row order and evidence maps are defined in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+
+## Parameter variants and derived mutual inductance
+
+Public parameters have four separate owners:
+
+| Owner | Declares |
+|---|---|
+| definitions author | `ParameterSpec`, baseline, and independent parameter identity |
+| Component Library author | public boundary, child fan-out, `AffineMap`, calibration support |
+| Circuit-model author | Default `OptimizationSpec`, active variables, finite bounds, objectives, weights, optimizer |
+| Notebook consumer | Design Target and an optional immutable override of the model default |
+
+This separation prevents a reusable composite from creating a hidden search
+envelope. Different circuit models may optimize the same parameter over
+different ranges without duplicating its unit, baseline, or calibration map.
+
+Every ref is stable when its independent definition is created. It becomes a
+Plan input only through registered physical-field consumption, and a factory
+makes it consumer-visible only when it exposes that original ref:
+
+```python
+candidate = ParameterSet({
+    jpa.parameter("loop_inductance"): 44.0 * u.pH,
+    pump_inductor.parameter("inductance"): 1.1 * u.nH,
+})
+
+result = run.solve(run.original, direct_spec, parameters=candidate)
+```
+
+After each ParameterSet is bound, SCNSim resolves both self inductances and
+derives the mutual inductance from the signed coupling coefficient:
+
+```text
+M = k * sqrt(L1 * L2)
+```
+
+`k` must be finite and dimensionless with `abs(k) < 1`. It is the only public
+mutual-coupling input in V1; the consumer cannot provide an independent `M`
+that might disagree with the two bound self inductances. `run.explain()` records
+branch orientations, `L1`, `L2`, `k`, derived `M`, and the exact backend
+mapping; terminal receipts bind the sealed request and runtime identities
+without copying that preflight table.
+
+For more than two coupled inductive branches, every pairwise `abs(k) < 1`
+check is only necessary. Preflight assembles the complete reciprocal
+inductance matrix after ParameterSet binding and requires it to be positive
+definite for the declared independent finite branches. SCNSim rejects an
+incompatible collection of individually plausible pairwise coefficients.
+
+## Inspection and evidence
+
+### Inspect authoring or compiler-expanded structure
+
+The Plan owns authoring and compiler-expanded inspection projections, but
+neither projection is another circuit definition. The target structure,
+automatic and handle-based layout, independent visible electrical/ownership
+reconstruction, separately verified source rows, snapshot provenance, and
+code-free review packet belong to
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+
+That authoring/identity/diagram scope is `CONVERGING`, with implementation
+alignment pending. The existing renderer and superseded catalog-hint classes
+are frozen interpretation evidence only. They do not satisfy the target
+contract or create a compatibility path. The physical Library, component,
+parameter, RLGC, Josephson, SQUID, and coupling meanings on this page remain
+the input authority against which future lowerings and diagrams are checked.
+
+A Plan diagram represents baseline physical authoring by default and may
+project one explicitly selected `ParameterSet`. It neither selects nor displays
+an analysis `NetworkViewRef`. Request-specific PTC, transforms, retain, Schur
+reduction, Direct/HB results, and numerical capability evidence remain with
+`run.explain()` and verified Results.
+
+`run.explain(ref, spec).show()` performs the same deterministic component and
+ParameterSet preflight used by execution, without launching a solver or
+writing the workspace. For component authoring it shows:
+
+- every Library exact identity and public component schema;
+- composite hierarchy and primitive/backend expansion;
+- structured series/parallel/branch/link declarations, bus/tap membership,
+  public exposures, generated private nodes, and canonical-ground endpoints;
+- every logical Port's node attachment, role, reference impedance,
+  one-Port-per-node evidence, and Direct/HB lowering;
+- source units, canonical SI values, and public `ParameterRef` identities;
+- Direct and HB realization of each expanded row;
+- RLGC conductor/reference identities, matrix order and health evidence,
+  head-to-tail current/extractor `+z` orientation, manual/Q2D source
+  classification, canonical matrices, extraction frequency, and
+  content-derived provenance, plus TL section count and bound section length;
+- Composite public schema, hidden-child expansion, public parameter baselines,
+  identity fan-out, `AffineMap` equations/support, and separately exposed pins
+  and coordinates;
+- all three IDC capacitance branches;
+- JJ and optional parallel `Cj` rows;
+- both SQUID junction rows, their shared parameter refs, loop orientation, and
+  loop branch; and
+- coupled branch orientations, bound `L1` and `L2`, signed `k`, derived `M`,
+  and backend mapping.
+
+The sealed Plan/request/receipt chain binds the declarations and exact runtime
+identity. `run.explain()` materializes the expanded rows for inspection without
+creating a second durable receipt schema.
+
+## Failure contract
+
+Plan seal or deterministic preflight fails before backend execution for:
+
+- any authoring-grammar, endpoint, ownership, component-consumption, exposure,
+  Port, or structural-layout violation enumerated by the
+  [target fail-closed contract](contracts/automatic-semantic-circuit-diagram-layout.qmd#authoring-diagram-failures);
+- duplicate component, parameter, or Port IDs; duplicate pin/public-parameter
+  names inside one component schema; or an unknown/foreign Library instance;
+- a bare physical number, foreign Pint registry, non-finite Quantity, or
+  dimensional mismatch;
+- non-positive R, L, C, or `L_J0`; negative `Cj`; or a non-positive/non-integer
+  `n_sections`;
+- a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
+  primary C/G/L/R matrix blocks; invalid per-length units or extraction
+  frequency; inconsistent conductor labels/order or dimensions; an incomplete
+  or non-bijective conductor map; or non-finite parsed values;
+- `N < 1`; duplicate/unknown conductor or reference labels; a reference included
+  in matrix rows; non-square or shape-inconsistent R/L/G/C; nonreciprocal
+  matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;
+  G/R not positive semidefinite; or an HB request with nonzero off-diagonal R;
+- a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
+  structure; wiring a `CoordinateRef`; exposing foreign or hidden state; or an
+  unbound native terminal;
+- an incomplete or invalid Plan passed to `render_schematic()`;
+- an `AffineMap` with incompatible units, non-finite coefficients, unordered or
+  dimensionally invalid support, a baseline outside support, or a mapped
+  nonphysical child value;
+- a SQUID whose junction parameters are not shared or whose finite loop
+  inductance is missing, non-finite, or non-positive;
+- mutual coupling between branches from different Plans, a non-inductive or
+  unknown branch, or missing branch orientation; and
+- a coupling coefficient that is not a finite SCNSim-registry dimensionless
+  Quantity or has `abs(k) >= 1`, or a complete bound inductance matrix that is
+  not reciprocal positive definite.
+
+After the physical Plan input is valid, diagram-specific representation,
+Theme, hint, placement, routing, and certification failures belong exclusively
+to the linked layout contract. They fail as
+`SCNSimValidationError(stage="schematic_layout")` or
+`SCNSimValidationError(stage="schematic_audit")` and do not create runtime
+evidence.
+
+Exact `0 * u.F` is the one valid zero for optional `junction_capacitance`.
+Zero series resistance or conductance in an RLGC model may be valid when the
+declared branch permits it; negative or non-finite values are not.
+
+## Known V1 limits
+
+- Primitive, Composite, RLGC, and transmission-line physical models retain
+  their accepted Full V1 meaning. The replacement structured authoring grammar
+  is a target-only `CONVERGING` scope and is not installed behavior.
+- The transmission line is a uniform, fixed-section general N-conductor RLGC
+  ladder; N=1 uses the same matrix path.
+- AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
+  frequency. It does not verify a solver receipt, interpolate/extrapolate in
+  frequency, or create a broadband line.
+- HB does not accept nonzero off-diagonal series R in Full V1;
+  Direct does.
+- Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
+  has no arbitrary callback, expression tree, or calibration-table
+  interpolation.
+- Symmetric SQUID factories do not expose junction asymmetry or arbitrary
+  per-arm parameter injection.
+- Direct JJ/SQUID analysis is limited to the declared zero-phase, zero-bias
+  `L_J0` small-signal realization.
+- JosephsonCircuits flux-pump and three-wave-mixing capability retains the
+  upstream validation limitation described above.
+- `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
+  build those circuits from the declared generic components.
+- Authoring and compiled schematic rendering remain projections of the Plan,
+  never topology or backend authority. Certified structured projection awaits
+  an accepted implementation candidate.

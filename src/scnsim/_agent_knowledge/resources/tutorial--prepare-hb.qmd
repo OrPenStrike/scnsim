@@ -1,0 +1,504 @@
+---
+title: "Chapter 15 — Prepare pump-off HB"
+subtitle: "TARGET API · CONVERGING · not executable on the current runtime"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+> **TARGET API / CONVERGING — not executable on the current runtime.**
+> HB semantics are retained baseline teaching against the proposed declaration.
+
+The complete physical Plan comes first. This Chapter then requests the supported
+pump-off harmonic-balance response of a selected View, keeping the named case,
+typed failure path, and exact restart resolution separate from the circuit
+diagram.
+
+## Lesson 15.1 — Build the feedline {#ch15-feedline}
+
+### Declare the root Plan and N=1 feedline
+
+This lesson starts from a fresh kernel. Its three root Subsystems are
+`feedline`, `readout`, and `floating`; the CPW bodies are finite-pi
+discretizations, not exact distributed equivalents.
+
+```{python}
+#| id: build-hb-root-and-feedline
+from scnsim import CircuitPlan, RLGC, components, units as u
+
+plan = CircuitPlan(id="floating_probe_course")
+feedline = plan.subsystem(id="feedline")
+rlgc = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+```
+
+`plan`, `feedline`, and `rlgc` establish the repeated physical declaration.
+The next cells consume this metadata into the two line bodies and their taps.
+
+```{python}
+#| id: add-hb-feedline-bodies
+left = feedline.add(
+    components.transmission_line(
+        id="left",
+        length=1.0 * u.mm,
+        rlgc=rlgc,
+        n_sections=1,
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right",
+        length=1.0 * u.mm,
+        rlgc=rlgc,
+        n_sections=1,
+    )
+)
+```
+
+`left` and `right` are the two native N=1 bodies. Their signal pins are named
+only so the following series declarations can preserve orientation.
+
+```{python}
+#| id: declare-hb-feedline-taps
+input_bus = feedline.bus(id="input")
+middle_bus = feedline.bus(id="middle")
+output_bus = feedline.bus(id="output")
+```
+
+`middle_bus` is the one shared electrical endpoint of the two line sections and
+the public coupling pin. No named tap is needed for this ordinary wiring.
+
+```{python}
+#| id: wire-and-expose-hb-feedline
+left_head_pin = left.pin("head", conductor="signal")
+left_tail_pin = left.pin("tail", conductor="signal")
+right_head_pin = right.pin("head", conductor="signal")
+right_tail_pin = right.pin("tail", conductor="signal")
+
+left_section = feedline.series(
+    id="left_section",
+    start=input_bus,
+    elements=(
+        left.between(left_head_pin, left_tail_pin),
+    ),
+    end=middle_bus,
+)
+right_section = feedline.series(
+    id="right_section",
+    start=middle_bus,
+    elements=(
+        right.between(right_head_pin, right_tail_pin),
+    ),
+    end=output_bus,
+)
+feedline_input_pin = feedline.expose_pin(id="input", at=input_bus)
+feedline_coupling_pin = feedline.expose_pin(id="tap", at=middle_bus)
+feedline_output_pin = feedline.expose_pin(id="output", at=output_bus)
+```
+
+The line reference conductor remains metadata only; no reference pin is
+exposed or grounded.
+`feedline_input_pin`, `feedline_coupling_pin`, and `feedline_output_pin` are
+the public child boundary that the root assembly will consume.
+
+## Lesson 15.2 — Add the grounded readout {#ch15-readout}
+
+### Declare the grounded readout LC
+
+The 110 fF/5.8 nH grounded readout LC is the local lumped approximation for
+the target quarter-wave mode. It is not an exact distributed-equivalence claim.
+
+```{python}
+#| id: build-hb-readout-subsystem
+readout = plan.subsystem(id="readout")
+readout_capacitor = readout.add(
+    components.capacitor(
+        id="capacitor",
+        capacitance=110.0 * u.fF,
+    )
+)
+readout_inductor = readout.add(
+    components.inductor(
+        id="inductor",
+        inductance=5.8 * u.nH,
+    )
+)
+readout_bus = readout.bus(id="node")
+readout_parallel = readout.parallel(
+    id="parallel_lc",
+    start=readout_bus,
+    branches=((readout_capacitor,), (readout_inductor,)),
+    end=readout.ground,
+)
+readout_terminal = readout.expose_pin(
+    id="readout_node",
+    at=readout_bus,
+)
+```
+
+`readout_terminal` publishes the fixed LC's sole root-facing connection.
+
+## Lesson 15.3 — Add the floating subsystem {#ch15-floating}
+
+### Declare the fixed floating subsystem
+
+```{python}
+#| id: build-hb-floating-parameters-and-leaves
+floating = plan.subsystem(id="floating")
+plus_bus = floating.bus(id="plus")
+minus_bus = floating.bus(id="minus")
+
+mutual_cap = floating.add(
+    components.capacitor(id="mutual_cap", capacitance=16.0 * u.fF)
+)
+mutual_ind = floating.add(
+    components.inductor(id="mutual_ind", inductance=7.0 * u.nH)
+)
+plus_shunt = floating.add(
+    components.capacitor(
+        id="plus_shunt",
+        capacitance=45.0 * u.fF,
+    )
+)
+minus_shunt = floating.add(
+    components.capacitor(
+        id="minus_shunt",
+        capacitance=42.0 * u.fF,
+    )
+)
+```
+
+The fixed native leaves feed the next cell, which publishes the floating plus
+and minus child pins.
+
+```{python}
+#| id: structure-and-expose-hb-floating
+mutual_network = floating.parallel(
+    id="mutual_network",
+    start=plus_bus,
+    branches=((mutual_cap,), (mutual_ind,)),
+    end=minus_bus,
+)
+plus_branch = floating.branch(
+    id="plus_shunt",
+    at=plus_bus,
+    elements=(plus_shunt,),
+    end=floating.ground,
+)
+minus_branch = floating.branch(
+    id="minus_shunt",
+    at=minus_bus,
+    elements=(minus_shunt,),
+    end=floating.ground,
+)
+floating_plus_pin = floating.expose_pin(id="floating_plus", at=plus_bus)
+floating_minus_pin = floating.expose_pin(id="floating_minus", at=minus_bus)
+```
+
+The root assembly next consumes only the two floating public pins, the readout
+terminal, and the three feedline pins while creating its coordinate aliases.
+
+## Lesson 15.4 — Assemble root couplers and probes {#ch15-root}
+
+### Declare root coordinate buses and link child boundaries
+
+```{python}
+#| id: wire-hb-root-subsystems
+feedline_in_bus = plan.bus(id="feedline_in")
+feedline_out_bus = plan.bus(id="feedline_out")
+readout_root_bus = plan.bus(id="readout_node")
+floating_plus_bus = plan.bus(id="floating_plus")
+floating_minus_bus = plan.bus(id="floating_minus")
+
+feedline_in_node = feedline_in_bus.node
+feedline_out_node = feedline_out_bus.node
+readout_node = readout_root_bus.node
+floating_plus = floating_plus_bus.node
+floating_minus = floating_minus_bus.node
+
+plan.link(
+    id="feedline_input_child",
+    endpoints=(feedline_in_bus, feedline_input_pin),
+)
+plan.link(
+    id="feedline_output_child",
+    endpoints=(feedline_out_bus, feedline_output_pin),
+)
+plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
+plan.link(
+    id="floating_plus_child",
+    endpoints=(floating_plus_bus, floating_plus_pin),
+)
+plan.link(
+    id="floating_minus_child",
+    endpoints=(floating_minus_bus, floating_minus_pin),
+)
+```
+
+The root coordinate aliases and public child links are complete. Register the
+native root capacitors next, then place each in its separately named series.
+
+### Register the three native root couplers
+
+```{python}
+#| id: add-hb-root-couplers
+
+feedline_coupler = plan.add(
+    components.capacitor(
+        id="feedline_readout_coupler",
+        capacitance=6.0 * u.fF,
+    )
+)
+plus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_plus",
+        capacitance=4.0 * u.fF,
+    )
+)
+minus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_minus",
+        capacitance=3.0 * u.fF,
+    )
+)
+```
+
+Each direct coupler handle is ready for the one series relation that preserves
+its declared electrical order.
+
+### Place the three couplers in semantic series order
+
+```{python}
+#| id: declare-hb-root-coupler-series
+feedline_readout = plan.series(
+    id="feedline_readout",
+    start=feedline_coupling_pin,
+    elements=(feedline_coupler,),
+    end=readout_root_bus,
+)
+readout_floating_plus = plan.series(
+    id="readout_floating_plus",
+    start=readout_root_bus,
+    elements=(plus_coupler,),
+    end=floating_plus_bus,
+)
+readout_floating_minus = plan.series(
+    id="readout_floating_minus",
+    start=readout_root_bus,
+    elements=(minus_coupler,),
+    end=floating_minus_bus,
+)
+```
+
+The root `floating_plus` and `floating_minus` aliases are `ElectricNodeRef`s.
+With the physical links and couplers complete, the next cell promotes ports and
+raw probes for the selected View.
+
+### Promote terminated Ports and raw probe loads
+
+```{python}
+#| id: add-hb-root-ports
+feedline_in_port = plan.add_port(
+    id="feedline_in",
+    at=feedline_in_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+feedline_out_port = plan.add_port(
+    id="feedline_out",
+    at=feedline_out_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_plus = plan.add_port(
+    id="floating_probe_plus",
+    at=floating_plus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_minus = plan.add_port(
+    id="floating_probe_minus",
+    at=floating_minus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+`feedline_in_port`, `feedline_out_port`, `probe_plus`, and `probe_minus` name
+the raw loads. The selected reduction below consumes the probe and root-node
+handles without changing the authored Plan.
+
+### Derive the selected PTC and transform View
+
+```{python}
+#| id: derive-hb-selected-view
+from scnsim import CircuitRun, ReductionPipeline
+
+run = CircuitRun(plan=plan, workspace="workspaces/advanced-course")
+raw_loaded_view = run.original
+hb_pipeline = ReductionPipeline().ptc(
+    probe_plus,
+    probe_minus,
+).transform_pair(
+    floating_plus,
+    floating_minus,
+    id="floating",
+).retain(
+    "feedline_in",
+    "feedline_out",
+    "floating.differential",
+)
+view = raw_loaded_view.reduce(hb_pipeline)
+```
+
+`view` is the retained, transformed selected View; it and `run` are consumed by
+the HB request preflight, solve, and exact restart route below.
+
+## Lesson 15.5 — Request and resolve pump-off HB {#ch15-hb-request}
+
+### Construct the named pump-off HB case
+
+`PumpAxis` names the lattice fundamental and `CurrentDrive` names a possible
+injection site. Omitting it from `currents` makes this named case exact zero.
+
+```{python}
+#| id: prepare-pump-off-hb
+from scnsim import (
+    CurrentDrive,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    PumpAxis,
+    SParameterTrace,
+)
+
+pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+pump_drive = CurrentDrive(
+    id="pump_drive",
+    at=feedline_in_port,
+    mode=(1,),
+)
+hb_spec = HBSolveSpec(
+    pump_axes=(pump,),
+    drives=(pump_drive,),
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    cases=(HBCaseSpec(id="pump_off", currents={}),),
+    truncation=HBTruncation(
+        pump_harmonics=(3,),
+        modulation_harmonics=(1,),
+        three_wave_mixing=False,
+        four_wave_mixing=True,
+    ),
+    traces=(
+        SParameterTrace(
+            id="transmission",
+            input_port="feedline_in",
+            input_mode=(0,),
+            output_port="feedline_out",
+            output_mode=(0,),
+        ),
+    ),
+)
+```
+
+`hb_spec` names one exact-zero `pump_off` case and its trace. The next cell
+preflights those named request handles before any numerical attempt.
+
+### Preflight, execute, and inspect the typed batch
+
+Preflight describes lattice tuples, source bindings, selected-network order,
+and case classifications without creating an attempt.
+
+```{python}
+#| id: explain-pump-off-hb
+run.explain(view, hb_spec).show()
+```
+
+The preflight reviews the proposed lattice and case classification. It leaves
+the same `view` and `hb_spec` ready for the ordinary solve cell.
+
+```{python}
+#| id: solve-pump-off-hb
+from scnsim import Theme
+
+hb = run.solve(view, hb_spec)
+hb.show(theme=Theme.DARK)
+```
+
+`hb` is the typed batch result. Its named `pump_off` outcome is guarded in the
+next cell before any success-only surface, trace, or state access.
+
+```{python}
+#| id: inspect-pump-off-hb
+from IPython.display import display
+
+pump_off = hb.cases["pump_off"]
+if pump_off.succeeded:
+    display(pump_off.s.view)
+    display(pump_off.y.view)
+    display(pump_off.z.view)
+    pump_off.traces["transmission"].show(
+        magnitude="db",
+        theme=Theme.DARK,
+    )
+    display(pump_off.states)
+    display(pump_off.state_node_map)
+else:
+    display(pump_off.failure)
+```
+
+`HBBatchResult.cases` preserves declared-case order. Each case is a typed
+success or typed numerical failure: only a success exposes S/Y/Z, traces, and
+states. Malformed requests, protocol failures, and receipt-integrity failures
+remain request-level errors rather than synthetic case outcomes.
+
+For a PTC View, an effective DC or AC driven case would require explicit
+`allow_driven_ptc=True`. That approval keeps nonlinear balance loaded and
+compensates only response linearization. This pump-off request has no effective
+drive and therefore uses the ordinary PTC lineage.
+
+### Resolve the exact HB request after a restart
+
+Ordinary route: run all declaration, View, request, preflight, solve, and
+inspection cells in order. Restart route: restart the kernel, rerun the
+existing declaration, selected-View, and HB-spec cells through
+`prepare-pump-off-hb`; skip the preflight, solve, and ordinary inspection
+cells; then use the two cells below. Those rebuilt cells provide the fresh
+`run`, `view`, and `hb_spec` required by `resolve()`.
+
+```{python}
+#| id: resolve-pump-off-hb
+resolved_hb = run.resolve(view, hb_spec)
+resolved_hb.show()
+```
+
+`resolved_hb` is the exact reconstructed request result. The following guard
+uses only that result, preserving the restart route's skip of ordinary solve
+and inspection cells.
+
+```{python}
+#| id: inspect-resolved-pump-off-hb
+from IPython.display import display
+
+resolved_pump_off = resolved_hb.cases["pump_off"]
+if resolved_pump_off.succeeded:
+    display(resolved_pump_off.s.view)
+    display(resolved_pump_off.y.view)
+    display(resolved_pump_off.z.view)
+    resolved_pump_off.traces["transmission"].show(magnitude="db")
+    display(resolved_pump_off.states)
+    display(resolved_pump_off.state_node_map)
+else:
+    display(resolved_pump_off.failure)
+```
+
+`resolve()` verifies and loads only the exact request. It never reruns Julia,
+retries a numerical failure, or substitutes a latest-looking batch.
+
+[Previous](14_transform_retain.qmd) · [Next](16_compare_direct_hb.qmd)
