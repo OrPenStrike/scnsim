@@ -21,6 +21,14 @@ candidate evaluation, and CMA-ES inside one process. SCNSim does not embed
 libjulia through JuliaCall and does not keep a daemon whose mutable state could
 outlive request identity.
 
+The `CONVERGING` Parameter System extends one request to an ordered finite
+space without changing this ownership: all points of that one request stay in
+one Julia process. Per-point values remain runtime data, and point outcomes
+remain children of the one batch request rather than separate launches or
+receipts. This page does not define the target batch schema; the
+[Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations)
+does.
+
 Python launches exactly this argv vector, with every shown item a separate
 argument and every resource/request/staging path absolute:
 

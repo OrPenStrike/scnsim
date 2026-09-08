@@ -6,9 +6,8 @@ from scnsim import (
     ComponentInstance,
     CompositePlan,
     Library,
-    ParameterSpec,
+    ParameterRef,
     components as builtin_components,
-    units as u,
 )
 
 
@@ -25,37 +24,30 @@ class ResonatorLibrary(Library):
         """Build a grounded parallel LC with one public terminal."""
 
         composite = CompositePlan(id=id, library=self)
-        capacitance_ref = composite.parameter(
-            id="capacitance",
-            baseline=capacitance,
-            spec=ParameterSpec(unit=u.fF),
-        )
-        inductance_ref = composite.parameter(
-            id="inductance",
-            baseline=inductance,
-            spec=ParameterSpec(unit=u.nH),
-        )
         capacitor = composite.add(
             builtin_components.capacitor(
                 id="capacitor",
-                capacitance=capacitance_ref,
+                capacitance=capacitance,
             )
         )
         inductor = composite.add(
             builtin_components.inductor(
                 id="inductor",
-                inductance=inductance_ref,
+                inductance=inductance,
             )
         )
-        terminal = composite.net(
-            capacitor.pin("terminal_1"),
-            inductor.pin("terminal_1"),
-        )
-        composite.ground(
-            capacitor.pin("terminal_2"),
-            inductor.pin("terminal_2"),
+        terminal = composite.bus(id="terminal")
+        composite.parallel(
+            id="lc",
+            start=terminal,
+            branches=((capacitor,), (inductor,)),
+            end=composite.ground,
         )
         composite.expose_pin(id="terminal", at=terminal)
+        if isinstance(capacitance, ParameterRef):
+            composite.expose_parameter(id="capacitance", parameter=capacitance)
+        if isinstance(inductance, ParameterRef):
+            composite.expose_parameter(id="inductance", parameter=inductance)
         return composite.build()
 
 

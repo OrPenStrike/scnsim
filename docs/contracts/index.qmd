@@ -4,21 +4,48 @@ subtitle: "Public behavior and its implementation design"
 ---
 
 ::: {.callout-note appearance="simple"}
-## Full V1 lifecycle authority
+## Lifecycle authority
 
-The complete dev1–dev6 Full V1 public semantics are Human-`ACCEPTED` and
-`STABILIZED`. Their documentation, implementation, durable cross-slice tests,
-and validation agree. Acceptance and stabilization are not release claims.
+The accepted numerical operations, physical component models, units, evidence
+workspace, and Result meanings remain `STABILIZED`. Acceptance and
+stabilization are not release claims.
+
+The public authoring grammar, structured Plan identity, certified diagrams,
+and independent Parameter System are reopened in documentation-first targets.
+[CircuitPlan Assembly](circuit-plan-assembly.qmd) owns the common model;
+[Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+owns composition and visual evidence; [Parameter System, Sweeps, and Bound
+Results](parameter-system.qmd) owns definitions, physical bindings, points,
+spaces, sweep Results, and optimization binding. Both remain `CONVERGING`;
+target runtime implementation is paused and the Tutorial examples are not
+executable on the current runtime.
 :::
+
+The model-first [Tutorial](../index.qmd) and
+[Concept](../concepts/physical-authority-and-reusable-composition.qmd) explain
+the reader workflow before these exact contracts: author one complete Plan,
+inspect its ASCDLS projection, then independently select `run.original` or a
+derived View for a numerical request. Diagram rendering never selects or
+mutates that analysis View.
 
 ## Public contracts
 
 Read these when deciding what a Notebook user may declare, execute, inspect,
 and resolve.
 
-- [Component Authoring Contract](../component-authoring.qmd) defines catalogs,
-  components, pins, electric nodes, ground, Ports, parameters, composites, and
-  schematic projections.
+- [Component Authoring Contract](../component-authoring.qmd) retains catalogs,
+  physical component fields and public boundaries, RLGC, Josephson/SQUID,
+  mutual coupling, and Direct/HB lowering semantics.
+- [CircuitPlan Assembly](circuit-plan-assembly.qmd) defines root/inline/reusable
+  assembly, equivalent ordinary public pins, open boundaries, completeness,
+  and shared Plan identity for independent consumers.
+- [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+  defines handle-based layout including named-tap presentation order,
+  independent audits, and code-free review.
+- [Parameter System, Sweeps, and Bound Results](parameter-system.qmd) defines
+  independent input identities, physical Plan adoption, immutable points and
+  spaces, batch Result inspection, optimization binding, and parameterized
+  diagrams.
 - [V1 Runtime Contract](../v1-runtime-contract.qmd) defines Runs, Refs, Specs,
   units, reduction, Direct/HB behavior, optimization, Results, attempts,
   receipts, failure, and known limits.
@@ -29,8 +56,8 @@ replace a public invariant.
 
 ## Implementation Design {#implementation-design}
 
-Read this collection in order before changing the scaffold. Each page answers
-one maintainer question. Together they cover all thirteen lessons and every
+Read this collection in order before changing the implementation. Each page
+answers one maintainer question. Together they cover the full Tutorial and every
 currently declared public V1 surface. Post-V1 surfaces remain fail-fast unless
 a later Human-accepted scope implements them.
 
@@ -52,6 +79,8 @@ a later Human-accepted scope implements them.
 16. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
 17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
-The collection remains the implementation authority for the stabilized Full
-V1. When a future scope changes one of these decisions, only the affected page
-and public contract return for Human review.
+The collection remains the implementation authority for stabilized numerical
+behavior. Pages that still describe flat-node or superseded diagram source are
+explicitly frozen implementation baseline, not the structured TARGET API. The
+target diagram mechanism and paused delivery boundary are summarized only in
+[Results, reports, and diagrams](../implementation/results-reports-and-diagrams.qmd).

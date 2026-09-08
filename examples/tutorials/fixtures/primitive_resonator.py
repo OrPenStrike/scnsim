@@ -1,4 +1,4 @@
-"""Rebuild the primitive one-port resonator introduced in lesson 1."""
+"""Construction-only fixed-value Chapter 1 primitive resonator fixture."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ from dataclasses import dataclass
 
 from scnsim import (
     CircuitPlan,
-    ComponentInstance,
     ElectricNodeRef,
     PortRef,
     components,
     units as u,
 )
+from scnsim.authoring import SubsystemPlan
 
 
 @dataclass(frozen=True)
@@ -21,34 +21,45 @@ class PrimitiveResonatorFixture:
     plan: CircuitPlan
     signal_port: PortRef
     resonator_node: ElectricNodeRef
-    resonator_cap: ComponentInstance
+    resonator: SubsystemPlan
 
 
 def build_primitive_resonator() -> PrimitiveResonatorFixture:
     """Return the exact primitive circuit from lesson 1 without policy wrappers."""
 
     plan = CircuitPlan(id="primitive_resonator")
+    resonator = plan.subsystem(id="resonator")
+    resonator_cap = resonator.add(
+        components.capacitor(id="capacitor", capacitance=110.0 * u.fF)
+    )
+    resonator_ind = resonator.add(
+        components.inductor(id="inductor", inductance=5.8 * u.nH)
+    )
+    terminal = resonator.bus(id="terminal")
+    resonator.parallel(
+        id="parallel_lc",
+        start=terminal,
+        branches=((resonator_cap,), (resonator_ind,)),
+        end=resonator.ground,
+    )
+    resonator_terminal = resonator.expose_pin(id="terminal", at=terminal)
+
+    signal_boundary = plan.bus(id="signal_boundary")
+    resonator_boundary = plan.bus(id="resonator_node")
     coupling_cap = plan.add(
         components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
     )
-    resonator_cap = plan.add(
-        components.capacitor(id="resonator_cap", capacitance=110.0 * u.fF)
+    plan.series(
+        id="coupling",
+        start=signal_boundary,
+        elements=(coupling_cap,),
+        end=resonator_boundary,
     )
-    resonator_ind = plan.add(
-        components.inductor(id="resonator_ind", inductance=5.8 * u.nH)
+    plan.link(
+        id="resonator_terminal",
+        endpoints=(resonator_boundary, resonator_terminal),
     )
-
-    signal_boundary = plan.net(coupling_cap.pin("terminal_1"))
-    resonator_node = plan.net(
-        coupling_cap.pin("terminal_2"),
-        resonator_cap.pin("terminal_1"),
-        resonator_ind.pin("terminal_1"),
-        id="resonator_node",
-    )
-    plan.ground(
-        resonator_cap.pin("terminal_2"),
-        resonator_ind.pin("terminal_2"),
-    )
+    resonator_node = resonator_boundary.node
     signal_port = plan.add_port(
         id="signal_in",
         at=signal_boundary,
@@ -59,5 +70,5 @@ def build_primitive_resonator() -> PrimitiveResonatorFixture:
         plan=plan,
         signal_port=signal_port,
         resonator_node=resonator_node,
-        resonator_cap=resonator_cap,
+        resonator=resonator,
     )

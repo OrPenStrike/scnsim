@@ -4,20 +4,25 @@ subtitle: "How does a custom Python factory become one portable finite physical 
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation; originally accepted in the
-`1.0.0.dev4` Lessons 6–8 scope. The
+**Status:** `STABILIZED` recursive-expansion baseline; originally accepted in
+the `1.0.0.dev4` Lessons 6–8 scope. The reopened structured-authoring snapshot
+alignment is `CONVERGING`, with implementation alignment pending. The
 [Component Authoring Contract](../component-authoring.qmd#composite-snapshot-boundary)
 owns the public `CompositePlan` and `ComponentInstance` behavior; this page
 fixes the maintainer mechanism that realizes it.
 
 ## Freeze factories in Python, not during a solve
 
-A custom Library factory is ordinary Python authoring code. It may construct a
-`CompositePlan`, declare public parameters and baselines, add components, net
-child pins, attach child endpoints to the eventual Plan ground, expose selected
-pins or coordinates, and call `build()`. `build()` validates and freezes that
-complete declaration into one immutable `ComponentInstance` before the outer
-`CircuitPlan` receives it.
+A custom Library factory is ordinary Python authoring code. The executable
+baseline uses `net()` and callable `ground()` while constructing its private
+graph; those spellings are frozen implementation evidence, not the current
+TARGET grammar. Under the target, the factory may construct a `CompositePlan`,
+consume independently defined `ParameterRef`s in physical fields and
+optionally expose those same refs, add components, create buses and structures,
+directly link eligible endpoints, ground eligible pins deliberately, expose
+selected pins or coordinates, and call `build()`.
+`build()` validates and freezes that complete declaration into one immutable
+`ComponentInstance` before the outer `CircuitPlan` receives it.
 
 The sealed Plan stores the built snapshot, not a callable factory, Python
 object graph, import name to resolve later, callback, expression AST, or
@@ -57,15 +62,23 @@ numeric nesting-depth limit or truncating fallback.
 
 ## Seal the complete public and private graph
 
+The [assembly contract](../contracts/circuit-plan-assembly.qmd) permits several
+ordinary public pin IDs to map to the same intrinsic node. This applies to all
+Composite kinds, not named catalog exceptions. Their public classes may remain
+partly or entirely externally open; expansion preserves the complete intrinsic
+graph and never fabricates external bindings. Required native pin completeness
+and intrinsic short checks remain unchanged.
+
 The snapshot records the following exact data before Plan sealing:
 
 | Surface | Frozen content |
 |---|---|
-| Child hierarchy | Each child `component_path`, catalog/factory schema identity, ordered pin schema, public parameters, and either primitive leaf data or a nested snapshot. |
-| Private topology | Every private node, its complete endpoint set of `(component_path, pin)`, and every unexposed child endpoint. |
-| Canonical ground | The complete set of grounded endpoints; each local `ground()` group is retained in the diagram projection with its endpoint-derived identity. |
-| Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to its `ParameterSpec`/baseline/binding consumers, and public inductive-branch ID to one oriented expanded branch. Public parameters retain the factory declaration order; map-like surfaces remain canonically sorted. |
+| Child hierarchy | Each child `component_path`, catalog/factory schema identity, ordered pin schema, consumed parameter refs, and either primitive leaf data or a nested snapshot. |
+| Intrinsic topology | Every private node, its complete endpoint set of `(component_path, pin)`, scoped bus/tap identities, child-owned N-link membership, structured incidences, and every unexposed child endpoint. |
+| Intrinsic ground | The child-owned grounded endpoint classes, structured-ground roles, and `ground_pins()` operations declared inside that Composite over its own eligible child pins. |
+| Public maps | Explicit maps from public pin ID to one private node, public coordinate ID to one private node, public parameter ID to the original independently defined `ParameterRef` plus this snapshot's consumers, and public inductive-branch ID to one oriented expanded branch. Adopted parameter evidence separately retains the immutable definition, spec, and baseline. Public parameters retain the factory exposure order; map-like surfaces remain canonically sorted. |
 | Binding graph | Each child physical slot is a constant, public-parameter identity, or declarative `AffineMap`; every repeated consumer remains a separate fan-out edge. |
+| Occurrence use | Each registered body, every required terminal binding, and whether the complete body is used once by a structure or remains an independent direct peer. |
 
 No child pin, node, coordinate, parameter, or inductive branch becomes public by
 name coincidence. A public pin is usable only for parent wiring; a public
@@ -73,17 +86,35 @@ coordinate is usable only for analysis selection; the same node appears in both
 maps only when the factory exposed both roles. Hidden nodes and child parameters
 remain snapshot evidence and cannot be selected by a parent or Runtime Spec.
 
+The containing Plan composes that immutable child snapshot with a separate
+connection overlay: later caller `link()` and `ground_pins()` declarations over
+public pins, root Ports, and the resulting global electrical closure. The
+overlay can change final zero-wire equivalence and effective grounded-net
+membership, but it never mutates the built child's intrinsic structures,
+internal links, local grounding, or exposures. In particular, externally
+grounding or commoning several legitimate return pins does not reapply the
+child's one-public-pin-per-internal-node exposure rule to the resulting global
+net. Once successfully committed, the containing Plan owns those external
+declarations and their diagnostic source paths.
+
 The canonical physical snapshot, including all private children, paths,
-endpoints, public maps, baselines, and bindings, contributes to the Plan hash.
-The complete local ground-group list is preserved for authoring/compiled
-diagrams but excluded from that physical hash: its grouping cannot change the
-canonical ground or compiled operator. This matches the existing Plan identity
-boundary in [Plan Sealing and Canonical Identity](plan-sealing-and-identity.qmd#separate-three-identities).
+endpoints, authored structures, public maps, baselines, and bindings,
+contributes to the target Plan identity. Endpoint order within a fixed N-link
+is canonicalized, but one N-link and several binary links remain distinct
+authored structures. Canonical ground membership and authored local ground
+roles—including the containing Plan's effective external-ground overlay—remain
+physical/structural facts. Only `ground_pins()` call batching and tuple order
+are source provenance excluded from physical and diagram digests; they cannot
+create another ground or force a shared visual rail. This matches
+the target boundary recorded alongside the existing identity mechanism in
+[Plan Sealing and Canonical Identity](plan-sealing-and-identity.qmd#separate-three-identities).
 
 ## Bind parameters as data
 
-`ParameterSpec` and each public baseline are frozen at `build()`. Parameter
-binding later resolves each child slot through exactly one of three data forms:
+Each independently defined parameter's adopted immutable definition,
+`ParameterSpec`, and baseline are frozen with the snapshot at `build()`.
+Parameter binding later resolves each child slot through exactly one of three
+data forms:
 
 | Form | Meaning |
 |---|---|
@@ -140,35 +171,42 @@ missing child, a dropped mutual, or a reason to collapse the remaining graph.
 
 ## Project the same snapshot two ways
 
-The authoring diagram projects the semantic outer components, their public pins
-and coordinates, actual outer wiring, and canonical ground. It preserves local
-ground groups as glyph grouping while never creating more than one electrical
-ground. It does not turn hidden children into public handles or show backend
-rows.
+The snapshot provides the complete native physical hierarchy consumed by both
+authoring and compiled projections. This page owns that frozen hierarchy and
+its deterministic compiler expansion; it does not own how those facts are
+placed, routed, labeled, certified, or reviewed as a diagram.
 
-The compiled diagram recursively projects the entire baseline snapshot. It
-labels each expanded leaf and private node by its segment-array component path,
-shows all ground groups and their mapping to canonical ground, preserves
-parameter identity/fan-out, and marks every omitted zero term. It does not
-perform PTC, coordinate transforms, Schur elimination, or Direct/HB numerical
-analysis. Those request-specific facts remain with `run.explain()` and the
-resulting typed evidence.
+Those projection rules now have one `CONVERGING` target authority:
+[Automatic Semantic Circuit Diagram Layout](../contracts/automatic-semantic-circuit-diagram-layout.qmd).
+It requires each representation-specific projection to preserve snapshot
+paths, private topology, canonical-ground membership, parameter fan-out, and
+omitted-zero evidence while keeping hidden children unavailable as public
+authoring handles. Authoring and compiled projections share a certification
+architecture but use different lowerings and semantic manifests. PTC, transforms,
+reduction, selected Views, and numerical results remain request/result evidence
+rather than Plan-diagram content. Runtime alignment to that target is pending.
 
-Both diagram forms are read-only projections of the same frozen graph. A theme,
-layout, or local ground glyph cannot mutate the snapshot or rename Plan
-identity. The public projection rules remain in
-[Inspection and evidence](../component-authoring.qmd#inspection-and-evidence).
+The A/B witnesses certify correspondence of emitted geometry to this exact
+snapshot or to the exact compiler-emitted expansion. They do not independently
+prove that numerical compiler lowering or stamping is correct; Calculation
+validates that boundary separately.
 
 ## Fail before a backend sees ambiguous topology
 
 Python rejects incomplete public maps, foreign or duplicate child snapshots,
-ambiguous component paths, cyclic nesting, incomplete nodes, invalid ground
-endpoints, invalid map bindings, or an exposed reference that does not belong to
-the composite. Julia rejects a snapshot whose canonical bytes, child provenance,
+ambiguous component paths, cyclic nesting, incomplete nodes, private/foreign
+endpoint access, unsafe zero-wire aliasing, invalid grounding, invalid map
+bindings, or an exposed reference that does not belong to the composite. Julia
+rejects a snapshot whose canonical bytes, child provenance,
 paths, parameter bindings, branch orientation, or recursive expansion do not
 match the sealed Plan. Neither side imports a custom factory during execution,
 fills a missing mapping by name, drops an ambiguous term, or substitutes a
 primitive approximation.
+
+A successfully committed declaration retains its diagnostic source path. A
+rejected authoring attempt adds no source-history entry and leaves the editable
+owner unchanged; it does not mutate a built child snapshot through a containing
+Plan.
 
 Structural failure is distinct from a candidate-specific mapped nonphysical
 value: the former prevents the Plan/request from reaching backend execution;

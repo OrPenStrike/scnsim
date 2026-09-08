@@ -1,0 +1,63 @@
+---
+title: "Chapter 8 — Start a reusable Library"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
+
+`Library` organizes reusable physical factories. This Chapter establishes only
+project-catalog preparation, not a reusable physical declaration or component.
+Lesson 7 adds the canonical Composite declaration.
+
+The grounded LC is now familiar enough to reuse. In ordinary Python, a class
+defines a kind of catalog and `components_library` is one instance of it; the
+empty catalog below intentionally adds no new electrical circuit.
+
+## Lesson 8.1 — Name the reusable catalog {#ch8-library}
+
+First import the catalog base so the following declaration makes its ownership
+boundary explicit.
+
+```{python}
+#| id: import-library-target
+from scnsim import Library
+```
+
+Next define the complete, deliberately empty project catalog. It declares no
+physical component; no factory belongs in this introductory lesson.
+
+```{python}
+#| id: define-empty-resonator-library-target
+class ResonatorLibrary(Library):
+    """Project-specific reusable resonator catalog."""
+```
+
+Create a catalog instance so later lessons can show its native inspection
+surface and then add factories under the same Library boundary.
+
+```{python}
+#| id: instantiate-empty-resonator-library-target
+components_library = ResonatorLibrary()
+```
+
+Inspect both the class contract and the catalog instance. Their help output
+is the target documentation surface that Lesson 7 builds upon.
+
+```{python}
+#| id: inspect-empty-resonator-library-target
+help(ResonatorLibrary)
+help(components_library)
+```
+
+The catalog instance is intentionally empty: it establishes the catalog
+boundary and native help surface before Lesson 7 rebuilds the clean-kernel
+setup and adds a physical factory. The intended flow is `Library` subclass →
+catalog instance → factory method → `ComponentInstance` → `plan.add(...)`.
+
+[Previous](07_report_resolve.qmd) · [Next](09_add_composite_factory.qmd)

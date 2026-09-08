@@ -1,0 +1,393 @@
+---
+title: "Chapter 14 — Transform and retain coordinates"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
+
+The same feedline, readout LC, and floating pair are physical assembly facts.
+The analysis question is different: retain feedline outputs and derive floating
+common/differential coordinates. Those coordinates are analytical, not newly
+created physical terminals or a diagram reparenting operation.
+
+## Lesson 14.1 — Build the feedline {#ch14-feedline}
+
+### Declare the root Plan and N=1 feedline metadata
+
+The root contains exactly `feedline`, `readout`, and `floating` Subsystems.
+The CPW bodies are finite-pi discretizations, not exact distributed
+equivalents.
+
+```{python}
+#| id: build-transform-root-and-feedline
+from scnsim import CircuitPlan, RLGC, components, units as u
+
+plan = CircuitPlan(id="floating_probe_course")
+feedline = plan.subsystem(id="feedline")
+rlgc = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+```
+
+`plan`, `feedline`, and `rlgc` establish the root ownership and line metadata.
+The following cells turn that metadata into two bodies and their public boundary.
+
+### Add, orient, and expose the two feedline sections
+
+The CPW reference is metadata only. The signal bus has three explicit same-net
+attachments for the left section, right section, and exposed coupling point.
+
+```{python}
+#| id: add-transform-feedline-bodies
+left = feedline.add(
+    components.transmission_line(
+        id="left",
+        length=1.0 * u.mm,
+        rlgc=rlgc,
+        n_sections=1,
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right",
+        length=1.0 * u.mm,
+        rlgc=rlgc,
+        n_sections=1,
+    )
+)
+
+input_bus = feedline.bus(id="input")
+middle_bus = feedline.bus(id="middle")
+output_bus = feedline.bus(id="output")
+```
+
+`left` and `right` are the two oriented line bodies. `middle_bus` joins their
+signal endpoints and becomes the public coupling-pin boundary in the next cell.
+
+```{python}
+#| id: wire-and-expose-transform-feedline
+left_head_pin = left.pin("head", conductor="signal")
+left_tail_pin = left.pin("tail", conductor="signal")
+right_head_pin = right.pin("head", conductor="signal")
+right_tail_pin = right.pin("tail", conductor="signal")
+
+left_section = feedline.series(
+    id="left_section",
+    start=input_bus,
+    elements=(
+        left.between(left_head_pin, left_tail_pin),
+    ),
+    end=middle_bus,
+)
+right_section = feedline.series(
+    id="right_section",
+    start=middle_bus,
+    elements=(
+        right.between(right_head_pin, right_tail_pin),
+    ),
+    end=output_bus,
+)
+feedline_input_pin = feedline.expose_pin(id="input", at=input_bus)
+feedline_coupling_pin = feedline.expose_pin(id="tap", at=middle_bus)
+feedline_output_pin = feedline.expose_pin(id="output", at=output_bus)
+```
+
+The root will consume only `feedline_input_pin`, `feedline_coupling_pin`, and
+`feedline_output_pin`; no child line pin leaves this scope directly.
+
+## Lesson 14.2 — Add the grounded readout {#ch14-readout}
+
+### Declare the grounded readout LC
+
+The 110 fF/5.8 nH grounded readout LC is the local lumped approximation for
+the target quarter-wave mode. It is not an exact distributed-equivalence claim.
+
+```{python}
+#| id: build-transform-readout-subsystem
+readout = plan.subsystem(id="readout")
+readout_capacitor = readout.add(
+    components.capacitor(
+        id="capacitor",
+        capacitance=110.0 * u.fF,
+    )
+)
+readout_inductor = readout.add(
+    components.inductor(
+        id="inductor",
+        inductance=5.8 * u.nH,
+    )
+)
+readout_bus = readout.bus(id="node")
+readout_parallel = readout.parallel(
+    id="parallel_lc",
+    start=readout_bus,
+    branches=((readout_capacitor,), (readout_inductor,)),
+    end=readout.ground,
+)
+readout_terminal = readout.expose_pin(
+    id="readout_node",
+    at=readout_bus,
+)
+```
+
+This block publishes the fixed readout `readout_terminal` for the later root
+assembly.
+
+## Lesson 14.3 — Add the floating subsystem {#ch14-floating}
+
+### Bind fixed floating leaves
+
+```{python}
+#| id: build-transform-floating-parameters-and-leaves
+floating = plan.subsystem(id="floating")
+plus_bus = floating.bus(id="plus")
+minus_bus = floating.bus(id="minus")
+
+mutual_cap = floating.add(
+    components.capacitor(id="mutual_cap", capacitance=16.0 * u.fF)
+)
+mutual_ind = floating.add(
+    components.inductor(id="mutual_ind", inductance=7.0 * u.nH)
+)
+plus_shunt = floating.add(
+    components.capacitor(
+        id="plus_shunt",
+        capacitance=45.0 * u.fF,
+    )
+)
+minus_shunt = floating.add(
+    components.capacitor(
+        id="minus_shunt",
+        capacitance=42.0 * u.fF,
+    )
+)
+```
+
+The fixed native leaves now feed the next structural cell, which publishes the
+floating pair's two boundary pins.
+
+### Structure and expose the floating pair
+
+```{python}
+#| id: structure-and-expose-transform-floating
+mutual_network = floating.parallel(
+    id="mutual_network",
+    start=plus_bus,
+    branches=((mutual_cap,), (mutual_ind,)),
+    end=minus_bus,
+)
+plus_branch = floating.branch(
+    id="plus_shunt",
+    at=plus_bus,
+    elements=(plus_shunt,),
+    end=floating.ground,
+)
+minus_branch = floating.branch(
+    id="minus_shunt",
+    at=minus_bus,
+    elements=(minus_shunt,),
+    end=floating.ground,
+)
+plus_1 = floating.expose_pin(id="plus_1", at=plus_bus)
+plus_2 = floating.expose_pin(id="plus_2", at=plus_bus)
+minus_1 = floating.expose_pin(id="minus_1", at=minus_bus)
+minus_2 = floating.expose_pin(id="minus_2", at=minus_bus)
+```
+
+Each pair exposes one intrinsic node through distinct ordinary public pins.
+The couplers connect directly to `plus_1` and `minus_1`; only `plus_2` and
+`minus_2` link to the existing root probe buses and coordinates. Left/right
+placement is a separate presentation choice, not a physical pin role. No
+component, Coordinate, or degree of freedom is added by these exposures.
+
+The root assembly next creates coordinate buses and node aliases for the
+output pair only.
+
+## Lesson 14.4 — Assemble root couplers and probes {#ch14-root}
+
+### Declare root buses and link child boundaries
+
+The aliases `floating_plus` and `floating_minus` are root `ElectricNodeRef`s.
+They are not child `PinRef`s and are the transform inputs below.
+
+```{python}
+#| id: wire-transform-root-subsystems
+feedline_in_bus = plan.bus(id="feedline_in")
+feedline_out_bus = plan.bus(id="feedline_out")
+readout_root_bus = plan.bus(id="readout_node")
+floating_plus_bus = plan.bus(id="floating_plus")
+floating_minus_bus = plan.bus(id="floating_minus")
+
+feedline_in_node = feedline_in_bus.node
+feedline_out_node = feedline_out_bus.node
+readout_node = readout_root_bus.node
+floating_plus = floating_plus_bus.node
+floating_minus = floating_minus_bus.node
+
+plan.link(
+    id="feedline_input_child",
+    endpoints=(feedline_in_bus, feedline_input_pin),
+)
+plan.link(
+    id="feedline_output_child",
+    endpoints=(feedline_out_bus, feedline_output_pin),
+)
+plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
+plan.link(
+    id="floating_plus_child",
+    endpoints=(floating_plus_bus, plus_2),
+)
+plan.link(
+    id="floating_minus_child",
+    endpoints=(floating_minus_bus, minus_2),
+)
+```
+
+The root `ElectricNodeRef` aliases and child-boundary links are now explicit.
+Register the three native coupling capacitors before assigning their series
+relations.
+
+### Register the three native root couplers
+
+```{python}
+#| id: add-transform-root-couplers
+
+feedline_coupler = plan.add(
+    components.capacitor(
+        id="feedline_readout_coupler",
+        capacitance=6.0 * u.fF,
+    )
+)
+plus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_plus",
+        capacitance=4.0 * u.fF,
+    )
+)
+minus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_minus",
+        capacitance=3.0 * u.fF,
+    )
+)
+```
+
+Each direct coupler handle is consumed once by the semantic series relation
+that names its electrical placement.
+
+### Place the three couplers in semantic series order
+
+```{python}
+#| id: declare-transform-root-coupler-series
+feedline_readout = plan.series(
+    id="feedline_readout",
+    start=feedline_coupling_pin,
+    elements=(feedline_coupler,),
+    end=readout_root_bus,
+)
+readout_floating_plus = plan.series(
+    id="readout_floating_plus",
+    start=readout_root_bus,
+    elements=(plus_coupler,),
+    end=plus_1,
+)
+readout_floating_minus = plan.series(
+    id="readout_floating_minus",
+    start=readout_root_bus,
+    elements=(minus_coupler,),
+    end=minus_1,
+)
+```
+
+The completed root exposes `floating_plus` and `floating_minus` as
+`ElectricNodeRef` aliases while retaining only public child handles. The port
+cell next supplies the raw loads that PTC consumes.
+
+### Promote root Ports and raw probe loads
+
+```{python}
+#| id: add-transform-root-ports
+feedline_in_port = plan.add_port(
+    id="feedline_in",
+    at=feedline_in_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+feedline_out_port = plan.add_port(
+    id="feedline_out",
+    at=feedline_out_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_plus = plan.add_port(
+    id="floating_probe_plus",
+    at=floating_plus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_minus = plan.add_port(
+    id="floating_probe_minus",
+    at=floating_minus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+`probe_plus` and `probe_minus` identify raw nonloading loads. They feed the
+ordered PTC, transform, and retain pipeline below.
+
+## Lesson 14.5 — Choose analytical floating coordinates {#ch14-transform-view}
+
+### Apply PTC, transform the root coordinates, and retain outputs
+
+```{python}
+#| id: transform-and-retain
+from scnsim import CircuitRun, DirectSolveSpec, ReductionPipeline
+
+run = CircuitRun(plan=plan, workspace="workspaces/advanced-course")
+raw_loaded_view = run.original
+analysis_pipeline = ReductionPipeline().ptc(
+    probe_plus,
+    probe_minus,
+).transform_pair(
+    floating_plus,
+    floating_minus,
+    id="floating",
+).retain(
+    "feedline_in",
+    "feedline_out",
+    "floating.differential",
+)
+analysis_view = raw_loaded_view.reduce(analysis_pipeline)
+spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+```
+
+The ordered pipeline remains `ptc → transform_pair → retain`; its transform ID
+is exactly `floating`. It consumes public root coordinates, never child buses
+or private leaves.
+`analysis_view` and `spec` are the named selected request inputs reviewed next.
+
+```{python}
+#| id: inspect-transform-selected-evidence
+from IPython.display import display
+
+analysis_explanation = run.explain(analysis_view, spec)
+display(analysis_explanation.evidence)
+analysis_explanation.show()
+```
+
+The explanation displays the selected View lineage and retained coordinates;
+it is the final review of this request, not a stored execution result.
+
+[Previous](13_compensate_probes.qmd) · [Next](15_prepare_hb.qmd)

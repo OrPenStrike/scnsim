@@ -1,63 +1,407 @@
 ---
-title: "Physical Authority and Reusable Composition"
+title: "Circuit Models, Subsystems, and Reuse"
 ---
 
 ::: {.callout-warning}
-## Human-accepted Full V1 concept
+## CONVERGING target concept
 
-This page explains the accepted Full V1 design. It does not define API,
-physics, validation, or failure behavior; the linked contracts remain the sole
-authority.
+This page explains the `CONVERGING` target for structured circuit authoring.
+The authoring API, its structural identity integration, and certified diagrams
+are not implemented or accepted; the TARGET examples are not executable on the
+current runtime. Implementation alignment remains pending.
+
+Accepted numerical operations, physical component models, units, evidence
+workspace, and existing Result meanings are not reopened. Exact assembly
+belongs to the [CircuitPlan Assembly Contract](../contracts/circuit-plan-assembly.qmd);
+diagram behavior belongs to the
+[diagram contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd);
+exact input and batch behavior belongs to the
+[Parameter System contract](../contracts/parameter-system.qmd).
 :::
 
-## Design pressure
+## Begin with the physical circuit
 
-A reusable circuit model needs to expose a stable useful surface while its
-author can improve its internal expansion. At the same time, every consumer,
-compiler, diagram, and backend must refer to one physical circuit rather than
-to several nearly equivalent descriptions.
+Suppose the circuit is a grounded parallel LC resonator connected through a
+coupling capacitor to a terminated Port. Before choosing a solver, an author
+must be able to answer:
 
-## CircuitPlan is the physical authority {#plan-as-physical-authority}
+- Which capacitor, inductor, coupler, ground, and Port exist?
+- Which terminals share one electrical node?
+- Which parts form the resonator subsystem?
+- Which resonator boundary may the parent circuit connect to?
 
-SCNSim gives a `CircuitPlan` sole physical authority. Immutable component
-catalogs provide instances with attributable source identity.
+Those are authored circuit facts. A resonance frequency, a transformed
+coordinate, or a plotted response is an analysis result or analysis choice;
+none can supply the missing model structure after the fact.
 
-## Library names catalog ownership
+The intended review outcome has two related but noninterchangeable parts. The
+diagram must be generated from that authored Plan and checked for visible
+electrical and ownership correspondence, while complete invisible declarations
+remain verified source evidence. Any analytical Result must separately name
+the View and request selected from the same Plan. A hand-maintained picture
+cannot replace the generated projection, and the generated projection cannot
+stand in for an analysis Result.
 
-`scnsim.components` owns the built-in catalog. A project subclasses `Library`
-and publishes a separate singleton containing only the reusable factories it
-owns. Custom factories call the built-in catalog explicitly for primitive
-children, so provenance does not depend on an ambient registry or inherited
-factory namespace.
+## One Plan supplies two projections {#plan-as-physical-authority}
 
-## CompositePlan is the reuse boundary {#composite-as-reuse-boundary}
+`CircuitPlan` is the sole root authority. It records the complete electrical
+network and the structure the author deliberately assigned to it. The same
+authored Plan is the source for two independent uses:
 
-A Composite is one component that deliberately publishes only the pins,
-parameters, and observation coordinates intended for its consumer. Its
-children are expansion evidence, not automatically public circuit API.
+1. The Automatic Semantic Circuit Diagram Layout System (ASCDLS) captures an
+   immutable snapshot without sealing or mutating the authoring object, then
+   derives an authoring or compiled diagram and checks its correspondence.
+2. `CircuitRun` separately seals the Plan for analysis and supplies
+   `run.original`; an analysis may keep that original network or derive a
+   `NetworkViewRef`, then submit a Solve, Evaluate, or Optimization request.
 
-This makes composition a boundary, not a shorthand for leaking a component's
-internal topology. A diagram or compiled expansion can explain that authority,
-but neither becomes another circuit definition.
+A diagram is never the solver input, and a selected analysis View is never a
+new physical circuit. Rendering does not create, choose, or mutate a View.
 
-## Problem solved
+Three assembly scopes use the same electrical vocabulary:
 
-The boundary lets a model author reuse a Composite without forcing every
-Notebook to know its child IDs, wiring, or calibration fan-out. It also means a
-consumer can identify the exact component source and physical Plan behind an
-analysis, even when the model is assembled from built-in and custom catalogs.
+| Scope | Circuit question it answers |
+|---|---|
+| root `CircuitPlan` | What is the complete circuit, including logical Ports? |
+| inline `SubsystemPlan` | Which parts belong together in this one Plan? |
+| Library `CompositePlan` | Which owned structure should be reusable as one component? |
 
-## Intentionally not owned
+SCNSim never infers a Subsystem from names, values, visual proximity, graph
+shape, or modes. A Composite is not an opaque electrical box: its public
+boundary controls access, while native children remain present in compilation
+and diagram evidence.
 
-This concept does not choose optimizer bounds, Design Targets, runtime
-requests, or results. It also does not turn a Composite into a mutable global
-catalog, expose hidden children by inference, or make a schematic a competing
-physical authority.
+## Why a shared node needs a bus—and only sometimes a tap
 
-## Contract sections
+In a parallel LC resonator, the capacitor and inductor share a signal node and
+ground. A `bus()` names or holds that shared electrical net, and ordinary
+wiring connects directly to that bus. A `tap()` is needed only when one contact
+on the same bus must be named independently, such as three feedline contacts
+whose visual order the author wants to review. It never creates a separate
+node.
 
-- [One Library model](../component-authoring.qmd#one-library-model)
-- [Pins and public parameters](../component-authoring.qmd#pins-and-public-parameters)
-- [Declarative custom composites](../component-authoring.qmd#declarative-composites)
-- [Inspection and evidence](../component-authoring.qmd#inspection-and-evidence)
-- [Runtime ownership model](../v1-runtime-contract.qmd#runtime-ownership-model)
+A `PinRef` is different again: it is a native component terminal or a
+parent-facing boundary exposed by a child scope. The child may expose a pin
+with the ID `tap`, but the returned object is still a `PinRef`, not a `TapRef`.
+A `CoordinateRef` belongs to analysis and cannot be used as a wire endpoint.
+
+A Python variable such as `resonator_bus` is only the Notebook's local handle;
+the authored `id="terminal"` is the identity scoped inside its owner. When the
+parent later links its `resonator_root_bus` to the child's exposed `terminal`,
+the two handles resolve to one electrical node. A single link may join three or
+more eligible endpoints when they all belong to that same zero-wire
+connection. The child pin preserves the owned boundary, while the root bus
+preserves parent-owned assembly and gives later analysis a public root
+coordinate; the link creates no extra element or electrical node.
+
+The target grammar makes each role explicit:
+
+- `add()` registers a physical part; it does not connect that part;
+- `series()`, `parallel()`, and `branch()` place real component bodies while
+  recording electrical incidence and readable authored structure;
+- `bus()` expresses one net, while `tap()` optionally names one contact on it;
+- `link()` makes one zero-component conductive connection among two or more
+  eligible endpoints;
+- `ground_pins()` deliberately grounds one or more eligible pins;
+- `couple_inductive()` records an oriented nonconductive relation; and
+- `subsystem()` creates an explicitly owned inline scope.
+
+These structures are not labels applied after arbitrary wiring. `series()`
+orders one chain; `parallel()` gives several chains the same endpoint pair;
+`branch()` adds the explicit side-branch role even when its incidence could be
+written as a series from that bus. None declares current direction. A `link()`
+is different: it contains no component and only joins existing endpoints.
+
+`scope.ground` is the circuit's canonical electrical reference expressed as a
+local endpoint. It is not a catalog component or a page-wide drawing rail.
+
+## Three grounding responsibilities
+
+Grounding is explicit, but it is not one universal wiring recipe:
+
+1. An **intrinsically grounded subsystem** connects a real local branch to
+   `scope.ground`. Its ground belongs to the subsystem definition, so the
+   parent does not ground that terminal again.
+2. An **externally grounded module** exposes an ordinary return bus as a public
+   `PinRef`. The parent applies `ground_pins(pins=(return_pin,))`; this grounds
+   the pin's whole connected net without pretending the child was intrinsically
+   grounded. A bus called `ground` is still ordinary until that declaration.
+3. A **logical Port** supplies its own declared load/reference to ground. The
+   Port has no public ground pin and needs no extra grounding wire.
+
+All three resolve to the same canonical reference for compilation. The diagram
+still shows the local branch, parent-side ground attachment, or Port load where
+it was authored. A multi-pin `ground_pins()` call may ground several legitimate
+return nets, but its tuple order and batching do not create another ground
+domain or a shared drawing rail.
+
+The diagram derives separate ground occurrences from structural terminations,
+not one ground tree per scope. A Parallel's shared grounded end rail has one
+glyph; separate shunts, including those at both terminals of a floating
+network, keep local glyphs of their own. `composition.ground_side(...)` chooses
+the displayed side of an eligible grounded structure or parent-applied ground
+pin. It may rotate a structure but never reverses its electrical reference or
+creates another ground domain. Port loads keep their own graphical role.
+
+`link()` and `ground_pins()` respect ownership. A parent may use its own bus or
+tap and an immediate child's public pin; it may not reach through that pin to a
+private child bus. Electrical aliases do not erase those owner-local handles.
+They also do not permit a later link to short two distinct buses in the
+invoking scope, a physical component, or a Port to ground. The target validates
+the complete affected Plan before committing the declaration, so a rejected
+operation leaves the editable model unchanged and its proposed ID reusable.
+
+## Why a child exposes a public pin
+
+A parent must not reach into a child and wire a private capacitor terminal or
+private bus.
+Instead, `expose_pin()` publishes one parent-facing boundary at an internal
+node. The pin and that internal bus are the same electrical boundary; exposure
+does not add a component or a second wire.
+
+Other public boundaries are deliberately different:
+
+- `expose_coordinate()` publishes an eligible analysis coordinate;
+- `expose_inductive_branch()` publishes an oriented branch for mutual
+  coupling; and
+- a Library Composite may publish an independently defined, physically bound
+  parameter that a later operation may vary.
+
+Private buses, taps, and leaves remain private. One internal node may expose
+several differently named ordinary public pins. For example, `plus_1` and
+`plus_2` can denote the same internal bus while providing distinct public
+boundaries. No component, Coordinate, or degree of freedom is added, and the
+names do not assign physical input/output roles. Their external wiring groups
+remain owner-local: a left coupling and a right probe can share voltage through
+the child's real internal wire without becoming one parent wiring group.
+
+Selecting two terminals of a complete multi-terminal part with `.between()` is
+needed only when the author uses that whole body once inside a structure. It is
+optional when the complete body remains an independent scope peer. Selecting
+intrinsically equivalent pins rejects; parent-commoned nets alone do not make
+two child pins intrinsically equivalent. In either
+case it does not replace an IDC or multi-conductor line with a scalar equivalent;
+all public terminals and native coefficients remain explicit.
+
+An ordinary two-terminal native body must belong to exactly one structure. A
+complete Composite occurrence or native multi-terminal body may instead remain
+an independent peer. Native required pins remain bound; Composite public pins
+may be partially or entirely externally open without inventing a load or wire.
+A one-public-pin
+grounded Composite is already structurally complete because its private native
+leaves were assembled inside its ownership boundary; whether its public pin
+is bound or open, it needs no second structural wrapper. Open boundaries remain
+visible. A legal assembly need not be numerically solvable.
+
+The [shared assembly contract](../contracts/circuit-plan-assembly.qmd) owns
+these modeling rules. Parameter resolution, Calculation, and diagrams consume
+that model independently: numerical use does not load diagram modules or
+require a successful drawing. Presentation settings and rendering failures
+never change the Plan or its numerical requests.
+
+## Fixed values come before public parameters
+
+A fixed physical value can be written directly on a native component. That is
+the clearest choice when the learning task or model does not need to vary it.
+The Tutorial therefore uses literal C and L values in Chapters 1–3.
+
+An independent `ParameterRef` becomes useful when a learning task needs an
+externally addressable physical value—for example, a selected point, a sweep,
+or Optimization. Chapter 4 first defines the ref outside any Plan. The Plan
+adopts it only when a registered component's real physical field consumes it.
+Allocating a definition or mentioning the ref in a `ParameterSet` creates no
+Plan binding.
+
+A reusable Library Composite may expose an already-bound ref as a declared
+public input. That boundary returns the original ref without opening private
+children. One ref may deliberately feed several physical fields; equal values
+held by different refs remain independent. Literals remain fixed and do not
+become parameters automatically.
+
+See [Units, Parameters, and Optimization](units-parameters-and-optimization.qmd)
+for the distinction between baseline value, public parameter, operation-time
+parameter set, and optimization variable.
+
+## Reuse keeps the same structure {#composite-as-reuse-boundary}
+
+The inline resonator is a deliberately grouped child inside one Plan, not yet
+a reusable Library component. Once it is understood there, a Library author
+may express the same structure inside a `CompositePlan` and publish a factory.
+The consumer receives one `ComponentInstance` with only its declared public
+pins, coordinates, branches, and parameters.
+
+```text
+inline SubsystemPlan
+  = one Plan-owned hierarchy used here
+
+Library CompositePlan -> ComponentInstance
+  = one factory-owned hierarchy reusable elsewhere
+```
+
+Moving an inline hierarchy into a reusable Composite may preserve values and
+electrical connectivity, but it changes ownership, provenance, Plan identity,
+and related semantic identities. The target makes no cross-source digest
+invariance promise.
+
+## A diagram checks the declaration, not the research intent
+
+The clean authoring diagram shows conventional native parts, wires, junctions,
+local grounds, Ports, physical couplings, ownership regions, and visible
+cross-boundary incidence. It does not cover the schematic with operator IDs,
+link-call history, bus/tap names, or exposure metadata. Those complete authored
+facts remain separately available in the audit's verified source rows. The
+compiled diagram instead explains deterministic compiler expansion. Neither
+projection is another circuit definition.
+
+Automatic layout gives every parallel group a vertical electrical path by
+default, with its branches left-to-right. A hint on that parallel may rotate it
+to horizontal paths; changing the parent scope axis does not rotate the child
+parallel implicitly. These are reading conventions only and never reverse
+ordered pins or series members.
+
+### Compose the drawing without reauthoring the circuit
+
+`SchematicComposition` is a presentation recipe over existing Blocks and their
+attachment boundaries. Blocks are the Plan's scope peers and assembly
+structures, not new physical components. A structure's start/end attachment is
+different from another structure's attachment on the same Bus. Public Pins,
+Ports, and authored Taps select their existing contacts; the Bus itself adds no
+extra arm. These attachments are not electrical nodes or analysis coordinates.
+
+`SchematicComposition(plan=plan)`, `automatic(plan=plan, hints=None)`, and
+a missing layout share one fixed Default path. Explicit per-field settings win;
+omitted fields receive stable defaults. The constructor is useful for changing
+just one axis or Port side: it does not require a complete manual configuration.
+`show()` and inventory/wiring reads remain nonmutating.
+
+Wiring replacement is a complete-group operation. Use
+`replace_wiring(at=bus_or_link_or_public_pin)` to specify connected straight,
+L, T, and Cross primitives for that group. Every actual attachment and requested
+arm must be connected once; Default never guesses wires missing from an
+explicit replacement. A Subsystem Pin selects parent-facing wiring; a
+ComponentInstance Pin selects its occurrence-owner group, not child-private
+wiring. Aliases share one authority. An ambiguous Tap requires an explicit
+structure boundary rather than an arbitrary contact choice.
+
+The existing single-pin readout can hang beneath a parent T while another T
+and L connect to the floating network's coupling structures. No second public
+Pin or electrical change is needed. Resolve boundary directions from explicit
+settings or parent arms first; the child then supplies one complete measured
+payload with upright labels, final public anchors, local grounds, and reserved
+exits. The parent translates it whole without rewriting private contents.
+
+Port presentation retains eight root-frame poses:
+`port_orientation(port, boundary_side=..., load_side=...)` atomically sets the
+hollow-marker side and perpendicular T-to-load/ground direction.
+`port_side()` preserves an explicit compatible load side; incompatible changes
+reject without partial update. `ground_side()` is not a Port control.
+Without explicit settings, the selected wiring arm or intrinsic incidence
+determines the marker side, then the scope's leading side if needed. Horizontal
+Ports default loads downward; vertical Ports default them rightward. Outside
+wiring attaches to the complete Port's circuit-facing lead end.
+
+Default keeps horizontal Series, vertical Parallel with branches left-to-right,
+and declared peer order along the scope axis. Applicable explicit tap order
+precedes stable declared contact order. Two contacts use straight/L, three use
+a compatible T or the fixed scope branch, four distinct directions use Cross
+and other four-contact groups use connected Ts, and larger groups use a fixed
+T chain. Compatible arms are assigned first, then remaining contacts and arms
+in stable source/cardinal order. Default uses the same public builders as
+explicit recipes; it does not enumerate or score alternatives.
+
+Placement reserves measured Blocks, junction subtrees, Ports/loads/text,
+connectors, and coupling-guide strips before drawing. Branch extents can offset
+rows and enlarge later columns rather than forcing top-aligned boxes. A stable
+spanning traversal places each body once while all remaining edges and cycles
+retain reserved closure tracks. Channels and lanes follow stable
+group/connection order; direct paths, prescribed bends, and channel/perimeter
+routes are constructed arithmetically.
+
+There is no authoring visibility-graph search, pose candidate selection,
+backtracking, routing-order retry, or readability score. Different-net crossings
+retain jumps; same-net routes cannot acquire incidental bridges or lose
+requested junction arms or loop edges. Unsupported fixed geometry fails with
+its actual scope, Block, junction, or constraint. It neither falls back to
+search nor labels the physical circuit invalid. No universal placement or
+numerical timing threshold is promised.
+
+The existing five-map `SchematicLayout` convenience feeds the same fixed
+Default setters. No entry point exposes coordinates, lengths, sizes, or gaps.
+A changed Plan makes an old composition stale. Rendering captures one exact
+Plan, effective point, and settings without mutating caller state or old results.
+Authoring `diagram.composition` is the detached immutable completed recipe;
+compiled diagrams expose `None`. Its inspection survives live Plan edits.
+`to_composition(plan=plan)` checks exact Plan identity and returns a new fixed
+editable recipe without exposing private editable contents. Reuse at another
+single point remeasures/reroutes, not pixels, and may be incompatible. There is
+no global reset-to-auto; create a fresh partial composition for new settings.
+
+The exact public operations and capstone recipe remain in the
+[composition contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd#schematic-composition).
+
+### Keep composition checks separate from circuit review
+
+Authoring labels are readable projections, not rounded model inputs. Scalar
+values use six significant digits with Decimal half-even rounding and supported
+engineering prefixes; exact values remain in source evidence. The audit checks
+the displayed text and units in that same display projection, not a numerical
+tolerance. Compiled scientific coefficients retain their exact evidence path.
+
+An N=1 CPW Box shows kind/local ID, length when values are enabled, and
+the section count (`1 section` or `<N> sections`) always. Its two visible ends
+do not claim ordered head/tail names;
+the exact identities and RLGC stay source-verified. MTL keeps its necessary
+ordered conductor/terminal evidence. Compact child frames reserve only needed
+route lanes and measured labels, grounds, borders, and escapes before the
+parent translates the complete child. Open public stubs are checked from real
+ink and terminal incidence; a cut required wire is not an open-pin exception.
+
+Review remains three separate questions:
+
+1. **A — electrical correspondence:** do visible bodies, terminals, wires,
+   grounds, Ports, couplings, and enabled values match the declared or compiled
+   electrical evidence?
+2. **B — visible ownership correspondence:** do visible regions, containment,
+   leaf and Port ownership, and boundary crossings match the expected visible
+   ownership evidence?
+3. **C — design intent:** is this actually the circuit the Human meant to
+   model?
+
+Separate layout-constraint verification checks that requested shapes and sides
+actually appear in the visible geometry: two Ts can pass electrical A yet
+violate an explicit Cross request. A/B still reconstruct actual visible ink,
+not hidden expected composition or ownership maps.
+
+A/B can detect a projection mismatch. They do not pretend that invisible
+authoring history was reconstructed from the image: complete operator,
+exposure, bus/tap, and parameter-binding records are labelled source/provenance
+evidence. Only the Human can answer C. None of the three proves that a selected
+View, unrelated calculation/request override, solver, optimization, or physical
+approximation is correct.
+
+## Reader path
+
+- [Chapter 1](../../examples/tutorials/01_author_primitive.qmd) builds the
+  complete fixed-value resonator circuit before requesting its diagram.
+- [Chapter 2](../../examples/tutorials/02_solve_direct.qmd) asks the first
+  numerical question of the same physical model.
+- [Chapter 4](../../examples/tutorials/04_define_parameters.qmd) defines
+  independent inputs and makes Plan assignment observable through their actual
+  component-field bindings.
+- [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) selects one
+  point or an ordered parameter space without mutating the Plan.
+- [Chapters 8–10](../../examples/tutorials/08_create_library.qmd) turn an
+  understood inline subsystem into a reusable Library Composite.
+- [Chapter 11](../../examples/tutorials/11_review_customize_schematic.qmd)
+  applies presentation hints without changing the circuit or selecting a View.
+- [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) assembles the
+  complete feedline/readout/floating capstone, reviews its Plan diagram, and
+  only then selects a probe-compensated analysis View.
+- [Compilation, Coordinates, and Network Views](compilation-coordinates-and-network-views.qmd)
+  explains why analysis coordinates remain separate from wiring endpoints.
+- [Shared assembly contract](../contracts/circuit-plan-assembly.qmd)
+- [Diagram contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd)
+  owns the exact grammar, layout, identity, audits, and failures.
+- [Parameter System contract](../contracts/parameter-system.qmd) owns
+  definition, binding, point, space, sweep-result, and optimization-binding
+  semantics.

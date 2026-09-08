@@ -1,82 +1,144 @@
 ---
-title: "2 — Prepare and solve a Direct response"
+title: "Chapter 2 — Ask for a Direct response"
+subtitle: "Source candidate · CONVERGING · checkpoint-bound evidence"
 jupyter: python3
 execute:
   enabled: false
 ---
 
-::: {.callout-note title="Lesson focus" appearance="simple"}
-**Learn:** describe one Port response before executing it.
-**Run:** prepare and solve one Direct S/Y/Z request.
-**Inspect:** the complete one-Port S/Y/Z surfaces.
-**Status:** `STABILIZED` Full V1.
-:::
+> **Source candidate / CONVERGING.** These cells describe the Chapter’s model
+> and operations; their presence is not execution or scientific evidence.
+> The website runs no kernels or solvers, and the generated Notebook remains
+> zero-output. See the earlier diagram lessons for circuit review.
 
-## Describe the response you need
+Use the same fixed physical circuit from Lesson 1. This Chapter asks a new
+question: what Direct frequency response would its original Plan produce?
+It repeats the declaration so a fresh kernel has no hidden earlier state.
 
-The adjacent [construction fixture](fixtures/primitive_resonator.py) only
-repeats lesson 1's Plan and handles. `CircuitRun` owns execution and
-`run.original` is its zero-reduction [network view](../../docs/concepts/compilation-coordinates-and-network-views.qmd#network-view-lineage).
-Because this Plan has one logical Port, the original view already means its
-complete one-Port response. `DirectSolveSpec` requests S/Y/Z on an explicit
-frequency grid; it does not require a named trace.
+## Lesson 2.1 — Rebuild the fixed circuit {#ch2-model}
 
-The workspace stores exact request receipts and artifacts. It is not a mutable
-“latest result” directory. Requests for the same sealed Plan may coexist; only
-binding a different Plan activates the default topology replacement policy.
+### Rebuild the physical declaration
 
-This lesson intentionally starts with the smallest complete Direct request: an
-original one-Port view without named traces. Lessons 9–11 extend the same
-runtime path to N-port views, named traces, PTC, transforms, and retention.
+Start with the root Plan and the owned resonator subsystem.
 
-::: {.callout-tip title="Iterate the topology in the same kernel" appearance="simple"}
-In an authoring Notebook, keep the builder in an earlier editable cell. Redefine
-that builder, then rerun this construction cell to bind `fixture` and `run` to a
-newly sealed Plan. This lesson imports an adjacent fixture only to avoid
-repeating lesson 1; after editing that Python module, reload it or restart the
-kernel before rebuilding. The default workspace policy replaces evidence for
-the previous topology after the new Plan seals successfully.
-:::
+```{python}
+#| id: build-direct-root-and-subsystem
+from scnsim import CircuitPlan, components, units as u
+
+plan = CircuitPlan(id="primitive_resonator")
+resonator = plan.subsystem(id="resonator")
+```
+
+The root owns later Port wiring; the child owns the local physical parts.
+
+Add the native two-terminal elements. Each registered capacitor or inductor is
+its own `ElementUse` with the fixed values being analyzed.
+
+```{python}
+#| id: add-direct-native-parts
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=110.0 * u.fF)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=5.8 * u.nH)
+)
+```
+
+Both returned handles are ordinary two-pin `ElementUse`s.
+
+Declare the grounded parallel LC structure from its local terminal bus.
+
+```{python}
+#| id: declare-direct-parallel-lc
+resonator_bus = resonator.bus(id="terminal")
+parallel_lc = resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+```
+
+The two branches now share `resonator_bus` and the child's ground.
+
+Expose that local bus as the subsystem's sole public electrical terminal.
+
+```{python}
+#| id: expose-direct-resonator-terminal
+terminal = resonator.expose_pin(id="terminal", at=resonator_bus)
+```
+
+Only this terminal crosses from child ownership into root wiring.
+
+At the root, couple the public terminal to a signal bus and promote the input
+Port. `resonator_node` is the public root analysis coordinate.
+
+```{python}
+#| id: declare-direct-root-wiring
+signal_bus = plan.bus(id="signal_boundary")
+resonator_root_bus = plan.bus(id="resonator_node")
+coupling_cap = plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+coupling = plan.series(
+    id="coupling",
+    start=signal_bus,
+    elements=(coupling_cap,),
+    end=resonator_root_bus,
+)
+plan.link(
+    id="resonator_terminal",
+    endpoints=(resonator_root_bus, terminal),
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+resonator_node = resonator_root_bus.node
+```
+
+`signal_port` is the terminated boundary, while `resonator_node` is the root
+coordinate retained by later numerical lessons.
+
+## Lesson 2.2 — State the response question {#ch2-direct-request}
+
+### Prepare, solve, and inspect a Direct response
+
+Construct the numerical request separately from its execution.
 
 ```{python}
 #| id: prepare-direct-response
-from fixtures.primitive_resonator import build_primitive_resonator
-from scnsim import (
-    CircuitRun,
-    DirectSolveSpec,
-    units as u,
-)
+from scnsim import CircuitRun, DirectSolveSpec
 
-fixture = build_primitive_resonator()
-run = CircuitRun(plan=fixture.plan, workspace="workspaces/primitive-course")
+run = CircuitRun(plan=plan, workspace="workspaces/primitive-course")
+original = run.original
 direct_spec = DirectSolveSpec(
-    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz,
+    frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz
 )
 ```
 
-::: {.callout-tip title="Optional: inspect before solving" appearance="simple"}
-`run.explain()` returns an `ExplanationResult` from deterministic preflight
-without solving or writing a workspace Result. Use it when you want to inspect
-the resolved request first.
-
-```python
-run.explain(run.original, direct_spec).show()
-```
-:::
-
-## Solve and inspect the response
-
-`run.solve()` materializes a typed `DirectSolveResult`; it does not store a
-mutable current Result on the Run. `direct.s`, `direct.y`, and `direct.z`
-describe the same selected network in three matrix families. `show()` only
-presents materialized data and never solves again.
+`CircuitRun` is not a request handle: construction seals the Plan and owns the
+execution and evidence workspace. `run.original` selects the original network
+View. `DirectSolveSpec` states the frequency-grid response question, and
+`run.solve(original, direct_spec)` combines that View and question to return a
+typed Direct result.
 
 ```{python}
 #| id: solve-direct-response
-direct = run.solve(run.original, direct_spec)
-direct.s.show(magnitude="db")
-direct.y.view
-direct.z.view
+direct = run.solve(original, direct_spec)
 ```
 
-[Previous](01_author_primitive.qmd) · [Course map](../../docs/index.qmd) · [Next: evaluate a quantity](03_evaluate_quantity.qmd) · [Concept: Run, request, Result](../../docs/concepts/requests-execution-and-result-ownership.qmd#run-request-result-ownership)
+Inspect the returned response separately so the request and its presentation
+remain easy to distinguish.
+
+```{python}
+#| id: inspect-direct-response
+direct.s.show(magnitude="db")
+```
+
+`CircuitRun`, request, and response semantics are retained baseline behavior.
+The displayed source is not a stored execution record for the last two cells.
+
+[Previous](01_author_primitive.qmd) · [Next](03_evaluate_quantity.qmd)

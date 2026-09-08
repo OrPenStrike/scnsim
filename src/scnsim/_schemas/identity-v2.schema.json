@@ -1,0 +1,522 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:scnsim:schema:identity-v2",
+  "title": "SCNSim structured identity documents",
+  "description": "Closed V2 envelopes. Unchanged V1 scientific and receipt definitions remain in identity-v1.schema.json.",
+  "oneOf": [
+    { "$ref": "#/$defs/plan" },
+    { "$ref": "#/$defs/request" },
+    { "$ref": "#/$defs/parameterSet" },
+    { "$ref": "#/$defs/parameterSweepResult" },
+    { "$ref": "#/$defs/parameterPointsManifest" },
+    { "$ref": "#/$defs/parameterPointChunk" },
+    { "$ref": "#/$defs/parameterPointPayload" },
+    { "$ref": "#/$defs/singlePointResult" },
+    { "$ref": "identity-v1.schema.json#/$defs/attempt" },
+    { "$ref": "identity-v1.schema.json#/$defs/receipt" },
+    { "$ref": "identity-v1.schema.json#/$defs/outcome" },
+    { "$ref": "identity-v1.schema.json#/$defs/generationLedger" },
+    { "$ref": "identity-v1.schema.json#/$defs/artifactManifest" }
+  ],
+  "$defs": {
+    "sha256": { "$ref": "identity-v1.schema.json#/$defs/sha256" },
+    "identifier": { "$ref": "identity-v1.schema.json#/$defs/identifier" },
+    "quantity": { "$ref": "identity-v1.schema.json#/$defs/quantity" },
+    "complexQuantity": { "$ref": "identity-v1.schema.json#/$defs/complexQuantity" },
+    "rlgc": { "$ref": "identity-v1.schema.json#/$defs/rlgc" },
+    "parameterRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definitions_id", "parameter_id"],
+      "properties": {
+        "definitions_id": { "$ref": "#/$defs/identifier" },
+        "parameter_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "path": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/identifier" }
+    },
+    "endpoint": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "ground" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope", "id"],
+          "properties": {
+            "kind": { "enum": ["bus", "coordinate"] },
+            "scope": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+            "id": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope", "bus", "id"],
+          "properties": { "kind": { "const": "tap" }, "scope": { "type": "array", "items": { "$ref": "#/$defs/identifier" } }, "bus": { "$ref": "#/$defs/identifier" }, "id": { "$ref": "#/$defs/identifier" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "scope", "component", "id", "public"],
+          "properties": {
+            "kind": { "const": "pin" },
+            "scope": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+            "component": { "$ref": "#/$defs/identifier" },
+            "id": { "$ref": "#/$defs/identifier" },
+            "public": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": { "kind": { "const": "port" }, "id": { "$ref": "#/$defs/identifier" } }
+        }
+      ]
+    },
+    "fieldBinding": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "constant" },
+            "value": { "oneOf": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/rlgc" }] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "parameter"],
+          "properties": { "kind": { "const": "ref" }, "parameter": { "$ref": "#/$defs/parameterRef" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "input", "slope", "intercept", "support"],
+          "properties": {
+            "kind": { "const": "affine" },
+            "input": { "$ref": "#/$defs/parameterRef" },
+            "slope": { "$ref": "#/$defs/quantity" },
+            "intercept": { "$ref": "#/$defs/quantity" },
+            "support": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false
+            }
+          }
+        }
+      ]
+    },
+    "field": {
+      "type": "object", "unevaluatedProperties": false,
+      "required": ["id", "unit", "binding"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "unit": { "type": "string", "minLength": 1 },
+        "binding": { "$ref": "#/$defs/fieldBinding" }
+      }
+    },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "positive_pin", "negative_pin", "value_field"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "positive_pin": { "$ref": "#/$defs/identifier" },
+        "negative_pin": { "$ref": "#/$defs/identifier" },
+        "value_field": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "physicalLeaf": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "model", "pin_order", "fields", "model_metadata", "oriented_branches"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "model": { "$ref": "#/$defs/identifier" },
+        "pin_order": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/identifier" } },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/field" } },
+        "model_metadata": { "$ref": "#/$defs/metadataObject" },
+        "oriented_branches": { "type": "array", "items": { "$ref": "#/$defs/branch" } }
+      }
+    },
+    "occurrence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "factory", "catalog_id", "catalog_source", "body_kind", "public_pins", "public_coordinates", "public_inductive_branches", "public_parameters"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "factory": { "$ref": "#/$defs/identifier" },
+        "catalog_id": { "$ref": "#/$defs/identifier" },
+        "catalog_source": { "$ref": "identity-v1.schema.json#/$defs/catalogSource" },
+        "body_kind": { "enum": ["ordinary", "complete_line", "complete", "composite"] },
+        "public_pins": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": false, "required": ["backing_endpoint", "final_net"], "properties": { "backing_endpoint": { "$ref": "#/$defs/endpoint" }, "final_net": { "$ref": "#/$defs/identifier" } } } },
+        "public_coordinates": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": false, "required": ["backing_endpoint", "final_net"], "properties": { "backing_endpoint": { "$ref": "#/$defs/endpoint" }, "final_net": { "$ref": "#/$defs/identifier" } } } },
+        "public_inductive_branches": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": false, "required": ["oriented_physical_branch"], "properties": { "oriented_physical_branch": { "type": "object", "additionalProperties": false, "required": ["path", "id"], "properties": { "path": { "$ref": "#/$defs/path" }, "id": { "$ref": "#/$defs/identifier" } } } } } },
+        "public_parameters": { "type": "array", "items": { "$ref": "#/$defs/parameterRef" } }
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "path", "declaration_order", "buses", "structures", "exposures", "children", "component_bodies"],
+      "properties": {
+        "kind": { "enum": ["root", "subsystem", "composite_body"] },
+        "id": { "$ref": "#/$defs/identifier" },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+        "declaration_order": { "type": "array", "items": { "$ref": "#/$defs/declaration" } },
+        "buses": { "type": "array", "items": { "$ref": "#/$defs/bus" } },
+        "structures": { "type": "array", "items": { "$ref": "#/$defs/structure" } },
+        "exposures": { "$ref": "#/$defs/exposures" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/scope" } },
+        "component_bodies": { "type": "array", "items": { "$ref": "#/$defs/scope" } }
+      }
+    },
+    "declaration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": { "kind": { "enum": ["component", "subsystem", "structure"] }, "id": { "$ref": "#/$defs/identifier" } }
+    },
+    "bus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "anonymous", "final_net", "taps"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" }, "anonymous": { "type": "boolean" }, "final_net": { "$ref": "#/$defs/identifier" },
+        "taps": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "final_net"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "final_net": { "$ref": "#/$defs/identifier" } } } }
+      }
+    },
+    "structureElement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "kind", "pin_1", "pin_2"],
+      "properties": { "path": { "$ref": "#/$defs/path" }, "kind": { "$ref": "#/$defs/identifier" }, "pin_1": { "$ref": "#/$defs/identifier" }, "pin_2": { "$ref": "#/$defs/identifier" } }
+    },
+    "structure": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "id", "start", "elements", "end"], "properties": { "kind": { "const": "series" }, "id": { "$ref": "#/$defs/identifier" }, "start": { "$ref": "#/$defs/endpoint" }, "elements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/structureElement" } }, "end": { "$ref": "#/$defs/endpoint" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "id", "start", "branches", "end"], "properties": { "kind": { "const": "parallel" }, "id": { "$ref": "#/$defs/identifier" }, "start": { "$ref": "#/$defs/endpoint" }, "branches": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["id", "elements"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "elements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/structureElement" } } } } }, "end": { "$ref": "#/$defs/endpoint" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "id", "endpoints"], "properties": { "kind": { "const": "link" }, "id": { "$ref": "#/$defs/identifier" }, "endpoints": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/endpoint" } } } }
+      ]
+    },
+    "exposures": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pins", "coordinates", "branches", "parameters"],
+      "properties": {
+        "pins": { "type": "array", "items": { "$ref": "#/$defs/exposure" } },
+        "coordinates": { "type": "array", "items": { "$ref": "#/$defs/exposure" } },
+        "branches": { "type": "array", "items": { "$ref": "#/$defs/exposure" } },
+        "parameters": { "type": "array", "items": { "$ref": "#/$defs/parameterRef" } }
+      }
+    },
+    "exposure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "intrinsic_endpoint", "final_net", "ground_role"],
+      "properties": { "id": { "$ref": "#/$defs/identifier" }, "intrinsic_endpoint": { "$ref": "#/$defs/endpoint" }, "final_net": { "$ref": "#/$defs/identifier" }, "ground_role": { "enum": ["ungrounded", "ground"] } }
+    },
+    "connectivity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["physical_endpoints", "endpoint_nets", "node_coordinates", "canonical_ground", "ports", "couplings"],
+      "properties": {
+        "physical_endpoints": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "pin", "net"], "properties": { "path": { "$ref": "#/$defs/path" }, "pin": { "$ref": "#/$defs/identifier" }, "net": { "$ref": "#/$defs/identifier" } } } },
+        "endpoint_nets": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["endpoint", "final_net"], "properties": { "endpoint": { "$ref": "#/$defs/endpoint" }, "final_net": { "$ref": "#/$defs/identifier" } } } },
+        "node_coordinates": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["final_net", "compiler_node_id", "visibility", "public_aliases"], "properties": { "final_net": { "$ref": "#/$defs/identifier" }, "compiler_node_id": { "$ref": "#/$defs/identifier" }, "visibility": { "enum": ["public", "internal"] }, "public_aliases": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "id"], "properties": { "kind": { "enum": ["root_bus", "port", "exposed_coordinate"] }, "id": { "$ref": "#/$defs/identifier" } } } } } } },
+        "canonical_ground": { "const": "ground" },
+        "ports": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "net", "role", "reference_impedance"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "net": { "$ref": "#/$defs/identifier" }, "role": { "enum": ["terminated", "nonloading_probe"] }, "reference_impedance": { "$ref": "#/$defs/quantity" } } } },
+        "couplings": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "branches", "coupling"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "branches": { "type": "array", "minItems": 2, "items": { "type": "object", "additionalProperties": false, "required": ["path", "branch_id"], "properties": { "path": { "$ref": "#/$defs/path" }, "branch_id": { "$ref": "#/$defs/identifier" } } } }, "coupling": { "$ref": "#/$defs/quantity" } } } }
+      }
+    },
+    "parameterDefinition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["definitions_id", "parameter_id", "spec", "baseline"],
+      "properties": { "definitions_id": { "$ref": "#/$defs/identifier" }, "parameter_id": { "$ref": "#/$defs/identifier" }, "spec": { "oneOf": [{ "type": "object", "additionalProperties": false, "required": ["kind", "si_unit", "dimensionality"], "properties": { "kind": { "const": "scalar" }, "si_unit": { "type": "string", "minLength": 1 }, "dimensionality": { "type": "string", "minLength": 1 } } }, { "type": "object", "additionalProperties": false, "required": ["kind", "conductors", "reference_conductor"], "properties": { "kind": { "const": "rlgc" }, "conductors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } }, "reference_conductor": { "$ref": "#/$defs/identifier" } } }] }, "baseline": { "oneOf": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/rlgc" }] } }
+    },
+    "parameterClosure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["definitions", "field_bindings"],
+      "properties": {
+        "definitions": { "type": "array", "items": { "$ref": "#/$defs/parameterDefinition" } },
+        "field_bindings": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "field", "parameter"], "properties": { "path": { "$ref": "#/$defs/path" }, "field": { "$ref": "#/$defs/identifier" }, "parameter": { "$ref": "#/$defs/parameterRef" } } } }
+      }
+    },
+    "plan": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "plan_id", "scope_hierarchy", "occurrences", "physical_leaves", "connectivity", "parameter_closure"],
+      "properties": {
+        "schema": { "const": "scnsim.plan" }, "schema_version": { "const": 2 }, "plan_id": { "$ref": "#/$defs/identifier" },
+        "scope_hierarchy": { "$ref": "#/$defs/scope" }, "occurrences": { "type": "array", "items": { "$ref": "#/$defs/occurrence" } },
+        "physical_leaves": { "type": "array", "items": { "$ref": "#/$defs/physicalLeaf" } }, "connectivity": { "$ref": "#/$defs/connectivity" }, "parameter_closure": { "$ref": "#/$defs/parameterClosure" }
+      }
+    },
+    "parameterSet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "bindings", "allow_extrapolation"],
+      "properties": {
+        "type": { "const": "parameter_set_v2" },
+        "bindings": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["parameter", "value"], "properties": { "parameter": { "$ref": "#/$defs/parameterRef" }, "value": { "oneOf": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/rlgc" }] } } } },
+        "allow_extrapolation": { "type": "array", "items": { "$ref": "#/$defs/parameterRef" } }
+      }
+    },
+    "parameterSource": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "parameters"], "properties": { "kind": { "const": "point" }, "parameters": { "$ref": "#/$defs/parameterSet" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "base_parameters", "axes", "shape"], "properties": { "kind": { "const": "grid" }, "base_parameters": { "$ref": "#/$defs/parameterSet" }, "axes": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["parameter", "values"], "properties": { "parameter": { "$ref": "#/$defs/parameterRef" }, "values": { "type": "array", "minItems": 1, "items": { "oneOf": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/rlgc" }] } } } } }, "shape": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "baseline_parameters", "points"], "properties": { "kind": { "const": "points" }, "baseline_parameters": { "$ref": "#/$defs/parameterSet" }, "points": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/parameterSet" } } } }
+      ]
+    },
+    "networkView": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "ptc", "transforms", "retain"],
+      "properties": {
+        "type": { "const": "network_view" },
+        "ptc": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["selected_ports"], "properties": { "selected_ports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } } } }] },
+        "transforms": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "input_coordinates", "output_coordinates"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "input_coordinates": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/identifier" } }, "output_coordinates": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/identifier" } } } } },
+        "retain": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["retained_coordinates"], "properties": { "retained_coordinates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } } } }] }
+      }
+    },
+    "runtimeSemantic": { "$ref": "identity-v1.schema.json#/$defs/runtimeSemantic" },
+    "optimizationVariableV2": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"],
+      "properties": {
+        "parameter": { "$ref": "#/$defs/parameterRef" },
+        "model_default_bounds": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false },
+        "consumer_override_bounds": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false }] },
+        "lower": { "$ref": "#/$defs/quantity" }, "upper": { "$ref": "#/$defs/quantity" }, "transform": { "enum": ["linear", "log"] }
+      }
+    },
+    "optimizationSpecV2": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "variables", "objectives", "optimizer", "allow_extrapolation"],
+      "properties": {
+        "type": { "const": "optimization" }, "variables": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/optimizationVariableV2" } },
+        "objectives": { "type": "array", "minItems": 1, "items": { "$ref": "identity-v1.schema.json#/$defs/costObjective" } },
+        "optimizer": { "$ref": "identity-v1.schema.json#/$defs/cmaesControls" },
+        "allow_extrapolation": { "type": "array", "items": { "$ref": "#/$defs/parameterRef" } }
+      }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "plan_sha256", "operation", "view", "spec", "parameter_source", "runtime_semantic"],
+      "properties": {
+        "schema": { "const": "scnsim.request" }, "schema_version": { "const": 2 }, "plan_sha256": { "$ref": "#/$defs/sha256" },
+        "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] }, "view": { "$ref": "#/$defs/networkView" },
+        "spec": { "oneOf": [{ "$ref": "identity-v1.schema.json#/$defs/directSolveSpec" }, { "$ref": "identity-v1.schema.json#/$defs/hbSolveSpec" }, { "$ref": "identity-v1.schema.json#/$defs/directEvaluationSpec" }, { "$ref": "#/$defs/optimizationSpecV2" }] },
+        "parameter_source": { "$ref": "#/$defs/parameterSource" }, "runtime_semantic": { "$ref": "#/$defs/runtimeSemantic" }
+      }
+    },
+    "fileLink": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "path", "sha256", "media_type", "byte_length"],
+      "properties": { "id": { "$ref": "#/$defs/identifier" }, "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha256" }, "media_type": { "type": "string", "minLength": 1 }, "byte_length": { "type": "integer", "minimum": 1 } }
+    },
+    "chunkLink": {
+      "type": "object", "additionalProperties": false,
+      "required": ["chunk_ordinal", "first_point", "point_count", "path", "sha256"],
+      "properties": { "chunk_ordinal": { "type": "integer", "minimum": 0 }, "first_point": { "type": "integer", "minimum": 0 }, "point_count": { "type": "integer", "minimum": 1 }, "path": { "type": "string", "pattern": "^artifacts/parameter_points/chunks/[0-9]{6}\\.json$" }, "sha256": { "$ref": "#/$defs/sha256" } }
+    },
+    "parameterSweepResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameter_source_sha256", "point_count", "chunk_size", "manifest", "chunks"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "parameter_sweep" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameter_source_sha256": { "$ref": "#/$defs/sha256" }, "point_count": { "type": "integer", "minimum": 1 }, "chunk_size": { "const": 64 }, "manifest": { "$ref": "#/$defs/fileLink" }, "chunks": { "type": "array", "items": { "$ref": "#/$defs/chunkLink" } } }
+    },
+    "parameterPointsManifest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "request_sha256", "attempt_sha256", "point_count", "files"],
+      "properties": { "schema": { "const": "scnsim.parameter_points_manifest" }, "schema_version": { "const": 2 }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "point_count": { "type": "integer", "minimum": 1 }, "files": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "sha256", "byte_length"], "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha256" }, "byte_length": { "type": "integer", "minimum": 1 } } } } }
+    },
+    "failure": { "$ref": "identity-v1.schema.json#/$defs/failure" },
+    "point": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "ref_lineage", "payload_path"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "success" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "payload_path": { "type": "string", "pattern": "^artifacts/parameter_points/points/[0-9]{6}/payload\\.json$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "failure"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "failure" }, "failure": { "$ref": "#/$defs/failure" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" } } }
+      ]
+    },
+    "parameterPointChunk": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "request_sha256", "attempt_sha256", "chunk_ordinal", "first_point", "points"],
+      "properties": { "schema": { "const": "scnsim.parameter_point_chunk" }, "schema_version": { "const": 2 }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "chunk_ordinal": { "type": "integer", "minimum": 0 }, "first_point": { "type": "integer", "minimum": 0 }, "points": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/$defs/point" } } }
+    },
+    "optimizationExtrapolationEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["parameter", "consumer_target", "support", "input_value", "side", "distance", "authorization_source"],
+      "properties": {
+        "parameter": { "$ref": "#/$defs/parameterRef" }, "consumer_target": { "$ref": "#/$defs/parameterRef" },
+        "support": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false },
+        "input_value": { "$ref": "#/$defs/quantity" }, "side": { "enum": ["lower", "upper"] }, "distance": { "$ref": "#/$defs/quantity" },
+        "authorization_source": { "enum": ["none", "optimization_spec", "parameter_set"] }
+      }
+    },
+    "optimizationObjectiveComponent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["objective_id", "value", "normalized_residual_f64", "weighted_cost_f64"],
+      "properties": {
+        "objective_id": { "type": "string", "minLength": 1 }, "value": { "$ref": "#/$defs/quantity" },
+        "normalized_residual_f64": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" },
+        "weighted_cost_f64": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" }
+      }
+    },
+    "optimizationBaseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evaluation_ordinal", "origin", "generation", "population_column", "optimizer_coordinates_f64", "parameters", "cache_hit", "extrapolation_evidence", "outcome"],
+      "properties": {
+        "evaluation_ordinal": { "const": 0 }, "origin": { "const": "baseline" }, "generation": { "const": 0 }, "population_column": { "type": "null" },
+        "optimizer_coordinates_f64": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" } },
+        "parameters": { "$ref": "#/$defs/parameterSet" }, "cache_hit": { "const": false },
+        "extrapolation_evidence": { "type": "array", "items": { "$ref": "#/$defs/optimizationExtrapolationEvidence" } },
+        "outcome": { "type": "object", "additionalProperties": false, "required": ["status", "cost_f64", "objective_components"], "properties": { "status": { "const": "success" }, "cost_f64": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" }, "objective_components": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/optimizationObjectiveComponent" } } } }
+      }
+    },
+    "metadataValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "array", "items": { "$ref": "#/$defs/metadataValue" } },
+        { "$ref": "#/$defs/metadataObject" }
+      ]
+    },
+    "metadataObject": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/metadataValue" }
+    },
+    "pointArtifact": {
+      "allOf": [
+        { "$ref": "identity-v1.schema.json#/$defs/zarrArtifact" },
+        { "properties": {
+          "path": { "type": "string", "pattern": "^artifacts/parameter_points/points/[0-9]{6}/artifacts/.+\\.zarr$" },
+          "file_manifest": { "type": "string", "pattern": "^artifacts/parameter_points/points/[0-9]{6}/artifacts/.+\\.manifest\\.json$" }
+        } }
+      ]
+    },
+    "pointDirectResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "direct_response" },
+        "scalar_catalog": { "type": "object", "maxProperties": 0 },
+        "array_catalog": { "type": "object", "additionalProperties": false, "required": ["frequencies", "s", "y", "z"], "properties": { "frequencies": { "$ref": "#/$defs/pointArtifact" }, "s": { "$ref": "#/$defs/pointArtifact" }, "y": { "$ref": "#/$defs/pointArtifact" }, "z": { "$ref": "#/$defs/pointArtifact" } } }
+      }
+    },
+    "pointDiagonalRoot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "diagonal_root" }, "array_catalog": { "type": "object", "maxProperties": 0 },
+        "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "linewidth", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }
+      }
+    },
+    "pointHBCase": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["case_ordinal", "case_id", "status", "bias_state", "pump_state", "effective_sources", "operating_point_closure", "artifacts", "traces", "reconciliation", "backend_normalization_evidence_sha256", "state_node_map"], "properties": { "case_ordinal": { "type": "integer", "minimum": 1 }, "case_id": { "$ref": "#/$defs/identifier" }, "status": { "const": "success" }, "bias_state": { "enum": ["off", "on"] }, "pump_state": { "enum": ["off", "on"] }, "effective_sources": { "type": "array", "items": { "$ref": "identity-v1.schema.json#/$defs/hbEffectiveSource" } }, "operating_point_closure": { "$ref": "identity-v1.schema.json#/$defs/hbOperatingPointClosure" }, "artifacts": { "type": "object", "additionalProperties": { "$ref": "#/$defs/pointArtifact" } }, "traces": { "type": "array", "items": { "$ref": "#/$defs/pointArtifact" } }, "reconciliation": { "$ref": "identity-v1.schema.json#/$defs/hbReconciliation" }, "backend_normalization_evidence_sha256": { "$ref": "#/$defs/sha256" }, "state_node_map": { "type": "array", "minItems": 1, "items": { "$ref": "identity-v1.schema.json#/$defs/hbStateNodeMapEntry" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["case_ordinal", "case_id", "status", "effective_sources", "failure"], "properties": { "case_ordinal": { "type": "integer", "minimum": 1 }, "case_id": { "$ref": "#/$defs/identifier" }, "status": { "const": "failure" }, "effective_sources": { "type": "array", "items": { "$ref": "identity-v1.schema.json#/$defs/hbEffectiveSource" } }, "failure": { "$ref": "identity-v1.schema.json#/$defs/hbCaseFailure" } } }
+      ]
+    },
+    "pointHBBatch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "lattice", "truncation", "topology_evidence", "cases"],
+      "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "hb_batch" }, "lattice": { "$ref": "identity-v1.schema.json#/$defs/hbLattice" }, "truncation": { "$ref": "identity-v1.schema.json#/$defs/hbTruncation" }, "topology_evidence": { "$ref": "identity-v1.schema.json#/$defs/hbTopologyEvidence" }, "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pointHBCase" } } }
+    },
+    "pointScalarCatalog": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" }, "evidence_sha256": { "$ref": "#/$defs/sha256" },
+        "zero": { "$ref": "#/$defs/complexQuantity" }, "numerator_slope": { "$ref": "#/$defs/complexQuantity" }, "denominator": { "$ref": "#/$defs/complexQuantity" },
+        "coupling": { "$ref": "#/$defs/complexQuantity" }, "magnitude": { "$ref": "#/$defs/quantity" }, "branch_a_residue": { "$ref": "#/$defs/complexQuantity" }, "branch_b_residue": { "$ref": "#/$defs/complexQuantity" },
+        "family": { "enum": ["S", "Y", "Z"] }, "value": { "$ref": "#/$defs/complexQuantity" }, "real": { "$ref": "#/$defs/quantity" }, "imag": { "$ref": "#/$defs/quantity" }
+      }
+    },
+    "hybridizedPoleScalars": {
+      "allOf": [
+        { "$ref": "#/$defs/pointScalarCatalog" },
+        { "required": ["root", "frequency", "linewidth", "slope", "evidence_sha256"], "not": { "anyOf": [{ "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+      ]
+    },
+    "transferZeroScalars": {
+      "allOf": [
+        { "$ref": "#/$defs/pointScalarCatalog" },
+        { "required": ["zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+      ]
+    },
+    "residueCouplingScalars": {
+      "allOf": [
+        { "$ref": "#/$defs/pointScalarCatalog" },
+        { "required": ["coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+      ]
+    },
+    "responseElementScalars": {
+      "allOf": [
+        { "$ref": "#/$defs/pointScalarCatalog" },
+        { "required": ["family", "value", "magnitude", "real", "imag", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }] } }
+      ]
+    },
+    "pointScalarPayload": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "hybridized_pole" }, "scalar_catalog": { "$ref": "#/$defs/hybridizedPoleScalars" }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["null_vector"], "properties": { "null_vector": { "$ref": "#/$defs/pointArtifact" } } } } },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "transfer_zero" }, "scalar_catalog": { "$ref": "#/$defs/transferZeroScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } } },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "residue_normalized_coupling" }, "scalar_catalog": { "$ref": "#/$defs/residueCouplingScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } } },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "response_element" }, "scalar_catalog": { "$ref": "#/$defs/responseElementScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } } },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "operator" }, "scalar_catalog": { "type": "object", "maxProperties": 0 }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["frequencies", "operator"], "properties": { "frequencies": { "$ref": "#/$defs/pointArtifact" }, "operator": { "$ref": "#/$defs/pointArtifact" } } } } }
+      ]
+    },
+    "parameterPointPayload": {
+      "oneOf": [ { "$ref": "#/$defs/pointDirectResponse" }, { "$ref": "#/$defs/pointDiagonalRoot" }, { "$ref": "#/$defs/pointHBBatch" }, { "$ref": "#/$defs/pointScalarPayload" } ]
+    },
+    "singlePointEnvelope": {
+      "type": "object",
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage"],
+      "properties": {
+        "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "type": "string" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }
+      }
+    },
+    "singleDirectResult": {
+      "allOf": [
+        { "$ref": "#/$defs/singlePointEnvelope" },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "direct_response" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "maxProperties": 0 }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["frequencies", "s", "y", "z"], "properties": { "frequencies": { "$ref": "identity-v1.schema.json#/$defs/directFrequencyArtifact" }, "s": { "$ref": "identity-v1.schema.json#/$defs/directSArtifact" }, "y": { "$ref": "identity-v1.schema.json#/$defs/directYArtifact" }, "z": { "$ref": "identity-v1.schema.json#/$defs/directZArtifact" } } } } }
+      ]
+    },
+    "singleDiagonalResult": {
+      "allOf": [
+        { "$ref": "#/$defs/singlePointEnvelope" },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "diagonal_root" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "linewidth", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }, "array_catalog": { "type": "object", "maxProperties": 0 } } }
+      ]
+    },
+    "singleHBResult": {
+      "allOf": [
+        { "$ref": "#/$defs/singlePointEnvelope" },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "lattice", "truncation", "topology_evidence", "cases"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "hb_batch" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "lattice": { "$ref": "identity-v1.schema.json#/$defs/hbLattice" }, "truncation": { "$ref": "identity-v1.schema.json#/$defs/hbTruncation" }, "topology_evidence": { "$ref": "identity-v1.schema.json#/$defs/hbTopologyEvidence" }, "cases": { "type": "array", "minItems": 1, "items": { "$ref": "identity-v1.schema.json#/$defs/hbCaseOutcome" } } } }
+      ]
+    },
+    "singleOptimizationResult": {
+      "allOf": [
+        { "$ref": "#/$defs/singlePointEnvelope" },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "baseline", "best", "completed_generations", "unused_evaluations", "ledger_artifacts"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "optimization" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "baseline": { "$ref": "#/$defs/optimizationBaseline" }, "best": { "type": "object", "additionalProperties": false, "required": ["evaluation_ordinal", "cost_f64", "parameters"], "properties": { "evaluation_ordinal": { "type": "integer", "minimum": 0 }, "cost_f64": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" }, "parameters": { "$ref": "#/$defs/parameterSet" } } }, "completed_generations": { "type": "integer", "minimum": 1 }, "unused_evaluations": { "type": "integer", "minimum": 0 }, "ledger_artifacts": { "type": "array", "items": { "$ref": "#/$defs/fileLink" } } } }
+      ]
+    },
+    "singleHybridizedPoleResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "hybridized_pole" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "$ref": "#/$defs/hybridizedPoleScalars" }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["null_vector"], "properties": { "null_vector": { "$ref": "identity-v1.schema.json#/$defs/nullVectorArtifact" } } } }
+    },
+    "singleTransferZeroResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "transfer_zero" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "$ref": "#/$defs/transferZeroScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } }
+    },
+    "singleResidueCouplingResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "residue_normalized_coupling" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "$ref": "#/$defs/residueCouplingScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } }
+    },
+    "singleResponseElementResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "response_element" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "$ref": "#/$defs/responseElementScalars" }, "array_catalog": { "type": "object", "maxProperties": 0 } }
+    },
+    "singleOperatorResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"],
+      "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "operator" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-v1.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "maxProperties": 0 }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["frequencies", "operator"], "properties": { "frequencies": { "$ref": "identity-v1.schema.json#/$defs/directFrequencyArtifact" }, "operator": { "$ref": "identity-v1.schema.json#/$defs/operatorArtifact" } } } }
+    },
+    "singlePointResult": {
+      "oneOf": [ { "$ref": "#/$defs/singleDirectResult" }, { "$ref": "#/$defs/singleDiagonalResult" }, { "$ref": "#/$defs/singleHBResult" }, { "$ref": "#/$defs/singleOptimizationResult" }, { "$ref": "#/$defs/singleHybridizedPoleResult" }, { "$ref": "#/$defs/singleTransferZeroResult" }, { "$ref": "#/$defs/singleResidueCouplingResult" }, { "$ref": "#/$defs/singleResponseElementResult" }, { "$ref": "#/$defs/singleOperatorResult" } ]
+    }
+  }
+}

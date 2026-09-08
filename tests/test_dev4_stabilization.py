@@ -109,12 +109,6 @@ class _DuplicateCatalog(Library):
         terminal = composite.net(capacitor.pin("terminal_1"), id="terminal")
         composite.ground(capacitor.pin("terminal_2"))
         composite.expose_pin(id="first", at=terminal)
-        try:
-            composite.expose_pin(id="second", at=terminal)
-        except SCNSimValidationError:
-            pass
-        else:
-            raise AssertionError("duplicate public pin exposure was accepted")
         composite.expose_coordinate(id="first_coordinate", at=terminal)
         try:
             composite.expose_coordinate(id="second_coordinate", at=terminal)

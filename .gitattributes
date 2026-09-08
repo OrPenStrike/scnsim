@@ -1,0 +1,2 @@
+# Preserve native SVG exports byte-for-byte, including path-data line endings.
+examples/tutorials/figures/*.svg whitespace=-blank-at-eol

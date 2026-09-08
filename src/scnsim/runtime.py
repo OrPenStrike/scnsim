@@ -1,13 +1,12 @@
 """Plan-bound execution, exact request identity, and typed Result reconstruction.
 
-The dev5 candidate extends the accepted Composite path through RLGC, selected
-N-port Views, expanded Direct quantities, extrapolation, and inventory. The
-dev6 candidate adds the public HB request and dispatch boundary.
+One captured authoring snapshot and its resolved parameter points feed the
+declarative Direct, HB, and optimization request boundary. Workspace receipts
+and artifact manifests remain the only authority for reconstructing results.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 import math
 import platform
@@ -26,11 +25,22 @@ from typing import overload
 import numpy as np
 
 from . import units
-from ._backend import BootstrapReady, prepare_runtime, run_preflight, run_terminal
+from ._backend import (
+    BootstrapReady,
+    prepare_runtime,
+    run_compiler_audit,
+    run_preflight,
+    run_terminal,
+)
+from ._authoring_snapshot import ResolvedPlanPoint, freeze
+from ._parameter_resolution import resolve_parameter_point
 from ._canonical import (
     _identifier as _canonical_identifier,
     canonical_json_bytes,
-    canonical_plan_document,
+    canonical_expanded_graph_sha256,
+    canonical_plan_snapshot,
+    canonical_parameters_sha256,
+    canonical_resolved_plan_point,
     canonical_receipt_document,
     canonical_request_document,
     complex_quantity_envelope,
@@ -44,6 +54,7 @@ from ._canonical import (
     zarr_artifact_manifest,
 )
 from ._scaffold import unavailable
+from ._physical_values import RLGC, RLGCParameterSpec
 from ._workspace import (
     AttemptAllocation,
     VerifiedSuccess,
@@ -63,6 +74,7 @@ from .authoring import (
     ElectricNodeRef,
     ParameterRef,
     ParameterSet,
+    ParameterSpace,
     PortRef,
 )
 from .errors import (
@@ -83,6 +95,7 @@ from .errors import (
     ScaffoldUnavailableError,
     UnsupportedSingularCapacitanceForDiagonalRootV1,
 )
+from .presentation import _figure_data_uri, _report_html
 from .results import (
     BiasState,
     DirectQuantityResult,
@@ -99,6 +112,9 @@ from .results import (
     OptimizationResult,
     OperatorPointResult,
     OperatorResult,
+    ParameterPointIdentity,
+    ParameterPointOutcome,
+    ParameterSweepResult,
     PumpState,
     ReconciliationEvidence,
     ReportResult,
@@ -106,6 +122,9 @@ from .results import (
     ScatteringMatrixResult,
     TraceResult,
     _is_verified_analysis_result,
+    _parameter_sweep_result,
+    _point_accessor,
+    _point_outcome,
     _verified_result,
 )
 from .specs import (
@@ -123,7 +142,6 @@ from .specs import (
     TransferZeroSpec,
     _selector_unit,
 )
-
 
 _FAILURES: dict[str, type[SCNSimError]] = {
     "backend_protocol": BackendProtocolError,
@@ -160,22 +178,65 @@ def _coordinate_id(value: str | ElectricNodeRef | CoordinateRef) -> str:
     raise TypeError("coordinate must be a public SCNSim coordinate handle or ID")
 
 
-def _parameter_key(parameter: ParameterRef) -> tuple[tuple[str, ...], str]:
-    """Return the canonical key shared by primitive and Composite parameters."""
+def _parameter_key(parameter: ParameterRef) -> tuple[str, str]:
+    """Return one independent definitions-collection/local identity."""
 
-    reference = parameter._canonical_ref()
-    path = reference.get("component_path")
-    identifier = reference.get("parameter_id")
-    if (
-        not isinstance(path, Sequence)
-        or isinstance(path, (str, bytes))
-        or not path
-        or not all(isinstance(part, str) and part for part in path)
-        or not isinstance(identifier, str)
-        or not identifier
-    ):
+    if not isinstance(parameter, ParameterRef):
+        raise TypeError("parameter must be ParameterRef")
+    definitions_id = getattr(parameter, "definitions_id", None)
+    identifier = getattr(parameter, "id", None)
+    if not isinstance(definitions_id, str) or not definitions_id or not isinstance(identifier, str) or not identifier:
         raise TypeError("ParameterRef has no canonical SCNSim parameter identity")
-    return tuple(path), identifier
+    return definitions_id, identifier
+
+
+def _view_declaration(lineage: Mapping[str, object]) -> dict[str, object]:
+    """Project a lazy Python View to the request's declarative-only record."""
+
+    ptc = lineage.get("ptc")
+    transforms = lineage.get("transforms")
+    retain = lineage.get("retain")
+    if transforms is None or not isinstance(transforms, Sequence) or isinstance(transforms, (str, bytes)):
+        raise CompilerInvariantError("View transform declaration is malformed", stage="request_encode")
+    return {
+        "type": "network_view",
+        "ptc": None if ptc is None else {"selected_ports": list(ptc["selected_ports"])},
+        "transforms": [
+            {
+                "id": item["id"],
+                "input_coordinates": list(item["input_coordinates"]),
+                "output_coordinates": list(item["output_coordinates"]),
+            }
+            for item in transforms
+        ],
+        "retain": None if retain is None else {
+            "retained_coordinates": list(retain["retained_coordinates"]),
+        },
+    }
+
+
+def _parameter_value_record(parameter: ParameterRef, value: object) -> Mapping[str, object]:
+    record = ParameterSet({parameter: value})._record()
+    bindings = record["bindings"]
+    if len(bindings) != 1:
+        raise CompilerInvariantError("parameter value did not encode uniquely", stage="request_encode")
+    return bindings[0]["value"]
+
+
+def _uses_baseline_root(spec: object) -> bool:
+    """Return whether a Spec owns baseline-root continuation."""
+
+    if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec)):
+        return True
+    if isinstance(spec, ResidueNormalizedCouplingSpec):
+        return True
+    if isinstance(spec, OptimizationSpec):
+        return any(
+            _uses_baseline_root(selector.spec)
+            for objective in spec.objectives
+            for selector in _quantity_selectors(objective.quantity)
+        )
+    return False
 
 
 def _plan_has_affine_binding(value: object) -> bool:
@@ -191,9 +252,20 @@ def _plan_has_affine_binding(value: object) -> bool:
 
 
 def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
-    """Collect only directly selectable Plan and top-level Composite coordinates."""
+    """Collect selectable opaque compiler coordinates from the sealed snapshot."""
 
-    return tuple(sorted(_plan_coordinates(plan)[1]))
+    connectivity = plan.get("connectivity")
+    nodes = connectivity.get("node_coordinates") if isinstance(connectivity, Mapping) else None
+    if not isinstance(nodes, Sequence) or isinstance(nodes, (str, bytes)):
+        raise CompilerInvariantError("Plan node-coordinate table is malformed", stage="plan_seal")
+    coordinates = tuple(
+        str(node["compiler_node_id"])
+        for node in nodes
+        if isinstance(node, Mapping) and node.get("visibility") == "public"
+    )
+    if not coordinates or len(set(coordinates)) != len(coordinates):
+        raise CompilerInvariantError("Plan public coordinate table is malformed", stage="plan_seal")
+    return coordinates
 
 
 def _raw_view_lineage(lineage: Mapping[str, object]) -> bool:
@@ -294,8 +366,6 @@ class ReductionPipeline:
         if self._retained is not None:
             raise ValueError("transform_pair() must precede retain()")
         id = _canonical_identifier(id, field="transform_pair id")
-        if _coordinate_id(node_a) == _coordinate_id(node_b):
-            raise ValueError("transform_pair() requires two distinct coordinates")
         if any(existing[2] == id for existing in self._transforms):
             raise ValueError("transform_pair IDs must be unique")
         child = self._copy()
@@ -312,9 +382,6 @@ class ReductionPipeline:
             raise ValueError("retain() is terminal and may appear at most once")
         if not coordinates:
             raise ValueError("retain() requires at least one coordinate")
-        identifiers = tuple(_coordinate_id(value) for value in coordinates)
-        if len(set(identifiers)) != len(identifiers):
-            raise ValueError("retained coordinates must be unique")
         child = self._copy()
         child._retained = tuple(coordinates)
         return child
@@ -369,6 +436,8 @@ class CircuitRun:
 
     __slots__ = (
         "_plan",
+        "_snapshot",
+        "_baseline_point",
         "_plan_document",
         "_plan_bytes",
         "_plan_sha256",
@@ -377,7 +446,9 @@ class CircuitRun:
         "_runtime_base",
         "_parameter_lookup",
         "_public_coordinates",
+        "_coordinate_lookup",
         "_affine_plan",
+        "_source_provenance",
     )
 
     def __init__(
@@ -391,17 +462,43 @@ class CircuitRun:
             raise TypeError("plan must be a CircuitPlan")
         if not isinstance(versioned, bool):
             raise TypeError("versioned must be bool")
+        snapshot = plan._capture_authoring_snapshot()
+        baseline_point = resolve_parameter_point(snapshot)
         self._plan = plan._seal()
-        self._plan_document = canonical_plan_document(self._plan._canonical_snapshot())
+        self._snapshot = snapshot
+        self._baseline_point = baseline_point
+        self._plan_document = canonical_plan_snapshot(snapshot)
         self._plan_bytes = canonical_json_bytes(self._plan_document)
         self._plan_sha256 = sha256_hex(self._plan_bytes)
         self._runtime_base = _runtime_identity_base()
         self._parameter_lookup = {
             _parameter_key(parameter): parameter
-            for component in self._plan.components
-            for parameter in component._parameters.values()
+            for parameter in baseline_point.effective_parameters.values
         }
+        self._source_provenance = snapshot.source_provenance
         self._public_coordinates = frozenset(_plan_public_coordinates(self._plan_document))
+        lookup: dict[str, str | None] = {}
+        for node in self._plan_document["connectivity"]["node_coordinates"]:
+            compiler_id = str(node["compiler_node_id"])
+            lookup[compiler_id] = compiler_id
+            for alias in node["public_aliases"]:
+                identifier = alias.get("id")
+                if isinstance(identifier, str):
+                    if identifier not in lookup:
+                        lookup[identifier] = compiler_id
+                    elif lookup[identifier] != compiler_id:
+                        lookup[identifier] = None
+                if alias.get("kind") == "exposed_coordinate":
+                    scope = alias.get("scope")
+                    if isinstance(scope, list) and all(isinstance(item, str) for item in scope) and isinstance(identifier, str):
+                        scoped = canonical_json_bytes({"scope": scope, "id": identifier}).decode("utf-8")
+                        previous = lookup.setdefault(scoped, compiler_id)
+                        if previous != compiler_id:
+                            raise CompilerInvariantError(
+                                "typed public coordinate resolves to multiple physical nodes",
+                                stage="plan_seal",
+                            )
+        self._coordinate_lookup = MappingProxyType(lookup)
         self._affine_plan = _plan_has_affine_binding(self._plan_document)
         original = self._original_lineage()
         self._binding = bind_workspace(
@@ -410,9 +507,13 @@ class CircuitRun:
             plan_bytes=self._plan_bytes,
             versioned=versioned,
         )
+        nodes_by_net = {
+            str(node["final_net"]): str(node["compiler_node_id"])
+            for node in self._plan_document["connectivity"]["node_coordinates"]
+        }
         port_coordinates = {
-            str(port["node_id"]): str(port["port_id"])
-            for port in self._plan_document["ports"]
+            nodes_by_net[str(port["net"])]: str(port["id"])
+            for port in self._plan_document["connectivity"]["ports"]
         }
         self._original = NetworkViewRef._create(
             self,
@@ -433,138 +534,6 @@ class CircuitRun:
             self._plan_document, self._plan_sha256, self._runtime_base
         )
 
-    def _derive_legacy_view(self, pipeline: ReductionPipeline) -> NetworkViewRef:
-        if pipeline._retained is None:
-            raise ValueError("a derived View requires terminal retain()")
-        if len(pipeline._retained) != 1:
-            unavailable("multi-coordinate ReductionPipeline.retain")
-        value = pipeline._retained[0]
-        coordinate = self._coordinate_id(value)
-        if isinstance(value, ElectricNodeRef) and value._plan is not self._plan:
-            raise ValueError("retained node belongs to another Plan")
-        if coordinate not in self._public_coordinates:
-            raise ValueError("retain() accepts only a Public Plan coordinate")
-        nodes = list(self._original._lineage["original"]["coordinate_order"])
-        eliminated = [node for node in nodes if node != coordinate]
-        port_records = list(self._plan_document["ports"])
-        ports = [port["port_id"] for port in port_records]
-        n, p = len(nodes), len(ports)
-        matching_ports = [index for index, port in enumerate(port_records) if port["node_id"] == coordinate]
-        port_realizable = len(matching_ports) == 1
-
-        def evidence(
-            label: str,
-            values: Sequence[Sequence[float]],
-            *,
-            applicability: str,
-        ) -> dict[str, object]:
-            rows = len(values)
-            columns = len(values[0]) if rows else 0
-            if any(len(row) != columns for row in values):
-                raise CompilerInvariantError("lineage matrix is ragged", stage="view_lineage")
-            return {
-                "rows": rows,
-                "columns": columns,
-                "sha256": sha256_hex(
-                    {
-                        "schema": "scnsim.lineage_matrix",
-                        "schema_version": 1,
-                        "label": label,
-                        "applicability": applicability,
-                        "shape": [rows, columns],
-                        "row_major_f64": [float64_hex(value) for row in values for value in row],
-                    }
-                ),
-            }
-
-        matrix_labels = (
-            "a", "b", "r", "d", "q", "selected_projector",
-            "omitted_projector", "omitted_matched_loads",
-        )
-        if port_realizable:
-            impedances = np.asarray([
-                float(quantity_from_envelope(port["reference_impedance"], registry=units.registry).to("ohm").magnitude)
-                for port in port_records
-            ])
-            b_p = np.asarray([
-                [1.0 if node == port["node_id"] else 0.0 for port in port_records]
-                for node in nodes
-            ])
-            a = np.zeros((1, p), dtype=np.float64)
-            a[0, matching_ports[0]] = 1.0
-            r_p = np.diag(impedances)
-            d_p = np.diag(np.sqrt(impedances))
-            b = b_p @ a.T
-            r = a @ r_p @ a.T
-            d = np.asarray([[math.sqrt(float(r[0, 0]))]])
-            q = np.linalg.solve(d, a @ d_p)
-            selected_projector = q.T @ q
-            omitted_projector = np.eye(p) - selected_projector
-            omitted_matched_loads = (
-                np.linalg.solve(d_p, omitted_projector)
-                @ omitted_projector
-                @ np.linalg.solve(d_p, np.eye(p))
-            )
-            matrices = {
-                "a": evidence("a", a.tolist(), applicability="port_realizable"),
-                "b": evidence("b", b.tolist(), applicability="port_realizable"),
-                "r": evidence("r", r.tolist(), applicability="port_realizable"),
-                "d": evidence("d", d.tolist(), applicability="port_realizable"),
-                "q": evidence("q", q.tolist(), applicability="port_realizable"),
-                "selected_projector": evidence("selected_projector", selected_projector.tolist(), applicability="port_realizable"),
-                "omitted_projector": evidence("omitted_projector", omitted_projector.tolist(), applicability="port_realizable"),
-                "omitted_matched_loads": evidence("omitted_matched_loads", omitted_matched_loads.tolist(), applicability="port_realizable"),
-            }
-            source_boundary = {
-                "schema": "scnsim.source_boundary", "schema_version": 1,
-                "applicability": "port_realizable", "b": matrices["b"], "r": matrices["r"],
-            }
-            deembedding = {
-                "schema": "scnsim.deembedding", "schema_version": 1,
-                "applicability": "port_realizable", "d": matrices["d"], "q": matrices["q"],
-            }
-        else:
-            matrices = {
-                label: evidence(label, [], applicability="not_port_realizable")
-                for label in matrix_labels
-            }
-            source_boundary = {
-                "schema": "scnsim.source_boundary", "schema_version": 1,
-                "applicability": "not_port_realizable",
-            }
-            deembedding = {
-                "schema": "scnsim.deembedding", "schema_version": 1,
-                "applicability": "not_port_realizable",
-            }
-
-        retain = {
-            "type": "retain",
-            "retained_coordinates": [coordinate],
-            "eliminated_coordinates": eliminated,
-            "output_coordinate_order": [coordinate],
-            "a_matrix": matrices["a"],
-            "b_matrix": matrices["b"],
-            "r_matrix": matrices["r"],
-            "d_matrix": matrices["d"],
-            "q_matrix": matrices["q"],
-            "selected_projector": matrices["selected_projector"],
-            "omitted_projector": matrices["omitted_projector"],
-            "omitted_matched_loads": matrices["omitted_matched_loads"],
-            "source_boundary_sha256": sha256_hex(source_boundary),
-            "deembedding_evidence_sha256": sha256_hex(deembedding),
-        }
-        record: dict[str, object] = {
-            "type": "network_view_lineage",
-            "original": dict(self._original._lineage["original"]),
-            "ptc": None,
-            "transforms": [],
-            "retain": retain,
-            "terminal_coordinates": [coordinate],
-            "port_realizable": port_realizable,
-        }
-        record["lineage_sha256"] = sha256_hex(record)
-        return NetworkViewRef._create(self, record, (coordinate,))
-
     def _derive_view(self, parent: NetworkViewRef, pipeline: ReductionPipeline) -> NetworkViewRef:
         """Apply one immutable dev5 grammar suffix without executing it.
 
@@ -573,15 +542,6 @@ class CircuitRun:
         current coordinate identities.
         """
 
-        if (
-            parent is self._original
-            and pipeline._ptc is None
-            and not pipeline._transforms
-            and pipeline._retained is not None
-            and len(pipeline._retained) == 1
-            and len(self._plan.ports) == 1
-        ):
-            return self._derive_legacy_view(pipeline)
         if pipeline._retained is not None and parent._retained:
             raise ValueError("retain() is terminal and cannot be added to a retained View")
         if pipeline._ptc is not None and (
@@ -596,7 +556,7 @@ class CircuitRun:
             port_by_id = {port.id: port for port in self._plan.ports}
             requested: set[str] = set()
             for port in pipeline._ptc:
-                if port._plan is not self._plan or port.id not in port_by_id or port_by_id[port.id] is not port:
+                if port.plan is not self._plan or port.id not in port_by_id or port_by_id[port.id] is not port:
                     raise ValueError("ptc() PortRef belongs to another Plan")
                 if port.role != "nonloading_probe":
                     raise ValueError("ptc() accepts only nonloading_probe Ports")
@@ -613,16 +573,31 @@ class CircuitRun:
                     "compensated" if port_id in selected_ports else "raw"
                 )
         transforms = [dict(value) for value in parent._lineage["transforms"]]
+
+        def resolve_coordinate(value: str | ElectricNodeRef | CoordinateRef) -> str:
+            # Derived coordinate IDs are already in the current basis. Every
+            # other spelling must resolve through the snapshot's typed/public
+            # alias table to one opaque compiler node ID.
+            if isinstance(value, str) and value in available:
+                return value
+            return self._coordinate_id(value)
+
         for raw_left, raw_right, identifier in pipeline._transforms:
-            left, right = self._coordinate_id(raw_left), self._coordinate_id(raw_right)
-            if isinstance(raw_left, ElectricNodeRef) and raw_left._plan is not self._plan:
+            left, right = resolve_coordinate(raw_left), resolve_coordinate(raw_right)
+            if isinstance(raw_left, ElectricNodeRef) and raw_left.plan is not self._plan:
                 raise ValueError("transform_pair node belongs to another Plan")
-            if isinstance(raw_right, ElectricNodeRef) and raw_right._plan is not self._plan:
+            if isinstance(raw_right, ElectricNodeRef) and raw_right.plan is not self._plan:
                 raise ValueError("transform_pair node belongs to another Plan")
             if left == right or left not in available or right not in available:
                 raise ValueError("transform_pair() requires two distinct current Public coordinates")
             common, differential = f"{identifier}.common", f"{identifier}.differential"
-            if common in available or differential in available or common == differential:
+            if (
+                common in available
+                or differential in available
+                or common in self._coordinate_lookup
+                or differential in self._coordinate_lookup
+                or common == differential
+            ):
                 raise ValueError("transform_pair generated coordinate collides with the current basis")
             left_state = load_states.get(left, "not-port")
             right_state = load_states.get(right, "not-port")
@@ -664,8 +639,8 @@ class CircuitRun:
         retained: tuple[str, ...] = parent._retained
         retain_record = parent._lineage["retain"]
         if pipeline._retained is not None:
-            resolved = tuple(self._coordinate_id(value) for value in pipeline._retained)
-            if any(isinstance(value, ElectricNodeRef) and value._plan is not self._plan for value in pipeline._retained):
+            resolved = tuple(resolve_coordinate(value) for value in pipeline._retained)
+            if any(isinstance(value, ElectricNodeRef) and value.plan is not self._plan for value in pipeline._retained):
                 raise ValueError("retained node belongs to another Plan")
             if len(set(resolved)) != len(resolved) or not resolved or any(value not in available for value in resolved):
                 raise ValueError("retain() accepts only unique current Public coordinates")
@@ -729,14 +704,14 @@ class CircuitRun:
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec,
         *,
-        parameters: ParameterSet | None = None,
-    ) -> DirectSolveResult | HBBatchResult:
+        parameters: ParameterSet | ParameterSpace | None = None,
+    ) -> DirectSolveResult | HBBatchResult | ParameterSweepResult:
         """Execute the selected Direct response or one shared-basis HB batch."""
 
         self._require_ref(ref)
         operation = "solve_hb" if isinstance(spec, HBSolveSpec) else "solve_direct"
         request, source_units, _ = self._materialized_request(operation, ref, spec, parameters)
-        return self._execute(request, source_units)
+        return self._execute(request, source_units, bound_spec=spec)
 
     @overload
     def evaluate(
@@ -770,35 +745,41 @@ class CircuitRun:
         ref: NetworkViewRef,
         spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
-        parameters: ParameterSet | None = None,
-    ) -> DiagonalRootResult | DirectQuantityResult | OperatorResult:
+        parameters: ParameterSet | ParameterSpace | None = None,
+    ) -> DiagonalRootResult | DirectQuantityResult | OperatorResult | ParameterSweepResult:
         """Evaluate one typed Direct quantity without an unrelated sweep."""
 
         self._require_ref(ref)
         request, source_units, _ = self._materialized_request("evaluate_direct", ref, spec, parameters)
-        return self._execute(request, source_units)
+        return self._execute(request, source_units, bound_spec=spec)
 
-    def optimize(self, ref: NetworkViewRef, spec: OptimizationSpec) -> OptimizationResult:
+    def optimize(
+        self,
+        ref: NetworkViewRef,
+        spec: OptimizationSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
         self._require_ref(ref)
-        request, source_units, _ = self._materialized_request("optimize_direct", ref, spec, None)
-        return self._execute(request, source_units)
+        request, source_units, _ = self._materialized_request("optimize_direct", ref, spec, parameters)
+        return self._execute(request, source_units, bound_spec=spec)
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | None = None) -> DirectSolveResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DirectSolveResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | None = None) -> DiagonalRootResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DiagonalRootResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec) -> OptimizationResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec, *, parameters: ParameterSet | None = None) -> OptimizationResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: HBSolveSpec, *, parameters: ParameterSet | None = None) -> HBBatchResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: HBSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> HBBatchResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: OperatorSpec, *, parameters: ParameterSet | None = None) -> OperatorResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: OperatorSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> OperatorResult | ParameterSweepResult: ...
 
     @overload
     def resolve(
@@ -806,16 +787,16 @@ class CircuitRun:
         ref: NetworkViewRef,
         spec: HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec,
         *,
-        parameters: ParameterSet | None = None,
-    ) -> DirectQuantityResult: ...
+        parameters: ParameterSet | ParameterSpace | None = None,
+    ) -> DirectQuantityResult | ParameterSweepResult: ...
 
     def resolve(
         self,
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         *,
-        parameters: ParameterSet | None = None,
-    ) -> DirectSolveResult | HBBatchResult | DiagonalRootResult | DirectQuantityResult | OperatorResult | OptimizationResult:
+        parameters: ParameterSet | ParameterSpace | None = None,
+    ) -> DirectSolveResult | HBBatchResult | DiagonalRootResult | DirectQuantityResult | OperatorResult | OptimizationResult | ParameterSweepResult:
         """Verify and load the success for this exact request without retrying."""
 
         self._require_ref(ref)
@@ -826,21 +807,16 @@ class CircuitRun:
         elif isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
             operation = "evaluate_direct"
         elif isinstance(spec, OptimizationSpec):
-            if parameters is not None:
-                raise TypeError("parameters must be omitted for OptimizationSpec")
+            if parameters is not None and not isinstance(parameters, ParameterSet):
+                raise TypeError("OptimizationSpec parameters must be a ParameterSet or None")
             operation = "optimize_direct"
         else:
             unavailable(f"CircuitRun.resolve({type(spec).__name__})")
         declaration, _ = self._request_declaration(operation, ref, spec, parameters)
-        return self._decode_success(
-            self._binding.resolve_matching_success(
-                operation=operation,
-                spec=declaration["spec"],
-                parameters=declaration["parameters"],
-                runtime_semantic=declaration["runtime_semantic"],
-                lazy_lineage=ref._lineage,
-            )
-        )
+        request_sha256 = sha256_hex(canonical_json_bytes(declaration))
+        with self._binding.reader():
+            success = self._binding.resolve_success(request_sha256)
+        return self._decode_success(success, bound_spec=spec)
 
     def explain(
         self,
@@ -854,8 +830,6 @@ class CircuitRun:
         self._require_ref(ref)
         if not isinstance(spec, (DirectSolveSpec, HBSolveSpec, DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec, OptimizationSpec)):
             unavailable(f"CircuitRun.explain({type(spec).__name__})")
-        if isinstance(spec, OptimizationSpec) and parameters is not None:
-            raise TypeError("parameters must be omitted for OptimizationSpec")
         operation = (
             "solve_hb" if isinstance(spec, HBSolveSpec)
             else "solve_direct" if isinstance(spec, DirectSolveSpec)
@@ -871,12 +845,13 @@ class CircuitRun:
                 "plan_sha256": self._plan_sha256,
                 "request_sha256": sha256_hex(canonical_json_bytes(request)),
                 "runtime_semantic": request["runtime_semantic"],
-                "ref_lineage": request["ref_lineage"],
-                "parameters": request["parameters"],
+                "view": request["view"],
+                "parameter_source": request["parameter_source"],
                 "spec": request["spec"],
-                "component_hierarchy": self._plan_document["components"],
-                "plan_nodes": self._plan_document["nodes"],
-                "grounded_endpoints": self._plan_document["grounded_endpoints"],
+                "scope_hierarchy": self._plan_document["scope_hierarchy"],
+                "occurrences": self._plan_document["occurrences"],
+                "physical_leaves": self._plan_document["physical_leaves"],
+                "connectivity": self._plan_document["connectivity"],
                 "compiled": compiled,
             },
         )
@@ -913,25 +888,17 @@ class CircuitRun:
         sections: list[str] = []
         for result in spec.inputs:
             if isinstance(result, DirectSolveResult):
-                figure = result.s.show(magnitude="db")
-                from io import BytesIO
+                figure = result.s.show(magnitude="db", theme=spec.theme)
                 import matplotlib.pyplot as plt
 
-                output = BytesIO()
                 try:
-                    import matplotlib as mpl
-
-                    with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
-                        figure.savefig(
-                            output,
-                            format="svg",
-                            bbox_inches="tight",
-                            metadata={"Date": None},
-                        )
+                    data_uri = _figure_data_uri(figure, spec.theme)
                 finally:
                     plt.close(figure)
-                encoded = base64.b64encode(output.getvalue()).decode("ascii")
-                sections.append(f'<h2>Direct response</h2><img alt="Direct S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">')
+                sections.append(
+                    '<h2>Direct response</h2><img alt="Direct S magnitude and phase" '
+                    f'src="{data_uri}">'
+                )
             elif isinstance(result, HBBatchResult):
                 case_rows = "".join(
                     "<tr>"
@@ -952,25 +919,17 @@ class CircuitRun:
                     f"<tbody>{case_rows}</tbody></table>"
                 )
                 if any(outcome.succeeded for outcome in result.cases.values()):
-                    figure = result.show(magnitude="db")
-                    from io import BytesIO
+                    figure = result.show(magnitude="db", theme=spec.theme)
                     import matplotlib.pyplot as plt
 
-                    output = BytesIO()
                     try:
-                        import matplotlib as mpl
-
-                        with mpl.rc_context({"svg.hashsalt": "scnsim.report.v1"}):
-                            figure.savefig(
-                                output,
-                                format="svg",
-                                bbox_inches="tight",
-                                metadata={"Date": None},
-                            )
+                        data_uri = _figure_data_uri(figure, spec.theme)
                     finally:
                         plt.close(figure)
-                    encoded = base64.b64encode(output.getvalue()).decode("ascii")
-                    section += f'<img alt="HB selected S magnitude and phase" src="data:image/svg+xml;base64,{encoded}">'
+                    section += (
+                        '<img alt="HB selected S magnitude and phase" '
+                        f'src="{data_uri}">'
+                    )
                 sections.append(section)
             elif isinstance(result, DiagonalRootResult):
                 sections.append(
@@ -981,7 +940,7 @@ class CircuitRun:
                 )
             elif isinstance(result, OptimizationResult):
                 bindings = "".join(
-                    f"<li>{escape(parameter.component_id)}.{escape(parameter.id)} = {escape(str(value))}</li>"
+                    f"<li>{escape(parameter.definitions_id)}.{escape(parameter.id)} = {escape(str(value))}</li>"
                     for parameter, value in result.best.parameters.values.items()
                 )
                 sections.append(
@@ -989,11 +948,11 @@ class CircuitRun:
                     f"<p>Cost: {escape(str(result.best.cost))}</p><ul>{bindings}</ul>"
                 )
         embedded = "".join(sections)
-        html = (
-            "<!doctype html><html><head><meta charset=\"utf-8\"><title>SCNSim report</title></head><body>"
+        body = (
             "<h1>SCNSim report</h1><table><thead><tr><th>Plan</th><th>Request</th><th>Attempt</th><th>Result</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table>{embedded}</body></html>"
+            f"<tbody>{rows}</tbody></table>{embedded}"
         )
+        html = _report_html(body, spec.theme)
         return _verified_result(ReportResult, html=html, inputs=spec.inputs)
 
     def _require_ref(self, ref: NetworkViewRef) -> None:
@@ -1001,11 +960,29 @@ class CircuitRun:
             raise ValueError("NetworkViewRef belongs to another CircuitRun")
 
     def _coordinate_id(self, value: str | ElectricNodeRef | CoordinateRef) -> str:
-        """Resolve a Composite handle to its sealed physical Plan coordinate."""
+        """Resolve a public alias to the snapshot's canonical compiler node."""
 
+        if isinstance(value, ElectricNodeRef) and value.plan is not self._plan:
+            raise ValueError("coordinate belongs to another Plan")
         if isinstance(value, CoordinateRef):
-            return self._plan._resolve_coordinate(value)
-        return _coordinate_id(value)
+            if value.scope.root is not self._plan:
+                raise ValueError("coordinate belongs to another Plan")
+            key = canonical_json_bytes({"scope": list(value.scope.path()), "id": value.id}).decode("utf-8")
+            resolved = self._coordinate_lookup.get(key)
+        else:
+            resolved = self._coordinate_lookup.get(_coordinate_id(value))
+        if resolved is None:
+            raise ValueError("coordinate is not a public alias in this Plan")
+        return resolved
+
+    def _view_coordinate_id(
+        self,
+        ref: NetworkViewRef,
+        value: str | ElectricNodeRef | CoordinateRef,
+    ) -> str:
+        if isinstance(value, str) and value in ref._available_coordinates:
+            return value
+        return self._coordinate_id(value)
 
     def _validate_direct_request(
         self,
@@ -1020,9 +997,14 @@ class CircuitRun:
                     stage="preflight",
                     evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_response"},
                 )
-            channels = tuple(ref._lineage["terminal_coordinates"])
+            channels = frozenset(ref._lineage["terminal_coordinates"])
             for trace in spec.traces:
-                if trace.input_port not in channels or trace.output_port not in channels:
+                try:
+                    input_channel = self._trace_request_channel(ref, trace.input_port)
+                    output_channel = self._trace_request_channel(ref, trace.output_port)
+                except ValueError:
+                    input_channel = output_channel = None
+                if input_channel not in channels or output_channel not in channels:
                     raise PortRealizabilityError(
                         "Direct trace names a channel outside the selected View",
                         stage="preflight",
@@ -1039,14 +1021,16 @@ class CircuitRun:
             for variable in spec.variables
         }
         for key, parameter in active.items():
-            if self._parameter_lookup.get(key) is not parameter:
+            current = self._parameter_lookup.get(key)
+            if current is None or current._definition_record() != parameter._definition_record():
                 raise InvalidOptimizationSpec(
                     "optimization variable belongs to another Plan",
                     stage="spec_validation",
                 )
         for parameter in spec.allow_extrapolation:
             key = _parameter_key(parameter)
-            if active.get(key) is not parameter:
+            selected = active.get(key)
+            if selected is None or selected._definition_record() != parameter._definition_record():
                 raise InvalidOptimizationSpec(
                     "optimization extrapolation authorization must name an active Plan parameter",
                     stage="spec_validation",
@@ -1066,7 +1050,7 @@ class CircuitRun:
         """Apply the selected-View contract shared by evaluate and CMA selectors."""
 
         if isinstance(spec, DiagonalRootSpec):
-            coordinate = self._coordinate_id(spec.coordinate)
+            coordinate = self._view_coordinate_id(ref, spec.coordinate)
             invalid = (
                 coordinate not in ref._retained or len(ref._retained) < 2
                 if residue_branch
@@ -1080,7 +1064,7 @@ class CircuitRun:
                 )
             return
         if isinstance(spec, HybridizedPoleSpec):
-            coordinates = tuple(self._coordinate_id(value) for value in spec.coordinates)
+            coordinates = tuple(self._view_coordinate_id(ref, value) for value in spec.coordinates)
             if not ref._retained or coordinates != ref._retained:
                 raise SCNSimValidationError(
                     "HybridizedPoleSpec coordinates must equal the retained View order",
@@ -1090,7 +1074,7 @@ class CircuitRun:
             return
         if isinstance(spec, (TransferZeroSpec, ResponseElementSpec)):
             channels = set(ref._lineage["terminal_coordinates"])
-            if self._coordinate_id(spec.input_coordinate) not in channels or self._coordinate_id(spec.output_coordinate) not in channels:
+            if self._view_coordinate_id(ref, spec.input_coordinate) not in channels or self._view_coordinate_id(ref, spec.output_coordinate) not in channels:
                 raise PortRealizabilityError(
                     "Direct element Spec coordinates must belong to the selected View",
                     stage="preflight",
@@ -1128,9 +1112,14 @@ class CircuitRun:
                     stage="preflight",
                     evidence={"type": "failure_evidence", "operation": "solve_hb", "context_kind": "runtime"},
                 )
-        channels = set(ref._lineage["terminal_coordinates"])
+        channels = frozenset(ref._lineage["terminal_coordinates"])
         for trace in spec.traces:
-            if trace.input_port not in channels or trace.output_port not in channels:
+            try:
+                input_channel = self._trace_request_channel(ref, trace.input_port)
+                output_channel = self._trace_request_channel(ref, trace.output_port)
+            except ValueError:
+                input_channel = output_channel = None
+            if input_channel not in channels or output_channel not in channels:
                 raise PortRealizabilityError(
                     "HB trace names a channel outside the selected View",
                     stage="preflight",
@@ -1140,83 +1129,156 @@ class CircuitRun:
         # oriented source-vector accumulation.  Comparing declaration scalars
         # here would reject valid cancellation across distinct logical Ports.
 
-    def _complete_parameters(self, supplied: ParameterSet | None) -> ParameterSet:
-        baselines = {parameter: parameter.baseline for parameter in self._parameter_lookup.values()}
-        if supplied is None:
-            return ParameterSet(baselines)
-        if not isinstance(supplied, ParameterSet):
+    def _trace_request_channel(self, ref: NetworkViewRef, value: str) -> str:
+        """Normalize one trace name into the exact final View namespace."""
+
+        if not ref._retained:
+            return value
+        if value in ref._available_coordinates:
+            return value
+        matches = {
+            str(node["compiler_node_id"])
+            for node in self._plan_document["connectivity"]["node_coordinates"]
+            for alias in node["public_aliases"]
+            if alias.get("kind") != "port" and alias.get("id") == value
+        }
+        if len(matches) != 1:
+            raise ValueError("trace channel is not a unique public coordinate")
+        return matches.pop()
+
+    def _complete_parameters(self, supplied: ParameterSet | None):
+        if supplied is not None and not isinstance(supplied, ParameterSet):
             raise TypeError("parameters must be ParameterSet or None")
-        for parameter, value in supplied.values.items():
-            key = _parameter_key(parameter)
-            current = self._parameter_lookup.get(key)
-            if current is not parameter:
-                raise ValueError("ParameterSet contains a parameter from another Plan")
-            baselines[current] = value
-        for parameter in supplied.allow_extrapolation:
-            key = _parameter_key(parameter)
-            if self._parameter_lookup.get(key) is not parameter:
-                raise ValueError("ParameterSet extrapolation authorization belongs to another Plan")
-        return ParameterSet(baselines, allow_extrapolation=supplied.allow_extrapolation)
+        return resolve_parameter_point(self._snapshot, supplied)
 
-    def _request(
+    def _compatible_parameter(self, parameter: ParameterRef) -> ParameterRef:
+        current = self._parameter_lookup.get(_parameter_key(parameter))
+        if current is None or current._definition_record() != parameter._definition_record():
+            raise SCNSimValidationError(
+                "parameter is not a compatible consumed definition in this Plan",
+                stage="preflight",
+            )
+        return current
+
+    def _parameter_source(
         self,
-        operation: str,
-        ref: NetworkViewRef,
-        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
-        parameters: ParameterSet | None,
-    ) -> tuple[dict[str, object], list[dict[str, object]]]:
-        """Compatibility request encoder for the already-complete raw View."""
+        parameters: ParameterSet | ParameterSpace | None,
+    ) -> tuple[Mapping[str, object], object]:
+        if parameters is None or isinstance(parameters, ParameterSet):
+            point = self._complete_parameters(parameters)
+            return {"kind": "point", "parameters": point.parameter_record}, point
+        if not isinstance(parameters, ParameterSpace):
+            raise TypeError("parameters must be ParameterSet, ParameterSpace, or None")
+        baseline = self._complete_parameters(None)
+        if parameters.kind == "grid":
+            base = self._complete_parameters(parameters.fixed)
+            axes: list[dict[str, object]] = []
+            for parameter, values in parameters.axes:
+                current = self._compatible_parameter(parameter)
+                for value in values:
+                    merged = dict(parameters.fixed.values)
+                    merged[current] = value
+                    self._complete_parameters(
+                        ParameterSet(merged, allow_extrapolation=parameters.fixed.allow_extrapolation)
+                    )
+                axes.append({
+                    "parameter": current._key_record(),
+                    "values": [_parameter_value_record(current, value) for value in values],
+                })
+            return {
+                "kind": "grid",
+                "base_parameters": base.parameter_record,
+                "axes": axes,
+                "shape": [len(values) for _, values in parameters.axes],
+            }, base
+        if parameters.kind != "points":
+            raise CompilerInvariantError("ParameterSpace kind is invalid", stage="request_encode")
+        points: list[Mapping[str, object]] = []
+        for supplied in parameters._points:
+            normalized_values = {
+                self._compatible_parameter(parameter): value
+                for parameter, value in supplied.values.items()
+            }
+            normalized_authorizations = tuple(
+                self._compatible_parameter(parameter)
+                for parameter in supplied.allow_extrapolation
+            )
+            normalized = ParameterSet(
+                normalized_values,
+                allow_extrapolation=normalized_authorizations,
+            )
+            self._complete_parameters(normalized)
+            points.append(normalized._record())
+        return {
+            "kind": "points",
+            "baseline_parameters": baseline.parameter_record,
+            "points": points,
+        }, baseline
 
-        request, source_units, _ = self._materialized_request(operation, ref, spec, parameters)
-        return request, source_units
+    def _validate_root_parameter_source(
+        self,
+        spec: object,
+        parameter_source: Mapping[str, object],
+    ) -> None:
+        if not _uses_baseline_root(spec):
+            return
+        rlgc_keys = {
+            _parameter_key(parameter)
+            for parameter in self._parameter_lookup.values()
+            if isinstance(parameter.spec, RLGCParameterSpec)
+        }
+        if not rlgc_keys:
+            return
+
+        def values(record: Mapping[str, object]) -> dict[tuple[str, str], object]:
+            return {
+                (binding["parameter"]["definitions_id"], binding["parameter"]["parameter_id"]): binding["value"]
+                for binding in record["bindings"]
+            }
+
+        baseline = values(self._baseline_point.parameter_record)
+        kind = parameter_source["kind"]
+        records: list[Mapping[str, object]] = []
+        if kind == "point":
+            records.append(parameter_source["parameters"])
+        elif kind == "grid":
+            records.append(parameter_source["base_parameters"])
+            for axis in parameter_source["axes"]:
+                key = (axis["parameter"]["definitions_id"], axis["parameter"]["parameter_id"])
+                if key in rlgc_keys and any(value != baseline[key] for value in axis["values"]):
+                    raise SCNSimValidationError(
+                        "baseline-root calculations do not support changing RLGC values",
+                        stage="preflight",
+                    )
+        elif kind == "points":
+            records.append(parameter_source["baseline_parameters"])
+            records.extend(parameter_source["points"])
+        for record in records:
+            selected = values(record)
+            if any(key in selected and selected[key] != baseline[key] for key in rlgc_keys):
+                raise SCNSimValidationError(
+                    "baseline-root calculations do not support changing RLGC values",
+                    stage="preflight",
+                )
 
     def _materialized_request(
         self,
         operation: str,
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
-        parameters: ParameterSet | None,
+        parameters: ParameterSet | ParameterSpace | None,
     ) -> tuple[dict[str, object], list[dict[str, object]], Mapping[str, object] | None]:
-        """Materialize one bound request before it can enter the workspace.
+        """Build the closed declarative request without launching Julia."""
 
-        A ``NetworkViewRef`` keeps only immutable user declarations.  The
-        compiler owns the candidate-dependent PTC, transform, and retain
-        evidence, so it realizes a temporary request first; only the returned
-        closed lineage is incorporated into the durable request identity.
-        """
-        preliminary, source_units = self._request_declaration(operation, ref, spec, parameters)
-        if operation != "solve_hb" and _raw_view_lineage(ref._lineage):
-            # Raw 0/1/N-port Direct has no candidate-dependent reduction
-            # evidence.  Its sealed original lineage is already final and
-            # preserves the accepted dev3/dev4 request path (including
-            # resolve without a Julia preparation).
-            return preliminary, source_units, None
-        compiled = self._preflight(preliminary)
-        realized = compiled.get("ref_lineage")
-        try:
-            _verify_v1_lineage(realized, self._plan_document)
-        except EvidenceIntegrityError as error:
-            raise BackendProtocolError(
-                "Julia preflight returned an invalid realized View lineage",
-                stage="preflight",
-                evidence={"error": str(error)},
-            ) from error
-        request = canonical_request_document(
-            plan_sha256=self._plan_sha256,
-            operation=operation,
-            ref_lineage=realized,
-            spec=preliminary["spec"],
-            parameters=preliminary["parameters"],
-            runtime_semantic=preliminary["runtime_semantic"],
-        )
-        return request, source_units, compiled
+        request, source_units = self._request_declaration(operation, ref, spec, parameters)
+        return request, source_units, None
 
     def _request_declaration(
         self,
         operation: str,
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
-        parameters: ParameterSet | None,
+        parameters: ParameterSet | ParameterSpace | None,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
         """Encode a read-only lazy View declaration without invoking Julia."""
 
@@ -1226,18 +1288,38 @@ class CircuitRun:
             self._validate_hb_request(ref, spec)
         else:
             self._validate_direct_request(operation, ref, spec)
-        resolved = self._complete_parameters(parameters)
+        parameter_source, resolved = self._parameter_source(parameters)
         if isinstance(spec, OptimizationSpec):
+            active = {_parameter_key(variable.parameter) for variable in spec.variables}
+            if parameters is not None and any(
+                _parameter_key(parameter) in active for parameter in parameters.values
+            ):
+                raise InvalidOptimizationSpec(
+                    "optimization fixed parameters overlap active variables",
+                    stage="spec_validation",
+                )
             # Request-level authorization is consumed only by compiler
-            # baseline/preflight lowering. CMA candidate and winner
+            # baseline lowering. CMA candidate and winner
             # ParameterSets remain authorization-free and ledger-owned.
-            resolved = ParameterSet(
-                resolved.values,
-                allow_extrapolation=spec.allow_extrapolation,
+            authorized = ParameterSet(
+                resolved.effective_parameters.values,
+                allow_extrapolation=tuple({
+                    *resolved.effective_parameters.allow_extrapolation,
+                    *spec.allow_extrapolation,
+                }),
             )
+            resolved = self._complete_parameters(authorized)
+            parameter_source = {"kind": "point", "parameters": resolved.parameter_record}
+        self._validate_root_parameter_source(spec, parameter_source)
+        effective = resolved.effective_parameters
         try:
-            encoded_spec = _encode_spec(spec, resolved, coordinate_id=self._coordinate_id)
-            source_units = self._source_units(spec, resolved)
+            encoded_spec = _encode_spec(
+                spec,
+                effective,
+                coordinate_id=lambda value: self._view_coordinate_id(ref, value),
+                trace_channel_id=lambda value: self._trace_request_channel(ref, value),
+            )
+            source_units = self._source_units(spec, effective, parameter_space=parameters)
         except InvalidOptimizationSpec:
             raise
         except (SCNSimValidationError, TypeError, ValueError, AttributeError) as error:
@@ -1268,9 +1350,9 @@ class CircuitRun:
         preliminary = canonical_request_document(
             plan_sha256=self._plan_sha256,
             operation=operation,
-            ref_lineage=ref._lineage,
+            view=_view_declaration(ref._lineage),
             spec=encoded_spec,
-            parameters=resolved._canonical_record(),
+            parameter_source=parameter_source,
             runtime_semantic=semantic,
         )
         return preliminary, source_units
@@ -1284,20 +1366,22 @@ class CircuitRun:
         self,
         request: Mapping[str, object],
         source_units: Sequence[Mapping[str, object]],
+        *,
+        bound_spec: object | None = None,
     ):
         request_bytes = canonical_json_bytes(request)
         request_sha = sha256_hex(request_bytes)
         with self._binding.reader():
             success = self._binding.find_success(request_sha)
             if success is not None:
-                return self._decode_success(success)
+                return self._decode_success(success, bound_spec=bound_spec)
         prepared = prepare_runtime()
         executable_sha = sha256(prepared.executable.read_bytes()).hexdigest()
         started = _utc_now()
         with self._binding.writer():
             success = self._binding.find_success(request_sha)
             if success is not None:
-                return self._decode_success(success)
+                return self._decode_success(success, bound_spec=bound_spec)
             request_directory = self._binding.ensure_request(request_sha, request_bytes)
             resume_ledger_sha = self._binding.resume_ledger_sha256(request_sha)
             allocation = self._binding.allocate_attempt(request_sha)
@@ -1505,16 +1589,43 @@ class CircuitRun:
                 # the finalized receipt remains authoritative.
                 raise
             if failure is None:
-                return self._decode_success(self._binding.resolve_success(request_sha))
+                return self._decode_success(
+                    self._binding.resolve_success(request_sha), bound_spec=bound_spec
+                )
             raise _error_from_record(failure)
 
     def _source_units(
         self,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet,
+        *,
+        parameter_space: ParameterSet | ParameterSpace | None,
     ) -> list[dict[str, object]]:
+        captured = self._source_provenance.get("source_units")
+        if not isinstance(captured, Sequence) or isinstance(captured, (str, bytes)):
+            raise CompilerInvariantError(
+                "snapshot source-unit provenance is missing",
+                stage="request_encode",
+            )
         evidence: list[dict[str, object]] = []
         identities: set[str] = set()
+        for raw in captured:
+            if not isinstance(raw, Mapping) or set(raw) != {
+                "identity", "source_unit", "canonical_si_unit", "canonical_dimensionality",
+            }:
+                raise CompilerInvariantError(
+                    "snapshot source-unit provenance is malformed",
+                    stage="request_encode",
+                )
+            row = dict(raw)
+            identity = row.get("identity")
+            if not isinstance(identity, str) or not identity or identity in identities:
+                raise CompilerInvariantError(
+                    "snapshot source-unit provenance identities are invalid",
+                    stage="request_encode",
+                )
+            identities.add(identity)
+            evidence.append(row)
 
         def add(identity: str, value: object, si_unit: str) -> None:
             if identity in identities:
@@ -1545,31 +1656,11 @@ class CircuitRun:
                 }
             )
 
-        def add_component(component: object, path: tuple[str, ...]) -> None:
-            parameters_by_id = getattr(component, "_parameters", None)
-            realization = getattr(component, "_realization", None)
-            affine_sources = getattr(component, "_affine_sources", None)
-            rlgc_source = getattr(component, "_rlgc_source", None)
-            if (
-                not isinstance(parameters_by_id, Mapping)
-                or not isinstance(realization, Mapping)
-                or not isinstance(affine_sources, Mapping)
-            ):
-                raise CompilerInvariantError("sealed component source provenance is malformed", stage="request_encode")
-            for parameter in component._parameters.values():
-                add(
-                    _source_unit_identity(
-                        scope="plan_parameter",
-                        component_path=path,
-                        parameter_id=parameter.id,
-                        field="baseline",
-                    ),
-                    parameter.baseline,
-                    parameter.unit,
-                )
-            if rlgc_source is not None:
-                if not isinstance(rlgc_source, Mapping):
-                    raise CompilerInvariantError("sealed RLGC source provenance is malformed", stage="request_encode")
+        for parameter, value in parameters.values.items():
+            definitions_id, identifier = _parameter_key(parameter)
+            if isinstance(parameter.spec, RLGCParameterSpec):
+                if not isinstance(value, RLGC):
+                    raise CompilerInvariantError("resolved RLGC parameter is malformed", stage="request_encode")
                 units_by_field = {
                     "resistance_per_length": "ohm / meter",
                     "inductance_per_length": "henry / meter",
@@ -1577,96 +1668,115 @@ class CircuitRun:
                     "capacitance_per_length": "farad / meter",
                     "extraction_frequency": "hertz",
                 }
-                if not set(rlgc_source) <= set(units_by_field):
-                    raise CompilerInvariantError("sealed RLGC source provenance is malformed", stage="request_encode")
-                for field, value in rlgc_source.items():
+                for field, quantity in value._source_quantities.items():
                     add(
                         _source_unit_identity(
-                            scope="plan_rlgc",
-                            component_path=path,
-                            parameter_id="rlgc",
+                            scope="request_parameter_rlgc",
+                            component_path=(definitions_id,),
+                            parameter_id=identifier,
                             field=field,
                         ),
-                        value,
+                        quantity,
                         units_by_field[field],
                     )
-            bindings = realization.get("bindings")
-            if not isinstance(bindings, Mapping):
-                raise CompilerInvariantError("sealed component binding provenance is malformed", stage="request_encode")
-            for parameter_id, source in affine_sources.items():
-                binding = bindings.get(parameter_id)
-                if (
-                    not isinstance(parameter_id, str)
-                    or not parameter_id
-                    or not isinstance(source, Mapping)
-                    or set(source) != {"slope", "intercept", "support"}
-                    or not isinstance(binding, Mapping)
-                    or binding.get("kind") != "affine"
-                ):
-                    raise CompilerInvariantError("sealed AffineMap source provenance is malformed", stage="request_encode")
-
-                def source_unit(field: str, index: int | None = None) -> str:
-                    envelope = binding.get(field)
-                    if index is not None:
-                        if not isinstance(envelope, Sequence) or isinstance(envelope, (str, bytes)) or len(envelope) != 2:
-                            raise CompilerInvariantError("sealed AffineMap support provenance is malformed", stage="request_encode")
-                        envelope = envelope[index]
-                    if not isinstance(envelope, Mapping) or not isinstance(envelope.get("si_unit"), str) or not envelope["si_unit"]:
-                        raise CompilerInvariantError("sealed AffineMap quantity provenance is malformed", stage="request_encode")
-                    return envelope["si_unit"]
-
-                support = source["support"]
-                if not isinstance(support, tuple) or len(support) != 2:
-                    raise CompilerInvariantError("sealed AffineMap support provenance is malformed", stage="request_encode")
-                for field, value, unit in (
-                    ("slope", source["slope"], source_unit("slope")),
-                    ("intercept", source["intercept"], source_unit("intercept")),
-                    ("support_lower", support[0], source_unit("support", 0)),
-                    ("support_upper", support[1], source_unit("support", 1)),
-                ):
+            else:
+                source_unit = parameters._source_units.get(parameter)
+                source_value = value if source_unit is None else value.to(source_unit)
+                add(
+                    _source_unit_identity(
+                        scope="request_parameter",
+                        component_path=(definitions_id,),
+                        parameter_id=identifier,
+                        field="value",
+                    ),
+                    source_value,
+                    parameter.spec.si_unit,
+                )
+        if isinstance(parameter_space, ParameterSpace) and parameter_space.kind == "grid":
+            for axis_index, ((parameter, values), source_units) in enumerate(
+                zip(parameter_space.axes, parameter_space._axis_source_units)
+            ):
+                current = self._compatible_parameter(parameter)
+                if isinstance(current.spec, RLGCParameterSpec):
+                    units_by_field = {
+                        "resistance_per_length": "ohm / meter",
+                        "inductance_per_length": "henry / meter",
+                        "conductance_per_length": "siemens / meter",
+                        "capacitance_per_length": "farad / meter",
+                        "extraction_frequency": "hertz",
+                    }
+                    for value_index, value in enumerate(values):
+                        if not isinstance(value, RLGC):
+                            raise CompilerInvariantError(
+                                "grid RLGC parameter is malformed",
+                                stage="request_encode",
+                            )
+                        for field, quantity in value._source_quantities.items():
+                            add(
+                                _source_unit_identity(
+                                    scope="request_grid_axis_rlgc",
+                                    component_path=(current.definitions_id,),
+                                    parameter_id=current.id,
+                                    field=f"{axis_index}:{value_index}:{field}",
+                                ),
+                                quantity,
+                                units_by_field[field],
+                            )
+                    continue
+                for value_index, (value, source_unit) in enumerate(zip(values, source_units)):
+                    source_value = value if source_unit is None else value.to(source_unit)
                     add(
                         _source_unit_identity(
-                            scope="plan_affine",
-                            component_path=path,
-                            parameter_id=parameter_id,
-                            field=field,
+                            scope="request_grid_axis",
+                            component_path=(current.definitions_id,),
+                            parameter_id=current.id,
+                            field=f"{axis_index}:{value_index}",
                         ),
-                        value,
-                        unit,
+                        source_value,
+                        current.spec.si_unit,
                     )
-            children = realization.get("children", ())
-            if not isinstance(children, Sequence) or isinstance(children, (str, bytes)):
-                raise CompilerInvariantError("sealed Composite child provenance is malformed", stage="request_encode")
-            for child in children:
-                child_id = getattr(child, "id", None)
-                if not isinstance(child_id, str) or not child_id:
-                    raise CompilerInvariantError("sealed Composite child provenance is malformed", stage="request_encode")
-                add_component(child, (*path, child_id))
-
-        for component in self._plan.components:
-            add_component(component, (component.id,))
-        for port in self._plan.ports:
-            add(
-                _source_unit_identity(
-                    scope="plan_port",
-                    parameter_id=port.id,
-                    field="reference_impedance",
-                ),
-                port.reference_impedance,
-                "ohm",
-            )
-        for parameter, value in parameters.values.items():
-            path, identifier = _parameter_key(parameter)
-            add(
-                _source_unit_identity(
-                    scope="request_parameter",
-                    component_path=path,
-                    parameter_id=identifier,
-                    field="value",
-                ),
-                value,
-                parameter.unit,
-            )
+        elif isinstance(parameter_space, ParameterSpace) and parameter_space.kind == "points":
+            for point_index, point in enumerate(parameter_space._points):
+                for parameter, value in point.values.items():
+                    current = self._compatible_parameter(parameter)
+                    if isinstance(current.spec, RLGCParameterSpec):
+                        if not isinstance(value, RLGC):
+                            raise CompilerInvariantError(
+                                "listed RLGC parameter is malformed",
+                                stage="request_encode",
+                            )
+                        units_by_field = {
+                            "resistance_per_length": "ohm / meter",
+                            "inductance_per_length": "henry / meter",
+                            "conductance_per_length": "siemens / meter",
+                            "capacitance_per_length": "farad / meter",
+                            "extraction_frequency": "hertz",
+                        }
+                        for field, quantity in value._source_quantities.items():
+                            add(
+                                _source_unit_identity(
+                                    scope="request_listed_point_rlgc",
+                                    component_path=(current.definitions_id,),
+                                    parameter_id=current.id,
+                                    field=f"{point_index}:{field}",
+                                ),
+                                quantity,
+                                units_by_field[field],
+                            )
+                        continue
+                    source_unit = point._source_units.get(parameter)
+                    if source_unit is None:
+                        continue
+                    add(
+                        _source_unit_identity(
+                            scope="request_listed_point",
+                            component_path=(current.definitions_id,),
+                            parameter_id=current.id,
+                            field=f"{point_index}",
+                        ),
+                        value.to(source_unit),
+                        current.spec.si_unit,
+                    )
         if isinstance(spec, DirectSolveSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
         elif isinstance(spec, HBSolveSpec):
@@ -1705,7 +1815,7 @@ class CircuitRun:
         else:
             for index, variable in enumerate(spec.variables):
                 parameter = variable.parameter
-                path, identifier = _parameter_key(parameter)
+                definitions_id, identifier = _parameter_key(parameter)
                 for role, bounds in (
                     ("model_default", variable.model_default_bounds),
                     ("consumer_override", variable.consumer_override_bounds),
@@ -1715,22 +1825,22 @@ class CircuitRun:
                     add(
                         _source_unit_identity(
                             scope="request_optimization_variable",
-                            component_path=path,
+                            component_path=(definitions_id,),
                             parameter_id=identifier,
                             field=f"{index}:{role}:lower",
                         ),
                         bounds[0],
-                        parameter.unit,
+                        parameter.spec.si_unit,
                     )
                     add(
                         _source_unit_identity(
                             scope="request_optimization_variable",
-                            component_path=path,
+                            component_path=(definitions_id,),
                             parameter_id=identifier,
                             field=f"{index}:{role}:upper",
                         ),
                         bounds[1],
-                        parameter.unit,
+                        parameter.spec.si_unit,
                     )
             for index, objective in enumerate(spec.objectives):
                 parameter_id = f"objective:{index}"
@@ -1764,7 +1874,12 @@ class CircuitRun:
                             add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:{branch_name}:{field}"), getattr(branch, field), "hertz")
         return sorted(evidence, key=lambda item: str(item["identity"]))
 
-    def _decode_success(self, success: VerifiedSuccess):
+    def _decode_success(
+        self,
+        success: VerifiedSuccess,
+        *,
+        bound_spec: object | None = None,
+    ):
         attempt_sha = sha256_hex(canonical_json_bytes(success.attempt))
         result_sha = success.receipt["result_sha256"]
         identity = _verified_result(
@@ -1776,20 +1891,45 @@ class CircuitRun:
         )
         result = success.result
         kind = result["result_kind"]
+        if kind == "parameter_sweep":
+            return self._decode_parameter_sweep(
+                identity,
+                result,
+                success.request,
+                success.directory,
+                bound_spec=bound_spec,
+            )
+        return self._decode_result(
+            identity,
+            result,
+            success.request,
+            success.directory,
+        )
+
+    def _decode_result(
+        self,
+        identity: ResultIdentity | ParameterPointIdentity,
+        result: Mapping[str, object],
+        request: Mapping[str, object],
+        directory: Path,
+    ):
+        """Decode one already-verified ordinary scientific payload."""
+
+        kind = result["result_kind"]
         if kind == "hb_batch":
-            return self._decode_hb_batch(identity, result, success.request, success.directory)
+            return self._decode_hb_batch(identity, result, request, directory)
         if kind == "direct_response":
             arrays = result["array_catalog"]
-            frequency = _read_zarr(success.directory, arrays["frequencies"], complex_values=False)
-            s = _read_zarr(success.directory, arrays["s"], complex_values=True)
-            y = _read_zarr(success.directory, arrays["y"], complex_values=True)
-            z = _read_zarr(success.directory, arrays["z"], complex_values=True)
+            frequency = _read_zarr(directory, arrays["frequencies"], complex_values=False)
+            s = _read_zarr(directory, arrays["s"], complex_values=True)
+            y = _read_zarr(directory, arrays["y"], complex_values=True)
+            z = _read_zarr(directory, arrays["z"], complex_values=True)
             _validate_direct_values(
                 frequency,
                 s,
                 y,
                 z,
-                expected_frequency=_direct_request_frequencies(success.request),
+                expected_frequency=_direct_request_frequencies(request),
                 stage="result_decode",
             )
             frequencies = units.registry.Quantity(frequency, "hertz")
@@ -1818,7 +1958,7 @@ class CircuitRun:
                     probe_loads=loads,
                 )
 
-            trace_spec = success.request.get("spec")
+            trace_spec = request.get("spec")
             declared_traces = trace_spec.get("traces") if isinstance(trace_spec, Mapping) else None
             if not isinstance(declared_traces, list):
                 raise EvidenceIntegrityError("Direct request trace declarations are malformed", stage="result_decode")
@@ -1917,10 +2057,10 @@ class CircuitRun:
             )
         if kind == "operator":
             arrays = result["array_catalog"]
-            frequency = _read_zarr(success.directory, arrays["frequencies"], complex_values=False)
-            matrix = _read_zarr(success.directory, arrays["operator"], complex_values=True)
+            frequency = _read_zarr(directory, arrays["frequencies"], complex_values=False)
+            matrix = _read_zarr(directory, arrays["operator"], complex_values=True)
             coordinates = tuple(arrays["operator"].get("coordinate_ids", ()))
-            expected = _operator_request_frequencies(success.request)
+            expected = _operator_request_frequencies(request)
             if (
                 frequency.shape != expected.shape
                 or not np.array_equal(frequency.view(np.uint64), expected.view(np.uint64))
@@ -1945,7 +2085,7 @@ class CircuitRun:
         if kind == "optimization":
             best = result["best"]
             parameters = self._decode_parameter_set(best["parameters"])
-            ledger = tuple(_read_json_artifact(success.directory, artifact) for artifact in result["ledger_artifacts"])
+            ledger = tuple(_read_json_artifact(directory, artifact) for artifact in result["ledger_artifacts"])
             return _verified_result(
                 OptimizationResult,
                 identity=identity,
@@ -1958,9 +2098,296 @@ class CircuitRun:
             )
         raise EvidenceIntegrityError("verified Result kind is outside the runtime", stage="result_decode", evidence={"result_kind": kind})
 
-    def _decode_hb_batch(
+    def _decode_parameter_sweep(
         self,
         identity: ResultIdentity,
+        result: Mapping[str, object],
+        request: Mapping[str, object],
+        directory: Path,
+        *,
+        bound_spec: object | None,
+    ) -> ParameterSweepResult:
+        """Expose verified point metadata lazily and defer scientific payload I/O."""
+
+        del bound_spec  # The canonical request, not a live Spec, owns selector identity.
+        source = request.get("parameter_source")
+        if not isinstance(source, Mapping) or source.get("kind") not in {"grid", "points"}:
+            raise EvidenceIntegrityError(
+                "parameter sweep has no ordered parameter source",
+                stage="result_decode",
+            )
+        manifest_link = result.get("manifest")
+        if not isinstance(manifest_link, Mapping):
+            raise EvidenceIntegrityError(
+                "parameter sweep manifest link is malformed",
+                stage="result_decode",
+            )
+        manifest = _read_canonical_artifact_json(
+            directory,
+            manifest_link.get("path"),
+            manifest_link.get("sha256"),
+            stage="result_decode",
+        )
+        rows = manifest.get("files")
+        if not isinstance(rows, list):
+            raise EvidenceIntegrityError(
+                "parameter sweep manifest file catalog is malformed",
+                stage="result_decode",
+            )
+        file_hashes = {
+            f"artifacts/parameter_points/{row['path']}": row["sha256"]
+            for row in rows
+            if isinstance(row, Mapping)
+            and isinstance(row.get("path"), str)
+            and isinstance(row.get("sha256"), str)
+        }
+        if len(file_hashes) != len(rows):
+            raise EvidenceIntegrityError(
+                "parameter sweep manifest file identities are malformed",
+                stage="result_decode",
+            )
+
+        raw_chunks = result.get("chunks")
+        if not isinstance(raw_chunks, list):
+            raise EvidenceIntegrityError(
+                "parameter sweep chunk catalog is malformed",
+                stage="result_decode",
+            )
+        chunks = tuple(raw_chunks)
+        chunk_cache: dict[int, Mapping[str, object]] = {}
+        outcome_cache: dict[int, ParameterPointOutcome] = {}
+
+        def chunk_for(ordinal: int) -> Mapping[str, object]:
+            chunk_ordinal = ordinal // 64
+            if chunk_ordinal < 0 or chunk_ordinal >= len(chunks):
+                raise IndexError("parameter point index is out of range")
+            cached = chunk_cache.get(chunk_ordinal)
+            if cached is not None:
+                return cached
+            link = chunks[chunk_ordinal]
+            if not isinstance(link, Mapping):
+                raise EvidenceIntegrityError(
+                    "parameter sweep chunk link is malformed",
+                    stage="result_decode",
+                )
+            path = link.get("path")
+            expected_sha = link.get("sha256")
+            if file_hashes.get(path) != expected_sha:
+                raise EvidenceIntegrityError(
+                    "parameter sweep chunk is not bound by its manifest",
+                    stage="result_decode",
+                )
+            chunk = _read_canonical_artifact_json(
+                directory, path, expected_sha, stage="result_decode"
+            )
+            if (
+                chunk.get("chunk_ordinal") != chunk_ordinal
+                or chunk.get("first_point") != link.get("first_point")
+                or not isinstance(chunk.get("points"), list)
+                or len(chunk["points"]) != link.get("point_count")
+            ):
+                raise EvidenceIntegrityError(
+                    "parameter sweep chunk identity is malformed",
+                    stage="result_decode",
+                )
+            chunk_cache[chunk_ordinal] = chunk
+            return chunk
+
+        def load_point(ordinal: int) -> ParameterPointOutcome:
+            cached = outcome_cache.get(ordinal)
+            if cached is not None:
+                return cached
+            chunk = chunk_for(ordinal)
+            offset = ordinal - int(chunk["first_point"])
+            points = chunk["points"]
+            if offset < 0 or offset >= len(points):
+                raise EvidenceIntegrityError(
+                    "parameter sweep chunk does not contain its declared point",
+                    stage="result_decode",
+                )
+            point = points[offset]
+            if not isinstance(point, Mapping) or point.get("ordinal") != ordinal:
+                raise EvidenceIntegrityError(
+                    "parameter sweep point identity is malformed",
+                    stage="result_decode",
+                )
+            raw_source_index = point.get("source_index")
+            source_index = (
+                tuple(raw_source_index)
+                if isinstance(raw_source_index, list)
+                else raw_source_index
+            )
+            parameters_record = point.get("parameters")
+            if not isinstance(parameters_record, Mapping):
+                raise EvidenceIntegrityError(
+                    "parameter sweep point parameters are malformed",
+                    stage="result_decode",
+                )
+            parameters = self._decode_parameter_set(parameters_record)
+            parameters_sha256 = point.get("parameters_sha256")
+            if parameters_sha256 != canonical_parameters_sha256(parameters_record):
+                raise EvidenceIntegrityError(
+                    "parameter sweep point parameter identity is malformed",
+                    stage="result_decode",
+                )
+            point_identity = _verified_result(
+                ParameterPointIdentity,
+                batch=identity,
+                source_index=source_index,
+                parameters_sha256=parameters_sha256,
+            )
+            if point.get("status") == "failure":
+                failure_record = point.get("failure")
+                if not isinstance(failure_record, Mapping):
+                    raise EvidenceIntegrityError(
+                        "parameter sweep point failure is malformed",
+                        stage="result_decode",
+                    )
+                outcome = _point_outcome(
+                    parameters=parameters,
+                    source_index=source_index,
+                    identity=point_identity,
+                    result=None,
+                    failure=_error_from_record(failure_record),
+                )
+            elif point.get("status") == "success":
+                payload_path = point.get("payload_path")
+                payload_sha = file_hashes.get(payload_path)
+                if not isinstance(payload_path, str) or payload_sha is None:
+                    raise EvidenceIntegrityError(
+                        "parameter sweep point payload is not bound by its manifest",
+                        stage="result_decode",
+                    )
+                decoded: dict[str, object] = {}
+
+                def load_result() -> object:
+                    existing = decoded.get("result")
+                    if existing is not None:
+                        return existing
+                    payload = _read_canonical_artifact_json(
+                        directory,
+                        payload_path,
+                        payload_sha,
+                        stage="result_decode",
+                    )
+                    if (
+                        payload.get("schema") != "scnsim.parameter_point_payload"
+                        or payload.get("schema_version") != 2
+                    ):
+                        raise EvidenceIntegrityError(
+                            "parameter sweep point payload is malformed",
+                            stage="result_decode",
+                        )
+                    value = self._decode_result(
+                        point_identity,
+                        payload,
+                        request,
+                        directory,
+                    )
+                    decoded["result"] = value
+                    return value
+
+                outcome = _point_outcome(
+                    parameters=parameters,
+                    source_index=source_index,
+                    identity=point_identity,
+                    result=load_result,
+                    failure=None,
+                )
+            else:
+                raise EvidenceIntegrityError(
+                    "parameter sweep point status is malformed",
+                    stage="result_decode",
+                )
+            outcome_cache[ordinal] = outcome
+            return outcome
+
+        kind = str(source["kind"])
+        shape = tuple(source["shape"]) if kind == "grid" else ()
+        axis_parameters = (
+            tuple(self._decode_parameter_ref(axis["parameter"]) for axis in source["axes"])
+            if kind == "grid"
+            else ()
+        )
+        count = result.get("point_count")
+        if not isinstance(count, int) or isinstance(count, bool):
+            raise EvidenceIntegrityError(
+                "parameter sweep point count is malformed",
+                stage="result_decode",
+            )
+        points = _point_accessor(
+            load_point,
+            count,
+            kind,
+            shape,
+            axis_parameters,
+        )
+
+        request_spec = request.get("spec")
+        if not isinstance(request_spec, Mapping):
+            raise EvidenceIntegrityError(
+                "parameter sweep Spec is malformed",
+                stage="result_decode",
+            )
+        selector_kind = {
+            "diagonal_root": "diagonal_root_projection",
+            "hybridized_pole": "hybridized_pole_projection",
+            "transfer_zero": "transfer_zero_projection",
+            "residue_normalized_coupling": "residue_coupling_projection",
+            "response_element": "response_element_projection",
+        }.get(request_spec.get("type"))
+        projections = {
+            "diagonal_root": ("frequency", "linewidth"),
+            "hybridized_pole": ("frequency", "linewidth"),
+            "transfer_zero": ("frequency",),
+            "residue_normalized_coupling": ("magnitude",),
+            "response_element": ("magnitude", "real", "imag"),
+        }.get(request_spec.get("type"), ())
+        allowed = (
+            tuple(
+                canonical_json_bytes(
+                    {
+                        "type": selector_kind,
+                        "spec": request_spec,
+                        "projection": projection,
+                    }
+                )
+                for projection in projections
+            )
+            if selector_kind is not None
+            else ()
+        )
+        derived_coordinates = {
+            coordinate
+            for transform in request.get("view", {}).get("transforms", ())
+            if isinstance(transform, Mapping)
+            for coordinate in transform.get("output_coordinates", ())
+            if isinstance(coordinate, str)
+        }
+
+        def selector_encoder(value: object) -> bytes:
+            if not isinstance(value, QuantitySelector):
+                raise TypeError("quantity must be a QuantitySelector")
+
+            def coordinate_id(coordinate: object) -> str:
+                if isinstance(coordinate, str) and coordinate in derived_coordinates:
+                    return coordinate
+                return self._coordinate_id(coordinate)  # type: ignore[arg-type]
+
+            return canonical_json_bytes(
+                _encode_scalar_expression(value, coordinate_id=coordinate_id)
+            )
+
+        return _parameter_sweep_result(
+            identity=identity,
+            points=points,
+            selector_encoder=selector_encoder,
+            allowed_selectors=allowed,
+        )
+
+    def _decode_hb_batch(
+        self,
+        identity: ResultIdentity | ParameterPointIdentity,
         result: Mapping[str, object],
         request: Mapping[str, object],
         directory: Path,
@@ -2174,18 +2601,130 @@ class CircuitRun:
             topology_evidence=topology_evidence,
         )
 
+    def _decode_parameter_ref(self, record: object) -> ParameterRef:
+        if not isinstance(record, Mapping) or set(record) != {
+            "definitions_id", "parameter_id"
+        }:
+            raise EvidenceIntegrityError(
+                "parameter identity is malformed",
+                stage="result_decode",
+            )
+        parameter = self._parameter_lookup.get(
+            (record["definitions_id"], record["parameter_id"])
+        )
+        if parameter is None:
+            raise EvidenceIntegrityError(
+                "parameter is absent from sealed Plan",
+                stage="result_decode",
+            )
+        return parameter
+
+    def _decode_parameter_value(
+        self,
+        parameter: ParameterRef,
+        record: object,
+    ) -> object:
+        if not isinstance(record, Mapping):
+            raise EvidenceIntegrityError(
+                "parameter value is malformed",
+                stage="result_decode",
+            )
+        if not isinstance(parameter.spec, RLGCParameterSpec):
+            return quantity_from_envelope(record, registry=units.registry)
+        if record.get("type") != "rlgc":
+            raise EvidenceIntegrityError(
+                "RLGC parameter value is malformed",
+                stage="result_decode",
+            )
+
+        def matrix(name: str, unit: str) -> object:
+            value = record.get(name)
+            if not isinstance(value, Mapping):
+                raise EvidenceIntegrityError(
+                    "RLGC parameter matrix is malformed",
+                    stage="result_decode",
+                )
+            shape = value.get("shape")
+            values = value.get("values_f64")
+            if (
+                not isinstance(shape, list)
+                or len(shape) != 2
+                or not all(isinstance(item, int) and not isinstance(item, bool) for item in shape)
+                or not isinstance(values, list)
+            ):
+                raise EvidenceIntegrityError(
+                    "RLGC parameter matrix is malformed",
+                    stage="result_decode",
+                )
+            try:
+                decoded = np.asarray(
+                    [float64_from_hex(item) for item in values], dtype=np.float64
+                ).reshape(tuple(shape))
+            except (TypeError, ValueError) as error:
+                raise EvidenceIntegrityError(
+                    "RLGC parameter matrix is malformed",
+                    stage="result_decode",
+                ) from error
+            return units.registry.Quantity(decoded, unit)
+
+        extraction = record.get("extraction_frequency")
+        source = record.get("source")
+        if not isinstance(source, Mapping):
+            raise EvidenceIntegrityError(
+                "RLGC parameter source is malformed",
+                stage="result_decode",
+            )
+        value = RLGC._from_source(
+            conductors=tuple(record.get("conductors", ())),
+            reference_conductor=record.get("reference_conductor"),
+            resistance_per_length=matrix("resistance_per_length", "ohm / meter"),
+            inductance_per_length=matrix("inductance_per_length", "henry / meter"),
+            conductance_per_length=matrix("conductance_per_length", "siemens / meter"),
+            capacitance_per_length=matrix("capacitance_per_length", "farad / meter"),
+            extraction_frequency=(
+                None
+                if extraction is None
+                else quantity_from_envelope(extraction, registry=units.registry)
+            ),
+            source=source,
+        )
+        if value._record() != record:
+            raise EvidenceIntegrityError(
+                "decoded RLGC parameter differs from its verified record",
+                stage="result_decode",
+            )
+        return value
+
     def _decode_parameter_set(self, record: Mapping[str, object]) -> ParameterSet:
+        if set(record) != {"type", "bindings", "allow_extrapolation"}:
+            raise EvidenceIntegrityError(
+                "parameter set is malformed",
+                stage="result_decode",
+            )
+        bindings = record.get("bindings")
+        authorizations = record.get("allow_extrapolation")
+        if not isinstance(bindings, list) or not isinstance(authorizations, list):
+            raise EvidenceIntegrityError(
+                "parameter set bindings are malformed",
+                stage="result_decode",
+            )
         values: dict[ParameterRef, object] = {}
-        for binding in record["bindings"]:
-            reference = binding["parameter"]
-            path = reference["component_path"]
-            if not isinstance(path, Sequence) or isinstance(path, (str, bytes)):
-                raise EvidenceIntegrityError("winner parameter path is malformed", stage="result_decode")
-            parameter = self._parameter_lookup.get((tuple(path), reference["parameter_id"]))
-            if parameter is None:
-                raise EvidenceIntegrityError("winner parameter is absent from sealed Plan", stage="result_decode")
-            values[parameter] = quantity_from_envelope(binding["value"], registry=units.registry)
-        return ParameterSet(values)
+        for binding in bindings:
+            if not isinstance(binding, Mapping) or set(binding) != {"parameter", "value"}:
+                raise EvidenceIntegrityError(
+                    "parameter binding is malformed",
+                    stage="result_decode",
+                )
+            parameter = self._decode_parameter_ref(binding["parameter"])
+            values[parameter] = self._decode_parameter_value(parameter, binding["value"])
+        allowed = tuple(self._decode_parameter_ref(value) for value in authorizations)
+        parameters = ParameterSet(values, allow_extrapolation=allowed)
+        if parameters._record() != record:
+            raise EvidenceIntegrityError(
+                "decoded parameter set differs from its verified record",
+                stage="result_decode",
+            )
+        return parameters
 
 
 def _original_lineage_document(
@@ -2194,7 +2733,11 @@ def _original_lineage_document(
     runtime: Mapping[str, object],
 ) -> dict[str, object]:
     node_order, _ = _plan_coordinates(plan)
-    port_order = [port["port_id"] for port in plan["ports"]]
+    connectivity = plan.get("connectivity")
+    ports = connectivity.get("ports") if isinstance(connectivity, Mapping) else None
+    if not isinstance(ports, Sequence) or isinstance(ports, (str, bytes)):
+        raise CompilerInvariantError("Plan Port inventory is malformed", stage="plan_seal")
+    port_order = [port["id"] for port in ports]
     original = {
         "type": "original",
         "compiled_graph_sha256": sha256_hex(
@@ -2244,59 +2787,65 @@ def _run_preflight(
     return compiled
 
 
-def _compiled_schematic_evidence(plan: CircuitPlan) -> Mapping[str, object]:
-    """Compile a sealed baseline declaration without a workspace or solver."""
+def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, object]:
+    """Compile one immutable point without a Run, View, or analysis workspace."""
 
-    node_state = tuple((node, node.id, node.visibility) for node in plan._nodes)
-    coordinate_resolution = plan._coordinate_resolution
-    try:
-        plan_document = canonical_plan_document(plan._canonical_snapshot())
-    finally:
-        for node, identifier, visibility in node_state:
-            node.id, node.visibility = identifier, visibility
-        plan._coordinate_resolution = coordinate_resolution
+    if not isinstance(point, ResolvedPlanPoint):
+        raise TypeError("_compiled_schematic_evidence() requires ResolvedPlanPoint")
+    plan_document = canonical_plan_snapshot(point.snapshot)
     plan_bytes = canonical_json_bytes(plan_document)
     plan_sha = sha256_hex(plan_bytes)
+    point_document = canonical_resolved_plan_point(point, plan_sha256=plan_sha)
+    point_bytes = canonical_json_bytes(point_document)
+    prepared = prepare_runtime()
+    with tempfile.TemporaryDirectory(prefix="scnsim-compiler-audit-") as temporary:
+        plan_path = Path(temporary) / "plan.json"
+        point_path = Path(temporary) / "point.json"
+        plan_path.write_bytes(plan_bytes)
+        point_path.write_bytes(point_bytes)
+        compiled = dict(
+            run_compiler_audit(
+                prepared,
+                plan_path=plan_path.resolve(),
+                point_path=point_path.resolve(),
+            )
+        )
+    required = {
+        "schema", "schema_version", "plan_sha256", "parameters_sha256",
+        "node_order", "matrix_order", "resolved_bindings",
+        "expanded_branch_rows", "c_matrix", "k_matrix", "g_matrix", "ports",
+    }
+    if (
+        set(compiled) != required
+        or compiled.get("schema") != "scnsim.compiler_audit"
+        or compiled.get("schema_version") != 2
+        or compiled.get("plan_sha256") != plan_sha
+        or compiled.get("parameters_sha256") != point_document["parameters_sha256"]
+        or compiled.get("matrix_order") != "canonical_node_id"
+        or not isinstance(compiled.get("node_order"), list)
+        or not compiled["node_order"]
+        or len(set(compiled["node_order"])) != len(compiled["node_order"])
+        or any(not isinstance(compiled.get(field), list) for field in ("resolved_bindings", "expanded_branch_rows"))
+        or any(not isinstance(compiled.get(field), Mapping) for field in ("c_matrix", "k_matrix", "g_matrix", "ports"))
+    ):
+        raise BackendProtocolError(
+            "compiler-audit evidence does not bind the resolved point",
+            stage="compiler_audit",
+        )
     runtime = _runtime_identity_base()
-    parameters = ParameterSet(
-        {
-            parameter: parameter.baseline
-            for component in plan.components
-            for parameter in component._parameters.values()
-        }
-    )._canonical_record()
-    semantic = dict(runtime)
-    semantic["algorithm_id"] = "scnsim.direct_response.v1"
-    request = canonical_request_document(
+    compiled["compiled_graph_sha256"] = sha256_hex({
+        "schema": "scnsim.compiled_graph_identity",
+        "schema_version": 1,
+        "plan_sha256": plan_sha,
+        "julia_source_sha256": runtime["julia_source_sha256"],
+    })
+    compiled["expanded_graph_sha256"] = canonical_expanded_graph_sha256(
         plan_sha256=plan_sha,
-        operation="solve_direct",
-        ref_lineage=_original_lineage_document(plan_document, plan_sha, runtime),
-        spec={
-            "type": "direct_solve",
-            "frequencies": [
-                quantity_envelope(
-                    units.registry.Quantity(1.0, "hertz"),
-                    si_unit="hertz",
-                    registry=units.registry,
-                )
-            ],
-            "traces": [],
-        },
-        parameters=parameters,
-        runtime_semantic=semantic,
+        node_order=compiled["node_order"],
+        resolved_bindings=compiled["resolved_bindings"],
+        expanded_branch_rows=compiled["expanded_branch_rows"],
     )
-    compiled = dict(_run_preflight(plan_bytes, request))
-    compiled["expanded_graph_sha256"] = sha256_hex(
-        {
-            "schema": "scnsim.expanded_graph_identity",
-            "schema_version": 1,
-            "plan_sha256": compiled["plan_sha256"],
-            "node_order": compiled["node_order"],
-            "resolved_bindings": compiled["resolved_bindings"],
-            "expanded_branch_rows": compiled["expanded_branch_rows"],
-        }
-    )
-    return compiled
+    return freeze(compiled)
 
 
 def _runtime_identity_base() -> dict[str, object]:
@@ -2658,12 +3207,19 @@ def _encode_spec(
     parameters: ParameterSet,
     *,
     coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
+    trace_channel_id: Callable[[str], str] = lambda value: value,
 ) -> dict[str, object]:
+    def trace_record(trace: SParameterTrace) -> dict[str, object]:
+        record = dict(trace._canonical_record())
+        record["input_port"] = trace_channel_id(trace.input_port)
+        record["output_port"] = trace_channel_id(trace.output_port)
+        return record
+
     if isinstance(spec, DirectSolveSpec):
         return {
             "type": "direct_solve",
             "frequencies": _frequency_grid(spec.frequencies),
-            "traces": [dict(trace._canonical_record()) for trace in spec.traces],
+            "traces": [trace_record(trace) for trace in spec.traces],
         }
     if isinstance(spec, HBSolveSpec):
         return {
@@ -2709,7 +3265,7 @@ def _encode_spec(
                 "three_wave_mixing": spec.truncation.three_wave_mixing,
                 "four_wave_mixing": spec.truncation.four_wave_mixing,
             },
-            "traces": [dict(trace._canonical_record()) for trace in spec.traces],
+            "traces": [trace_record(trace) for trace in spec.traces],
             "allow_driven_ptc": spec.allow_driven_ptc,
         }
     if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
@@ -2717,12 +3273,18 @@ def _encode_spec(
     variables: list[dict[str, object]] = []
     for variable in spec.variables:
         parameter = variable.parameter
+        if isinstance(parameter.spec, RLGCParameterSpec):
+            raise InvalidOptimizationSpec(
+                "RLGC parameters cannot be continuous optimization variables",
+                stage="spec_validation",
+            )
+        parameter_unit = parameter.spec.si_unit
         lower, upper = variable.bounds
-        low = quantity_envelope(lower, si_unit=parameter.unit, registry=units.registry)
-        high = quantity_envelope(upper, si_unit=parameter.unit, registry=units.registry)
-        low_value = float(lower.to(parameter.unit).magnitude)
-        high_value = float(upper.to(parameter.unit).magnitude)
-        baseline_value = float(parameter.baseline.to(parameter.unit).magnitude)
+        low = quantity_envelope(lower, si_unit=parameter_unit, registry=units.registry)
+        high = quantity_envelope(upper, si_unit=parameter_unit, registry=units.registry)
+        low_value = float(lower.to(parameter_unit).magnitude)
+        high_value = float(upper.to(parameter_unit).magnitude)
+        baseline_value = float(parameters.values[parameter].to(parameter_unit).magnitude)
         if low_value >= high_value:
             raise InvalidOptimizationSpec(
                 "optimization lower bound must be below upper bound",
@@ -2738,11 +3300,11 @@ def _encode_spec(
                 "log optimization bounds must be strictly positive",
                 stage="spec_validation",
             )
-        default = [quantity_envelope(item, si_unit=parameter.unit, registry=units.registry) for item in variable.model_default_bounds]
-        override = None if variable.consumer_override_bounds is None else [quantity_envelope(item, si_unit=parameter.unit, registry=units.registry) for item in variable.consumer_override_bounds]
+        default = [quantity_envelope(item, si_unit=parameter_unit, registry=units.registry) for item in variable.model_default_bounds]
+        override = None if variable.consumer_override_bounds is None else [quantity_envelope(item, si_unit=parameter_unit, registry=units.registry) for item in variable.consumer_override_bounds]
         variables.append(
             {
-                "parameter": parameter._canonical_ref(),
+                "parameter": parameter._key_record(),
                 "model_default_bounds": default,
                 "consumer_override_bounds": override,
                 "lower": low,
@@ -2821,7 +3383,7 @@ def _encode_spec(
             "unused_evaluations": unused,
             "hidden_stops": "disabled",
         },
-        "allow_extrapolation": [parameter._canonical_ref() for parameter in spec.allow_extrapolation],
+        "allow_extrapolation": [parameter._key_record() for parameter in spec.allow_extrapolation],
     }
 
 
@@ -2928,7 +3490,12 @@ def _receipt_extrapolation_evidence(
     """Project receipt evidence through the workspace's closed fan-out verifier."""
     if request.get("operation") == "optimize_direct":
         return []
-    parameters = request.get("parameters")
+    source = request.get("parameter_source")
+    if isinstance(source, Mapping) and source.get("kind") in {"grid", "points"}:
+        # Point-local authorization is verified against every chunk entry;
+        # the request receipt must not pretend an ordered space is one point.
+        return []
+    parameters = source.get("parameters") if isinstance(source, Mapping) else None
     if not isinstance(parameters, Mapping):
         raise CompilerInvariantError("receipt request has no ParameterSet", stage="receipt")
     return _required_extrapolation_rows(
@@ -3044,8 +3611,11 @@ def _validate_success_staging(
     result = json.loads(result_path.read_text(encoding="utf-8"))
     if canonical_json_bytes(result) != result_path.read_bytes():
         raise BackendProtocolError("result.json is not canonical", stage="outcome")
+    parameter_source = request.get("parameter_source")
+    is_parameter_sweep = isinstance(parameter_source, Mapping) and parameter_source.get("kind") in {"grid", "points"}
     expected_kind = (
-        "direct_response" if request.get("operation") == "solve_direct"
+        "parameter_sweep" if is_parameter_sweep
+        else "direct_response" if request.get("operation") == "solve_direct"
         else "hb_batch" if request.get("operation") == "solve_hb"
         else "optimization" if request.get("operation") == "optimize_direct"
         else request.get("spec", {}).get("type")
@@ -3055,7 +3625,15 @@ def _validate_success_staging(
     expected_result_fields = (
         {
             "schema", "schema_version", "result_kind", "request_sha256",
-            "attempt_sha256", "scalar_catalog", "array_catalog",
+            "attempt_sha256", "parameter_source_sha256", "point_count",
+            "chunk_size", "manifest", "chunks",
+        }
+        if expected_kind == "parameter_sweep"
+        else
+        {
+            "schema", "schema_version", "result_kind", "request_sha256",
+            "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage",
+            "scalar_catalog", "array_catalog",
         }
         if expected_kind in {
             "direct_response", "diagonal_root", "hybridized_pole", "transfer_zero",
@@ -3063,13 +3641,15 @@ def _validate_success_staging(
         }
         else {
             "schema", "schema_version", "result_kind", "request_sha256",
-            "attempt_sha256", "baseline", "best", "completed_generations",
+            "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage",
+            "baseline", "best", "completed_generations",
             "unused_evaluations", "ledger_artifacts",
         }
         if expected_kind == "optimization"
         else {
             "schema", "schema_version", "result_kind", "request_sha256",
-            "attempt_sha256", "lattice", "truncation", "topology_evidence", "cases",
+            "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage",
+            "lattice", "truncation", "topology_evidence", "cases",
         }
         if expected_kind == "hb_batch"
         else None
@@ -3078,7 +3658,7 @@ def _validate_success_staging(
         expected_result_fields is None
         or set(result) != expected_result_fields
         or result.get("schema") != "scnsim.result"
-        or result.get("schema_version") != 1
+        or result.get("schema_version") != 2
         or result.get("result_kind") != expected_kind
         or result.get("request_sha256") != outcome.get("request_sha256")
         or result.get("attempt_sha256") != outcome.get("attempt_sha256")
@@ -3092,7 +3672,10 @@ def _validate_success_staging(
         plan,
     )
     catalogs: list[Mapping[str, object]] = []
-    if expected_kind == "hb_batch":
+    if expected_kind == "parameter_sweep":
+        catalogs.append(result["manifest"])
+        expected_links = [dict(result["manifest"])]
+    elif expected_kind == "hb_batch":
         expected_links: list[dict[str, object]] = []
         cases = result.get("cases")
         if not isinstance(cases, list):
@@ -3128,7 +3711,11 @@ def _validate_success_staging(
         catalogs.extend(result["array_catalog"].values())
     else:
         catalogs.extend(result["ledger_artifacts"])
-    if expected_kind != "hb_batch":
+    if expected_kind == "parameter_sweep":
+        if outcome.get("artifacts") != expected_links:
+            raise BackendProtocolError("batch outcome does not bind its manifest", stage="outcome")
+        _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
+    elif expected_kind != "hb_batch":
         expected_links = [{"id": artifact["id"], "sha256": artifact["sha256"]} for artifact in catalogs]
         if outcome.get("artifacts") != expected_links or len({item["id"] for item in expected_links}) != len(expected_links):
             raise BackendProtocolError("outcome artifact inventory does not match result.json", stage="outcome")
@@ -3161,6 +3748,49 @@ def _validate_success_staging(
             expected_frequency=_direct_request_frequencies(request),
             stage="artifact_validation",
         )
+
+
+def _read_canonical_artifact_json(
+    attempt: Path,
+    path_value: object,
+    digest_value: object,
+    *,
+    stage: str,
+) -> Mapping[str, object]:
+    if (
+        not isinstance(path_value, str)
+        or not path_value
+        or not _is_sha256_text(digest_value)
+    ):
+        raise EvidenceIntegrityError(
+            "JSON artifact link is malformed",
+            stage=stage,
+        )
+    path = _inside(attempt, path_value)
+    if path.is_symlink() or not path.is_file():
+        raise EvidenceIntegrityError(
+            "JSON artifact is not a regular file",
+            stage=stage,
+        )
+    raw = path.read_bytes()
+    if sha256(raw).hexdigest() != digest_value:
+        raise EvidenceIntegrityError(
+            "JSON artifact failed exact hash verification",
+            stage=stage,
+        )
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise EvidenceIntegrityError(
+            "JSON artifact is malformed",
+            stage=stage,
+        ) from error
+    if not isinstance(value, Mapping) or canonical_json_bytes(value) != raw:
+        raise EvidenceIntegrityError(
+            "JSON artifact is not a canonical object",
+            stage=stage,
+        )
+    return value
 
 
 def _read_zarr(attempt: Path, artifact: Mapping[str, object], *, complex_values: bool) -> np.ndarray:

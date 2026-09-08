@@ -55,16 +55,18 @@ hashes explain mechanics only; they do not transfer acceptance or consumers.
 ## Deliver executable behavior in slices
 
 The public V1 documentation and integrated runtime are complete in the
-Human-accepted dev1–dev6 scope. All 13 ordered QMD/IPYNB lesson pairs exercise
-that implementation. Full V1 is `STABILIZED`; acceptance, stabilization, and
-integration do not imply release.
+Human-accepted dev1–dev6 scope. The 13 ordered QMD/IPYNB lesson pairs that
+existed at stabilization exercised that implementation. The current Tutorial
+adds and renumbers documentation-only TARGET Chapters; it does not retroactively
+change the historical slice identities below. Full V1 is `STABILIZED`;
+acceptance, stabilization, and integration do not imply release.
 
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
 that row; the current Full V1 acceptance covers their combined public
 semantics.
 
-| Runtime slice | Executable scope | Behavior postponed by this slice |
+| Historical runtime slice | Executable scope at that slice | Behavior postponed by that slice |
 |---|---|---|
 | `1.0.0.dev3` — Author and analyze, Lessons 1–5 | Pint and primitive R/L/C authoring; Plan sealing; one logical Port; authoring schematic and `run.explain()`; exact Julia preparation and process protocol; original one-Port/no-trace `solve_direct` S/Y/Z; loaded diagonal root; primitive multi-variable/multi-objective CMA-ES over `DiagonalRootSpec.frequency` and `.linewidth` on a supported retained View; typed Results, presentation, standalone Report HTML, receipt verification, and restart-safe Direct/root/optimization `resolve()` | Runtime behavior taught in Lessons 6–13; the one-Port/no-trace limit applies only to `solve_direct`, not to `optimize_direct` or the general View law |
 | `1.0.0.dev4` — Reusable composition, Lessons 6–8 | Frozen custom Libraries, exact factory provenance, declaration-ordered Composite public parameters, complete Composite and mutual-coupling snapshots, identity/`AffineMap` fan-out, recursive primitive expansion, and same-project catalog reuse | RLGC/transmission lines, N-port/PTC/transform, compiled schematics, full explain tables, inventory, extrapolation authorization/evidence, expanded Direct quantities, Julia NFC parity, HB, and the Lessons 9–13 runtime behavior |
@@ -78,12 +80,20 @@ evidence, and the expanded Direct catalog. Dev6 extended the same request,
 selected-network, workspace, and receipt authorities with HB; no second Port,
 topology, schema, optimizer, or workspace model remains reachable.
 
-The `dev3` slice implements the exact
-[identity schema bundle](../../src/scnsim/_schemas/identity-v1.schema.json),
-replacement/versioned workspace contract, portable catalog/runtime provenance,
-and [diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
-Each later slice extends those same authorities rather than introducing a
-parallel schema, workspace, or fallback runtime.
+The `dev3` slice implemented the Full V1 schema baseline, including scientific
+and receipt-side definitions retained in
+[`identity-v1.schema.json`](../../src/scnsim/_schemas/identity-v1.schema.json)
+and still referenced by the current bundle, plus the replacement/versioned
+workspace contract, portable catalog/runtime provenance, and
+[diagonal-root numerical procedure](diagonal-root-numerical-procedure.qmd).
+The current
+[identity schema bundle](../../src/scnsim/_schemas/identity-v2.schema.json)
+references only named retained primitives and dependencies while owning the
+replacement structured Plan, Parameter, Request, and single-point and batch
+Result envelopes. It does not expose the old Plan, request, or whole Result
+envelopes as current; V1 is not a parallel current schema for them. Historical
+later slices extended the same scientific and workspace authorities rather
+than introducing a fallback runtime.
 
 The final row has no postponed behavior inside the accepted Full V1 scope.
 Explicit limitations such as HB optimization, implicit grid interpolation,

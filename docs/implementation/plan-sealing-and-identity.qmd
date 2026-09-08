@@ -4,7 +4,9 @@ subtitle: "When is a Plan immutable, and what is safe to share?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** `STABILIZED` numerical/runtime identity baseline. Structured
+authoring alignment remains a separate `CONVERGING` target with implementation
+alignment pending.
 
 ## Seal each authoring graph at its ownership boundary
 
@@ -15,11 +17,39 @@ private graph before returning an immutable `ComponentInstance`.
 permanently seals the outer Python Plan and canonical snapshot. Calling
 `add()`, `net()`, `ground()`, `expose_pin()`, `add_port()`, or another mutator
 on either sealed authoring graph raises `PlanSealedError`; SCNSim does not keep
-a hidden mutable copy.
+a hidden mutable copy. This paragraph describes the executable baseline:
+`net()` and callable `ground()` are not the current TARGET authoring spelling.
 
-The Run supports any number of Refs, Specs, and ParameterSets against its
-snapshot. Execution never mutates that snapshot. Composite sealing and
-recursive expansion are specified separately in
+The target [structured-authoring contract](../contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
+replaces that frozen mutator vocabulary with buses, structures, N-endpoint
+`link()`, and dedicated `ground_pins()`. It retains the same seal boundary:
+each operation validates before atomic commit, complete validation runs at
+`CompositePlan.build()`, immutable render capture, and `CircuitRun` sealing,
+and every target mutator raises `PlanSealedError` after seal. A failed target
+preflight preserves every previously committed ID, zero-wire equivalence,
+diagnostic source path, and provenance fact; it adds no history for the
+rejected attempt, leaves the proposed ID reusable, and keeps the graph editable.
+Immutable render capture validates that editable graph but never seals it. This
+page does not claim those TARGET bytes are implemented.
+
+Complete validation distinguishes registration, terminal binding, and
+structural use. Ordinary two-terminal native bodies must belong to exactly one
+structure; a complete Composite occurrence or native multi-terminal body may
+remain an independent peer or be used once when its schema permits. Required
+native terminals remain bound; Composite public pins may be partly or entirely
+externally open. Equivalent differently named public pins retain distinct
+interface identities, and adding one changes Plan identity without adding a
+physical node. The seal
+records that choice rather than inferring it from connectivity or layout.
+
+The current Run supports any number of Refs, Specs, and ParameterSets against
+its snapshot. The `CONVERGING` Parameter System target adds independently
+defined refs and ordered spaces while preserving the same no-mutation rule.
+Only definitions actually consumed by registered physical fields enter that
+target Plan snapshot; unused definitions do not. Exact target identity belongs
+to the [Parameter System Contract](../contracts/parameter-system.qmd), not this
+implementation page. Composite sealing and recursive expansion are specified
+separately in
 [Composite Snapshots and Recursive Expansion](composite-snapshots-and-recursive-expansion.qmd).
 
 A change to sealed topology, an authoring baseline, Ports, couplings, or a
@@ -39,9 +69,34 @@ one-way-upgrade, and stale-handle behavior is defined in
 
 | Identity | Includes | Excludes |
 |---|---|---|
-| Plan | canonical component schemas, topology, nodes, ground, Ports, couplings, baselines, and catalog source identity | workspace path, display theme, schematic grouping, execution history |
+| Plan | canonical component schemas, topology, nodes, authored N-link IDs and unordered member sets, effective ground membership and local ownership, Ports, couplings, baselines, and catalog source identity | workspace path, display theme, diagram-only layout or visual grouping, execution history |
 | Request | Plan, Ref lineage, Spec, bound ParameterSet, operation, and numerical runtime | workspace location, progress display, and attempt history |
 | Evidence | request plus workspace binding, source units, runtime files, attempt, artifacts, and receipt hashes | mutable latest pointers |
+
+Target alignment uses one normalized immutable semantic record containing the
+scope hierarchy, occurrence table, physical-leaf table, final physical-endpoint
+connectivity, consumed definitions, and field bindings. Recursive traversal and
+flat lookup are views over that record, not competing semantic authorities.
+Plan identity includes only consumed independent definitions and physical-field
+bindings, while request identity includes one effective point or exact ordered
+space. Unused definitions and selected values remain outside Plan identity.
+
+Changed machine envelopes use successor `schema_version=2`; unchanged inner
+scientific algorithm IDs remain intact. No old/new authoring or artifact
+identity compatibility is promised. Source provenance remains separate.
+Source-unit spelling and `ground_pins()` call grouping/order remain outside
+semantic Plan hashing as already specified; no additional exclusion is created
+here. The canonical encoder owner implements this record and envelope. They add
+no public API.
+
+That same future alignment binds scoped N-link membership, final zero-wire
+equivalence, public-boundary ownership, and canonical-ground membership. A
+fixed link's endpoint tuple order is nonsemantic; replacing one N-link with
+several binary links is a different authored structure even when electrically
+equivalent. Effective grounded-net membership and the owner-local grounding
+role remain part of the Plan. Only `ground_pins()` call grouping and tuple order
+are source provenance excluded from physical and diagram identity; they do not
+create another ground or visual rail.
 
 Physical values cross the computation boundary as coherent-SI magnitude,
 canonical SI unit, and declared dimensionality. Source unit and authoring form

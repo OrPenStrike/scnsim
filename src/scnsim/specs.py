@@ -9,11 +9,12 @@ request encoder the single identity authority.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from html import escape
 from math import isfinite
 from types import MappingProxyType
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pint import Quantity
@@ -21,12 +22,30 @@ from pint import Quantity
 from . import units
 from ._canonical import _identifier
 from ._scaffold import unavailable
-from .authoring import CoordinateRef, ElectricNodeRef, ParameterRef, PortRef
-from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec
+from .authoring import (
+    CoordinateRef,
+    ElectricNodeRef,
+    ParameterRef,
+    PortRef,
+)
+from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec, SCNSimValidationError
+from .presentation import Theme, _require_theme
 from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_result
+
+if TYPE_CHECKING:
+    from ._diagram_spec import CircuitDiagramSpec
 
 
 Coordinate = str | ElectricNodeRef | CoordinateRef
+
+
+class DiagramSide(str, Enum):
+    """Requested perimeter side for a logical Port in an authoring diagram."""
+
+    LEFT = "left"
+    RIGHT = "right"
+    TOP = "top"
+    BOTTOM = "bottom"
 
 
 def _coordinate_id(value: Coordinate) -> str:
@@ -46,10 +65,10 @@ def _parameter_key(value: ParameterRef) -> tuple[str, str]:
             "optimization parameters must be ParameterRef values",
             stage="spec_validation",
         )
-    component_id = getattr(value, "component_id", None)
+    definitions_id = getattr(value, "definitions_id", None)
     parameter_id = getattr(value, "id", None)
-    if isinstance(component_id, str) and isinstance(parameter_id, str):
-        return component_id, parameter_id
+    if isinstance(definitions_id, str) and isinstance(parameter_id, str):
+        return definitions_id, parameter_id
     raise InvalidOptimizationSpec(
         "optimization parameters must be ParameterRef values",
         stage="spec_validation",
@@ -1011,12 +1030,19 @@ class ReportSpec:
     """Choose exact existing Analysis Results for a pure derived report."""
 
     inputs: tuple[AnalysisResult, ...]
+    theme: Theme = Theme.AUTO
 
-    def __init__(self, *, inputs: Sequence[AnalysisResult]) -> None:
+    def __init__(
+        self,
+        *,
+        inputs: Sequence[AnalysisResult],
+        theme: Theme = Theme.AUTO,
+    ) -> None:
         checked = tuple(inputs)
         if not checked or not all(_is_verified_analysis_result(item) for item in checked):
             raise TypeError("ReportSpec.inputs must be nonempty AnalysisResult values")
         object.__setattr__(self, "inputs", checked)
+        object.__setattr__(self, "theme", _require_theme(theme))
 
 
 def _canonical_value(value: object) -> object:
@@ -1024,24 +1050,12 @@ def _canonical_value(value: object) -> object:
     return record() if callable(record) else value
 
 
-@dataclass(frozen=True, slots=True)
-class CircuitDiagramSpec:
-    representation: Literal["authoring", "compiled"] = "authoring"
-    theme: Literal["auto", "light", "dark"] = "auto"
-    show_parameter_values: bool = False
+def __getattr__(name: str) -> object:
+    """Load diagram-only declarations only for explicit diagram consumers."""
 
-    def __init__(
-        self,
-        *,
-        representation: Literal["authoring", "compiled"] = "authoring",
-        theme: Literal["auto", "light", "dark"] = "auto",
-        show_parameter_values: bool = False,
-    ) -> None:
-        object.__setattr__(self, "representation", representation)
-        object.__setattr__(self, "theme", theme)
-        object.__setattr__(self, "show_parameter_values", show_parameter_values)
-        self.__post_init__()
+    if name != "CircuitDiagramSpec":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from ._diagram_spec import CircuitDiagramSpec
 
-    def __post_init__(self) -> None:
-        if self.representation not in {"authoring", "compiled"} or self.theme not in {"auto", "light", "dark"}:
-            raise ValueError("invalid diagram representation or theme")
+    globals()[name] = CircuitDiagramSpec
+    return CircuitDiagramSpec

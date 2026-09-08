@@ -1,56 +1,115 @@
 ---
-title: "Compilation, Coordinates, and Network Views"
+title: "Wiring Endpoints, Coordinates, and Network Views"
 ---
 
 ::: {.callout-warning}
-## Human-accepted Full V1 concept
+## Accepted View semantics; CONVERGING parameter binding
 
-This page explains the accepted Full V1 design. It does not define topology,
-coordinate mathematics, execution, or failure behavior; the linked Runtime
-Contract remains the sole authority.
+The View and reduction meanings on this page remain accepted Full V1
+semantics. The structured authoring examples that supply the Plan are a
+separate `CONVERGING` target. Independent parameter definitions, spaces, and
+per-point realization are also `CONVERGING`; exact target behavior belongs to
+the Parameter System Contract. Exact transforms, capabilities, and failures
+belong to the linked Runtime Contract.
 :::
 
-## Design pressure
+## One circuit can support several questions
 
-One declared circuit often supports several analysis questions: an untouched
-network response, a probe-compensated view, a paired-node representation, or a
-smaller retained boundary. Copying or mutating the circuit for each question
-would make it unclear which circuit produced an answer and would invite Direct
-and HB to diverge.
+Consider a floating circuit with physical terminals `floating_plus` and
+`floating_minus`. Those two terminals remain part of the authored circuit.
+One analysis may inspect both original terminals; another may ask for common
+and differential coordinates; a third may retain only the differential
+coordinate.
 
-## Selected abstraction {#network-view-lineage}
+Those are different questions about one Plan. They are not three rewired
+circuits.
 
-SCNSim keeps physical compilation with the original sealed Plan. A
-`NetworkViewRef` is instead an immutable, ordered lineage from that Plan. Its
-pipeline separates a change to the effective topology from a change to the
-coordinates or boundary used to inspect it. Direct and HB consume the same
-lineage, then either realize it faithfully or do not run it.
+## Do not collapse three kinds of identity
 
-The final view names selected node coordinates, not a new circuit or a
-backend-specific port list.
+| Kind | What it means | What it does not mean |
+|---|---|---|
+| `BusRef` | one declared net used directly for ordinary wiring | a screen position or signal-flow direction |
+| `TapRef` | one named contact on its bus, sharing that bus's electrical node | a new node or a layout command |
+| `PinRef` | a native terminal or a child boundary exposed to its parent | an analysis coordinate merely because its ID says `tap` |
+| `GroundRef` | the scope-local endpoint for the one canonical reference | a public child pin or a page-wide drawing rail |
+| node coordinate | the named electrical coordinate exposed for analysis | a drawing location |
+| `NetworkViewRef` | an immutable ordered analysis lineage derived from the sealed Plan | a replacement `CircuitPlan` |
 
-## Problem solved
+A bus can have several taps while retaining one electrical node. A child pin
+can expose that node across an ownership boundary. A coordinate can make the
+node eligible for analysis. Each role is explicit; none is inferred from the
+screen position or from a name such as “readout.”
 
-This allows one model to support several honest views while retaining the
-ancestry needed to explain each. It prevents a compensated probe from being
-mistaken for a physical change, preserves coordinate identity through a
-transform, and makes an omitted node a deliberate boundary choice rather than
-a matrix slice with unstated assumptions.
+The target `link(endpoints=(...))` joins two or more eligible `BusRef`,
+`TapRef`, or `PinRef` handles as one direct zero-wire relation. It neither
+creates an analysis coordinate nor accepts a `GroundRef`. External grounding
+instead uses `ground_pins(pins=(...))` on public pins, while intrinsic grounded
+branches continue to terminate at `scope.ground`. These declarations may make
+several owner-local handles electrically equal without making private child
+handles public.
 
-## Intentionally not owned
+## Original network first, selected View only when needed {#network-view-lineage}
 
-This concept does not introduce a reduced `CircuitPlan`, manual transform
-weights, a backend-specific reduction language, or public access to anonymous
-internal coordinates. It also does not state the transform or elimination
-mathematics; those normative definitions remain in the Runtime Contract and
-its cited Knowledge pages.
+`CircuitRun(plan=...)` seals the complete Plan and supplies `run.original`.
+That root `NetworkViewRef` asks about the original network without a
+reduction. A later pipeline can derive another immutable Ref:
+
+1. PTC changes the effective topology seen by a selected analysis while
+   preserving the declared Port evidence it compensates.
+2. `transform_pair()` changes the coordinate representation, such as
+   physical plus/minus terminals to common/differential coordinates.
+3. `retain()` selects the boundary kept for a particular calculation.
+
+The order matters and remains visible in the Ref lineage. Direct and HB must
+either realize that same final View faithfully or fail closed.
+
+## Values are bound before a View is realized
+
+A `ParameterSet` selects values only for refs already consumed by the Plan. A
+`ParameterSpace` asks SCNSim to realize the same Plan and selected View at an
+ordered collection of points. Every point reassembles parameter-dependent
+native values, transforms, matrices, and reductions; the Plan topology and the
+View lineage do not become mutable batch state.
+
+Frequency grids, matrix indices, HB cases, and modes remain Result dimensions,
+not parameter axes. A scalar sweep at a fixed transmission-line RLGC value may
+track an accepted root branch. This target does not track that same root across
+changing complete RLGC matrices; an unsupported request fails rather than
+substituting independent root selection.
+
+## The diagram remains a Plan projection
+
+Automatic Semantic Circuit Diagram Layout System (ASCDLS) diagrams explain the
+authored Plan or its deterministic compiler expansion. A parameterized diagram
+may project one explicit `ParameterSet`, but it does not render a selected
+`NetworkViewRef`, PTC-effective topology, solver state, sweep, or Result.
+Rendering cannot create or mutate a View.
+
+For the floating example, the original diagram therefore continues to show
+`floating_plus` and `floating_minus`. A Result may be indexed by
+`floating.common` and `floating.differential`, but those analysis
+coordinates are not new physical terminals and are not visually reparented
+into the circuit.
+
+## Why this separation matters
+
+Keeping the Plan and View distinct lets one model support several honest
+questions while preserving their ancestry. It prevents a compensated probe
+from being mistaken for a fabrication change, a transformed coordinate from
+being mistaken for a wire, and a retained matrix boundary from being mistaken
+for a complete new circuit.
+
+This concept does not introduce a reduced `CircuitPlan`, public access to
+anonymous child coordinates, arbitrary transform weights, or backend-specific
+port lists.
 
 ## Contract sections
 
 - [Seal one Plan into one Run](../v1-runtime-contract.qmd#seal-one-plan-into-one-run)
-- [Declare the floating-qubit Ref graph without executing](../v1-runtime-contract.qmd#floating-qubit-ref-graph)
+- [Declare the floating-circuit Ref graph](../v1-runtime-contract.qmd#floating-qubit-ref-graph)
 - [Shared topology and unified node views](../v1-runtime-contract.qmd#shared-topology-and-unified-node-views)
 - [Selective Port-Termination Compensation](../v1-runtime-contract.qmd#selective-port-termination-compensation-ptc-is-a-shared-topology-step)
 - [Automatic paired-node coordinates](../v1-runtime-contract.qmd#automatic-paired-node-coordinates-are-a-shared-view-step)
 - [Retain an arbitrary node-coordinate view](../v1-runtime-contract.qmd#retain-an-arbitrary-node-coordinate-view)
-- [Terminal-operation capability](../v1-runtime-contract.qmd#terminal-operation-capability)
+- [Authoring and compiled schematics](../v1-runtime-contract.qmd#authoring-and-compiled-schematics)
+- [Parameter System contract](../contracts/parameter-system.qmd)

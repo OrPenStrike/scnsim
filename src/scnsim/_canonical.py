@@ -8,6 +8,7 @@ for primitive/Composite Plans and the closed dev5 Direct envelopes.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+import ast
 import base64
 import csv
 from decimal import Decimal, InvalidOperation
@@ -360,46 +361,6 @@ def safe_join(root: Path, value: str) -> Path:
     return target
 
 
-def _endpoint(value: Mapping[str, object]) -> dict[str, object]:
-    if set(value) != {"component_path", "pin_id"}:
-        raise _validation("endpoint has unsupported fields")
-    raw_path = value.get("component_path")
-    if not isinstance(raw_path, Sequence) or isinstance(raw_path, (str, bytes)) or not raw_path:
-        raise _validation("endpoint component_path must be nonempty segments")
-    path = [_identifier(segment, field="component_path") for segment in raw_path]
-    return {"component_path": path, "pin_id": _identifier(value.get("pin_id"), field="pin_id")}
-
-
-def canonical_endpoints(endpoints: Iterable[Mapping[str, object]]) -> list[dict[str, object]]:
-    """Canonical endpoint-set order shared by Plan nodes and internal IDs."""
-
-    encoded = [_endpoint(endpoint) for endpoint in endpoints]
-    if not encoded:
-        raise _validation("a node needs at least one endpoint")
-    encoded.sort(key=lambda item: (tuple(item["component_path"]), item["pin_id"]))
-    if len({(tuple(item["component_path"]), item["pin_id"]) for item in encoded}) != len(encoded):
-        raise _validation("node endpoints must be unique")
-    return encoded
-
-
-def internal_node_id(endpoints: Iterable[Mapping[str, object]]) -> str:
-    """Return the opaque endpoint-derived anonymous-node identity."""
-
-    payload = {
-        "schema": "scnsim.internal_node",
-        "schema_version": 1,
-        "endpoints": canonical_endpoints(endpoints),
-    }
-    return f"internal-{sha256_hex(payload)}"
-
-
-def _component_key(component: Mapping[str, object]) -> tuple[str, ...]:
-    path = component.get("component_path")
-    if not isinstance(path, Sequence) or isinstance(path, (str, bytes)) or not path:
-        raise _validation("component snapshot requires component_path")
-    return tuple(_identifier(item, field="component_path") for item in path)
-
-
 def _sort_id_maps(values: Iterable[Mapping[str, object]], *, key: str = "id") -> list[dict[str, object]]:
     copied = [dict(value) for value in values]
     copied.sort(key=lambda value: _identifier(value.get(key), field=key))
@@ -409,365 +370,246 @@ def _sort_id_maps(values: Iterable[Mapping[str, object]], *, key: str = "id") ->
 
 
 def canonical_plan_document(snapshot: Mapping[str, object]) -> dict[str, object]:
-    """Close the primitive/full-V1 Plan ordering before computing its hash.
+    """Close the one normalized structured-authoring record as a V2 Plan.
 
-    The compiler accepts primitive, recursive Composite, and RLGC realizations;
-    this encoder closes their shared full-V1 Plan identity ordering.
+    ``AuthoringSnapshot.source_provenance`` is intentionally not accepted
+    here.  Recursive traversal and compiler lookup are projections of these
+    normalized tables, never additional records hashed beside them.
     """
 
     document = dict(snapshot)
-    document["schema"] = "scnsim.plan"
-    document["schema_version"] = 1
-    document["ground_id"] = "ground"
     required = {
-        "schema", "schema_version", "plan_id", "ground_id", "catalog_sources",
-        "components", "nodes", "grounded_endpoints", "ports", "couplings",
+        "schema", "schema_version", "plan_id", "scope_hierarchy",
+        "occurrences", "physical_leaves", "connectivity", "parameter_closure",
     }
-    if set(document) != required:
-        raise _validation("plan snapshot fields do not match identity-v1", fields=sorted(document))
+    if set(document) != required or document.get("schema") != "scnsim.authoring_snapshot" or document.get("schema_version") != 2:
+        raise _validation("authoring snapshot does not match the structured V2 handoff", fields=sorted(document))
+    document["schema"] = "scnsim.plan"
     document["plan_id"] = _identifier(document["plan_id"], field="plan_id")
-    catalogs = [dict(item) for item in _iter_mappings(document["catalog_sources"], "catalog_sources")]
-    catalogs.sort(key=lambda item: _nfc(_as_str(item.get("catalog_id"), "catalog_id")))
-    if len({_nfc(_as_str(item.get("catalog_id"), "catalog_id")) for item in catalogs}) != len(catalogs):
-        raise _validation("catalog_id values must be unique")
-    document["catalog_sources"] = catalogs
-    components = [_canonical_component(item) for item in _iter_mappings(document["components"], "components")]
-    components.sort(key=_component_key)
-    if len({_component_key(item) for item in components}) != len(components):
-        raise _validation("component paths must be unique")
-    document["components"] = components
-    nodes = [_canonical_node(item) for item in _iter_mappings(document["nodes"], "nodes")]
-    nodes.sort(key=lambda item: _nfc(_as_str(item.get("node_id"), "node_id")))
-    if len({_nfc(_as_str(item.get("node_id"), "node_id")) for item in nodes}) != len(nodes):
-        raise _validation("node IDs must be unique")
-    document["nodes"] = nodes
-    document["grounded_endpoints"] = canonical_endpoints(_iter_mappings(document["grounded_endpoints"], "grounded_endpoints")) if document["grounded_endpoints"] else []
-    ports = [dict(item) for item in _iter_mappings(document["ports"], "ports")]
-    # Port declaration order is physical and intentionally retained.
-    if len({_identifier(item.get("port_id"), field="port_id") for item in ports}) != len(ports):
-        raise _validation("port IDs must be unique")
-    document["ports"] = ports
-    document["couplings"] = _sort_id_maps(_iter_mappings(document["couplings"], "couplings"))
+
+    def path_of(value: Mapping[str, object], *, field: str = "path") -> tuple[str, ...]:
+        path = value.get(field)
+        if not isinstance(path, Sequence) or isinstance(path, (str, bytes)) or not path:
+            raise _validation("structured record requires a nonempty occurrence path", field=field)
+        return tuple(_identifier(item, field=field) for item in path)
+
+    occurrences = [dict(item) for item in _iter_mappings(document["occurrences"], "occurrences")]
+    occurrences.sort(key=path_of)
+    if len({path_of(item) for item in occurrences}) != len(occurrences):
+        raise _validation("occurrence paths must be unique")
+    document["occurrences"] = occurrences
+
+    leaves = [dict(item) for item in _iter_mappings(document["physical_leaves"], "physical_leaves")]
+    leaves.sort(key=path_of)
+    if len({path_of(item) for item in leaves}) != len(leaves):
+        raise _validation("physical-leaf paths must be unique")
+    occurrence_paths = {path_of(item) for item in occurrences}
+    if any(path_of(item) not in occurrence_paths for item in leaves):
+        raise _validation("physical leaf has no owning occurrence")
+    document["physical_leaves"] = leaves
+
+    connectivity = dict(_mapping(document["connectivity"], "connectivity"))
+    expected_connectivity = {
+        "physical_endpoints", "endpoint_nets", "node_coordinates", "canonical_ground", "ports", "couplings",
+    }
+    if set(connectivity) != expected_connectivity or connectivity.get("canonical_ground") != "ground":
+        raise _validation("structured connectivity fields are invalid")
+    endpoints = [dict(item) for item in _iter_mappings(connectivity["physical_endpoints"], "physical_endpoints")]
+    endpoints.sort(key=lambda item: (path_of(item), _identifier(item.get("pin"), field="pin")))
+    endpoint_keys = [(path_of(item), _identifier(item.get("pin"), field="pin")) for item in endpoints]
+    if len(set(endpoint_keys)) != len(endpoint_keys):
+        raise _validation("physical endpoints must be unique")
+    connectivity["physical_endpoints"] = endpoints
+    endpoint_nets = [dict(item) for item in _iter_mappings(connectivity["endpoint_nets"], "endpoint_nets")]
+    endpoint_nets.sort(key=lambda item: canonical_json_bytes(item))
+    if len({canonical_json_bytes(item.get("endpoint")) for item in endpoint_nets}) != len(endpoint_nets):
+        raise _validation("structural endpoints must map to one final net")
+    connectivity["endpoint_nets"] = endpoint_nets
+    node_coordinates = [
+        dict(item) for item in _iter_mappings(connectivity["node_coordinates"], "node_coordinates")
+    ]
+    final_nets: list[str] = []
+    compiler_nodes: list[str] = []
+    for node in node_coordinates:
+        if set(node) != {"final_net", "compiler_node_id", "visibility", "public_aliases"}:
+            raise _validation("node-coordinate fields are invalid")
+        final_nets.append(_identifier(node["final_net"], field="final_net"))
+        compiler_nodes.append(_identifier(node["compiler_node_id"], field="compiler_node_id"))
+        if node["visibility"] not in {"public", "internal"}:
+            raise _validation("node-coordinate visibility is invalid")
+        aliases = node["public_aliases"]
+        if not isinstance(aliases, Sequence) or isinstance(aliases, (str, bytes)):
+            raise _validation("node-coordinate aliases must be an ordered array")
+    if len(set(final_nets)) != len(final_nets) or len(set(compiler_nodes)) != len(compiler_nodes):
+        raise _validation("node-coordinate identities must be unique")
+    if any(item.get("net") not in set(final_nets) | {"ground"} for item in endpoints):
+        raise _validation("physical endpoint targets an unknown final net")
+    connectivity["node_coordinates"] = node_coordinates  # Compiler order is explicit.
+    ports = [dict(item) for item in _iter_mappings(connectivity["ports"], "ports")]
+    port_ids = [_identifier(item.get("id"), field="port.id") for item in ports]
+    if len(set(port_ids)) != len(port_ids):
+        raise _validation("Port IDs must be unique")
+    connectivity["ports"] = ports  # Declaration order is semantic.
+    connectivity["couplings"] = _sort_id_maps(
+        _iter_mappings(connectivity["couplings"], "couplings")
+    )
+    document["connectivity"] = connectivity
+
+    closure = dict(_mapping(document["parameter_closure"], "parameter_closure"))
+    if set(closure) != {"definitions", "field_bindings"}:
+        raise _validation("parameter closure fields are invalid")
+    definitions = [dict(item) for item in _iter_mappings(closure["definitions"], "definitions")]
+    definitions.sort(key=lambda item: _parameter_ref_key(item))
+    definition_keys = [_parameter_ref_key(item) for item in definitions]
+    if len(set(definition_keys)) != len(definition_keys):
+        raise _validation("consumed parameter definitions must be unique")
+    bindings = [dict(item) for item in _iter_mappings(closure["field_bindings"], "field_bindings")]
+    bindings.sort(key=lambda item: (path_of(item), _identifier(item.get("field"), field="field")))
+    binding_keys = [(path_of(item), _identifier(item.get("field"), field="field")) for item in bindings]
+    if len(set(binding_keys)) != len(binding_keys):
+        raise _validation("physical fields cannot have competing parameter bindings")
+    for binding in bindings:
+        if _parameter_ref_key(binding.get("parameter")) not in set(definition_keys):
+            raise _validation("physical field binding names an unconsumed parameter")
+    closure["definitions"] = definitions
+    closure["field_bindings"] = bindings
+    document["parameter_closure"] = closure
     return canonical_value(document)  # type: ignore[return-value]
 
 
-def _canonical_component(
-    component: Mapping[str, object], *, parent_path: tuple[str, ...] = ()
-) -> dict[str, object]:
-    """Close one snapshot and turn its local paths into Plan-relative paths."""
+def canonical_plan_snapshot(snapshot: object) -> dict[str, object]:
+    """Canonicalize an ``AuthoringSnapshot`` without importing model types."""
 
-    result = dict(component)
-    local_path = _component_key(result)
-    path = local_path if parent_path and local_path[:len(parent_path)] == parent_path else parent_path + local_path
-    result["component_path"] = list(path)
-    result["parameter_bindings"] = _canonical_bound_parameters(
-        _iter_mappings(result.get("parameter_bindings"), "parameter_bindings"),
-        path=path,
-        parent_path=parent_path,
-        local_path=local_path,
-    )
-    result["inductive_branches"] = _canonical_inductive_branches(
-        _iter_mappings(result.get("inductive_branches"), "inductive_branches"),
-        path=path,
-        parent_path=parent_path,
-        local_path=local_path,
-    )
-    pins = [_identifier(pin, field="pin_order") for pin in _sequence(result.get("pin_order"), "pin_order")]
-    if not pins or len(set(pins)) != len(pins):
-        raise _validation("component pin declaration order must be unique and nonempty")
-    result["pin_order"] = pins
-    realization = result.get("realization")
-    if isinstance(realization, Mapping) and realization.get("kind") == "composite":
-        nested = _canonical_composite_realization(
-            realization, path=path, parent_path=parent_path, local_path=local_path
-        )
-        nested["children"] = [
-            _canonical_component(item, parent_path=path)
-            for item in _iter_mappings(nested.get("children"), "children")
-        ]
-        nested["children"].sort(key=_component_key)
-        if len({_component_key(item) for item in nested["children"]}) != len(nested["children"]):
-            raise _validation("nested component paths must be unique")
-        result["realization"] = nested
-    elif isinstance(realization, Mapping):
-        result["realization"] = _canonical_primitive_realization(
-            realization, path=path, parent_path=parent_path, local_path=local_path
-        )
+    semantic_record = getattr(snapshot, "semantic_record", None)
+    if not isinstance(semantic_record, Mapping):
+        raise TypeError("snapshot must expose an immutable semantic_record mapping")
+    return canonical_plan_document(semantic_record)
+
+
+def canonical_parameters_sha256(parameter_record: Mapping[str, object]) -> str:
+    """Identify one complete effective point, independently of source spelling."""
+
+    return sha256_hex({
+        "schema": "scnsim.parameter_point_identity",
+        "schema_version": 2,
+        "parameters": canonical_parameter_set(parameter_record),
+    })
+
+
+def canonical_resolved_plan_point(
+    point: object, *, plan_sha256: str
+) -> dict[str, object]:
+    """Encode the immutable point handed to the standalone compiler audit."""
+
+    snapshot = getattr(point, "snapshot", None)
+    parameter_record = getattr(point, "parameter_record", None)
+    resolved_fields = getattr(point, "resolved_fields", None)
+    if snapshot is None or not isinstance(parameter_record, Mapping) or not isinstance(resolved_fields, Mapping):
+        raise TypeError("point must be a ResolvedPlanPoint")
+    plan = canonical_plan_snapshot(snapshot)
+    expected_plan_sha = sha256_hex(plan)
+    if _sha256(plan_sha256, field="plan_sha256") != expected_plan_sha:
+        raise _validation("resolved point is paired with a different Plan")
+    units_by_field: dict[tuple[tuple[str, ...], str], str] = {}
+    for leaf in _iter_mappings(plan["physical_leaves"], "physical_leaves"):
+        path = _component_path(leaf.get("path"))
+        for field in _iter_mappings(leaf.get("fields"), "physical leaf fields"):
+            identifier = _identifier(field.get("id"), field="field")
+            unit = _as_str(field.get("unit"), "field.unit")
+            units_by_field[(path, identifier)] = unit
+    if set(resolved_fields) != set(units_by_field):
+        raise _validation("resolved physical fields do not exactly cover the Plan")
+
+    from .units import registry
+
+    rows: list[dict[str, object]] = []
+    for key in sorted(units_by_field):
+        value = resolved_fields[key]
+        unit = units_by_field[key]
+        record = getattr(value, "_record", None)
+        if unit == "rlgc":
+            if not callable(record):
+                raise _validation("resolved RLGC field has no structured record")
+            encoded = record()
+            if not isinstance(encoded, Mapping) or encoded.get("type") != "rlgc":
+                raise _validation("resolved RLGC field is malformed")
+        else:
+            encoded = quantity_envelope(value, si_unit=unit, registry=registry)
+        rows.append({"path": list(key[0]), "field": key[1], "value": encoded})
+    parameters = canonical_parameter_set(parameter_record)
+    return canonical_value({
+        "schema": "scnsim.resolved_plan_point",
+        "schema_version": 2,
+        "plan_sha256": expected_plan_sha,
+        "parameters": parameters,
+        "parameters_sha256": canonical_parameters_sha256(parameters),
+        "resolved_fields": rows,
+    })  # type: ignore[return-value]
+
+
+def canonical_diagram_digests(
+    plan: object, *, representation: str
+) -> dict[str, str]:
+    """Return the representation-tagged diagram facts owned by canonicalization."""
+
+    if representation not in {"authoring", "compiled"}:
+        raise ValueError("representation must be 'authoring' or 'compiled'")
+    if isinstance(plan, Mapping):
+        raw = dict(plan)
+        if raw.get("schema") == "scnsim.plan":
+            raw["schema"] = "scnsim.authoring_snapshot"
+        document = canonical_plan_document(raw)
     else:
-        raise _validation("component snapshot realization must be an object")
-    return result
-
-
-def _canonical_composite_realization(
-    realization: Mapping[str, object], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> dict[str, object]:
-    required = {
-        "kind", "public_parameters", "children", "private_nodes", "grounded_endpoints",
-        "couplings", "public_pin_map", "public_coordinate_map", "public_parameter_maps",
-        "public_inductive_branch_map",
+        document = canonical_plan_snapshot(plan)
+    plan_sha256 = sha256_hex(document)
+    common = {
+        "schema_version": 2,
+        "representation": representation,
+        "plan_sha256": plan_sha256,
     }
-    if set(realization) != required:
-        raise _validation("composite realization fields do not match identity-v1")
-    nested = dict(realization)
-    declarations = [dict(item) for item in _iter_mappings(nested["public_parameters"], "public_parameters")]
-    public_ids = [_identifier(item.get("id"), field="public_parameter.id") for item in declarations]
-    if len(set(public_ids)) != len(public_ids):
-        raise _validation("public parameter declaration order must be unique")
-    nested["public_parameters"] = declarations  # Declaration order is public API.
-    private_nodes: list[dict[str, object]] = []
-    for node in _iter_mappings(nested["private_nodes"], "private_nodes"):
-        entry = dict(node)
-        if set(entry) != {"id", "endpoints"}:
-            raise _validation("private node fields are invalid")
-        entry["id"] = _identifier(entry["id"], field="private_node.id")
-        entry["endpoints"] = _canonical_endpoints_at(
-            _iter_mappings(entry["endpoints"], "private node endpoints"),
-            path=path, parent_path=parent_path, local_path=local_path,
-        )
-        private_nodes.append(entry)
-    private_nodes.sort(key=lambda node: node["id"])
-    if len({node["id"] for node in private_nodes}) != len(private_nodes):
-        raise _validation("private node IDs must be unique")
-    nested["private_nodes"] = private_nodes
-    grounded = _iter_mappings(nested["grounded_endpoints"], "grounded_endpoints")
-    nested["grounded_endpoints"] = _canonical_endpoints_at(
-        grounded, path=path, parent_path=parent_path, local_path=local_path,
-    ) if grounded else []
-    nested["couplings"] = _canonical_couplings(
-        _iter_mappings(nested["couplings"], "couplings"),
-        path=path, parent_path=parent_path, local_path=local_path,
-    )
-    private_by_id = {node["id"]: node for node in private_nodes}
-    nested["public_pin_map"] = _canonical_public_node_maps(
-        _iter_mappings(nested["public_pin_map"], "public_pin_map"),
-        private_by_id=private_by_id,
-        coordinate=False,
-    )
-    nested["public_coordinate_map"] = _canonical_public_node_maps(
-        _iter_mappings(nested["public_coordinate_map"], "public_coordinate_map"),
-        private_by_id=private_by_id,
-        coordinate=True,
-        grounded=nested["grounded_endpoints"],
-    )
-    branches: list[dict[str, object]] = []
-    for mapping in _iter_mappings(nested["public_inductive_branch_map"], "public_inductive_branch_map"):
-        entry = dict(mapping)
-        if set(entry) != {"public_id", "target"}:
-            raise _validation("public inductive branch map fields are invalid")
-        entry["public_id"] = _identifier(entry["public_id"], field="public_id")
-        entry["target"] = _rebase_branch_ref(entry["target"], path=path, parent_path=parent_path, local_path=local_path)
-        branches.append(entry)
-    branches.sort(key=lambda item: item["public_id"])
-    if len({item["public_id"] for item in branches}) != len(branches):
-        raise _validation("public inductive branch IDs must be unique")
-    nested["public_inductive_branch_map"] = branches
-    maps: list[dict[str, object]] = []
-    for parameter_map in _iter_mappings(nested["public_parameter_maps"], "public_parameter_maps"):
-        entry = dict(parameter_map)
-        if set(entry) != {"parameter", "consumers"}:
-            raise _validation("public parameter map fields are invalid")
-        entry["parameter"] = _rebase_parameter_ref(entry["parameter"], path=path, parent_path=parent_path, local_path=local_path)
-        consumers: list[dict[str, object]] = []
-        for consumer in _iter_mappings(entry["consumers"], "parameter consumers"):
-            target = dict(consumer)
-            if set(target) != {"target", "binding"}:
-                raise _validation("parameter consumer fields are invalid")
-            target["target"] = _rebase_parameter_ref(target["target"], path=path, parent_path=parent_path, local_path=local_path)
-            target["binding"] = _canonical_binding(target["binding"], path=path, parent_path=parent_path, local_path=local_path)
-            consumers.append(target)
-        consumers.sort(key=lambda item: _parameter_ref_key(item["target"]))
-        if len({_parameter_ref_key(item["target"]) for item in consumers}) != len(consumers):
-            raise _validation("parameter consumer targets must be unique")
-        entry["consumers"] = consumers
-        maps.append(entry)
-    maps.sort(key=lambda item: _parameter_ref_key(item["parameter"]))
-    if len({_parameter_ref_key(item["parameter"]) for item in maps}) != len(maps):
-        raise _validation("public parameter maps must be unique")
-    nested["public_parameter_maps"] = maps
-    return nested
-
-
-def _canonical_public_node_maps(
-    mappings: Iterable[Mapping[str, object]], *, private_by_id: Mapping[object, Mapping[str, object]],
-    coordinate: bool, grounded: Sequence[Mapping[str, object]] = (),
-) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    grounded_keys = {(tuple(item["component_path"]), item["pin_id"]) for item in grounded}
-    for mapping in mappings:
-        entry = dict(mapping)
-        if set(entry) != {"public_id", "private_node_id"}:
-            raise _validation("public node map fields are invalid")
-        local_id = _identifier(entry["public_id"], field="public_id")
-        private_id = _identifier(entry["private_node_id"], field="private_node_id")
-        node = private_by_id.get(private_id)
-        if node is None:
-            raise _validation("public node map targets an unknown private node", private_node_id=private_id)
-        if coordinate and any((tuple(endpoint["component_path"]), endpoint["pin_id"]) in grounded_keys for endpoint in node["endpoints"]):
-            raise _validation("a public coordinate cannot target the canonical ground", public_id=local_id)
-        # Coordinate IDs are already sealed Plan-node identities.  They may be
-        # a dotted coordinate-only promotion or an explicit shared outer node.
-        entry["public_id"] = local_id
-        entry["private_node_id"] = private_id
-        result.append(entry)
-    result.sort(key=lambda item: item["public_id"])
-    if len({item["public_id"] for item in result}) != len(result):
-        raise _validation("public node IDs must be unique")
-    if len({item["private_node_id"] for item in result}) != len(result):
-        raise _validation("public node maps cannot alias one private node")
-    return result
-
-
-def _canonical_primitive_realization(
-    realization: Mapping[str, object], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> dict[str, object]:
-    result = dict(realization)
-    if not isinstance(result.get("kind"), str):
-        raise _validation("primitive realization needs a kind")
-    for key, value in tuple(result.items()):
-        if key != "kind" and isinstance(value, Mapping) and value.get("kind") in {"constant", "identity", "affine"}:
-            result[key] = _canonical_binding(value, path=path, parent_path=parent_path, local_path=local_path)
-    return result
-
-
-def _canonical_bound_parameters(
-    bindings: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    for binding in bindings:
-        entry = dict(binding)
-        if set(entry) != {"id", "binding"}:
-            raise _validation("bound parameter fields are invalid")
-        entry["id"] = _identifier(entry["id"], field="id")
-        entry["binding"] = _canonical_binding(entry["binding"], path=path, parent_path=parent_path, local_path=local_path)
-        result.append(entry)
-    result.sort(key=lambda item: item["id"])
-    if len({item["id"] for item in result}) != len(result):
-        raise _validation("canonical identifiers must be unique", field="id")
-    return result
-
-
-def _canonical_inductive_branches(
-    branches: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    for branch in branches:
-        entry = dict(branch)
-        if set(entry) != {"id", "positive_endpoint", "negative_endpoint", "inductance"}:
-            raise _validation("inductive branch fields are invalid")
-        entry["id"] = _identifier(entry["id"], field="id")
-        entry["positive_endpoint"] = _rebase_endpoint(entry["positive_endpoint"], path=path, parent_path=parent_path, local_path=local_path)
-        entry["negative_endpoint"] = _rebase_endpoint(entry["negative_endpoint"], path=path, parent_path=parent_path, local_path=local_path)
-        entry["inductance"] = _canonical_binding(entry["inductance"], path=path, parent_path=parent_path, local_path=local_path)
-        result.append(entry)
-    result.sort(key=lambda item: item["id"])
-    if len({item["id"] for item in result}) != len(result):
-        raise _validation("canonical identifiers must be unique", field="id")
-    return result
-
-
-def _canonical_couplings(
-    couplings: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> list[dict[str, object]]:
-    result: list[dict[str, object]] = []
-    for coupling in couplings:
-        entry = dict(coupling)
-        if set(entry) != {"id", "branch_a", "branch_b", "coupling_coefficient", "derived_mutual_inductance"}:
-            raise _validation("mutual coupling fields are invalid")
-        entry["id"] = _identifier(entry["id"], field="id")
-        entry["branch_a"] = _rebase_branch_ref(entry["branch_a"], path=path, parent_path=parent_path, local_path=local_path)
-        entry["branch_b"] = _rebase_branch_ref(entry["branch_b"], path=path, parent_path=parent_path, local_path=local_path)
-        result.append(entry)
-    result.sort(key=lambda item: item["id"])
-    if len({item["id"] for item in result}) != len(result):
-        raise _validation("coupling IDs must be unique")
-    return result
-
-
-def _canonical_binding(
-    binding: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> dict[str, object]:
-    result = dict(_mapping(binding, "parameter binding"))
-    kind = result.get("kind")
-    fields = {
-        "constant": {"kind", "value"},
-        "identity": {"kind", "input"},
-        "affine": {"kind", "input", "slope", "intercept", "support"},
-    }.get(kind)
-    if fields is None or set(result) != fields:
-        raise _validation("parameter binding fields are invalid")
-    if kind != "constant":
-        result["input"] = _rebase_parameter_ref(result["input"], path=path, parent_path=parent_path, local_path=local_path)
-    return result
-
-
-def _canonical_endpoints_at(
-    endpoints: Iterable[Mapping[str, object]], *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]
-) -> list[dict[str, object]]:
-    encoded = [_rebase_endpoint(endpoint, path=path, parent_path=parent_path, local_path=local_path) for endpoint in endpoints]
-    encoded.sort(key=lambda item: (tuple(item["component_path"]), item["pin_id"]))
-    if len({(tuple(item["component_path"]), item["pin_id"]) for item in encoded}) != len(encoded):
-        raise _validation("node endpoints must be unique")
-    return encoded
-
-
-def _rebase_endpoint(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
-    endpoint = _endpoint(_mapping(value, "endpoint"))
-    endpoint["component_path"] = _rebase_path(endpoint["component_path"], path=path, parent_path=parent_path, local_path=local_path)
-    return endpoint
-
-
-def _rebase_parameter_ref(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
-    reference = _mapping(value, "parameter_ref")
-    if set(reference) != {"component_path", "parameter_id"}:
-        raise _validation("parameter ref fields are invalid")
+    connectivity = sha256_hex({
+        **common,
+        "schema": "scnsim.diagram_connectivity_identity",
+        "connectivity": document["connectivity"],
+    })
+    semantic = sha256_hex({
+        **common,
+        "schema": "scnsim.diagram_semantic_identity",
+        "scope_hierarchy": document["scope_hierarchy"],
+        "occurrences": document["occurrences"],
+        "physical_leaves": document["physical_leaves"],
+        "parameter_closure": document["parameter_closure"],
+    })
     return {
-        "component_path": _rebase_path(reference["component_path"], path=path, parent_path=parent_path, local_path=local_path),
-        "parameter_id": _identifier(reference["parameter_id"], field="parameter_id"),
+        "plan_sha256": plan_sha256,
+        "connectivity_sha256": connectivity,
+        "semantic_sha256": semantic,
     }
 
 
-def _rebase_branch_ref(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> dict[str, object]:
-    reference = _mapping(value, "inductive_branch_ref")
-    if set(reference) != {"component_path", "branch_id"}:
-        raise _validation("inductive branch ref fields are invalid")
-    return {
-        "component_path": _rebase_path(reference["component_path"], path=path, parent_path=parent_path, local_path=local_path),
-        "branch_id": _identifier(reference["branch_id"], field="branch_id"),
-    }
+def canonical_expanded_graph_sha256(
+    *,
+    plan_sha256: str,
+    node_order: Sequence[str],
+    resolved_bindings: Sequence[Mapping[str, object]],
+    expanded_branch_rows: Sequence[Mapping[str, object]],
+) -> str:
+    """Bind the exact compiler expansion fields promised to diagram evidence."""
 
-
-def _rebase_path(value: object, *, path: tuple[str, ...], parent_path: tuple[str, ...], local_path: tuple[str, ...]) -> list[str]:
-    raw = _component_path(value)
-    if len(raw) == 1 and parent_path and raw[0] == parent_path[-1] == path[-1]:
-        raise _validation("one-segment component path is ambiguous between current and parent")
-    if parent_path and raw[:len(parent_path)] == parent_path:
-        return list(raw)
-    if raw[:len(local_path)] == local_path:
-        return list(path + raw[len(local_path):])
-    if len(raw) == 1 and raw[0] == path[-1]:
-        return list(path)
-    if len(raw) == 1 and parent_path and raw[0] == parent_path[-1]:
-        return list(parent_path)
-    return list(path + raw)
+    return sha256_hex({
+        "schema": "scnsim.expanded_graph_identity",
+        "schema_version": 2,
+        "plan_sha256": _sha256(plan_sha256, field="plan_sha256"),
+        "node_order": list(node_order),
+        "resolved_bindings": list(resolved_bindings),
+        "expanded_branch_rows": list(expanded_branch_rows),
+    })
 
 
 def _component_path(value: object) -> tuple[str, ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or not value:
         raise _validation("component path must be nonempty segments")
     return tuple(_identifier(segment, field="component_path") for segment in value)
-
-
-def _sequence(value: object, field: str) -> Sequence[object]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise _validation("expected array", field=field)
-    return value
-
-
-def _canonical_node(node: Mapping[str, object]) -> dict[str, object]:
-    result = dict(node)
-    result["node_id"] = _identifier(result.get("node_id"), field="node_id")
-    result["endpoints"] = canonical_endpoints(_iter_mappings(result.get("endpoints"), "node endpoints"))
-    return result
 
 
 def _as_str(value: object, field: str) -> str:
@@ -788,17 +630,25 @@ def _iter_mappings(value: object, field: str) -> list[Mapping[str, object]]:
 
 
 def canonical_parameter_set(parameters: Mapping[str, object]) -> dict[str, object]:
-    """Sort fully resolved ParameterSet bindings by `(component_path, parameter_id)`."""
+    """Close one V2 ParameterSet by logical definition/local identity."""
 
     document = dict(parameters)
-    if set(document) != {"type", "bindings", "allow_extrapolation"} or document.get("type") != "parameter_set":
+    if set(document) != {"type", "bindings", "allow_extrapolation"} or document.get("type") != "parameter_set_v2":
         raise _validation("invalid parameter-set envelope")
     bindings = _iter_mappings(document["bindings"], "parameter bindings")
+    if any(set(item) != {"parameter", "value"} for item in bindings):
+        raise _validation("parameter binding fields are invalid")
+    for item in bindings:
+        reference = _mapping(item["parameter"], "parameter_ref")
+        if set(reference) != {"definitions_id", "parameter_id"}:
+            raise _validation("parameter ref fields are invalid")
     bindings.sort(key=lambda item: _parameter_ref_key(_mapping(item, "parameter binding").get("parameter")))
     if len({_parameter_ref_key(item.get("parameter")) for item in bindings}) != len(bindings):
         raise _validation("parameter bindings must be unique")
     document["bindings"] = [dict(item) for item in bindings]
     authorizations = _iter_mappings(document["allow_extrapolation"], "allow_extrapolation")
+    if any(set(item) != {"definitions_id", "parameter_id"} for item in authorizations):
+        raise _validation("parameter authorization ref fields are invalid")
     authorizations.sort(key=lambda item: _parameter_ref_key(item))
     if len({_parameter_ref_key(item) for item in authorizations}) != len(authorizations):
         raise _validation("allow_extrapolation values must be unique")
@@ -812,26 +662,84 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
     return value
 
 
-def _parameter_ref_key(value: object) -> tuple[tuple[str, ...], str]:
+def _parameter_ref_key(value: object) -> tuple[str, str]:
     ref = _mapping(value, "parameter_ref")
-    if set(ref) != {"component_path", "parameter_id"}:
+    if not {"definitions_id", "parameter_id"}.issubset(ref):
         raise _validation("parameter ref fields are invalid")
-    path = ref["component_path"]
-    if not isinstance(path, Sequence) or isinstance(path, (str, bytes)) or not path:
-        raise _validation("parameter ref component path is invalid")
-    return tuple(_identifier(item, field="component_path") for item in path), _identifier(ref["parameter_id"], field="parameter_id")
+    return (
+        _identifier(ref["definitions_id"], field="definitions_id"),
+        _identifier(ref["parameter_id"], field="parameter_id"),
+    )
+
+
+def canonical_parameter_source(source: Mapping[str, object]) -> dict[str, object]:
+    """Close a point or lazily enumerable ordered parameter-space descriptor."""
+
+    document = dict(source)
+    kind = document.get("kind")
+    if kind == "point":
+        if set(document) != {"kind", "parameters"}:
+            raise _validation("point parameter source fields are invalid")
+        document["parameters"] = canonical_parameter_set(
+            _mapping(document["parameters"], "parameters")
+        )
+    elif kind == "grid":
+        if set(document) != {"kind", "base_parameters", "axes", "shape"}:
+            raise _validation("grid parameter source fields are invalid")
+        document["base_parameters"] = canonical_parameter_set(
+            _mapping(document["base_parameters"], "base_parameters")
+        )
+        axes = [dict(item) for item in _iter_mappings(document["axes"], "axes")]
+        shape = document["shape"]
+        if (
+            not axes
+            or not isinstance(shape, Sequence)
+            or isinstance(shape, (str, bytes))
+            or len(shape) != len(axes)
+        ):
+            raise _validation("grid shape must match its nonempty ordered axes")
+        keys: list[tuple[str, str]] = []
+        for index, axis in enumerate(axes):
+            if set(axis) != {"parameter", "values"}:
+                raise _validation("grid axis fields are invalid")
+            key = _parameter_ref_key(axis["parameter"])
+            values = axis["values"]
+            if not isinstance(values, Sequence) or isinstance(values, (str, bytes)) or not values:
+                raise _validation("grid axes must be nonempty arrays")
+            if isinstance(shape[index], bool) or not isinstance(shape[index], int) or shape[index] != len(values):
+                raise _validation("grid shape disagrees with an axis length")
+            keys.append(key)
+        if len(set(keys)) != len(keys):
+            raise _validation("grid axis parameters must be unique")
+        document["axes"] = axes  # Author order is semantic.
+        document["shape"] = list(shape)
+    elif kind == "points":
+        if set(document) != {"kind", "baseline_parameters", "points"}:
+            raise _validation("listed parameter source fields are invalid")
+        document["baseline_parameters"] = canonical_parameter_set(
+            _mapping(document["baseline_parameters"], "baseline_parameters")
+        )
+        points = document["points"]
+        if not isinstance(points, Sequence) or isinstance(points, (str, bytes)) or not points:
+            raise _validation("listed parameter source must contain points")
+        document["points"] = [
+            canonical_parameter_set(_mapping(item, "listed point")) for item in points
+        ]
+    else:
+        raise _validation("unknown parameter source kind", kind=kind)
+    return canonical_value(document)  # type: ignore[return-value]
 
 
 def canonical_request_document(
     *,
     plan_sha256: str,
     operation: str,
-    ref_lineage: Mapping[str, object],
+    view: Mapping[str, object],
     spec: Mapping[str, object],
-    parameters: Mapping[str, object],
+    parameter_source: Mapping[str, object],
     runtime_semantic: Mapping[str, object],
 ) -> dict[str, object]:
-    """Build the exact closed dev5 Direct request envelope.
+    """Build the exact closed declarative request envelope.
 
     The operation remains deliberately coarse: every scalar Direct evaluation
     shares ``evaluate_direct`` while its closed Spec discriminator selects the
@@ -860,12 +768,12 @@ def canonical_request_document(
         raise _validation("request algorithm does not match operation and Spec", operation=selected_operation, spec_type=spec_type)
     return canonical_value({
         "schema": "scnsim.request",
-        "schema_version": 1,
+        "schema_version": 2,
         "plan_sha256": _sha256(plan_sha256, field="plan_sha256"),
         "operation": selected_operation,
-        "ref_lineage": dict(ref_lineage),
+        "view": dict(view),
         "spec": dict(spec),
-        "parameters": canonical_parameter_set(parameters),
+        "parameter_source": canonical_parameter_source(parameter_source),
         "runtime_semantic": runtime,
     })  # type: ignore[return-value]
 
@@ -959,9 +867,9 @@ def canonical_result_document(document: Mapping[str, object]) -> dict[str, objec
 
     result = dict(document)
     result["schema"] = "scnsim.result"
-    result["schema_version"] = 1
+    result["schema_version"] = 2
     kind = result.get("result_kind")
-    if kind not in _DIRECT_RESULTS:
+    if kind not in _DIRECT_RESULTS | {"parameter_sweep"}:
         raise _validation("result discriminator is outside the runtime", result_kind=kind)
     return canonical_value(result)  # type: ignore[return-value]
 
@@ -1533,9 +1441,10 @@ def _notebook_source_bytes(subject: type[object], _factory: object | None = None
     factories: list[dict[str, str]] = []
     try:
         for candidate in _catalog_lineage(subject):
+            class_source, factory_sources = _notebook_declaration_sources(candidate)
             classes.append({
                 "qualified_class": _catalog_qualified_class(candidate),
-                "source": _normalized_notebook_source(inspect.getsource(candidate)),
+                "source": _normalized_notebook_source(class_source),
             })
             for name, descriptor in candidate.__dict__.items():
                 if name.startswith("_"):
@@ -1545,7 +1454,7 @@ def _notebook_source_bytes(subject: type[object], _factory: object | None = None
                     factories.append({
                         "qualified_class": _catalog_qualified_class(candidate),
                         "name": _identifier(name, field="factory"),
-                        "source": _normalized_notebook_source(inspect.getsource(inspect.unwrap(function))),
+                        "source": _normalized_notebook_source(factory_sources[name]),
                     })
     except (OSError, TypeError) as error:
         raise _validation("notebook catalog source is unavailable") from error
@@ -1555,6 +1464,236 @@ def _notebook_source_bytes(subject: type[object], _factory: object | None = None
         "classes": classes,
         "factories": factories,
     })
+
+
+def _notebook_declaration_sources(candidate: type[object]) -> tuple[str, dict[str, str]]:
+    """Return one class declaration and its factories from source or IPython history.
+
+    Notebook cells deliberately have no importable module file.  When Python
+    cannot recover their source through ``inspect``, the current IPython
+    kernel's raw input history is the only accepted alternate evidence.  The
+    history match is bound to every unwrapped factory's execution location;
+    a namesake in another cell is never provenance for the live catalog.
+    """
+
+    functions = _catalog_factory_functions(candidate)
+    try:
+        return (
+            inspect.getsource(candidate),
+            {name: inspect.getsource(function) for name, function in functions.items()},
+        )
+    except (OSError, TypeError):
+        return _ipython_notebook_declaration_sources(candidate, functions)
+
+
+def _catalog_factory_functions(candidate: type[object]) -> dict[str, object]:
+    """Return the unwrapped public factory functions declared by one catalog."""
+
+    functions: dict[str, object] = {}
+    for name, descriptor in candidate.__dict__.items():
+        if name.startswith("_"):
+            continue
+        function = (
+            descriptor.__func__
+            if isinstance(descriptor, (classmethod, staticmethod))
+            else descriptor
+        )
+        if inspect.isfunction(function):
+            functions[name] = inspect.unwrap(function)
+    return functions
+
+
+def _ipython_notebook_declaration_sources(
+    candidate: type[object], functions: Mapping[str, object]
+) -> tuple[str, dict[str, str]]:
+    """Recover one exact notebook declaration from live IPython cell history.
+
+    A Library with no local factory code has no executable location by which a
+    history declaration could be proven current, so it remains fail-closed.
+    """
+
+    if not functions:
+        raise OSError("notebook catalog has no local factory source location")
+    locations = {
+        name: _ipython_function_location(function)
+        for name, function in functions.items()
+    }
+    execution_counts = {
+        execution_count
+        for execution_count, _, _ in locations.values()
+        if execution_count is not None
+    }
+    if len(execution_counts) > 1 or (
+        execution_counts
+        and any(
+            execution_count is None
+            for execution_count, _, _ in locations.values()
+        )
+    ):
+        raise OSError("notebook catalog factories do not share one declaration cell")
+    execution_count = next(iter(execution_counts), None)
+    matches: list[tuple[str, ast.ClassDef, dict[str, str]]] = []
+    for source in _ipython_history_sources(execution_count):
+        try:
+            parsed = ast.parse(source)
+        except SyntaxError:
+            continue
+        class_node = _ipython_class_node(parsed, candidate.__qualname__)
+        if class_node is None:
+            continue
+        members = {
+            node.name: node
+            for node in class_node.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        factory_sources: dict[str, str] = {}
+        for name, (_, line_number, _) in locations.items():
+            node = members.get(name)
+            if node is None or not _node_covers_line(node, line_number):
+                break
+            factory_sources[name] = _ast_source_segment(source, node)
+        else:
+            if _history_source_matches_functions(source, functions, locations):
+                matches.append((source, class_node, factory_sources))
+    if len(matches) != 1:
+        identities = {
+            _notebook_declaration_identity(source, class_node, factory_sources)
+            for source, class_node, factory_sources in matches
+        }
+        if not matches or len(identities) != 1:
+            raise OSError("notebook execution source is missing or ambiguous")
+    source, class_node, factory_sources = matches[0]
+    return _ast_source_segment(source, class_node), factory_sources
+
+
+def _ipython_function_location(function: object) -> tuple[int | None, int, str]:
+    """Return the trusted IPython execution and line for one live function."""
+
+    code = getattr(function, "__code__", None)
+    filename = getattr(code, "co_filename", "")
+    match = re.fullmatch(r"<ipython-input-([0-9]+)-[0-9a-f]+>", filename)
+    line_number = getattr(code, "co_firstlineno", None)
+    temporary_kernel_file = re.fullmatch(
+        r"(?:.*/)?ipykernel_[^/]+/[0-9]+\.py", filename
+    )
+    if (
+        not isinstance(line_number, int)
+        or line_number < 1
+        or (match is None and temporary_kernel_file is None)
+    ):
+        raise OSError("notebook factory has no IPython execution location")
+    return (
+        int(match.group(1)) if match is not None else None,
+        line_number,
+        filename,
+    )
+
+
+def _ipython_history_sources(execution_count: int | None) -> list[str]:
+    """Return raw current-session IPython cells for one execution or all cells."""
+
+    try:
+        from IPython import get_ipython
+    except ImportError as error:
+        raise OSError("IPython history is unavailable") from error
+    shell = get_ipython()
+    history = getattr(shell, "history_manager", None)
+    if history is None:
+        raise OSError("IPython history is unavailable")
+    matches = [
+        source
+        for _, line, source in history.get_range(raw=True)
+        if (execution_count is None or line == execution_count)
+        and isinstance(source, str)
+    ]
+    if not matches:
+        raise OSError("notebook execution source is missing or ambiguous")
+    return matches
+
+
+def _history_source_matches_functions(
+    source: str,
+    functions: Mapping[str, object],
+    locations: Mapping[str, tuple[int | None, int, str]],
+) -> bool:
+    """Bind raw history to a current code object's trusted execution identity."""
+
+    for name, function in functions.items():
+        execution_count, _, filename = locations[name]
+        if execution_count is not None:
+            continue
+        if not _ipykernel_filename_matches_source(filename, source):
+            return False
+        code = getattr(function, "__code__", None)
+        if code is None or getattr(code, "co_filename", None) != filename:
+            return False
+    return True
+
+
+def _ipykernel_filename_matches_source(filename: str, source: str) -> bool:
+    """Verify IPykernel's source-derived code-object filename without I/O."""
+
+    try:
+        from ipykernel.compiler import get_tmp_hash_seed, murmur2_x86
+    except ImportError:
+        return False
+    expected = f"{murmur2_x86(source, get_tmp_hash_seed())}.py"
+    return Path(filename).name == expected
+
+
+def _notebook_declaration_identity(
+    source: str, class_node: ast.ClassDef, factory_sources: Mapping[str, str]
+) -> bytes:
+    """Return the exact normalized declaration identity used to collapse reruns."""
+
+    return canonical_json_bytes({
+        "class": _normalized_notebook_source(_ast_source_segment(source, class_node)),
+        "factories": [
+            {"name": name, "source": _normalized_notebook_source(factory_sources[name])}
+            for name in sorted(factory_sources)
+        ],
+    })
+
+
+def _ipython_class_node(tree: ast.AST, qualified_name: str) -> ast.ClassDef | None:
+    """Find one non-local class declaration by its exact qualified path."""
+
+    parts = qualified_name.split(".")
+    if not parts or any(not part or part == "<locals>" for part in parts):
+        return None
+    nodes: list[ast.AST] = [tree]
+    for part in parts:
+        matches = [
+            child
+            for node in nodes
+            for child in getattr(node, "body", ())
+            if isinstance(child, ast.ClassDef) and child.name == part
+        ]
+        if len(matches) != 1:
+            return None
+        nodes = matches
+    return nodes[0] if isinstance(nodes[0], ast.ClassDef) else None
+
+
+def _node_covers_line(node: ast.AST, line_number: int) -> bool:
+    """Accept a function's definition or decorator line, but no other source."""
+
+    decorator_lines = [decorator.lineno for decorator in getattr(node, "decorator_list", ())]
+    first_line = min([getattr(node, "lineno", 0), *decorator_lines])
+    last_line = getattr(node, "end_lineno", 0)
+    return first_line <= line_number <= last_line
+
+
+def _ast_source_segment(source: str, node: ast.AST) -> str:
+    """Extract a declaration including decorators from the authoritative cell."""
+
+    lines = source.splitlines(keepends=True)
+    decorator_lines = [decorator.lineno for decorator in getattr(node, "decorator_list", ())]
+    first_line = min([getattr(node, "lineno", 0), *decorator_lines])
+    last_line = getattr(node, "end_lineno", 0)
+    if first_line < 1 or last_line < first_line or last_line > len(lines):
+        raise OSError("notebook declaration has invalid source coordinates")
+    return "".join(lines[first_line - 1:last_line])
 
 
 def _normalized_notebook_source(source: str) -> str:

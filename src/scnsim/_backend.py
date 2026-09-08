@@ -824,12 +824,82 @@ def run_preflight(
                 evidence={"frame": frame},
             )
         return frame
-    if frame.get("schema") != "scnsim.preflight" or frame.get("schema_version") != 1:
+    if frame.get("schema") != "scnsim.preflight" or frame.get("schema_version") != 2:
         raise BackendProtocolError(
             "Julia preflight returned an unexpected protocol frame",
             stage="preflight",
             evidence={"frame": frame},
         )
+    return frame
+
+
+def run_compiler_audit(
+    prepared: PreparedRuntime,
+    *,
+    plan_path: str | os.PathLike[str],
+    point_path: str | os.PathLike[str],
+) -> Mapping[str, object]:
+    """Compile one resolved point and accept exactly one canonical audit frame."""
+
+    plan = _require_absolute_file(plan_path, label="compiler-audit plan")
+    point = _require_absolute_file(point_path, label="compiler-audit point")
+    with packaged_julia_resources() as (project, entrypoint, runtime):
+        expected_version = _runtime_version(runtime)
+        if prepared.julia_version != expected_version:
+            raise RuntimePreparationError(
+                "prepared Julia runtime does not match packaged runtime metadata",
+                stage="runtime_identity",
+                evidence={"prepared": prepared.julia_version, "expected": expected_version},
+            )
+        argv = [
+            str(prepared.executable),
+            "--startup-file=no",
+            "--history-file=no",
+            "--threads=1",
+            f"--project={project}",
+            str(entrypoint),
+            "--compiler-audit",
+            str(plan),
+            "--point",
+            str(point),
+        ]
+        try:
+            completed = subprocess.run(
+                argv,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="strict",
+                shell=False,
+                cwd=str(project),
+                env=_child_environment(),
+            )
+        except (OSError, UnicodeError) as error:
+            raise BackendProtocolError(
+                "compiler-audit process could not be executed",
+                stage="compiler_audit",
+                evidence={"error": str(error)},
+            ) from error
+    if completed.returncode != 0:
+        raise BackendProtocolError(
+            "compiler-audit process exited unsuccessfully",
+            stage="compiler_audit",
+            evidence={"returncode": completed.returncode, "stderr": completed.stderr[-4096:]},
+        )
+    try:
+        lines = completed.stdout.splitlines()
+        if len(lines) != 1:
+            raise ValueError("expected one stdout frame")
+        frame = json.loads(lines[0])
+        if not isinstance(frame, dict) or completed.stdout != _canonical_json_line(frame):
+            raise ValueError("stdout frame is not canonical")
+    except (ValueError, json.JSONDecodeError) as error:
+        raise BackendProtocolError(
+            "compiler-audit output is malformed",
+            stage="compiler_audit",
+            evidence={"error": str(error)},
+        ) from error
     return frame
 
 
@@ -839,6 +909,7 @@ __all__ = [
     "TerminalOutcome",
     "packaged_julia_resources",
     "prepare_runtime",
+    "run_compiler_audit",
     "run_preflight",
     "run_terminal",
 ]
