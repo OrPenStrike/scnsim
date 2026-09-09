@@ -44,10 +44,10 @@ not another circuit definition.
 
 A native component may bind a fixed Quantity directly. It receives a
 `ParameterRef` only when the author deliberately supports operation-time
-variation. The model-first Tutorial therefore uses literal C/L values in
-Chapters 1–3 and introduces independent definitions plus real physical-field
-bindings in Chapter 4. The [Parameter System contract](contracts/parameter-system.qmd)
-owns those target identities and their operation-time values.
+variation. Engineer Chapter 1 binds its capacitor because the same Plan is
+evaluated at 110 fF and 120 fF, while its 5.8 nH inductor and 6 fF coupler stay
+literal. The [Parameter System contract](contracts/parameter-system.qmd) owns
+those target identities and their operation-time values.
 
 This page owns physical factory and lowering semantics. The linked structured
 contract owns the proposed assembly signatures, ownership, layout, identity,
@@ -59,9 +59,10 @@ Results. The
 Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
-[authoring a circuit from primitives](../examples/tutorials/01_author_primitive.qmd)
-and then [creating a custom Library](../examples/tutorials/08_create_library.qmd)
-before [adding its first Composite factory](../examples/tutorials/09_add_composite_factory.qmd).
+[Engineer Chapter 1](../examples/engineer/chapter-01/01-build.qmd). Library and
+Composite teaching remains in the
+[migration legacy](implementation/engineer-course-migration-map.qmd)
+until the future Library Chapter is implemented.
 For the design reasoning behind the boundary, read
 [Physical authority and structured composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and

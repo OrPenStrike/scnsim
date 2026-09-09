@@ -30,10 +30,12 @@ work; neither integration nor passing checks promotes these scopes to
 Current CI exercises portable-wheel identity, a small current-API
 Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
 source-bound figures, static publication, and unchanged standalone RLGC rejection
-and HB failure-classifier checks. Selected Tutorial authoring diagrams are
-source-bound exports; they are not evidence that every cell in all sixteen
-Chapters executed or that every compiled projection succeeded. The
-[figure inventory](../../examples/README.md) records diagram limitations.
+and HB failure-classifier checks. Engineer Chapter 1 has one explicitly
+generated source-bound authoring diagram, two typed-result S11 presentations,
+complex response data, and a quantity table. Its web build launches no solver,
+and those assets do not establish execution of every migration-legacy Chapter
+or every compiled projection. The [figure inventory](../../examples/README.md)
+records both current and legacy evidence.
 
 The Chapter 12 tapped-feedline Default and complete explicit tap-order
 checkpoints are now successful source-bound exports. One fixed-layout
@@ -64,6 +66,10 @@ the reader workflow before these exact contracts: author one complete Plan,
 inspect its ASCDLS projection, then independently select `run.original` or a
 derived View for a numerical request. Diagram rendering never selects or
 mutates that analysis View.
+
+The [engineer-course migration map](../implementation/engineer-course-migration-map.qmd)
+owns course placement only. It does not replace any Contract or implementation
+authority on this page.
 
 ## Public contracts
 

@@ -1,0 +1,95 @@
+---
+title: "Engineer Course Migration Map"
+subtitle: "Batch 1 inventory for one eight-Chapter course"
+toc-depth: 3
+---
+
+::: {.callout-warning title="CONVERGING course structure" appearance="simple"}
+This map records the current migration, not a second course or a claim that the
+future Chapters run. Chapter 1 is the only new Chapter implemented in the
+current batch. The sixteen existing Chapter sources, generated Notebooks, and
+source-bound assets remain readable under **Migration legacy** until their
+content is moved and reviewed. Exact behavior stays in Contract pages; the
+course teaches how to apply it.
+:::
+
+## Destination
+
+| Chapter | Engineer outcome | Current batch |
+|---|---|---|
+| 1. Coupled grounded LC | Build one explicit model, review its authoring diagram, inspect one-port S11, read the loaded root, and change the physical capacitance on the same Plan | Implemented in Batch 2 |
+| 2. Sweep and Optimization | Define independent inputs, bind physical fields, evaluate points and spaces, and use the established Optimization workflow | Future |
+| 3. CPW feedline and readout S21 | Build an ordered two-section CPW feedline, couple a readout, and inspect a two-Port response | Future |
+| 4. Four-Port capstone | Build the original physical Plan, apply PTC, then optionally retain/transform coordinates, evaluate quantities, and compare Direct with pump-off HB | Future |
+| 5. Library | Package, instantiate, and reuse a Composite with deliberate public boundaries | Future |
+| 6. Diagram customization | Review Default layout, set bounded composition hints, and read A/B correspondence | Future |
+| 7. MTL | Author ordered multi-conductor RLGC and distinguish authoring from finite-pi compiled projections | Future |
+| 8. Report and resolve | Preserve exact request, Result, report, workspace, and resolution lineage | Future |
+
+The order is pedagogical only. It does not change the public API, numerical
+algorithms, scientific definitions, or lifecycle state of an existing scope.
+
+## Existing Chapter migration
+
+The QMD file remains the only hand-edited source for every existing Chapter;
+its same-named zero-output IPYNB and any checkpoint-bound SVG move with it.
+
+| Existing Chapter | Destination | Content treatment |
+|---|---|---|
+| `01_author_primitive` | Chapter 1 | Replace the older three-lesson presentation with the five-lesson coupled-LC path. Keep fixed component values and structured assembly as applications of the assembly Contract. |
+| `02_solve_direct` | Chapters 1 and 3 | Move the one-Port response reading into Chapter 1; reserve two-Port response teaching for Chapter 3. Direct request/result meaning remains Contract authority. |
+| `03_evaluate_quantity` | Chapters 1 and 4 | Teach the first loaded diagonal root in Chapter 1; move broader retained-coordinate quantities to the optional Chapter 4 continuation. |
+| `04_define_parameters` | Chapter 2 | Condense definition, physical binding, and selected-point teaching around the existing Parameter System Contract; move identity/reuse examples into short Contract tables instead of duplicating them in Concept prose. |
+| `05_sweep_parameters` | Chapter 2 | Combine with input definition and Optimization without changing point/space or batch-result semantics. |
+| `06_optimize_primitive` | Chapter 2 | Preserve the established Optimization objective, bounds, solver, and genuine winner workflow. |
+| `07_report_resolve` | Chapter 8 | Keep report, resolve, workspace, and exact identity material together. |
+| `08_create_library` | Chapter 5 | Introduce the immutable custom Library before its factory. |
+| `09_add_composite_factory` | Chapter 5 | Keep factory ownership, provenance, and deliberate public exposure together. |
+| `10_use_custom_component` | Chapter 5 | Follow the factory immediately with one real reuse in a parent Plan. |
+| `11_review_customize_schematic` | Chapter 6 | Keep authoring projection, A/B audit, Default completion, and explicit fixed composition in one diagram Chapter; move exact refusal cases into a short diagram-Contract table. |
+| `12_model_n_trace_line` | Chapters 3 and 7 | Use scalar CPW continuity in Chapter 3; keep ordered multi-conductor RLGC and finite-pi evidence in Chapter 7. |
+| `13_compensate_probes` | Chapters 3 and 4 | Use a reduced two-Port feedline/readout declaration as the Chapter 3 destination; keep the original four-Port physical Plan and PTC core in Chapter 4. |
+| `14_transform_retain` | Chapter 4 | Make transform/retain an optional continuation after the original Plan and PTC are understood. |
+| `15_prepare_hb` | Chapter 4 | Keep pump-off HB setup optional and bound to the same rebuilt physical declaration. |
+| `16_compare_direct_hb` | Chapters 4 and 8 | Interpret each Result on its own declared grid in Chapter 4, with no interpolation or new comparison contract; move durable reporting and resolution practice to Chapter 8. |
+
+No existing source, Notebook, or SVG is deleted in Batch 1 or Batch 2. The
+legacy grouping is temporary migration custody, not another current syllabus.
+Chapter 4's core stops after the original four-Port Plan and explicit PTC are
+complete. Transform/retain, quantity evaluation, and pump-off HB remain
+optional continuations with their own prerequisites. Exact identity tables and
+diagram refusal tables are later-batch custody, not Batch 2 rewrites.
+
+## Documentation authority
+
+| Material | Migration rule |
+|---|---|
+| Five Concept pages | Keep short explanations of why Plan authority, Views, requests/Results, Direct/HB realizations, units, and parameters are separated. Link to Contracts for signatures and failures. |
+| Contract map, CircuitPlan Assembly, ASCDLS, Parameter System, Component Authoring, and V1 Runtime Contract | Keep exact interfaces, invariants, identities, equations, and failure behavior here. Lessons show one use and do not restate a parallel contract. |
+| Implementation pages | Keep maintainer ownership, schemas, lowering, process protocol, workspaces, numerical procedures, diagram reconstruction, and evidence mechanics. Course pages do not become implementation authority. |
+| Historical fixtures in `examples/tutorials/fixtures/` | **KEEP.** They remain classified implementation-baseline evidence, not builders imported by the new Chapter. |
+| Root `README.md`, `docs/index.qmd`, `examples/README.md`, and `_quarto.yml` | Point readers to the new Chapter 1, show only the eight-Chapter destination as the current roadmap, and place all sixteen old Chapters in one Migration legacy group. |
+| Existing 16 QMD/IPYNB pairs and `examples/tutorials/figures/` | **KEEP during migration.** Preserve source/asset bindings and zero-output Notebook identities unless a later authorized batch migrates that exact Chapter. |
+
+For Chapter 1, the existing Concept and Contract pages need only concise links
+from the new teaching path: fixed physical values belong to the authored Plan;
+an exposed child coordinate is analysis access to the same signal bus; a
+terminated Port owns its declared reference load; rendering and numerical
+requests are independent consumers; and a selected physical capacitance point
+does not create another Plan.
+
+## Batch 1 bounded render evidence
+
+- The proposed Chapter 3 two-Port CPW feedline/readout declaration was rendered
+  once against the current source. Fixed Default layout reported the typed
+  `schematic_layout` failure `fixed connector intersects occupied geometry`.
+  The exact declaration is retained as private migration evidence; Chapter 3
+  remains future and may use a text topology description until an authorized
+  later batch has a successful source-bound figure.
+- The proposed Chapter 4 destination was checked once with the current explicit
+  four-Port probe-tee composition from `13_compensate_probes.qmd`. It produced
+  a certified authoring SVG. This confirms the existing explicit capstone is a
+  viable destination; it does not establish its numerical cells or the future
+  Chapter as complete.
+
+Neither probe changes renderer behavior or creates a new success condition.

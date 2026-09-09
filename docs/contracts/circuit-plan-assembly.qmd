@@ -484,17 +484,17 @@ positive-definite inductance checks remain the physical authority.
 
 ### Grounded LC and reusable resonator
 
-Chapter 1 begins with the minimal inline example: one signal bus and two native elements
-form an explicit `parallel()` between that bus and `scope.ground`. The scope
-binds literal C/L values and exposes only its terminal. The parent joins that
-pin to a named root bus through `link(endpoints=(...))`, places a 6 fF
-capacitor in
-`series()`, and adds one terminated Port. Chapters 2–3 repeat the same
-fixed-value declaration. Chapter 4 independently defines C/L inputs and binds
-them through actual component fields; Chapter 5 selects ordered points. This
-does not retroactively make every fixed component value a parameter.
+Engineer Chapter 1 begins with the minimal inline example: one signal bus and
+two native elements form an explicit `parallel()` between that bus and
+`scope.ground`. The scope binds C to one independent ref, keeps L literal, and
+publishes both a parent-facing Pin and an analysis Coordinate at that same
+signal bus. A root 6 fF capacitor ends directly at the public child Pin; a
+separate root signal bus owns the terminated Port. There is no analysis-only
+root bus or zero-component Link on the resonator side. The later 120 fF point
+changes the real capacitor field on this same Plan and does not retroactively
+make every fixed component value a parameter.
 
-Chapters 8–10 repeat the same internal grammar in a Library `CompositePlan` and
+The migration-legacy Library Chapters repeat the same internal grammar in a Library `CompositePlan` and
 then consume one public terminal while leaving an equivalent differently named
 terminal externally open. The electrical values may match, but the
 factory-owned version has different ownership and provenance. No Plan or

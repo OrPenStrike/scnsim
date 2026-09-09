@@ -14,19 +14,21 @@ parts, their values and wiring, which parts belong to a subsystem, and which
 subsystem boundaries are public. SCNSim does not infer that engineering intent
 from names, numerical values, a picture, or a calculated mode.
 
-The model-first course works toward a complete review package: a diagram
+The engineer course works toward a complete review package: a diagram
 generated from the authored circuit, its independent A/B correspondence audit,
 and typed analytical Results that point back to the same Plan while recording
 their separately selected View and request. Tutorial authoring figures are
 genuine exports tied to their source checkpoints; they are not solver outputs
 or evidence that every course cell has executed successfully.
 
-If you prefer to see the destination before learning each part, start by
-reading the complete
-[feedline/readout/floating capstone](examples/tutorials/13_compensate_probes.qmd).
-It declares the whole circuit before rendering or selecting probe compensation.
-The earlier Chapters then build the same vocabulary in smaller circuits; the
-capstone is an optional preview, not a prerequisite or a hidden model source.
+Start with [Chapter 1, Lesson 1](examples/engineer/chapter-01/01-build.qmd).
+Its five short Lessons build one coupled grounded LC, review the authored
+diagram, inspect one-port S11, evaluate the loaded root, and select another
+capacitance on the same Plan. The complete
+[zero-output Chapter Notebook](examples/engineer/chapter-01/chapter.ipynb) is
+the clean-kernel execution unit. The remaining seven Chapters are a published
+roadmap, not placeholder pages. The former sixteen-Chapter sources remain in a
+single Migration legacy group while later batches move their reviewed content.
 
 ## Start with the circuit, then choose the question
 
@@ -116,9 +118,8 @@ acceptance.
 
 - [Overview](README.md) — the model-first workflow, product boundary, status,
   and installation.
-- [Tutorial](docs/index.qmd) — short TARGET lessons grouped into
-  clean-kernel Chapters; each analysis Chapter first rebuilds the circuit it
-  needs.
+- [Engineer course](docs/index.qmd) — five current Chapter 1 Lessons and the
+  future eight-Chapter roadmap.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim separates authored circuit facts, diagram geometry, and analysis
   Views while keeping one Plan authority.
@@ -128,10 +129,11 @@ acceptance.
 - [Contract](docs/contracts/index.qmd) — public behavior plus the maintainer
   implementation design followed by the current executable Runtime slices.
 
-Each Chapter also has a zero-output generated Notebook in
-[`examples/tutorials/`](https://github.com/OrPenStrike/scnsim/tree/develop/examples/tutorials)
-for GitHub or VS Code/Jupyter review. QMD is the only editable lesson source;
-the Notebook is a derived transport artifact, not an execution record.
+Each implemented Chapter has one zero-output generated Notebook for GitHub or
+VS Code/Jupyter review. QMD fragments are the only editable lesson source; the
+aggregate Notebook is a derived transport artifact, not an execution record.
+The old sixteen QMD/IPYNB pairs remain under `examples/tutorials/` as migration
+legacy with their source bindings intact.
 The website displays separately generated authoring SVGs without executing
 kernels or solvers. See the [source and figure workflow](examples/README.md)
 for the execution boundary. Neither a figure nor a Notebook establishes

@@ -8,6 +8,12 @@ project:
     - README.md
     - examples/README.md
     - docs/index.qmd
+    - examples/engineer/chapter-01/01-build.qmd
+    - examples/engineer/chapter-01/02-diagram.qmd
+    - examples/engineer/chapter-01/03-s11.qmd
+    - examples/engineer/chapter-01/04-root.qmd
+    - examples/engineer/chapter-01/05-change-capacitance.qmd
+    - examples/engineer/chapter-01/chapter.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
     - examples/tutorials/03_evaluate_quantity.qmd
@@ -52,6 +58,7 @@ project:
     - docs/implementation/hb-realization-and-outcomes.qmd
     - docs/implementation/results-reports-and-diagrams.qmd
     - docs/implementation/external-inputs-and-delivery.qmd
+    - docs/implementation/engineer-course-migration-map.qmd
 
 website:
   title: "SCNSim"
@@ -80,51 +87,59 @@ website:
         - text: "Repository overview"
           href: README.md
     - id: tutorial
-      title: "Tutorial"
+      title: "Engineer Course"
       style: "floating"
       collapse-level: 1
       contents:
         - text: "Course map"
           href: docs/index.qmd
-        - section: "Build a circuit and get a result"
+        - section: "Chapter 1 — Coupled grounded LC"
           contents:
-            - text: "Chapter 1 — Model a coupled grounded resonator"
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-01/01-build.qmd
+            - text: "Lesson 2 — Diagram"
+              href: examples/engineer/chapter-01/02-diagram.qmd
+            - text: "Lesson 3 — S11"
+              href: examples/engineer/chapter-01/03-s11.qmd
+            - text: "Lesson 4 — Loaded root"
+              href: examples/engineer/chapter-01/04-root.qmd
+            - text: "Lesson 5 — Change capacitance"
+              href: examples/engineer/chapter-01/05-change-capacitance.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-01/chapter.qmd
+        - section: "Migration legacy"
+          contents:
+            - text: "01 — Author primitive"
               href: examples/tutorials/01_author_primitive.qmd
-            - text: "Chapter 2 — Ask for a Direct response"
+            - text: "02 — Solve Direct"
               href: examples/tutorials/02_solve_direct.qmd
-            - text: "Chapter 3 — Select a coordinate and evaluate"
+            - text: "03 — Evaluate quantity"
               href: examples/tutorials/03_evaluate_quantity.qmd
-        - section: "Define inputs, sweep, tune, and recover"
-          contents:
-            - text: "Chapter 4 — Define and bind physical parameters"
+            - text: "04 — Define parameters"
               href: examples/tutorials/04_define_parameters.qmd
-            - text: "Chapter 5 — Sweep parameter points"
+            - text: "05 — Sweep parameters"
               href: examples/tutorials/05_sweep_parameters.qmd
-            - text: "Chapter 6 — Tune a physical parameter"
+            - text: "06 — Optimize primitive"
               href: examples/tutorials/06_optimize_primitive.qmd
-            - text: "Chapter 7 — Report and resolve exact requests"
+            - text: "07 — Report and resolve"
               href: examples/tutorials/07_report_resolve.qmd
-        - section: "Reuse circuits and review diagrams"
-          contents:
-            - text: "Chapter 8 — Start a reusable Library"
+            - text: "08 — Create Library"
               href: examples/tutorials/08_create_library.qmd
-            - text: "Chapter 9 — Build a Composite factory"
+            - text: "09 — Add Composite factory"
               href: examples/tutorials/09_add_composite_factory.qmd
-            - text: "Chapter 10 — Reuse a component in a circuit"
+            - text: "10 — Use custom component"
               href: examples/tutorials/10_use_custom_component.qmd
-            - text: "Chapter 11 — Review and customize a schematic"
+            - text: "11 — Review schematic"
               href: examples/tutorials/11_review_customize_schematic.qmd
-        - section: "Model and analyze coupled systems"
-          contents:
-            - text: "Chapter 12 — Model ordered RLGC lines"
+            - text: "12 — Model N-trace line"
               href: examples/tutorials/12_model_n_trace_line.qmd
-            - text: "Chapter 13 — Assemble the capstone and compensate its probes"
+            - text: "13 — Compensate probes"
               href: examples/tutorials/13_compensate_probes.qmd
-            - text: "Chapter 14 — Transform and retain coordinates"
+            - text: "14 — Transform and retain"
               href: examples/tutorials/14_transform_retain.qmd
-            - text: "Chapter 15 — Prepare pump-off HB"
+            - text: "15 — Prepare pump-off HB"
               href: examples/tutorials/15_prepare_hb.qmd
-            - text: "Chapter 16 — Read Direct and pump-off HB"
+            - text: "16 — Compare Direct and HB"
               href: examples/tutorials/16_compare_direct_hb.qmd
     - id: concept
       title: "Concept"

@@ -1,0 +1,24 @@
+---
+title: "Chapter 1 — Build and analyze a coupled grounded LC"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 1 — Build and analyze a coupled grounded LC
+
+This complete Chapter is the clean-kernel execution unit. Its five web Lessons
+are shorter reading views over these same ordered source fragments; they are
+not independent notebooks. QMD is the editable authority, while
+`chapter.ipynb` is a generated zero-output transport artifact.
+
+{{< include _01-build.qmd >}}
+
+{{< include _02-diagram.qmd >}}
+
+{{< include _03-s11.qmd >}}
+
+{{< include _04-root.qmd >}}
+
+{{< include _05-change-capacitance.qmd >}}

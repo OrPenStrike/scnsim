@@ -29,6 +29,12 @@ prerequisite: the analysis API requires a complete Plan, not a prior
 render/show/audit call. A diagram request does not choose the View or perform
 the analysis.
 
+[Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd) applies
+that separation to one Plan: `.s.show()` presents the returned one-port
+magnitude and phase, while a separate `DiagonalRootSpec` Result owns the loaded
+frequency and linewidth. The plotted response is not used to manufacture the
+root.
+
 ## Ref, Spec, operation, Result {#run-request-result-ownership}
 
 | Part | Reader question |

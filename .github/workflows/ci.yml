@@ -171,6 +171,7 @@ jobs:
           uv run --locked python - <<'PY'
           import json
           import re
+          import shutil
           import subprocess
           import tempfile
           from pathlib import Path
@@ -214,10 +215,19 @@ jobs:
                   normalized_cells.append(value)
 
               metadata = notebook.get("metadata", {})
+              kernelspec = metadata.get("kernelspec", {})
+              language_info = metadata.get("language_info", {})
               relevant_metadata = {
-                  key: metadata[key]
-                  for key in ("kernelspec", "language_info")
-                  if key in metadata
+                  "kernelspec": {
+                      key: kernelspec[key]
+                      for key in ("name", "language")
+                      if key in kernelspec
+                  },
+                  "language_info": {
+                      key: language_info[key]
+                      for key in ("name",)
+                      if key in language_info
+                  },
               }
               return {
                   "nbformat": notebook.get("nbformat"),
@@ -226,10 +236,56 @@ jobs:
                   "cells": normalized_cells,
               }
 
-          sources = sorted(Path("examples").rglob("*.qmd"))
-          notebooks = sorted(Path("examples").rglob("*.ipynb"))
-          assert sources, "no tutorial QMD sources found"
-          assert [path.with_suffix(".ipynb") for path in sources] == notebooks
+          def render_fresh(source):
+              with tempfile.TemporaryDirectory(prefix="scnsim-reader-ipynb-") as directory:
+                  isolated = Path(directory)
+                  shutil.copytree(Path("examples"), isolated / "examples")
+                  return subprocess.run(
+                      [
+                          "quarto", "render", str(source), "--to", "ipynb",
+                          "--no-execute", "--no-clean", "--output", "-",
+                      ],
+                      cwd=isolated,
+                      check=True,
+                      capture_output=True,
+                  ).stdout
+
+          legacy_sources = sorted(Path("examples/tutorials").glob("[0-9][0-9]_*.qmd"))
+          assert len(legacy_sources) == 16, legacy_sources
+          aggregate = Path("examples/engineer/chapter-01/chapter.qmd")
+          sources = [*legacy_sources, aggregate]
+          notebooks = [path.with_suffix(".ipynb") for path in sources]
+          assert all(path.is_file() for path in notebooks), notebooks
+
+          fragments = [
+              aggregate.parent / name
+              for name in (
+                  "_01-build.qmd", "_02-diagram.qmd", "_03-s11.qmd",
+                  "_04-root.qmd", "_05-change-capacitance.qmd",
+              )
+          ]
+          aggregate_text = aggregate.read_text(encoding="utf-8")
+          includes = re.findall(r"\{\{< include ([^ ]+) >\}\}", aggregate_text)
+          assert includes == [path.name for path in fragments], includes
+          fragment_text = "".join(path.read_text(encoding="utf-8") for path in fragments)
+          assert all(not path.read_text(encoding="utf-8").lstrip().startswith("---") for path in fragments)
+          aggregate_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", fragment_text)
+          assert len(aggregate_ids) == fragment_text.count("```{python}") == 17
+          assert len(aggregate_ids) == len(set(aggregate_ids))
+
+          wrappers = [
+              aggregate.parent / name
+              for name in (
+                  "01-build.qmd", "02-diagram.qmd", "03-s11.qmd",
+                  "04-root.qmd", "05-change-capacitance.qmd",
+              )
+          ]
+          for wrapper, fragment in zip(wrappers, fragments, strict=True):
+              text = wrapper.read_text(encoding="utf-8")
+              frontmatter = text.split("---", 2)[1]
+              assert re.search(r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$", frontmatter)
+              assert re.findall(r"\{\{< include ([^ ]+) >\}\}", text) == [fragment.name]
+              assert not wrapper.with_suffix(".ipynb").exists()
 
           for source, artifact in zip(sources, notebooks):
               qmd = source.read_text(encoding="utf-8")
@@ -239,8 +295,9 @@ jobs:
                   r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$",
                   frontmatter,
               ), source
-              code_chunks = qmd.count("```{python}")
-              declared_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", qmd)
+              expanded = fragment_text if source == aggregate else qmd
+              code_chunks = expanded.count("```{python}")
+              declared_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", expanded)
               assert len(declared_ids) == code_chunks, f"missing QMD code id: {source}"
               assert len(declared_ids) == len(set(declared_ids)), f"duplicate QMD code id: {source}"
 
@@ -252,25 +309,7 @@ jobs:
                   artifact_stat.st_size,
                   artifact_stat.st_mtime_ns,
               )
-              with tempfile.NamedTemporaryFile(
-                  dir=source.parent,
-                  prefix=f"{source.stem}.reader-ipynb-",
-                  suffix=".qmd",
-                  delete=False,
-              ) as temporary_source:
-                  temporary_source.write(source.read_bytes())
-                  temporary_path = Path(temporary_source.name)
-              try:
-                  rendered = subprocess.run(
-                      [
-                          "quarto", "render", str(temporary_path), "--to", "ipynb",
-                          "--no-execute", "--no-clean", "--output", "-",
-                      ],
-                      check=True,
-                      capture_output=True,
-                  )
-              finally:
-                  temporary_path.unlink()
+              rendered = render_fresh(source)
 
               current_stat = artifact.stat()
               current_identity = (
@@ -281,17 +320,19 @@ jobs:
               )
               assert current_identity == artifact_identity, f"notebook identity changed: {artifact}"
               assert artifact.read_bytes() == distributed_bytes, f"notebook bytes changed: {artifact}"
-              fresh = json.loads(rendered.stdout)
+              fresh = json.loads(rendered)
               distributed = json.loads(distributed_bytes)
               assert normalized(distributed, str(artifact)) == normalized(
                   fresh, f"fresh render of {source}"
               ), f"generated notebook drift: {artifact}"
 
-          print("verified", len(sources), "QMD/IPYNB pairs")
+          print("verified", len(legacy_sources), "legacy pairs and one expanded Chapter aggregate")
           PY
 
       - name: Verify source-bound Tutorial figures without executing them
-        run: uv run --locked python scripts/generate_tutorial_diagrams.py --check
+        run: |
+          uv run --locked python scripts/generate_tutorial_diagrams.py --check
+          uv run --locked python scripts/generate_engineer_chapter1.py --check
 
       - name: Render and inspect documentation
         run: |

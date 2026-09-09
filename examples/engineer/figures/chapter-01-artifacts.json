@@ -1,0 +1,222 @@
+{
+  "artifacts": {
+    "01-authoring.svg": "369b761abdf6fc140af02c4885b2eca45f35b057990eeebaf39299a43d3252b3",
+    "01-baseline-root.md": "e36b8057ba85d8d035a344f92cf1614ef4a4ed00ff6d7d8e65251977cf601f56",
+    "01-quantities.csv": "2c69f132bd6949b08c804d7f310d1fbcceaa643777b191236c68022f251fa5d9",
+    "01-quantities.md": "0ae54d1a7c70d885e498ad5d499e7256917a8676c98db14bc9e9a8648d12b5b1",
+    "01-s11-baseline.svg": "3c8e5cc31c17c6d4e8cdf7925e861a925fc323246816b15898a925dd7b89c525",
+    "01-s11-data.csv": "30fa4cc4ca0baa16b7ce546c232b418749fa4868694a15bd213bf9ba45189c46",
+    "01-s11-selected.svg": "495d20a79f36b0769f4339c99854828bb0f9696672eb7a627e4bb7bbbf72fdf0"
+  },
+  "binding": {
+    "cell_ids": [
+      "ch1-import-and-define-capacitance",
+      "ch1-build-grounded-lc-child",
+      "ch1-assemble-coupler-and-port",
+      "ch1-render-authoring-diagram",
+      "ch1-show-authoring-diagram",
+      "ch1-show-authoring-audit",
+      "ch1-prepare-direct-request",
+      "ch1-solve-baseline-s11",
+      "ch1-show-baseline-s11",
+      "ch1-prepare-loaded-root-request",
+      "ch1-evaluate-baseline-root",
+      "ch1-show-baseline-root",
+      "ch1-select-capacitance",
+      "ch1-solve-selected-s11",
+      "ch1-show-selected-s11",
+      "ch1-evaluate-selected-root",
+      "ch1-show-selected-root"
+    ],
+    "cells": {
+      "ch1-assemble-coupler-and-port": "c04450ab795db237978c33babca894cb0932b1e6a20cf4d56f581b333929bbd3",
+      "ch1-build-grounded-lc-child": "22657a3d943c9a07d886321a74ad622af7e229577ced692f7d56fdae46a9e35d",
+      "ch1-evaluate-baseline-root": "06189d19214763a4522d5987b781456bd5f423b97fbdcb116cbfa3eb7893fd18",
+      "ch1-evaluate-selected-root": "79483dc0c7cae382e8caf0ac13f42db41daa571722b4b7a9083462f72cf028b2",
+      "ch1-import-and-define-capacitance": "b30f5e519cb36ff828ee758d34f16342cb4892f2bf183a2f80af12b15bd3e66a",
+      "ch1-prepare-direct-request": "fc73259c6bcc98057a8d273bafb2eb11f4eb88c7fdb02db8679d2bf01d4193f8",
+      "ch1-prepare-loaded-root-request": "f07825694763f6cff94a50938d02ff75cbf2a5df43397c27aa7dbada98c221f3",
+      "ch1-render-authoring-diagram": "2617442f6db3b6160f826a71e4e3370ce33e440bb25aa1546e278f6bcb6cd225",
+      "ch1-select-capacitance": "25bb696a42c36ed85baf5bc35cd07d642bd04c1c7ac179338624ba7c4d498c7a",
+      "ch1-show-authoring-audit": "dfd0ba164a3790c0760d47826a26b094ab700042b998e6dd3e6e0b00a85643f0",
+      "ch1-show-authoring-diagram": "bb7a83e231658a048655d77bab9d392cc48ed0b94029e59a33334835113308bc",
+      "ch1-show-baseline-root": "d601449ff80daf8573e06338d758786ed7195a66a07ed7b07ef9dc2da999952a",
+      "ch1-show-baseline-s11": "5c98f5ea1d4c7978a4d01664a184edd2ea57574539bb954e4d8dd77dc542082e",
+      "ch1-show-selected-root": "04f52d32c5143afb4b67a18f69f4d39ac854a3f3f7741871bcc1779899ddc280",
+      "ch1-show-selected-s11": "2540c88e3bba52f7db7b3e81a7968f8ee0d6ff0e2085083f04d9b403e7b015ad",
+      "ch1-solve-baseline-s11": "3a9755bd6fbf0a5fe63e068912945fc360f1c10ed2a0beca7dffeb88b5fdcbca",
+      "ch1-solve-selected-s11": "5b6ffaae1e49c696f91a35bd9a41e43ee886c3d36661dffc110402210bf8409a"
+    },
+    "generator_sha256": "7053953c386549ceadfa7ac66f7d23af423748d28f99b7ad133b90f3eaf88a44",
+    "source_tree": {
+      "files": {
+        "src/scnsim/__init__.py": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
+        "src/scnsim/_authoring_snapshot.py": "6a94d0a1191bd5ced0ce082edb5aeaaf76af5510639af46f01319bb34fbd997a",
+        "src/scnsim/_backend.py": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
+        "src/scnsim/_canonical.py": "ea8f70bb63c9d608e68404e7410c72228ee681c7cf6c7c3c5d6b39e59763ab3f",
+        "src/scnsim/_diagram/__init__.py": "f7f4b4d6f0379c1378eb673825f1841f1ba95261dd6402b0f7c2eade0828cfef",
+        "src/scnsim/_diagram/audit.py": "5221231ce043308d9ba6fea435e9738c8d8f1b519c01d12b65c1ab95f879c48b",
+        "src/scnsim/_diagram/compiled.py": "8933dd1d492952655956629130b3ffa75714258dd3d69a869b6ebc23ef30e092",
+        "src/scnsim/_diagram/composition_constraints.py": "2745e4946f0fe9e68f834676e2c58d49fb85ca8353ec1ccaabec15031b1766f6",
+        "src/scnsim/_diagram/composition_geometry.py": "43401b0a4ad5585f88d0d4e99e69d0d5c93cc734b23293cff6ba1bce9b67b7f5",
+        "src/scnsim/_diagram/composition_model.py": "3dfef84848446eddfbe3e8983a678f9da40ff0e493a6130c4711626034bf5260",
+        "src/scnsim/_diagram/composition_planner.py": "013a45f74faeb35c1924d64e811ea2ff6efe602f0b41438d5f44891650d712dd",
+        "src/scnsim/_diagram/drawing.py": "1eb88ddc11cdc04eafd166255046f62a56c6b14f9905a5fbd1ff20d637b4f166",
+        "src/scnsim/_diagram/equivalence.py": "e0dadb13ff5026746071193128cd91105d35419c64b2a635b4c0c812621acae4",
+        "src/scnsim/_diagram/expected.py": "a3877c634c90e98c1bfd4f602e64ebfc379ecc264b85610f2bfceadc7a30bf46",
+        "src/scnsim/_diagram/metrics.py": "d74f27fb7ef3a7e8577d5cb4c612a5c06cb353c58ab00136ffdbde378f3a5410",
+        "src/scnsim/_diagram/native.py": "5530eb5a92b824cce3ce25d0c797d2b72989db88c4c7d333ee08029fc3b0f106",
+        "src/scnsim/_diagram/pipeline.py": "adce23bb4264723037e6e07f22bfe3c0b50edb1dcacc0853ee632b355d16207a",
+        "src/scnsim/_diagram/reconstruction.py": "00b0e62579c8cac0f4657c7406df775aa0674c637b2db080c3317626f333a5ea",
+        "src/scnsim/_diagram/routing.py": "3db6eecdeca06a8be0ba3783546cce4424465cbe9282cdb0afd0818fb26012ad",
+        "src/scnsim/_diagram/scene.py": "8f8f4dfccb7b8c3153325957c4e28d1336e49c4960e2224b9fb3501e14eedcb2",
+        "src/scnsim/_diagram/structured.py": "fcff970134f7a02f6aedba6defc2c5dab97700e299c7288d32e3d6eab1125811",
+        "src/scnsim/_diagram/values.py": "5206479f6ad431e1534d0ae129961054b0c0ce7315c2e95e7a2375681e0a1862",
+        "src/scnsim/_diagram/witness.py": "b716b16f3f1f3ab11ef83d33aa5c8fe17a05cfa6ee0fe12786b50661c4dfacb0",
+        "src/scnsim/_diagram_spec.py": "71c066820bc6df7e4f157018abcd7ac0b4fb3cc734c8522c72e48e5d614c9de5",
+        "src/scnsim/_julia/Manifest.toml": "e6b7e3c33d3b21dba19e19661967766e86591d37ed289458b5276e9b3eada4d3",
+        "src/scnsim/_julia/Project.toml": "10b3c41423bb258ee2bfad157de6d115d702e8c1ff7bce2e9fd4cea3d5dd3f12",
+        "src/scnsim/_julia/bin/scnsim_request.jl": "3510ba25cce96b716e75ac2ac92ae0a2b96004f4c7d55547c9de88ddaee14907",
+        "src/scnsim/_julia/runtime.json": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
+        "src/scnsim/_julia/src/SCNSimBackend.jl": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
+        "src/scnsim/_julia/src/batch_v2.jl": "9504a1f35b5406c3b59555ea2294d440409d890f57b4d3dfd792203baffd98d8",
+        "src/scnsim/_julia/src/hb.jl": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902",
+        "src/scnsim/_julia/src/structured_v2.jl": "f3e0f412fbd096c5a90bc5c5269bf258f8e7afdd4c54e2402b7a86abe308c629",
+        "src/scnsim/_parameter_resolution.py": "ee04e7f4861edaab38d364f9646f91adb74ffbbba13e1dd5295c1e29cdcc17f6",
+        "src/scnsim/_parameters.py": "a526aab8648d4c5a9af7b82d974941bb47cb4afe03026a6547d69416c7e1fef6",
+        "src/scnsim/_physical_values.py": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
+        "src/scnsim/_scaffold.py": "0d45b7ecb1d26875c91226db6291960d5ad72d045adee66666e632ed7435f690",
+        "src/scnsim/_schemas/identity-common.schema.json": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
+        "src/scnsim/_schemas/identity-v2.schema.json": "9f5994e95931d3f89bf361fd6b8f217b4051927c1d48c4b61d8a68435a41ea32",
+        "src/scnsim/_workspace.py": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
+        "src/scnsim/authoring.py": "5f37cc05d1982fd587877c1065f81ff3c88a2bae85ec968a9bb15a0d39428bca",
+        "src/scnsim/composition.py": "0e8450a61d8e924558866325988543a0912944ff5f5bb379cdcde795cf34cadf",
+        "src/scnsim/errors.py": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
+        "src/scnsim/io.py": "4999f89d4171cf248a5393dc5c54254436d4d65a0f590ef421f251fa248db36f",
+        "src/scnsim/presentation.py": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
+        "src/scnsim/results.py": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
+        "src/scnsim/runtime.py": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
+        "src/scnsim/schematic.py": "9bf407c117a9a706cd7cc3bce761fb56452e82d1d4a68e608f0493575a3fcd66",
+        "src/scnsim/specs.py": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
+        "src/scnsim/units.py": "b42db68916c5904e360d04a2a78abc7e4dc04cd1fc4999f8560c59dcce2c5b53"
+      },
+      "sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+    },
+    "sources": {
+      "examples/engineer/chapter-01/01-build.qmd": "e6e8cbb0a2567cf8a5045146db82ca02e24bff3a2724870d595d0e00840ade45",
+      "examples/engineer/chapter-01/02-diagram.qmd": "5d2933d33d92b8ceb542cf73f75846e5030ea4722eb11b0c3c14142c462fa27f",
+      "examples/engineer/chapter-01/03-s11.qmd": "b9aa62d016a2456f492d06abef3393506e0632f0feacbb3f47d8e87f9a813330",
+      "examples/engineer/chapter-01/04-root.qmd": "efff3de67c6d88c264b81205dc26cd640db044a515092a986f5f3fd0073b5c33",
+      "examples/engineer/chapter-01/05-change-capacitance.qmd": "9c3cba1344b14cdfccb6f7ab071531cf0bee3ad17e930d3c10ce97fd8f36b6d8",
+      "examples/engineer/chapter-01/_01-build.qmd": "6c88f13372b84eb47a8ee967013b4054acd6b326faaa19d68732a4f6070db232",
+      "examples/engineer/chapter-01/_02-diagram.qmd": "b3554209755995854ba7b52512df80aa4fcbb2942b7f6f53cafcbad51234a7f6",
+      "examples/engineer/chapter-01/_03-s11.qmd": "00a647d99fb786a4d36d4df38a78f8a64353e7c8515dbd8ffd63d2e243731f6b",
+      "examples/engineer/chapter-01/_04-root.qmd": "55d2d2a75184d0a42b9bec951b8a9d84b07c42e0f9231e4e482230aea72f1bcb",
+      "examples/engineer/chapter-01/_05-change-capacitance.qmd": "2f79b5ae89cf2dfd9e0d89c4e534f97eb149be324f0d88c0a5afc0be7ac7e69c",
+      "examples/engineer/chapter-01/chapter.qmd": "c759f68144695d6143c17497be4cea819f996b372105d834f3845a3bcf51c87c"
+    }
+  },
+  "certificate": {
+    "connectivity_sha256": "dce9bcdbca4f20130d89ed1694ca2ac8735874f88cf26c8ce929ce72e7ad39c4",
+    "parameters_sha256": "9074c424ecad8c1455359765a995a2a7dc1af73ecf0bb196d00cca6ab55dbeb7",
+    "plan_id": "engineer_coupled_lc",
+    "plan_sha256": "9a340a3183028c2db455707e92a35c8c4cab07eaff5337fd9f6b8994ccebc2c9",
+    "presentation_sha256": "a9001b8eaa2527418b603dda71a3cd8e4e9a8aa44b962434c430f5b850c29e13",
+    "representation": "authoring",
+    "semantic_sha256": "c43588f3d86da5747d61d0a8f4ffed0ccd059455c8c32d0e524e81d3667294b9"
+  },
+  "environment": {
+    "matplotlib": "3.10.9",
+    "numpy": "2.2.6",
+    "pint": "0.24.4",
+    "python": "3.12.13",
+    "schemdraw": "0.23",
+    "scnsim": "1.0.0.dev6"
+  },
+  "execution": {
+    "cells": {
+      "ch1-assemble-coupler-and-port": "c04450ab795db237978c33babca894cb0932b1e6a20cf4d56f581b333929bbd3",
+      "ch1-build-grounded-lc-child": "22657a3d943c9a07d886321a74ad622af7e229577ced692f7d56fdae46a9e35d",
+      "ch1-evaluate-baseline-root": "06189d19214763a4522d5987b781456bd5f423b97fbdcb116cbfa3eb7893fd18",
+      "ch1-evaluate-selected-root": "79483dc0c7cae382e8caf0ac13f42db41daa571722b4b7a9083462f72cf028b2",
+      "ch1-import-and-define-capacitance": "b30f5e519cb36ff828ee758d34f16342cb4892f2bf183a2f80af12b15bd3e66a",
+      "ch1-prepare-direct-request": "fc73259c6bcc98057a8d273bafb2eb11f4eb88c7fdb02db8679d2bf01d4193f8",
+      "ch1-prepare-loaded-root-request": "f07825694763f6cff94a50938d02ff75cbf2a5df43397c27aa7dbada98c221f3",
+      "ch1-render-authoring-diagram": "2617442f6db3b6160f826a71e4e3370ce33e440bb25aa1546e278f6bcb6cd225",
+      "ch1-select-capacitance": "25bb696a42c36ed85baf5bc35cd07d642bd04c1c7ac179338624ba7c4d498c7a",
+      "ch1-show-authoring-audit": "dfd0ba164a3790c0760d47826a26b094ab700042b998e6dd3e6e0b00a85643f0",
+      "ch1-show-authoring-diagram": "bb7a83e231658a048655d77bab9d392cc48ed0b94029e59a33334835113308bc",
+      "ch1-show-baseline-root": "d601449ff80daf8573e06338d758786ed7195a66a07ed7b07ef9dc2da999952a",
+      "ch1-show-baseline-s11": "5c98f5ea1d4c7978a4d01664a184edd2ea57574539bb954e4d8dd77dc542082e",
+      "ch1-show-selected-root": "04f52d32c5143afb4b67a18f69f4d39ac854a3f3f7741871bcc1779899ddc280",
+      "ch1-show-selected-s11": "2540c88e3bba52f7db7b3e81a7968f8ee0d6ff0e2085083f04d9b403e7b015ad",
+      "ch1-solve-baseline-s11": "3a9755bd6fbf0a5fe63e068912945fc360f1c10ed2a0beca7dffeb88b5fdcbca",
+      "ch1-solve-selected-s11": "5b6ffaae1e49c696f91a35bd9a41e43ee886c3d36661dffc110402210bf8409a"
+    },
+    "generation_receipt_sha256": "15b0b2e2ea14dc5c9cd1dc29b694c3ce8360246165c80336a0bc1afa2c153649",
+    "generator_sha256": "c8ccd7bd9a53c63e97e91f2aba82c7884950ccbb06632297122ebcbf2efa10be",
+    "rebound_without_execution": true,
+    "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+  },
+  "observations": {
+    "baseline": {
+      "magnitude_db_max": 7.714619732426294e-15,
+      "magnitude_db_min": -8.678947198979587e-15,
+      "phase_deg_max": 128.79687577455448,
+      "phase_deg_min": -157.39655083078847,
+      "phase_deg_span": 286.19342660534295
+    },
+    "quantity_rows": [
+      {
+        "capacitance_fF": 110.0,
+        "loaded_minus_unloaded_GHz": -0.16510068855293714,
+        "loaded_root_frequency_GHz": 6.135903847793649,
+        "loaded_root_linewidth_MHz": 3.670280662141818,
+        "point": "baseline",
+        "unloaded_lc_frequency_GHz": 6.3010045363465865
+      },
+      {
+        "capacitance_fF": 120.00000000000001,
+        "loaded_minus_unloaded_GHz": -0.1453726625733358,
+        "loaded_root_frequency_GHz": 5.8873798866205425,
+        "loaded_root_linewidth_MHz": 3.110838523128994,
+        "point": "selected",
+        "unloaded_lc_frequency_GHz": 6.032752549193878
+      }
+    ],
+    "selected": {
+      "magnitude_db_max": 7.714619732426294e-15,
+      "magnitude_db_min": -8.678947198979587e-15,
+      "phase_deg_max": 109.20494907340614,
+      "phase_deg_min": -169.97251201648305,
+      "phase_deg_span": 279.1774610898892
+    }
+  },
+  "results": {
+    "baseline_direct": {
+      "attempt_sha256": "4d7b9fccdcdbdfbdc9106f44dec9e2931b4ef52f9c3a55a83309ca670ec8e7bd",
+      "plan_sha256": "9a340a3183028c2db455707e92a35c8c4cab07eaff5337fd9f6b8994ccebc2c9",
+      "request_sha256": "a65600c4352e0826b1146074f1ad799789618fb273eaefe02f55f6ecfff7c46f",
+      "result_sha256": "115701665597a9f15923e99e594ba6dca7b0fd1774cfadd8dac81a6dce4a9129"
+    },
+    "baseline_root": {
+      "attempt_sha256": "3b9358eb80b5d8702f24523044d4e3bf0d68889ac2af809edaebbf1068b0e827",
+      "plan_sha256": "9a340a3183028c2db455707e92a35c8c4cab07eaff5337fd9f6b8994ccebc2c9",
+      "request_sha256": "6fd84412df645a75b527c05aa5e960a053da4c0a9208b55e2f666cdb3d1befa7",
+      "result_sha256": "124b20cbf9185d5731d2f78ff7add696387cd7d0fb631ead0c928e30176b3000"
+    },
+    "selected_direct": {
+      "attempt_sha256": "acc838da607961942e59e1eb6548d27f818b18756b8c9775c0268995eb7e7cdc",
+      "plan_sha256": "9a340a3183028c2db455707e92a35c8c4cab07eaff5337fd9f6b8994ccebc2c9",
+      "request_sha256": "91bb37754a4a4ca33b17013a26066ea1a3f9617a6ff6ee9e8fddb0900fb532cf",
+      "result_sha256": "3c27f514abe183f080649e76de4cb56808c6affde77860ecd7128d03ee34e767"
+    },
+    "selected_root": {
+      "attempt_sha256": "981ee30d1a85508959358a8fe4976a0ad9cd13b8e314320b33d54d4c9a0efd97",
+      "plan_sha256": "9a340a3183028c2db455707e92a35c8c4cab07eaff5337fd9f6b8994ccebc2c9",
+      "request_sha256": "9a115e840b7b626fd6929e88f772de80291b7f454a31a8627d611b2c475ac212",
+      "result_sha256": "e5923c84c40f17a9ef557bca974f5c837ce561a56e9a4d8e21f048d7698bb8e1"
+    }
+  },
+  "schema": "scnsim.engineer_chapter1_artifacts.v1"
+}

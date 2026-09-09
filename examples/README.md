@@ -1,102 +1,85 @@
-# SCNSim micro-course sources
+# SCNSim engineer course sources
 
-`tutorials/01_*.qmd` through `tutorials/16_*.qmd` are stable Chapter
-containers for one model-first course candidate. Each Chapter is a complete
-clean-kernel document containing short, sequential Lessons. A new independent
-analysis Chapter rebuilds its required circuit before selecting a View or
-request, then explains what the resulting diagram or Result means.
+`engineer/chapter-01/` is the current course entry point. Five YAML-free QMD
+fragments hold the canonical Lesson prose and code. Five thin QMD wrappers make
+those Lessons readable as separate HTML pages, while `chapter.qmd` includes the
+same fragments in order and generates one complete `chapter.ipynb`.
 
-Lessons may share the preceding state inside one Chapter. A Chapter never
-depends on a hidden builder, fixture, include, or state from another Notebook,
-and it does not use a target SCNSim object before explaining why it is needed.
+The web Lessons are not independently runnable: Lessons 2–5 plainly state the
+earlier state they require. The aggregate Chapter is the clean-kernel execution
+unit. Open `chapter.ipynb`, restart its Python kernel, and use **Run All**.
+Every committed Notebook remains a zero-output transport artifact rather than
+an execution record.
 
-That deliberate Chapter-level repetition makes each Notebook reviewable and
-independent of other Chapters' kernel state. It does not create a new
-API authority: the Contract owns the meaning, and each Lesson is one teaching
-application. Existing Python fixtures are frozen implementation-baseline
-evidence and are not the authority for this rewritten course.
+QMD is the only hand-edited lesson authority. Do not edit the derived Notebook
+or duplicate lesson code in its wrappers. The website uses `execute.enabled:
+false`; browsing or building documentation starts no kernel, solver, runtime
+preparation, or Optimization.
 
-The course remains `CONVERGING`, not accepted, stabilized, or released. Its
-implementation baseline is integrated; the
-[central evidence status](../docs/contracts/index.qmd#implementation-evidence-status)
-defines the scope of current validation.
-Generated authoring figures provide source-bound evidence for their selected
-diagram checkpoints, not proof that every cell in all sixteen Chapters has
-executed successfully. Compiled-diagram limitations are reported separately;
-an authoring image is not substituted for a failed compiled projection.
-Direct/HB, View, optimization, Result, and report requests retain their
-established numerical meanings. An ASCDLS diagram
-projects the authored Plan and does not create or display a selected analysis
-View.
+## Generate Chapter 1 evidence explicitly
 
-Chapter 13 is the optional capstone preview. It declares a complete inline
-feedline, readout, and floating circuit before requesting its Plan diagram and
-then selecting probe compensation for analysis. Chapters 1–12 explain the
-objects and assembly choices that make that complete declaration readable;
-Chapters 14–16 rebuild it before asking independent transform, HB, and
-Direct/HB questions.
+Chapter 1's diagram, numerical figures, complex data, and quantity table are
+generated from the exact fragment cells by one bounded tool:
 
-## QMD and generated Notebook authority
+```bash
+uv run --locked python scripts/generate_engineer_chapter1.py \
+  --workspace /tmp/scnsim-engineer-chapter1-run
+```
 
-Each `.qmd` is the only editable lesson source. Quarto renders it for the site
-and generates the same-named `.ipynb` as a committed read-only transport
-artifact. Use QMD for documentation editing, IPYNB for GitHub/Jupyter/VS Code,
-and regenerate only from QMD. Never hand-edit or reverse-sync generated
-Notebooks.
+The workspace must be new or empty and outside the repository. Generation
+executes the Chapter's real Direct and diagonal-root requests; it is never a
+Quarto step. Check committed source/artifact identity without importing SCNSim
+or running a solver:
 
-## Generate real authoring figures separately from the website
+```bash
+uv run --locked python scripts/generate_engineer_chapter1.py --check
+```
 
-The diagram-generation entry point is:
+`engineer/figures/chapter-01-artifacts.json` binds the aggregate, fragments,
+wrappers, package source tree, environment, exact result identities, and these
+public artifacts:
+
+- `01-authoring.svg`: certified authoring projection of the baseline Plan;
+- `01-s11-baseline.svg` and `01-s11-selected.svg`: public `.s.show()` magnitude
+  and phase presentations, with a fixed ±0.05 dB display-only magnitude range;
+- `01-s11-data.csv`: unrounded complex baseline and selected one-port response
+  on the exact 401-point grid; and
+- `01-quantities.csv`: capacitance, separate unloaded LC calculation, loaded
+  root frequency, and loaded linewidth for both points.
+
+The ideal lossless one-port magnitude is approximately 0 dB. The phase remains
+readable; its wrapped discontinuity is ordinary angle presentation, not a
+numerical failure. The horizontal axis contains frequency in Hz and Matplotlib
+shows its `1e9` scale factor. Numerical plots are typed Result presentations,
+not ASCDLS certificates. The loaded root is a separate Result and is not
+inferred from a dip or from the unloaded LC formula.
+
+## Migration legacy
+
+`tutorials/01_*.qmd` through `tutorials/16_*.qmd`, their same-named zero-output
+IPYNBs, and `tutorials/figures/` remain intact migration inputs. They are not a
+second current course. The
+[migration map](../docs/implementation/engineer-course-migration-map.qmd)
+records their future destinations. Existing source/figure bindings remain
+valid until a later authorized batch migrates that exact content.
+
+The legacy diagram generator remains separate:
 
 ```bash
 python scripts/generate_tutorial_diagrams.py
-```
-
-Run it with the supported development environment; generation is an explicit
-execution operation, not a Quarto build step. The generator selects documented
-cell IDs from canonical QMD in independent Chapter namespaces. It does not
-duplicate Plan builders or guess dependencies. By default it creates a fresh
-isolated temporary workspace; `--workspace` can select an execution workspace
-explicitly. Keep execution workspaces outside the repository. Chapter 6's figure requires the real declared
-optimization and its returned winning parameters; fabricated or substituted
-winner values are not permitted.
-
-Check source and artifact currency without importing the circuit package or
-running solvers:
-
-```bash
 python scripts/generate_tutorial_diagrams.py --check
 ```
 
-`--only CELL_ID` is for focused diagnosis; it does not publish a complete
-manifest.
+It retains 21 checkpoint outcomes: 18 successful SVG checkpoints, one
+truthfully unavailable fixed Default layout, and two successful audit-only
+checkpoints. Chapter 12's tapped-feedline Default and full explicit tap-order
+figures are current. Chapter 13's complete raw-loaded Default reports the typed
+`schematic_layout` failure `fixed connector intersects occupied geometry`; its
+successful explicit composition and probe-tee SVGs remain distinct evidence,
+not fallbacks for that failure.
 
-Only genuine exported `CircuitDiagramResult` authoring SVGs belong in
-`tutorials/figures/`. The public manifest,
-`tutorials/figures/tutorial-diagrams.json`, binds relative source/cell hashes,
-model/parameter-point/diagram identities, SVG hashes, and classified validation
-facts; full execution records remain separate. A figure documents its actual
-checkpoint, including its A/B and composition checks, not solver correctness
-or whole-course execution. Audit-only checkpoints need no duplicate image.
-
-The Chapter 12 tapped-feedline Default and complete explicit tap-order
-checkpoints now have their own successful source-bound SVGs. Chapter 13's
-complete raw-loaded fixed Default checkpoint instead retains its actual typed
-`schematic_layout` failure, `fixed connector intersects occupied geometry`;
-it has no current SVG or diagram certificate. The same Chapter's explicit
-composition and final probe-tee capstone checkpoints remain successful images
-of that authored Plan, not substitutes for the unavailable Default layout.
-The 21-checkpoint inventory therefore records 18 successful SVG checkpoints,
-one unavailable fixed layout, and two successful audit-only checkpoints.
-Compiled projection limitations remain separate.
-
-The website includes these SVGs in HTML-only figure blocks with enlargement
-and a raw SVG link. Quarto keeps `execute.enabled: false`: browsing or building
-the site starts no notebook kernel, solver, or optimization. The generated
-IPYNB remains a zero-output transport artifact rather than an executed record.
-
-Validation compares ordered semantic cells, explicit code IDs, source, and
-kernel metadata while ignoring generated Markdown cell IDs. Every committed
-Notebook must have zero execution counts, outputs, and attachments. Generation
-and validation do not prove whole-course execution or imply Human acceptance,
-stabilization, or release.
+Historical Python fixtures in `tutorials/fixtures/` are **KEEP** implementation
+baseline evidence. Neither the new Chapter nor its generator imports them.
+Source-bound figures, generated Notebooks, and passing static checks do not by
+themselves establish Human acceptance, whole-course execution, release, or
+scientific validity.

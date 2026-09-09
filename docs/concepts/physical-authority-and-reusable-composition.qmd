@@ -206,7 +206,9 @@ never change the Plan or its numerical requests.
 
 A fixed physical value can be written directly on a native component. That is
 the clearest choice when the learning task or model does not need to vary it.
-The Tutorial therefore uses literal C and L values in Chapters 1–3.
+Engineer Chapter 1 therefore keeps L and the coupling capacitance literal while
+binding C to one independent ref because its fifth Lesson selects another C on
+the same Plan.
 
 An independent `ParameterRef` becomes useful when a learning task needs an
 externally addressable physical value—for example, a selected point, a sweep,
@@ -384,22 +386,15 @@ approximation is correct.
 
 ## Reader path
 
-- [Chapter 1](../../examples/tutorials/01_author_primitive.qmd) builds the
-  complete fixed-value resonator circuit before requesting its diagram.
-- [Chapter 2](../../examples/tutorials/02_solve_direct.qmd) asks the first
-  numerical question of the same physical model.
-- [Chapter 4](../../examples/tutorials/04_define_parameters.qmd) defines
-  independent inputs and makes Plan assignment observable through their actual
-  component-field bindings.
-- [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) selects one
-  point or an ordered parameter space without mutating the Plan.
-- [Chapters 8–10](../../examples/tutorials/08_create_library.qmd) turn an
-  understood inline subsystem into a reusable Library Composite.
-- [Chapter 11](../../examples/tutorials/11_review_customize_schematic.qmd)
-  applies presentation hints without changing the circuit or selecting a View.
-- [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) assembles the
-  complete feedline/readout/floating capstone, reviews its Plan diagram, and
-  only then selects a probe-compensated analysis View.
+- [Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd) builds
+  one parameter-bound coupled LC before independently drawing and analyzing it.
+- The [eight-Chapter roadmap](../index.qmd) shows where sweeps, Optimization,
+  feedlines, the four-Port capstone, Library reuse, diagram customization, MTL,
+  and report/resolve will move. Unimplemented destinations are not linked as
+  runnable pages.
+- The [migration map](../implementation/engineer-course-migration-map.qmd)
+  keeps the former sixteen Chapter sources classified until their content is
+  migrated.
 - [Compilation, Coordinates, and Network Views](compilation-coordinates-and-network-views.qmd)
   explains why analysis coordinates remain separate from wiring endpoints.
 - [Shared assembly contract](../contracts/circuit-plan-assembly.qmd)

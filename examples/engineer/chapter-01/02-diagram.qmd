@@ -1,0 +1,19 @@
+---
+title: "Chapter 1 · Lesson 2 — Diagram"
+subtitle: "Coupled grounded LC engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite: Lesson 1" appearance="simple"}
+This web Lesson shares the Plan built in Lesson 1 and is not independently
+runnable. Use the [complete Chapter Notebook](chapter.ipynb) for execution.
+:::
+
+{{< include _02-diagram.qmd >}}
+
+[Previous: Lesson 1 — Build](01-build.qmd) ·
+[Next: Lesson 3 — S11](03-s11.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)
