@@ -6,17 +6,15 @@ toc-depth: 2
 
 **Status:** `STABILIZED` recursive-expansion baseline; originally accepted in
 the `1.0.0.dev4` Lessons 6–8 scope. The reopened structured-authoring snapshot
-alignment is `CONVERGING`, with implementation alignment pending. The
+alignment is `CONVERGING` with an integrated implementation baseline; see the
+[central evidence status](../contracts/index.qmd#implementation-evidence-status). The
 [Component Authoring Contract](../component-authoring.qmd#composite-snapshot-boundary)
 owns the public `CompositePlan` and `ComponentInstance` behavior; this page
 fixes the maintainer mechanism that realizes it.
 
 ## Freeze factories in Python, not during a solve
 
-A custom Library factory is ordinary Python authoring code. The executable
-baseline uses `net()` and callable `ground()` while constructing its private
-graph; those spellings are frozen implementation evidence, not the current
-TARGET grammar. Under the target, the factory may construct a `CompositePlan`,
+A custom Library factory is ordinary Python authoring code. It may construct a `CompositePlan`,
 consume independently defined `ParameterRef`s in physical fields and
 optionally expose those same refs, add components, create buses and structures,
 directly link eligible endpoints, ground eligible pins deliberately, expose
@@ -92,9 +90,9 @@ public pins, root Ports, and the resulting global electrical closure. The
 overlay can change final zero-wire equivalence and effective grounded-net
 membership, but it never mutates the built child's intrinsic structures,
 internal links, local grounding, or exposures. In particular, externally
-grounding or commoning several legitimate return pins does not reapply the
-child's one-public-pin-per-internal-node exposure rule to the resulting global
-net. Once successfully committed, the containing Plan owns those external
+grounding or commoning several legitimate return pins does not rewrite intrinsic
+child equivalence or public exposure identity. Several differently named pins
+may already share one intrinsic node. Once successfully committed, the containing Plan owns those external
 declarations and their diagnostic source paths.
 
 The canonical physical snapshot, including all private children, paths,
@@ -184,7 +182,8 @@ omitted-zero evidence while keeping hidden children unavailable as public
 authoring handles. Authoring and compiled projections share a certification
 architecture but use different lowerings and semantic manifests. PTC, transforms,
 reduction, selected Views, and numerical results remain request/result evidence
-rather than Plan-diagram content. Runtime alignment to that target is pending.
+rather than Plan-diagram content. The central evidence status bounds current
+diagram validation; integration does not confer semantic acceptance.
 
 The A/B witnesses certify correspondence of emitted geometry to this exact
 snapshot or to the exact compiler-emitted expansion. They do not independently

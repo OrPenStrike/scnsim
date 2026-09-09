@@ -1,16 +1,17 @@
 ---
 title: "Parameter System, Sweeps, and Bound Results"
-subtitle: "TARGET API · CONVERGING · implementation alignment pending"
+subtitle: "Current parameter contract · CONVERGING"
 ---
 
 ::: {.callout-warning}
-## Documentation target, not implemented behavior
+## Integrated implementation, unaccepted semantic scope
 
 This page is the sole target authority for SCNSim parameter definitions,
 physical Plan binding, operation-time points and spaces, sweep Results,
 optimization binding, and parameterized diagrams. The target is
-`CONVERGING`, is not executable on the current runtime, and is not
-Human-accepted or integrated. Accepted physical models, numerical algorithms,
+`CONVERGING` with an integrated implementation baseline. This is not Human
+acceptance. The centralized [implementation and evidence status](index.qmd#implementation-evidence-status)
+limits execution claims. Accepted physical models, numerical algorithms,
 Views, quantities, and evidence rules remain unchanged unless this page
 explicitly reopens their parameter identity or batching boundary.
 :::
@@ -122,9 +123,20 @@ CompositePlan.expose_parameter(
 ComponentInstance.parameter(name: str) -> ParameterRef
 ```
 
-The lookup returns the original public ref. It does not create a definition,
-derive identity from the component path, or expose a hidden child. Literal-only
-inputs have no public ref to retrieve.
+For a primitive physical field bound directly to a `ParameterRef`,
+`component.parameter(field_name)` returns that exact original object. This
+includes scalar fields and transmission-line `length` and whole `rlgc` fields;
+clone/add preserves the lookup and independent definition identity. A literal
+field or unknown name raises `KeyError`, without creating an implicit ref.
+
+A Composite instead requires explicit `expose_parameter()` for every public
+lookup. Its lookup returns the exact original exposed ref; it does not derive
+identity from the component path or expose a hidden child. Literal-only inputs
+have no public ref to retrieve. For a primitive field bound through an
+`AffineMap`, lookup returns the exact original input ref, retaining input units
+and identity rather than the transformed physical value. Mapping and consumers
+remain captured separately. Composite factory inputs are never automatically
+published, whether directly bound or mapped.
 
 One public ref may deliberately fan out to several fields. Existing
 `AffineMap` support remains scalar-only and preserves its accepted support and
@@ -425,11 +437,12 @@ snapshots add only consumed definitions and their physical-field bindings.
 Batch identities preserve space kind, ordered axes or listed positions,
 complete effective points, and duplicate ordinals.
 
-Existing runtime encoders and schemas that identify a public parameter by
-component path describe the frozen executable baseline only. They are not the
-TARGET identity and imply no compatibility guarantee. Runtime and schema work
-must align explicitly after Human review; documentation does not rewrite JSON
-schemas or source bytes to pretend that alignment has happened.
+The current runtime and V2 schema use definitions-collection ID plus local ID.
+The shared scientific and protocol definitions live in
+`identity-common.schema.json`; the V2 bundle owns current Plan, request, and
+Result envelopes. Component-path parameter identities and old envelopes remain
+historical evidence only, with no reachable compatibility schema or runtime
+promised. Implementation integration does not accept this reopened scope.
 
 ## Performance and nonclaims {#parameter-system-nonclaims}
 

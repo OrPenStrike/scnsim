@@ -16,10 +16,47 @@ and independent Parameter System are reopened in documentation-first targets.
 [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
 owns composition and visual evidence; [Parameter System, Sweeps, and Bound
 Results](parameter-system.qmd) owns definitions, physical bindings, points,
-spaces, sweep Results, and optimization binding. Both remain `CONVERGING`;
-target runtime implementation is paused and the Tutorial examples are not
-executable on the current runtime.
+spaces, sweep Results, and optimization binding. These scopes remain
+`CONVERGING` with an integrated implementation baseline, not Human acceptance.
 :::
+
+## Implementation and evidence status {#implementation-evidence-status}
+
+The structured assembly, Parameter System, and diagram implementation baseline
+is integrated. Ongoing public-contract corrections remain unaccepted candidate
+work; neither integration nor passing checks promotes these scopes to
+`ACCEPTED` or `STABILIZED`. The accepted numerical Full V1 meanings are retained.
+
+Current CI exercises portable-wheel identity, a small current-API
+Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
+source-bound figures, static publication, and unchanged standalone RLGC rejection
+and HB failure-classifier checks. Selected Tutorial authoring diagrams are
+source-bound exports; they are not evidence that every cell in all sixteen
+Chapters executed or that every compiled projection succeeded. The
+[figure inventory](../../examples/README.md) records diagram limitations.
+
+One known grounded-resonator diagram limitation remains: linking a bare named
+root Bus to one public pin, with no Port or external body on that Bus, passes
+model completeness and electrical witness A but fails witness B's boundary
+`parent_incidence` check (`expected connected`, `observed open`). This does not
+make ordinary single-ended use unsupported: all three grounded factories passed
+all-open, genuine two-sided coupling, single-ended Port-plus-capacitor, and
+direct Bus-plus-Port configurations (12 rendered cases). These are scoped
+candidate observations, not Human acceptance or a change to diagram semantics.
+
+Retained tests have three distinct evidence roles: current runnable checks;
+numerical and integrity regressions blocked by superseded authoring fixtures;
+and superseded historical expectations that are not current product authority.
+Old-fixture failures do not invalidate downstream numerical assertions, and
+historical expectations do not decide the unaccepted replacement semantics.
+Their bodies remain historical evidence pending authorized stabilization; no
+full historical-suite pass or whole-course execution is claimed. No release,
+consumer migration, or scientific acceptance follows from this evidence.
+
+Current structured `couple_inductive()` accepts a fixed Quantity only;
+coupling-coefficient parameter binding and optimization are not supported.
+The Runtime's illustrative optimization therefore varies capacitance only,
+not the superseded two-variable example.
 
 The model-first [Tutorial](../index.qmd) and
 [Concept](../concepts/physical-authority-and-reusable-composition.qmd) explain
@@ -80,7 +117,6 @@ a later Human-accepted scope implements them.
 17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
 
 The collection remains the implementation authority for stabilized numerical
-behavior. Pages that still describe flat-node or superseded diagram source are
-explicitly frozen implementation baseline, not the structured TARGET API. The
-target diagram mechanism and paused delivery boundary are summarized only in
+behavior. Explicitly historical flat-node records are not a reachable
+compatibility API. Current diagram mechanics are summarized in
 [Results, reports, and diagrams](../implementation/results-reports-and-diagrams.qmd).

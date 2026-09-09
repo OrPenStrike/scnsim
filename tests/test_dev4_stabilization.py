@@ -1,4 +1,10 @@
-"""Accepted dev4 Lessons 6--8 Library and Composite regression boundary."""
+"""Historical Library/Composite regressions awaiting authoring migration.
+
+The fixtures predate structured authoring. Preserved numerical and integrity
+assertions remain regression assets; superseded API expectations are history,
+not acceptance of the current CONVERGING interface or a current-suite PASS.
+See the README's candidate CI scope before interpreting diagnostic results.
+"""
 
 from __future__ import annotations
 

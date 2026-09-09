@@ -13,7 +13,9 @@ review artifacts, and the website does not execute kernels or solvers.
 
 ::: {.callout-warning title="TARGET course · CONVERGING" appearance="simple"}
 Structured authoring, parameter binding, and certified diagrams are proposed
-API surfaces. Direct/HB, View, optimization, workspace, Result, and report
+API semantics with an integrated implementation baseline; see the
+[central evidence status](contracts/index.qmd#implementation-evidence-status).
+Direct/HB, View, optimization, workspace, Result, and report
 meanings remain their established numerical teaching; a diagram never chooses
 an analytical View or performs a calculation. Authoring figures and reported
 compiled-diagram limitations are distinct; neither is whole-course acceptance

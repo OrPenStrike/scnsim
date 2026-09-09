@@ -17,19 +17,21 @@ root pin, or consumer migration.
 
 The public authoring grammar, recursive structured ownership, its Plan-identity
 integration, and certified authoring/compiled diagrams are reopened as one
-`CONVERGING` target. This is not presentation-only: it changes how a future
+`CONVERGING` target. This is not presentation-only: it changes how the
 Plan explicitly declares structure while preserving the accepted physical and
-numerical meanings above. Implementation alignment remains pending, and the
-TARGET Tutorial cells are not yet executable. Common modeling authority is
+numerical meanings above. Its implementation baseline is integrated; the
+[central evidence status](contracts/index.qmd#implementation-evidence-status)
+limits execution and delivery claims. Common modeling authority is
 the [CircuitPlan Assembly Contract](contracts/circuit-plan-assembly.qmd);
 composition and visual certification belong to the
 [diagram contract](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
 Independent parameter definitions, physical Plan binding, parameter spaces,
 sweep Results, optimization binding, and parameterized diagrams are another
-`CONVERGING` documentation target. Their sole target authority is the
-[Parameter System Contract](contracts/parameter-system.qmd); current runtime
-schemas remain a frozen implementation baseline until later alignment.
+`CONVERGING` scope with an integrated implementation baseline. Their sole
+authority is the [Parameter System Contract](contracts/parameter-system.qmd);
+current V2 envelopes and shared schema definitions do not expose a legacy
+Plan/request/Result compatibility path.
 
 Adaptive presentation-theme semantics remain a separate `CONVERGING` scope.
 
@@ -85,8 +87,8 @@ stated above:
 | Review question | Detailed section |
 |---|---|
 | Which physical factories, parameters, RLGC, Josephson, SQUID, and coupling models are retained? | [Component Authoring Contract](component-authoring.qmd) |
-| How does the target declare structure and certify authoring/compiled diagrams? | [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd) (`CONVERGING`; implementation alignment pending) |
-| How does the target define inputs, bind them to physical fields, request spaces, and inspect sweep Results? | [Parameter System, Sweeps, and Bound Results](contracts/parameter-system.qmd) (`CONVERGING`; implementation alignment pending) |
+| How does the target declare structure and certify authoring/compiled diagrams? | [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd) (`CONVERGING`; integrated implementation baseline) |
+| How does the target define inputs, bind them to physical fields, request spaces, and inspect sweep Results? | [Parameter System, Sweeps, and Bound Results](contracts/parameter-system.qmd) (`CONVERGING`; integrated implementation baseline) |
 | Who owns the Plan, lazy Ref graph, execution, and Results? | [Runtime ownership model](#runtime-ownership-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
@@ -531,11 +533,11 @@ resolution; candidate-specific continuations remain in candidate receipts.
 
 ### Resolve without execution
 
-`resolve()` accepts the same Ref, spec, and optional ParameterSet as the
-corresponding operation. Because `optimize(ref, spec)` always starts from the
-sealed Plan baseline, its matching `resolve(ref, optimization_spec)` and
-`explain(ref, optimization_spec)` forms do not accept an external
-`ParameterSet`:
+`resolve()` accepts the same Ref, Spec, and parameter selection as its
+corresponding operation. The [Parameter System Contract](contracts/parameter-system.qmd#parameterized-operations)
+owns point/space resolution and optimization's fixed non-active input binding;
+active variables still start at their sealed baseline. `explain()` retains its
+separately declared preflight surface:
 
 ```python
 direct = run.resolve(feedline, direct_spec)
@@ -609,29 +611,48 @@ dimensionality, so F-versus-H correctness is enforced at runtime by
 SCNSim does not add a parallel phantom-type unit system. See
 [Pint typing](https://pint.readthedocs.io/en/stable/advanced/typing.html).
 
-### Frozen runtime ParameterSet baseline {#explicit-parameterset-variants}
+### Explicit ParameterSet variants {#explicit-parameterset-variants}
 
 ::: {.callout-warning}
-The executable runtime described in this subsection derives parameter identity
-from the current component/Plan schema and supports one `ParameterSet`. The
-`CONVERGING` [Parameter System Contract](contracts/parameter-system.qmd)
-replaces that target identity with independent definitions and adds physical
-consumer closure, `ParameterSpace`, sweep Results, and parameterized diagrams.
-No compatibility between these schemas is promised before runtime alignment.
+The `CONVERGING` [Parameter System Contract](contracts/parameter-system.qmd)
+owns independent definition identity, physical-consumer closure, points,
+`ParameterSpace`, sweep Results, and parameterized diagrams. Its implementation
+baseline is integrated; no compatibility with legacy envelopes is promised.
 :::
 
 The sealed Plan supplies the baseline parameters. An operation may instead
-receive an immutable `ParameterSet` keyed by Plan-derived `ParameterRef`
-objects:
+receive an immutable `ParameterSet` keyed by independently defined refs that
+the Plan consumes. Rebuild the earlier fixed-value example with a real binding
+before sealing; lookup cannot turn its literal into a parameter:
 
 ```python
+from scnsim import DirectSolveSpec, ParameterDefinitions, ParameterSet, ParameterSpec
+
+inputs = ParameterDefinitions(id="readout_inputs")
+capacitance = inputs.parameter(
+    id="capacitance", baseline=92.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+plan = CircuitPlan(id="parameterized_readout")
+readout_cap = plan.add(
+    components.capacitor(id="readout_cap", capacitance=capacitance)
+)
+readout_bus = plan.bus(id="readout")
+plan.branch(
+    id="readout_capacitance", at=readout_bus,
+    elements=(readout_cap,), end=plan.ground,
+)
+plan.add_port(
+    id="signal_in", at=readout_bus, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+run = CircuitRun(plan=plan, workspace="results/parameterized_readout")
 candidate = ParameterSet({
     readout_cap.parameter("capacitance"): 95.0 * u.fF,
 })
 
 candidate_direct = run.solve(
-    feedline,
-    direct_spec,
+    run.original,
+    DirectSolveSpec(frequencies=frequency_grid),
     parameters=candidate,
 )
 ```
@@ -639,7 +660,7 @@ candidate_direct = run.solve(
 Omitting `parameters=` uses the sealed baseline. Supplying a ParameterSet does
 not bind or mutate the Ref; the ParameterSet is part of that operation's exact
 request identity. A ParameterSet with unknown refs, incompatible units,
-non-finite values, or a different Plan family fails before execution.
+non-finite values, or unconsumed/incompatible definitions fails before execution.
 
 Optimization exposes its selected parameters through the same type:
 
@@ -1642,8 +1663,11 @@ V1 optimization evaluates Direct objectives only. It accepts one selected
 scalar quantity objectives:
 
 ```text
+Definitions author
+  ParameterSpec + immutable baseline + independent ref
+
 Component Library author
-  ParameterSpec + baseline + fan-out/AffineMap calibration support
+  physical bindings + explicit public exposure + fan-out/AffineMap support
 
 Circuit-model author
   reusable default OptimizationSpec + variables/bounds/objectives/optimizer
@@ -1697,11 +1721,31 @@ run.explain(optimization_view, default_spec).show()
 ```
 
 These surfaces answer different questions. `parameter.show()` reports the
-sealed baseline, unit, fan-out, maps, and calibration support;
+independent definition's baseline and schema, not global Plan consumers;
 `default_spec.show()` reports active variables, default bounds, quantity
 objectives, weights, expanded normalization, and optimizer;
-`run.explain()` reports the fully bound request that would execute. None starts
+`run.explain()` reports Plan-specific consumers, maps, support, and the fully
+bound request that would execute. None starts
 a solver or writes the workspace.
+
+```python
+from scnsim import ParameterDefinitions, ParameterSpec
+
+inputs = ParameterDefinitions(id="optimization_inputs")
+resonator_capacitance = inputs.parameter(
+    id="capacitance", baseline=110.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+```
+
+This is a one-variable model-context excerpt. During the model's pre-seal
+construction, pass `resonator_capacitance` to its real capacitor field and
+register and wire that body in the model supplying `quantity_view` and
+`readout_root`; creating this definition alone is not a physical binding.
+Coupling stays a fixed Quantity, for example `0.12 * u.dimensionless`:
+current `couple_inductive()` does not support parameter binding or
+coupling-coefficient optimization. This supported capacitance-only example
+does not claim that the earlier two-variable problem passed. Objective values
+and weights remain illustrative requests, not achieved design claims.
 
 ```python
 qubit_root = DiagonalRootSpec(
@@ -1712,15 +1756,8 @@ qubit_root = DiagonalRootSpec(
 optimization_spec = OptimizationSpec(
     variables=(
         OptimizationVariable(
-            parameter=resonator.parameter("capacitance"),
+            parameter=resonator_capacitance,
             bounds=(80.0 * u.fF, 120.0 * u.fF),
-        ),
-        OptimizationVariable(
-            parameter=coupler.parameter("coupling_coefficient"),
-            bounds=(
-                0.01 * u.dimensionless,
-                0.20 * u.dimensionless,
-            ),
         ),
     ),
     objectives=(
@@ -2357,11 +2394,10 @@ has the separate `ground_pins(pins=(...))` operation; intrinsic branches retain
 Those forms share one final canonical reference without erasing owner-local
 public boundaries or local diagram evidence.
 
-That scope is `CONVERGING`, with implementation alignment pending. The current
-renderer, flat `net()`/`ground(*pins)` authoring surface, catalog-hint candidate,
-and legacy `SchematicPath`, `SchematicGroup`, and `branch_order` classes are
-frozen interpretation evidence only. They do not implement the target and have
-no promised compatibility path.
+That scope is `CONVERGING` with an integrated implementation baseline. The
+[central evidence status](contracts/index.qmd#implementation-evidence-status)
+limits current validation claims. Superseded flat authoring and catalog-hint
+surfaces have no compatibility path.
 
 The shared boundary remains narrow: schematic rendering does not seal or mutate
 a Plan, execute an analysis, write a workspace, or change physical, request, or
@@ -2381,8 +2417,8 @@ All structured grammar, automatic and handle-based local layout, native
 Subsystem/Composite expansion, Port and ground projection, certified digests,
 independent visible A/B reconstruction, separately verified source rows,
 provenance, and diagram failure behavior belong only to the linked contract. A
-current-runtime diagram is useful diagnostic output but is not a certified
-projection under that target.
+successful current diagram certifies only its declared projection and exact
+point, not a numerical calculation or whole-course acceptance.
 
 The target failure boundary has two explicit preflight stages. Invalid hints,
 unplaceable required marks, collisions, illegal obstacle crossings, broken
@@ -2610,7 +2646,7 @@ overwrite unrelated success receipts.
 - V1 has no public timeout, JobRef, cancellation API, callback progress
   framework, or persistent Julia daemon.
 - Structured authoring, Plan-identity integration, and certified diagrams are
-  one `CONVERGING` target with implementation alignment pending; the stabilized
-  numerical runtime does not yet claim the target defined in
+  one `CONVERGING` scope with an integrated implementation baseline, not
+  Human acceptance of the contract defined in
   [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 - V1 has no public linear-algebra scaling configuration.

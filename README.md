@@ -68,12 +68,10 @@ simulation remain SCGSim responsibilities.
 
 > **Current status:** accepted Direct/HB numerical algorithms and physical
 > models are not reopened. Structured authoring, the independent Parameter
-> System, and parameterized diagrams remain `CONVERGING`. Implementation
-> candidates and their validation are in progress; this is not a release or
-> acceptance claim.
-> Tutorial authoring figures bind genuine exported diagrams to selected source
-> checkpoints; they do not prove that every cell is supported or validated by
-> an installed build. Compiled-diagram limitations remain separately reported.
+> System, and parameterized diagrams remain `CONVERGING` with an integrated
+> implementation baseline. See the centralized
+> [implementation and evidence status](docs/contracts/index.qmd#implementation-evidence-status)
+> for scoped CI, Tutorial, historical-test, and delivery limitations.
 
 ## Install for development
 
@@ -108,20 +106,11 @@ optimization, interpolation, release delivery, or a SCQGate handoff.
 
 ## Candidate CI scope
 
-While structured authoring and parameters converge, CI uses the current public
-assembly API for portable-wheel identity and a small Direct/pump-off HB/resolve
-smoke. Package, runtime preparation, Notebook parity, source-bound figure and
-static-site checks remain active. Existing public RLGC rejection and standalone
-HB failure-classifier regressions run unchanged and must pass.
-
-The other retained Full V1 tests depend on the superseded `net()` assembly,
-implicit parameters, or private snapshot records. They remain preserved as
-historical diagnostics, not a claim of current full-suite coverage. Their
-downstream numerical and integrity assertions are not invalidated by a broken
-fixture; migrating those tests awaits acceptance of the replacement contracts.
-The obsolete assertion rejecting differently named public pins on the same
-node has been removed; the remaining checks have not been rewritten.
-Candidate CI success is neither full V1 stabilization nor Human acceptance.
+The [central evidence status](docs/contracts/index.qmd#implementation-evidence-status)
+distinguishes current runnable checks, numerical regressions blocked by old
+fixtures, and superseded historical expectations. Candidate CI success is not
+a full-suite pass, whole-course execution, Full V1 restabilization, or Human
+acceptance.
 
 ## Read the documentation
 

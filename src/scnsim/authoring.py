@@ -80,6 +80,8 @@ def _source_unit_record(
 
 
 class _Net:
+    """Mutable authoring-time wire equivalence, never a physical branch."""
+
     def __init__(self, label, ground=False):
         self.parent = self
         self.label = label
@@ -210,6 +212,13 @@ class InductiveBranchRef(_H):
     @property
     def component_id(self) -> str:
         return self.component.id
+
+
+def _physical_inductive_branch(branch: InductiveBranchRef) -> InductiveBranchRef:
+    """Follow explicit Composite exposures to the original oriented leaf."""
+    while branch.component.body is not None:
+        branch = branch.component.body.exposed_branches[branch.id]
+    return branch
 
 
 class PortRef(_H):
@@ -419,7 +428,16 @@ class ComponentInstance:
             {name: InductiveBranchRef(self, name) for name in self.branches}
         )
         self.coordinates = MappingProxyType({})
-        self.parameters = MappingProxyType({})
+        # Primitive fields expose the original consumed input reference, not
+        # an affine field's transformed value. Composite build replaces this
+        # surface with its explicitly exposed parameters only.
+        self.parameters = MappingProxyType(
+            {
+                name: ref
+                for name, (_, _, ref, _, _, _) in self.fields.items()
+                if ref is not None
+            }
+        )
         self._frozen = True
 
     def __setattr__(self, name, value):
@@ -1136,13 +1154,8 @@ class _Scope:
             )
 
         def physical(branch):
+            branch = _physical_inductive_branch(branch)
             component = branch.component
-            if component.body is not None:
-                inner = component.body.exposed_branches[branch.id]
-                return {
-                    "path": [*component.owner.path(), component.id, inner.component.id],
-                    "branch_id": inner.id,
-                }
             return {
                 "path": [*component.owner.path(), component.id],
                 "branch_id": branch.id,
@@ -1643,13 +1656,16 @@ class CircuitPlan(_Scope):
                 boundary_branches = {
                     name: {
                         "oriented_physical_branch": {
-                            "path": [*path, branch.component.id],
+                            "path": [
+                                *branch.component.owner.path(), branch.component.id
+                            ],
                             "id": branch.id,
                         }
                     }
-                    for name, branch in (
+                    for name, exposed in (
                         c.body.exposed_branches.items() if c.body else ()
                     )
+                    for branch in (_physical_inductive_branch(exposed),)
                 }
                 occ.append(
                     {
@@ -2359,8 +2375,13 @@ class _BuiltinComponents(Library):
             end=second,
         )
         body.expose_pin(id="terminal_1", at=first)
-        if not grounded:
-            body.expose_pin(id="terminal_2", at=second)
+        # Grounded resonators offer two boundary handles on their one live
+        # internal bus; the physical parallel branches still end at ground.
+        body.expose_pin(id="terminal_2", at=first if grounded else second)
+        if branch == "squid":
+            body.expose_inductive_branch(
+                id="loop", branch=element.inductive_branch("loop")
+            )
         for name, value in values.items():
             if isinstance(value, ParameterRef):
                 body.expose_parameter(id=name, parameter=value)

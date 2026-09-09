@@ -6,8 +6,9 @@ title: "Definitions, Bound Inputs, Points, and Optimization"
 ## CONVERGING Parameter System concept
 
 The independent definition, Plan-binding, parameter-space, sweep-result, and
-parameterized-diagram surface described here is a documentation target. It is
-not executable on the current runtime and is not Human-accepted. Accepted unit,
+parameterized-diagram surface has an integrated implementation baseline but is
+not Human-accepted. The [central evidence status](../contracts/index.qmd#implementation-evidence-status)
+limits execution claims. Accepted unit,
 physical-model, numerical-algorithm, and objective meanings are not reopened.
 :::
 
@@ -68,6 +69,11 @@ refs remain separate inputs. Literals never acquire refs automatically, and
 there is no mutable global current value.
 
 ## Reusable components publish a boundary, not their private children
+
+A primitive's `parameter(field_name)` returns its exact original bound ref,
+including a mapped field's original input ref, and preserves that identity
+across clone/add. Literal fields raise `KeyError` rather than creating refs.
+Transmission-line length and whole RLGC inputs follow the same rule.
 
 A Library factory accepts compatible literals or refs through its declared
 input arguments. Inside the factory, native fields consume those values.

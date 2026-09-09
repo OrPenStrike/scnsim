@@ -1,22 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:scnsim:schema:identity-v1",
-  "title": "SCNSim V1 identity documents",
-  "description": "Canonical envelope schemas for the CONVERGING SCNSim V1 workspace protocol.",
+  "$id": "urn:scnsim:schema:identity-common",
+  "title": "SCNSim shared scientific and protocol definitions",
+  "description": "Current shared scientific definitions and standalone workspace/protocol documents. Current Plan, Parameter, Request, Result, and generation-ledger documents are defined by identity-v2.schema.json.",
   "oneOf": [
-    { "$ref": "#/$defs/workspace" },
-    { "$ref": "#/$defs/plan" },
-    { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/attempt" },
-    { "$ref": "#/$defs/result" },
-    { "$ref": "#/$defs/receipt" },
-    { "$ref": "#/$defs/outcome" },
-    { "$ref": "#/$defs/generationLedger" },
-    { "$ref": "#/$defs/artifactManifest" },
-    { "$ref": "#/$defs/progress" },
-    { "$ref": "#/$defs/bootstrapReady" },
-    { "$ref": "#/$defs/launchAuthorization" },
-    { "$ref": "#/$defs/inventoryResult" }
+    {
+      "$ref": "#/$defs/workspace"
+    },
+    {
+      "$ref": "#/$defs/attempt"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/outcome"
+    },
+    {
+      "$ref": "#/$defs/artifactManifest"
+    },
+    {
+      "$ref": "#/$defs/progress"
+    },
+    {
+      "$ref": "#/$defs/bootstrapReady"
+    },
+    {
+      "$ref": "#/$defs/launchAuthorization"
+    },
+    {
+      "$ref": "#/$defs/inventoryResult"
+    }
   ],
   "$defs": {
     "sha256": {
@@ -179,15 +193,6 @@
         { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
       ]
     },
-    "endpoint": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["component_path", "pin_id"],
-      "properties": {
-        "component_path": { "$ref": "#/$defs/componentPath" },
-        "pin_id": { "$ref": "#/$defs/identifier" }
-      }
-    },
     "axis": {
       "type": "object",
       "additionalProperties": false,
@@ -234,18 +239,6 @@
           "then": { "properties": { "values": { "items": { "type": "string", "minLength": 1 } } } }
         }
       ]
-    },
-    "fileArtifact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "path", "sha256", "media_type", "byte_length"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "path": { "$ref": "#/$defs/relativePath" },
-        "sha256": { "$ref": "#/$defs/sha256" },
-        "media_type": { "type": "string", "minLength": 1 },
-        "byte_length": { "type": "integer", "minimum": 0 }
-      }
     },
     "zarrGroupMetadata": {
       "type": "object",
@@ -851,10 +844,17 @@
     "parameterRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["component_path", "parameter_id"],
+      "required": [
+        "definitions_id",
+        "parameter_id"
+      ],
       "properties": {
-        "component_path": { "$ref": "#/$defs/componentPath" },
-        "parameter_id": { "$ref": "#/$defs/identifier" }
+        "definitions_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "parameter_id": {
+          "$ref": "#/$defs/identifier"
+        }
       }
     },
     "inductiveBranchRef": {
@@ -864,92 +864,6 @@
       "properties": {
         "component_path": { "$ref": "#/$defs/componentPath" },
         "branch_id": { "$ref": "#/$defs/identifier" }
-      }
-    },
-    "parameterSpec": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["si_unit", "dimensionality"],
-      "properties": {
-        "si_unit": { "$ref": "#/$defs/siUnit" },
-        "dimensionality": { "$ref": "#/$defs/dimensionality" }
-      },
-      "allOf": [
-        { "if": { "properties": { "si_unit": { "const": "farad" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "capacitance" } } } },
-        { "if": { "properties": { "si_unit": { "const": "henry" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inductance" } } } },
-        { "if": { "properties": { "si_unit": { "const": "ohm" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "resistance" } } } },
-        { "if": { "properties": { "si_unit": { "const": "siemens" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "conductance" } } } },
-        { "if": { "properties": { "si_unit": { "enum": ["hertz", "radian / second"] } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "inverse_time" } } } },
-        { "if": { "properties": { "si_unit": { "const": "ampere" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "current" } } } },
-        { "if": { "properties": { "si_unit": { "const": "volt" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "voltage" } } } },
-        { "if": { "properties": { "si_unit": { "const": "meter" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "length" } } } },
-        { "if": { "properties": { "si_unit": { "const": "weber" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "magnetic_flux" } } } },
-        { "if": { "properties": { "si_unit": { "const": "dimensionless" } }, "required": ["si_unit"] }, "then": { "properties": { "dimensionality": { "const": "dimensionless" } } } }
-      ]
-    },
-    "parameterDeclaration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "spec", "baseline"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "spec": { "$ref": "#/$defs/parameterSpec" },
-        "baseline": { "$ref": "#/$defs/quantity" }
-      }
-    },
-    "constantBinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "value"],
-      "properties": {
-        "kind": { "const": "constant" },
-        "value": { "$ref": "#/$defs/quantity" }
-      }
-    },
-    "identityBinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "input"],
-      "properties": {
-        "kind": { "const": "identity" },
-        "input": { "$ref": "#/$defs/parameterRef" }
-      }
-    },
-    "affineBinding": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "input", "slope", "intercept", "support"],
-      "properties": {
-        "kind": { "const": "affine" },
-        "input": { "$ref": "#/$defs/parameterRef" },
-        "slope": { "$ref": "#/$defs/quantity" },
-        "intercept": { "$ref": "#/$defs/quantity" },
-        "support": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
-          "prefixItems": [
-            { "$ref": "#/$defs/quantity" },
-            { "$ref": "#/$defs/quantity" }
-          ],
-          "items": false
-        }
-      }
-    },
-    "parameterBinding": {
-      "oneOf": [
-        { "$ref": "#/$defs/constantBinding" },
-        { "$ref": "#/$defs/identityBinding" },
-        { "$ref": "#/$defs/affineBinding" }
-      ]
-    },
-    "boundParameter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "binding"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "binding": { "$ref": "#/$defs/parameterBinding" }
       }
     },
     "quantityMatrix": {
@@ -1097,256 +1011,6 @@
           ]
         },
         "source": { "$ref": "#/$defs/rlgcSource" }
-      }
-    },
-    "inductiveBranchDeclaration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "positive_endpoint", "negative_endpoint", "inductance"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "positive_endpoint": { "$ref": "#/$defs/endpoint" },
-        "negative_endpoint": { "$ref": "#/$defs/endpoint" },
-        "inductance": { "$ref": "#/$defs/parameterBinding" }
-      }
-    },
-    "primitiveRealization": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "resistance"],
-          "properties": { "kind": { "const": "resistor" }, "resistance": { "$ref": "#/$defs/parameterBinding" } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "capacitance"],
-          "properties": { "kind": { "const": "capacitor" }, "capacitance": { "$ref": "#/$defs/parameterBinding" } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "inductance"],
-          "properties": { "kind": { "const": "inductor" }, "inductance": { "$ref": "#/$defs/parameterBinding" } }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "josephson_inductance", "junction_capacitance"],
-          "properties": {
-            "kind": { "const": "josephson_junction" },
-            "josephson_inductance": { "$ref": "#/$defs/parameterBinding" },
-            "junction_capacitance": { "$ref": "#/$defs/parameterBinding" }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": [
-            "kind", "josephson_inductance", "junction_capacitance", "loop_inductance",
-            "junction_branch_ids", "loop_branch_id"
-          ],
-          "properties": {
-            "kind": { "const": "symmetric_squid" },
-            "josephson_inductance": { "$ref": "#/$defs/parameterBinding" },
-            "junction_capacitance": { "$ref": "#/$defs/parameterBinding" },
-            "loop_inductance": { "$ref": "#/$defs/parameterBinding" },
-            "junction_branch_ids": {
-              "type": "array", "minItems": 2, "maxItems": 2,
-              "prefixItems": [{ "$ref": "#/$defs/identifier" }, { "$ref": "#/$defs/identifier" }],
-              "items": false
-            },
-            "loop_branch_id": { "$ref": "#/$defs/identifier" }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": [
-            "kind", "terminal_1_to_reference_capacitance",
-            "terminal_2_to_reference_capacitance", "terminal_mutual_capacitance"
-          ],
-          "properties": {
-            "kind": { "const": "interdigitated_capacitor" },
-            "terminal_1_to_reference_capacitance": { "$ref": "#/$defs/parameterBinding" },
-            "terminal_2_to_reference_capacitance": { "$ref": "#/$defs/parameterBinding" },
-            "terminal_mutual_capacitance": { "$ref": "#/$defs/parameterBinding" }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["kind", "length", "rlgc", "n_sections", "pin_conductors"],
-          "properties": {
-            "kind": { "const": "transmission_line" },
-            "length": { "$ref": "#/$defs/parameterBinding" },
-            "rlgc": { "$ref": "#/$defs/rlgc" },
-            "n_sections": { "type": "integer", "minimum": 1 },
-            "pin_conductors": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "$ref": "#/$defs/identifier" }
-            }
-          }
-        }
-      ]
-    },
-    "privateNode": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "endpoints"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "endpoints": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/endpoint" } }
-      }
-    },
-    "publicNodeMap": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["public_id", "private_node_id"],
-      "properties": {
-        "public_id": { "$ref": "#/$defs/identifier" },
-        "private_node_id": { "$ref": "#/$defs/identifier" }
-      }
-    },
-    "parameterConsumer": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["target", "binding"],
-      "properties": {
-        "target": { "$ref": "#/$defs/parameterRef" },
-        "binding": { "$ref": "#/$defs/parameterBinding" }
-      }
-    },
-    "publicParameterMap": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["parameter", "consumers"],
-      "properties": {
-        "parameter": { "$ref": "#/$defs/parameterRef" },
-        "consumers": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/parameterConsumer" }
-        }
-      }
-    },
-    "publicInductiveBranchMap": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["public_id", "target"],
-      "properties": {
-        "public_id": { "$ref": "#/$defs/identifier" },
-        "target": { "$ref": "#/$defs/inductiveBranchRef" }
-      }
-    },
-    "compositeRealization": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind", "public_parameters", "children", "private_nodes", "grounded_endpoints",
-        "couplings", "public_pin_map", "public_coordinate_map",
-        "public_parameter_maps", "public_inductive_branch_map"
-      ],
-      "properties": {
-        "kind": { "const": "composite" },
-        "public_parameters": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/parameterDeclaration" }
-        },
-        "children": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/componentSnapshot" }
-        },
-        "private_nodes": { "type": "array", "items": { "$ref": "#/$defs/privateNode" } },
-        "grounded_endpoints": { "type": "array", "items": { "$ref": "#/$defs/endpoint" } },
-        "couplings": { "type": "array", "items": { "$ref": "#/$defs/mutualCoupling" } },
-        "public_pin_map": { "type": "array", "items": { "$ref": "#/$defs/publicNodeMap" } },
-        "public_coordinate_map": { "type": "array", "items": { "$ref": "#/$defs/publicNodeMap" } },
-        "public_parameter_maps": { "type": "array", "items": { "$ref": "#/$defs/publicParameterMap" } },
-        "public_inductive_branch_map": { "type": "array", "items": { "$ref": "#/$defs/publicInductiveBranchMap" } }
-      }
-    },
-    "componentSnapshot": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "component_path", "catalog_id", "factory", "pin_order", "parameter_bindings",
-        "inductive_branches", "realization"
-      ],
-      "properties": {
-        "component_path": { "$ref": "#/$defs/componentPath" },
-        "catalog_id": { "type": "string", "minLength": 1 },
-        "factory": { "$ref": "#/$defs/identifier" },
-        "pin_order": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } },
-        "parameter_bindings": { "type": "array", "items": { "$ref": "#/$defs/boundParameter" } },
-        "inductive_branches": { "type": "array", "items": { "$ref": "#/$defs/inductiveBranchDeclaration" } },
-        "realization": {
-          "oneOf": [
-            { "$ref": "#/$defs/primitiveRealization" },
-            { "$ref": "#/$defs/compositeRealization" }
-          ]
-        }
-      }
-    },
-    "mutualCoupling": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "branch_a", "branch_b", "coupling_coefficient", "derived_mutual_inductance"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "branch_a": { "$ref": "#/$defs/inductiveBranchRef" },
-        "branch_b": { "$ref": "#/$defs/inductiveBranchRef" },
-        "coupling_coefficient": {
-          "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }]
-        },
-        "derived_mutual_inductance": {
-          "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "henry" }, "dimensionality": { "const": "inductance" } } }]
-        }
-      }
-    },
-    "planNode": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["node_id", "visibility", "endpoints"],
-      "properties": {
-        "node_id": { "type": "string", "minLength": 1 },
-        "visibility": { "enum": ["public", "internal", "port_promoted"] },
-        "endpoints": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/endpoint" } }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "visibility": { "const": "internal" } }, "required": ["visibility"] },
-          "then": { "properties": { "node_id": { "pattern": "^internal-[0-9a-f]{64}$" } } },
-          "else": { "properties": { "node_id": { "pattern": "^(?!internal-[0-9a-f]{64}$).+$" } } }
-        }
-      ]
-    },
-    "logicalPort": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["port_id", "node_id", "role", "reference_impedance", "orientation"],
-      "properties": {
-        "port_id": { "$ref": "#/$defs/identifier" },
-        "node_id": { "$ref": "#/$defs/identifier" },
-        "role": { "enum": ["terminated", "nonloading_probe"] },
-        "reference_impedance": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-        "orientation": { "const": "node_to_reference" }
-      }
-    },
-    "plan": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema", "schema_version", "plan_id", "ground_id", "catalog_sources",
-        "components", "nodes", "grounded_endpoints", "ports", "couplings"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.plan" },
-        "schema_version": { "const": 1 },
-        "plan_id": { "$ref": "#/$defs/identifier" },
-        "ground_id": { "const": "ground" },
-        "catalog_sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/catalogSource" } },
-        "components": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/componentSnapshot" } },
-        "nodes": { "type": "array", "items": { "$ref": "#/$defs/planNode" } },
-        "grounded_endpoints": { "type": "array", "items": { "$ref": "#/$defs/endpoint" } },
-        "ports": { "type": "array", "items": { "$ref": "#/$defs/logicalPort" } },
-        "couplings": { "type": "array", "items": { "$ref": "#/$defs/mutualCoupling" } }
       }
     },
     "evidenceMatrix": {
@@ -1609,73 +1273,6 @@
         "allow_driven_ptc": { "type": "boolean" }
       }
     },
-    "request": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema",
-        "schema_version",
-        "plan_sha256",
-        "operation",
-        "ref_lineage",
-        "spec",
-        "parameters",
-        "runtime_semantic"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.request" },
-        "schema_version": { "const": 1 },
-        "plan_sha256": { "$ref": "#/$defs/sha256" },
-        "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] },
-        "ref_lineage": { "$ref": "#/$defs/refLineage" },
-        "spec": {
-          "oneOf": [
-            { "$ref": "#/$defs/directSolveSpec" },
-            { "$ref": "#/$defs/hbSolveSpec" },
-            { "$ref": "#/$defs/directEvaluationSpec" },
-            { "$ref": "#/$defs/optimizationSpec" }
-          ]
-        },
-        "parameters": { "$ref": "#/$defs/parameterSet" },
-        "runtime_semantic": { "$ref": "#/$defs/runtimeSemantic" }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "operation": { "const": "solve_direct" } },
-            "required": ["operation"]
-          },
-          "then": {
-            "properties": {
-              "spec": { "$ref": "#/$defs/directSolveSpec" },
-              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.direct_response.v1" } } }
-            }
-          }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "solve_hb" } }, "required": ["operation"] },
-          "then": {
-            "properties": {
-              "spec": { "$ref": "#/$defs/hbSolveSpec" },
-              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.hb_response.josephsoncircuits.v1" } } }
-            }
-          }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "evaluate_direct" } }, "required": ["operation"] },
-          "then": { "properties": { "spec": { "$ref": "#/$defs/directEvaluationSpec" } } }
-        },
-        {
-          "if": { "properties": { "operation": { "const": "optimize_direct" } }, "required": ["operation"] },
-          "then": {
-            "properties": {
-              "spec": { "$ref": "#/$defs/optimizationSpec" },
-              "runtime_semantic": { "properties": { "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2" } } }
-            }
-          }
-        }
-      ]
-    },
     "refLineage": {
       "type": "object",
       "additionalProperties": false,
@@ -1763,42 +1360,6 @@
         }
       ]
     },
-    "optimizationVariable": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"],
-      "properties": {
-        "parameter": { "$ref": "#/$defs/parameterRef" },
-        "model_default_bounds": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
-          "prefixItems": [
-            { "$ref": "#/$defs/quantity" },
-            { "$ref": "#/$defs/quantity" }
-          ],
-          "items": false
-        },
-        "consumer_override_bounds": {
-          "oneOf": [
-            { "type": "null" },
-            {
-              "type": "array",
-              "minItems": 2,
-              "maxItems": 2,
-              "prefixItems": [
-                { "$ref": "#/$defs/quantity" },
-                { "$ref": "#/$defs/quantity" }
-              ],
-              "items": false
-            }
-          ]
-        },
-        "lower": { "$ref": "#/$defs/quantity" },
-        "upper": { "$ref": "#/$defs/quantity" },
-        "transform": { "enum": ["linear", "log"] }
-      }
-    },
     "costObjective": {
       "type": "object",
       "additionalProperties": false,
@@ -1844,75 +1405,58 @@
         "hidden_stops": { "const": "disabled" }
       }
     },
-    "optimizationSpec": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "variables", "objectives", "optimizer", "allow_extrapolation"],
-      "properties": {
-        "type": { "const": "optimization" },
-        "variables": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/optimizationVariable" }
-        },
-        "objectives": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/costObjective" }
-        },
-        "optimizer": { "$ref": "#/$defs/cmaesControls" },
-        "allow_extrapolation": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/parameterRef" }
-        }
-      }
-    },
-    "parameterSet": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "bindings", "allow_extrapolation"],
-      "properties": {
-        "type": { "const": "parameter_set" },
-        "bindings": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["parameter", "value"],
-            "properties": {
-              "parameter": { "$ref": "#/$defs/parameterRef" },
-              "value": { "$ref": "#/$defs/quantity" }
-            }
-          }
-        },
-        "allow_extrapolation": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/parameterRef" }
-        }
-      }
-    },
     "extrapolationEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["parameter", "consumer_target", "support", "input_value", "side", "distance", "authorization_source"],
+      "required": [
+        "parameter",
+        "consumer_target",
+        "support",
+        "input_value",
+        "side",
+        "distance",
+        "authorization_source"
+      ],
       "properties": {
-        "parameter": { "$ref": "#/$defs/parameterRef" },
-        "consumer_target": { "$ref": "#/$defs/parameterRef" },
+        "parameter": {
+          "$ref": "#/$defs/parameterRef"
+        },
+        "consumer_target": {
+          "$ref": "#/$defs/physicalConsumerTarget"
+        },
         "support": {
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
           "prefixItems": [
-            { "$ref": "#/$defs/quantity" },
-            { "$ref": "#/$defs/quantity" }
+            {
+              "$ref": "#/$defs/quantity"
+            },
+            {
+              "$ref": "#/$defs/quantity"
+            }
           ],
           "items": false
         },
-        "input_value": { "$ref": "#/$defs/quantity" },
-        "side": { "enum": ["lower", "upper"] },
-        "distance": { "$ref": "#/$defs/quantity" },
-        "authorization_source": { "enum": ["none", "optimization_spec", "parameter_set"] }
+        "input_value": {
+          "$ref": "#/$defs/quantity"
+        },
+        "side": {
+          "enum": [
+            "lower",
+            "upper"
+          ]
+        },
+        "distance": {
+          "$ref": "#/$defs/quantity"
+        },
+        "authorization_source": {
+          "enum": [
+            "none",
+            "optimization_spec",
+            "parameter_set"
+          ]
+        }
       }
     },
     "attempt": {
@@ -2007,103 +1551,6 @@
         "attempt_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
-    "directResponseResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema",
-        "schema_version",
-        "result_kind",
-        "request_sha256",
-        "attempt_sha256",
-        "scalar_catalog",
-        "array_catalog"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "direct_response" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object",
-          "maxProperties": 0
-        },
-        "array_catalog": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["frequencies", "s", "y", "z"],
-          "properties": {
-            "frequencies": { "$ref": "#/$defs/directFrequencyArtifact" },
-            "s": { "$ref": "#/$defs/directSArtifact" },
-            "y": { "$ref": "#/$defs/directYArtifact" },
-            "z": { "$ref": "#/$defs/directZArtifact" }
-          }
-        }
-      }
-    },
-    "diagonalRootResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema",
-        "schema_version",
-        "result_kind",
-        "request_sha256",
-        "attempt_sha256",
-        "scalar_catalog",
-        "array_catalog"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "diagonal_root" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["root", "frequency", "linewidth", "slope"],
-          "properties": {
-            "root": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "linewidth": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] }
-          }
-        },
-        "array_catalog": {
-          "type": "object",
-          "maxProperties": 0
-        }
-      }
-    },
-    "hybridizedPoleResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "hybridized_pole" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["root", "frequency", "linewidth", "slope", "evidence_sha256"],
-          "properties": {
-            "root": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "linewidth": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
-            "evidence_sha256": { "$ref": "#/$defs/sha256" }
-          }
-        },
-        "array_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["null_vector"],
-          "properties": { "null_vector": { "$ref": "#/$defs/nullVectorArtifact" } }
-        }
-      }
-    },
     "nullVectorArtifact": {
       "allOf": [
         { "$ref": "#/$defs/zarrArtifact" },
@@ -2145,105 +1592,6 @@
           }
         }
       ]
-    },
-    "transferZeroResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "transfer_zero" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"],
-          "properties": {
-            "zero": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "numerator_slope": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
-            "denominator": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
-            "evidence_sha256": { "$ref": "#/$defs/sha256" }
-          }
-        },
-        "array_catalog": { "type": "object", "maxProperties": 0 }
-      }
-    },
-    "residueNormalizedCouplingResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "residue_normalized_coupling" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"],
-          "properties": {
-            "coupling": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "radian / second" }, "dimensionality": { "const": "inverse_time" } } }] },
-            "branch_a_residue": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-            "branch_b_residue": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-            "evidence_sha256": { "$ref": "#/$defs/sha256" }
-          }
-        },
-        "array_catalog": { "type": "object", "maxProperties": 0 }
-      }
-    },
-    "responseElementResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "response_element" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["family", "value", "magnitude", "real", "imag", "evidence_sha256"],
-          "properties": {
-            "family": { "enum": ["S", "Y", "Z"] },
-            "value": { "$ref": "#/$defs/complexQuantity" },
-            "magnitude": { "$ref": "#/$defs/quantity" },
-            "real": { "$ref": "#/$defs/quantity" },
-            "imag": { "$ref": "#/$defs/quantity" },
-            "evidence_sha256": { "$ref": "#/$defs/sha256" }
-          },
-          "allOf": [
-            {
-              "if": { "properties": { "family": { "const": "S" } }, "required": ["family"] },
-              "then": { "properties": {
-                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
-                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
-                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] },
-                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "dimensionless" }, "dimensionality": { "const": "dimensionless" } } }] }
-              } }
-            },
-            {
-              "if": { "properties": { "family": { "const": "Y" } }, "required": ["family"] },
-              "then": { "properties": {
-                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
-                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
-                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] },
-                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "siemens" }, "dimensionality": { "const": "conductance" } } }] }
-              } }
-            },
-            {
-              "if": { "properties": { "family": { "const": "Z" } }, "required": ["family"] },
-              "then": { "properties": {
-                "value": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-                "magnitude": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-                "real": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] },
-                "imag": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "ohm" }, "dimensionality": { "const": "resistance" } } }] }
-              } }
-            }
-          ]
-        },
-        "array_catalog": { "type": "object", "maxProperties": 0 }
-      }
     },
     "operatorArtifact": {
       "allOf": [
@@ -2287,26 +1635,6 @@
           }
         }
       ]
-    },
-    "operatorResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "scalar_catalog", "array_catalog"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "operator" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "scalar_catalog": { "type": "object", "maxProperties": 0 },
-        "array_catalog": {
-          "type": "object", "additionalProperties": false,
-          "required": ["frequencies", "operator"],
-          "properties": {
-            "frequencies": { "$ref": "#/$defs/directFrequencyArtifact" },
-            "operator": { "$ref": "#/$defs/operatorArtifact" }
-          }
-        }
-      }
     },
     "hbOperatingPointMode": {
       "type": "object", "additionalProperties": false,
@@ -2768,21 +2096,6 @@
         }
       ]
     },
-    "hbBatchResult": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "lattice", "truncation", "topology_evidence", "cases"],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "hb_batch" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "lattice": { "$ref": "#/$defs/hbLattice" },
-        "truncation": { "$ref": "#/$defs/hbTruncation" },
-        "topology_evidence": { "$ref": "#/$defs/hbTopologyEvidence" },
-        "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbCaseOutcome" } }
-      }
-    },
     "inventoryResult": {
       "type": "object", "additionalProperties": false,
       "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests"],
@@ -2805,58 +2118,6 @@
           }
         }
       }
-    },
-    "optimizationBest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["evaluation_ordinal", "cost_f64", "parameters"],
-      "properties": {
-        "evaluation_ordinal": { "type": "integer", "minimum": 0 },
-        "cost_f64": { "$ref": "#/$defs/f64" },
-        "parameters": {
-          "allOf": [
-            { "$ref": "#/$defs/parameterSet" },
-            { "properties": { "allow_extrapolation": { "maxItems": 0 } } }
-          ]
-        }
-      }
-    },
-    "optimizationResult": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256",
-        "baseline", "best", "completed_generations", "unused_evaluations", "ledger_artifacts"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.result" },
-        "schema_version": { "const": 1 },
-        "result_kind": { "const": "optimization" },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "baseline": { "$ref": "#/$defs/baselineOutcome" },
-        "best": { "$ref": "#/$defs/optimizationBest" },
-        "completed_generations": { "type": "integer", "minimum": 1 },
-        "unused_evaluations": { "type": "integer", "minimum": 0 },
-        "ledger_artifacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/fileArtifact" }
-        }
-      }
-    },
-    "result": {
-      "oneOf": [
-        { "$ref": "#/$defs/directResponseResult" },
-        { "$ref": "#/$defs/diagonalRootResult" },
-        { "$ref": "#/$defs/hybridizedPoleResult" },
-        { "$ref": "#/$defs/transferZeroResult" },
-        { "$ref": "#/$defs/residueNormalizedCouplingResult" },
-        { "$ref": "#/$defs/responseElementResult" },
-        { "$ref": "#/$defs/operatorResult" },
-        { "$ref": "#/$defs/optimizationResult" },
-        { "$ref": "#/$defs/hbBatchResult" }
-      ]
     },
     "failure": {
       "type": "object",
@@ -3015,91 +2276,6 @@
         }
       }
     },
-    "candidateOutcome": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "evaluation_ordinal", "origin", "generation", "population_column",
-        "optimizer_coordinates_f64", "parameters", "cache_hit", "extrapolation_evidence", "outcome"
-      ],
-      "properties": {
-        "evaluation_ordinal": { "type": "integer", "minimum": 0 },
-        "origin": { "enum": ["baseline", "population"] },
-        "generation": { "type": "integer", "minimum": 0 },
-        "population_column": {
-          "oneOf": [
-            { "type": "null" },
-            { "type": "integer", "minimum": 1 }
-          ]
-        },
-        "optimizer_coordinates_f64": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/f64" }
-        },
-        "optimizer_latent_coordinates_f64": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/f64" }
-        },
-        "parameters": {
-          "allOf": [
-            { "$ref": "#/$defs/parameterSet" },
-            { "properties": { "allow_extrapolation": { "maxItems": 0 } } }
-          ]
-        },
-        "cache_hit": { "type": "boolean" },
-        "extrapolation_evidence": {
-          "type": "array",
-          "items": {
-            "allOf": [
-              { "$ref": "#/$defs/extrapolationEvidence" },
-              {
-                "properties": {
-                  "authorization_source": { "enum": ["none", "optimization_spec"] }
-                }
-              }
-            ]
-          }
-        },
-        "outcome": {
-          "oneOf": [
-            { "$ref": "#/$defs/candidateSuccess" },
-            { "$ref": "#/$defs/candidateFailure" }
-          ]
-        }
-      }
-    },
-    "baselineOutcome": {
-      "allOf": [
-        { "$ref": "#/$defs/candidateOutcome" },
-        {
-          "not": { "required": ["optimizer_latent_coordinates_f64"] },
-          "properties": {
-            "evaluation_ordinal": { "const": 0 },
-            "origin": { "const": "baseline" },
-            "generation": { "const": 0 },
-            "population_column": { "type": "null" },
-            "cache_hit": { "const": false },
-            "outcome": { "$ref": "#/$defs/candidateSuccess" }
-          }
-        }
-      ]
-    },
-    "populationOutcome": {
-      "allOf": [
-        { "$ref": "#/$defs/candidateOutcome" },
-        {
-          "required": ["optimizer_latent_coordinates_f64"],
-          "properties": {
-            "evaluation_ordinal": { "type": "integer", "minimum": 1 },
-            "origin": { "const": "population" },
-            "generation": { "type": "integer", "minimum": 1 },
-            "population_column": { "type": "integer", "minimum": 1 }
-          }
-        }
-      ]
-    },
     "cmaContinuationCertificate": {
       "type": "object",
       "additionalProperties": false,
@@ -3141,39 +2317,6 @@
           }
         }
       ]
-    },
-    "generationLedger": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "schema", "schema_version", "request_sha256", "attempt_sha256",
-        "algorithm_id", "generation", "previous_ledger_sha256", "population_size",
-        "raw_optimizer_population_sha256", "transformed_optimizer_population_sha256",
-        "continuation_certificate", "candidates"
-      ],
-      "properties": {
-        "schema": { "const": "scnsim.optimization_ledger" },
-        "schema_version": { "const": 1 },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2" },
-        "generation": { "type": "integer", "minimum": 1 },
-        "previous_ledger_sha256": {
-          "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/sha256" }
-          ]
-        },
-        "population_size": { "type": "integer", "minimum": 2 },
-        "raw_optimizer_population_sha256": { "$ref": "#/$defs/sha256" },
-        "transformed_optimizer_population_sha256": { "$ref": "#/$defs/sha256" },
-        "continuation_certificate": { "$ref": "#/$defs/cmaContinuationCertificate" },
-        "candidates": {
-          "type": "array",
-          "minItems": 2,
-          "items": { "$ref": "#/$defs/populationOutcome" }
-        }
-      }
     },
     "sourceUnitEvidence": {
       "type": "object", "additionalProperties": false,
@@ -3233,48 +2376,119 @@
         "sealed_at_utc"
       ],
       "properties": {
-        "schema": { "const": "scnsim.receipt" },
-        "schema_version": { "const": 1 },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "outcome": { "enum": ["success", "failure", "interrupted"] },
-        "outcome_sha256": { "$ref": "#/$defs/sha256" },
-        "result_sha256": { "$ref": "#/$defs/sha256" },
+        "schema": {
+          "const": "scnsim.receipt"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "request_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "attempt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "outcome": {
+          "enum": [
+            "success",
+            "failure",
+            "interrupted"
+          ]
+        },
+        "outcome_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "result_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
         "artifacts": {
           "type": "array",
-          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/artifactLink"
+              },
+              {
+                "$ref": "#/$defs/hbArtifactReference"
+              },
+              {
+                "$ref": "#/$defs/parameterPointsManifestReference"
+              }
+            ]
+          }
         },
-        "evidence": { "$ref": "#/$defs/receiptEvidence" },
-        "failure": { "$ref": "#/$defs/failure" },
-        "interruption": { "$ref": "#/$defs/interruptionEvidence" },
-        "sealed_at_utc": { "$ref": "#/$defs/utcTimestamp" }
+        "evidence": {
+          "$ref": "#/$defs/receiptEvidence"
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        },
+        "interruption": {
+          "$ref": "#/$defs/interruptionEvidence"
+        },
+        "sealed_at_utc": {
+          "$ref": "#/$defs/utcTimestamp"
+        }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "outcome": { "const": "success" } },
-            "required": ["outcome"]
+            "properties": {
+              "outcome": {
+                "const": "success"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
           },
           "then": {
-            "required": ["result_sha256", "outcome_sha256"],
+            "required": [
+              "result_sha256",
+              "outcome_sha256"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["failure"] },
-                { "required": ["interruption"] }
+                {
+                  "required": [
+                    "failure"
+                  ]
+                },
+                {
+                  "required": [
+                    "interruption"
+                  ]
+                }
               ]
             }
           },
           "else": {
             "if": {
-              "properties": { "outcome": { "const": "failure" } },
-              "required": ["outcome"]
+              "properties": {
+                "outcome": {
+                  "const": "failure"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
             },
             "then": {
-              "required": ["failure"],
+              "required": [
+                "failure"
+              ],
               "not": {
                 "anyOf": [
-                  { "required": ["result_sha256"] },
-                  { "required": ["interruption"] }
+                  {
+                    "required": [
+                      "result_sha256"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "interruption"
+                    ]
+                  }
                 ]
               },
               "allOf": [
@@ -3282,22 +2496,44 @@
                   "if": {
                     "properties": {
                       "failure": {
-                        "properties": { "kind": { "const": "backend_protocol" } },
-                        "required": ["kind"]
+                        "properties": {
+                          "kind": {
+                            "const": "backend_protocol"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ]
                       }
                     },
-                    "required": ["failure"]
+                    "required": [
+                      "failure"
+                    ]
                   },
-                  "else": { "required": ["outcome_sha256"] }
+                  "else": {
+                    "required": [
+                      "outcome_sha256"
+                    ]
+                  }
                 }
               ]
             },
             "else": {
-              "required": ["interruption"],
+              "required": [
+                "interruption"
+              ],
               "not": {
                 "anyOf": [
-                  { "required": ["result_sha256"] },
-                  { "required": ["failure"] }
+                  {
+                    "required": [
+                      "result_sha256"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "failure"
+                    ]
+                  }
                 ]
               }
             }
@@ -3309,59 +2545,140 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "schema", "schema_version", "request_sha256", "attempt_sha256",
-        "runtime_semantic", "status", "artifacts"
+        "schema",
+        "schema_version",
+        "request_sha256",
+        "attempt_sha256",
+        "runtime_semantic",
+        "status",
+        "artifacts"
       ],
       "properties": {
-        "schema": { "const": "scnsim.outcome" },
-        "schema_version": { "const": 1 },
-        "request_sha256": { "$ref": "#/$defs/sha256" },
-        "attempt_sha256": { "$ref": "#/$defs/sha256" },
-        "runtime_semantic": { "$ref": "#/$defs/runtimeSemantic" },
-        "status": { "enum": ["success", "failure", "interrupted"] },
-        "result_sha256": { "$ref": "#/$defs/sha256" },
-        "failure": { "$ref": "#/$defs/failure" },
-        "interruption": { "$ref": "#/$defs/interruptionEvidence" },
+        "schema": {
+          "const": "scnsim.outcome"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "request_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "attempt_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_semantic": {
+          "$ref": "#/$defs/runtimeSemantic"
+        },
+        "status": {
+          "enum": [
+            "success",
+            "failure",
+            "interrupted"
+          ]
+        },
+        "result_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        },
+        "interruption": {
+          "$ref": "#/$defs/interruptionEvidence"
+        },
         "artifacts": {
           "type": "array",
-          "items": { "oneOf": [{ "$ref": "#/$defs/artifactLink" }, { "$ref": "#/$defs/hbArtifactReference" }] }
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/artifactLink"
+              },
+              {
+                "$ref": "#/$defs/hbArtifactReference"
+              },
+              {
+                "$ref": "#/$defs/parameterPointsManifestReference"
+              }
+            ]
+          }
         }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "status": { "const": "success" } },
-            "required": ["status"]
+            "properties": {
+              "status": {
+                "const": "success"
+              }
+            },
+            "required": [
+              "status"
+            ]
           },
           "then": {
-            "required": ["result_sha256"],
+            "required": [
+              "result_sha256"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["failure"] },
-                { "required": ["interruption"] }
+                {
+                  "required": [
+                    "failure"
+                  ]
+                },
+                {
+                  "required": [
+                    "interruption"
+                  ]
+                }
               ]
             }
           },
           "else": {
             "if": {
-              "properties": { "status": { "const": "failure" } },
-              "required": ["status"]
+              "properties": {
+                "status": {
+                  "const": "failure"
+                }
+              },
+              "required": [
+                "status"
+              ]
             },
             "then": {
-              "required": ["failure"],
+              "required": [
+                "failure"
+              ],
               "not": {
                 "anyOf": [
-                  { "required": ["result_sha256"] },
-                  { "required": ["interruption"] }
+                  {
+                    "required": [
+                      "result_sha256"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "interruption"
+                    ]
+                  }
                 ]
               }
             },
             "else": {
-              "required": ["interruption"],
+              "required": [
+                "interruption"
+              ],
               "not": {
                 "anyOf": [
-                  { "required": ["result_sha256"] },
-                  { "required": ["failure"] }
+                  {
+                    "required": [
+                      "result_sha256"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "failure"
+                    ]
+                  }
                 ]
               }
             }
@@ -3387,6 +2704,75 @@
         "completed_evaluations": { "type": "integer", "minimum": 1 },
         "max_evaluations": { "type": "integer", "minimum": 1 }
       }
+    },
+    "fileLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "sha256",
+        "media_type",
+        "byte_length"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "physicalConsumerTarget": {
+      "description": "One physical field at its root-to-leaf component occurrence; not a logical ParameterRef.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "field"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/componentPath"
+        },
+        "field": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "parameterPointsManifestReference": {
+      "description": "The sole manifest link emitted in parameter-sweep receipt and outcome artifact inventories.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/fileLink"
+        },
+        {
+          "properties": {
+            "id": {
+              "const": "parameter_points"
+            },
+            "path": {
+              "const": "artifacts/parameter_points.manifest.json"
+            },
+            "media_type": {
+              "const": "application/json"
+            }
+          }
+        }
+      ]
     }
   }
 }

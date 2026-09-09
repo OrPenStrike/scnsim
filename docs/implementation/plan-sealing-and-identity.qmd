@@ -5,8 +5,8 @@ toc-depth: 2
 ---
 
 **Status:** `STABILIZED` numerical/runtime identity baseline. Structured
-authoring alignment remains a separate `CONVERGING` target with implementation
-alignment pending.
+authoring remains `CONVERGING` with an integrated implementation baseline; see
+the [central evidence status](../contracts/index.qmd#implementation-evidence-status).
 
 ## Seal each authoring graph at its ownership boundary
 
@@ -15,13 +15,12 @@ authoring phases. `CompositePlan.build()` validates and permanently seals its
 private graph before returning an immutable `ComponentInstance`.
 `CircuitRun(plan=..., workspace=..., versioned=False)` similarly validates and
 permanently seals the outer Python Plan and canonical snapshot. Calling
-`add()`, `net()`, `ground()`, `expose_pin()`, `add_port()`, or another mutator
+`add()`, `bus()`, `ground_pins()`, `expose_pin()`, `add_port()`, or another mutator
 on either sealed authoring graph raises `PlanSealedError`; SCNSim does not keep
-a hidden mutable copy. This paragraph describes the executable baseline:
-`net()` and callable `ground()` are not the current TARGET authoring spelling.
+a hidden mutable copy.
 
-The target [structured-authoring contract](../contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
-replaces that frozen mutator vocabulary with buses, structures, N-endpoint
+The [structured-authoring contract](../contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
+uses buses, structures, N-endpoint
 `link()`, and dedicated `ground_pins()`. It retains the same seal boundary:
 each operation validates before atomic commit, complete validation runs at
 `CompositePlan.build()`, immutable render capture, and `CircuitRun` sealing,
@@ -29,8 +28,11 @@ and every target mutator raises `PlanSealedError` after seal. A failed target
 preflight preserves every previously committed ID, zero-wire equivalence,
 diagnostic source path, and provenance fact; it adds no history for the
 rejected attempt, leaves the proposed ID reusable, and keeps the graph editable.
-Immutable render capture validates that editable graph but never seals it. This
-page does not claim those TARGET bytes are implemented.
+Immutable render capture validates that editable graph but never seals it.
+
+The private `_Net` union-find remains the current connectivity mechanism behind
+these structured declarations. It is not the removed public `plan.net()` API
+and does not create an alternate authoring or topology authority.
 
 Complete validation distinguishes registration, terminal binding, and
 structural use. Ordinary two-terminal native bodies must belong to exactly one
@@ -73,7 +75,7 @@ one-way-upgrade, and stale-handle behavior is defined in
 | Request | Plan, Ref lineage, Spec, bound ParameterSet, operation, and numerical runtime | workspace location, progress display, and attempt history |
 | Evidence | request plus workspace binding, source units, runtime files, attempt, artifacts, and receipt hashes | mutable latest pointers |
 
-Target alignment uses one normalized immutable semantic record containing the
+The implementation uses one normalized immutable semantic record containing the
 scope hierarchy, occurrence table, physical-leaf table, final physical-endpoint
 connectivity, consumed definitions, and field bindings. Recursive traversal and
 flat lookup are views over that record, not competing semantic authorities.
@@ -89,7 +91,7 @@ semantic Plan hashing as already specified; no additional exclusion is created
 here. The canonical encoder owner implements this record and envelope. They add
 no public API.
 
-That same future alignment binds scoped N-link membership, final zero-wire
+That same record binds scoped N-link membership, final zero-wire
 equivalence, public-boundary ownership, and canonical-ground membership. A
 fixed link's endpoint tuple order is nonsemantic; replacing one N-link with
 several binary links is a different authored structure even when electrically

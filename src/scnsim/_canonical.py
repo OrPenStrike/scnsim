@@ -1,8 +1,8 @@
-"""Closed canonical bytes and evidence helpers for the executable dev5 slice.
+"""Canonical bytes and evidence for structured Plans and runtime envelopes.
 
 This module is deliberately not a generic schema engine.  The shipped JSON
 Schema is the field authority; these helpers own the bytes that Python writes
-for primitive/Composite Plans and the closed dev5 Direct envelopes.
+for captured Plans, parameter points, requests, and their execution evidence.
 """
 
 from __future__ import annotations

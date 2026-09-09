@@ -14,8 +14,9 @@ batch identities are reopened only in the linked Parameter System target.
 
 The public assembly grammar, recursive inline ownership, its Plan-identity
 integration, and certified diagrams are reopened as a `CONVERGING` target.
-Implementation alignment remains pending, so the target examples are not yet
-executable. Common modeling belongs to the
+Its implementation baseline is integrated. Execution evidence and limitations
+are centralized in the [Contract map](contracts/index.qmd#implementation-evidence-status).
+Common modeling belongs to the
 [CircuitPlan Assembly Contract](contracts/circuit-plan-assembly.qmd);
 composition and visual certification belong to the
 [diagram contract](contracts/automatic-semantic-circuit-diagram-layout.qmd).
@@ -152,19 +153,39 @@ capacitor.pin("terminal_1")
 capacitor.pin("terminal_2")
 ```
 
-Generic two-terminal components use this ordered pair. Their branch voltage is
+Ordinary two-terminal leaves and components with intrinsically distinct signal
+terminals use this ordered pair. Their branch voltage is
 `V(terminal_1) - V(terminal_2)` and positive branch current flows from
 `terminal_1` to `terminal_2`. The same orientation owns JJ phase and
 inductive-branch coupling signs. Directional components keep semantic names
 such as transmission-line `head`/`tail`, and domain-specific composites may
 publish names such as `feedline_in` rather than generic terminal numbers.
+The grounded resonators' two same-Bus public pins are aliases, not opposite
+ends of a physical branch; their internal shunts retain signal-to-ground
+reference orientation.
 
-Consumer-visible parameters are addressed only through the component's public
-schema:
+Primitive parameter lookup requires a real field binding, not merely a literal
+with the same value:
 
 ```python
-capacitance = capacitor.parameter("capacitance")
+from scnsim import ParameterDefinitions, ParameterSpec
+
+inputs = ParameterDefinitions(id="capacitor_inputs")
+capacitance = inputs.parameter(
+    id="capacitance", baseline=92.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+bound_capacitor = components.capacitor(id="bound_capacitor", capacitance=capacitance)
+assert bound_capacitor.parameter("capacitance") is capacitance
 ```
+
+A primitive's directly bound physical field returns the exact original ref by
+field name, including transmission-line `length` and whole `rlgc` fields.
+Clone/add preserves that lookup. A literal-only field, including the earlier
+fixed capacitor's `capacitance`, raises `KeyError`; lookup never creates a ref.
+A primitive mapped field returns its exact original `AffineMap.input` ref in
+the input's units and identity, not the transformed physical value. The mapping
+and physical consumers remain separately captured; Composite inputs still need
+explicit exposure.
 
 A composite may contain primitive children, but child IDs and child parameters
 are inspection evidence, not automatically a consumer API. The factory must
@@ -496,7 +517,7 @@ consumers belong to that Plan's audit or explanation.
 `AffineMap(input=x, slope=a, intercept=b, support=(lo, hi))` means exactly
 `y = a*x + b`. SCNSim validates the units of input, slope, intercept, output,
 and finite ordered support; the baseline must lie inside support. Mapping is
-resolved after each ParameterSet binding inside the same future Julia
+resolved after each ParameterSet binding inside the same Julia
 candidate process. It is not an arbitrary Python callback, expression AST,
 or interpolation table. A mapped nonphysical child value makes that candidate
 a typed failure rather than falling back to a baseline.
@@ -548,10 +569,9 @@ A containing Plan records later caller links and grounding over public pins,
 root Ports, and global electrical closure as its own overlay. Those declarations
 can common exposed returns without rewriting the built child or reapplying the
 child's intrinsic exposure-uniqueness check. The physical private expansion
-and declared structure contribute to future Plan identity. Layout and Theme do
-not. The target requires deliberate alignment of a successor Plan schema, the
-maintainer snapshot, and one data-only Julia expansion path before execution.
-The frozen baseline is described in
+and declared structure contribute to current Plan identity. Layout and Theme do
+not. The V2 Plan schema, immutable snapshot, and one data-only Julia expansion
+path share this boundary, described in
 [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
 ### Interdigitated capacitor
@@ -590,8 +610,9 @@ squid = plan.add(
 ```
 
 Its pins are `"terminal_1"` and `"terminal_2"`. Both junction rows share the
-same public `josephson_inductance` `ParameterRef` and the same public
-`junction_capacitance` `ParameterRef`; V1 does not expose per-arm overrides.
+same supplied `josephson_inductance` and `junction_capacitance` values. When
+supplied as refs, each shared input retains its original public `ParameterRef`;
+literals remain fixed. V1 does not expose per-arm overrides.
 Both values are per-junction values, so the expansion contains two equal
 Josephson rows and, when nonzero, two equal parallel `Cj` rows.
 The exact oriented expansion is:
@@ -618,27 +639,34 @@ ambiguous `parallel_lc_resonator`:
 
 | Grounding | Branch | Factory | Pins |
 |---|---|---|---|
-| Grounded | linear L | `grounded_parallel_linear_lc_resonator` | `terminal` |
+| Grounded | linear L | `grounded_parallel_linear_lc_resonator` | `terminal_1`, `terminal_2` (same Bus) |
 | Floating | linear L | `floating_parallel_linear_lc_resonator` | `terminal_1`, `terminal_2` |
-| Grounded | one nonlinear JJ | `grounded_parallel_single_junction_resonator` | `terminal` |
+| Grounded | one nonlinear JJ | `grounded_parallel_single_junction_resonator` | `terminal_1`, `terminal_2` (same Bus) |
 | Floating | one nonlinear JJ | `floating_parallel_single_junction_resonator` | `terminal_1`, `terminal_2` |
-| Grounded | finite-loop symmetric SQUID | `grounded_parallel_symmetric_squid_resonator` | `terminal` |
+| Grounded | finite-loop symmetric SQUID | `grounded_parallel_symmetric_squid_resonator` | `terminal_1`, `terminal_2` (same Bus) |
 | Floating | finite-loop symmetric SQUID | `floating_parallel_symmetric_squid_resonator` | `terminal_1`, `terminal_2` |
 
-Grounded variants expose one non-reference `terminal`; their internal return
-group binds to the automatic Plan ground. A linear
-factory exposes `inductance`; a single-junction factory exposes
+Grounded variants expose exactly two fixed ordinary pins, `terminal_1` and
+`terminal_2`, on the same intrinsic non-reference Bus. Their existing LC, JJ,
+or SQUID shunts and internal return to canonical ground are unchanged. Either
+or both public pins may remain externally open and visible. Each occurrence
+is one complete independent Block; its equivalent pair rejects `.between()`
+and implicit two-terminal structural use. Floating variants keep distinct
+terminal buses. Custom Library names such as `terminal` remain legal and are
+not renamed by this built-in contract.
+
+For ref-bound inputs, a linear factory exposes `inductance`; a single-junction
+factory exposes
 `josephson_inductance` and `junction_capacitance`; a SQUID factory exposes
 `josephson_inductance`, `junction_capacitance`, `loop_inductance`, and
 `inductive_branch("loop")`.
 
-Grounded factories use one ordinary `capacitance` branch from `terminal` to
+The loop branch remains available with literal inputs as well; parameter
+lookup is the boundary that requires a supplied ref.
+
+Grounded factories use one ordinary `capacitance` branch from their shared Bus to
 ground. Floating factories instead require all three branch-specific
 capacitances:
-
-```python
-resonator.parameter("capacitance")
-```
 
 - `terminal_1_to_reference_capacitance`;
 - `terminal_2_to_reference_capacitance`; and
@@ -679,7 +707,7 @@ plan.series(
 )
 plan.link(
     id="resonator_terminal",
-    endpoints=(resonator_node, resonator.pin("terminal")),
+    endpoints=(resonator_node, resonator.pin("terminal_1")),
 )
 signal_port = plan.add_port(
     id="signal_in",
@@ -755,12 +783,22 @@ from scnsim import (
     HBCaseSpec,
     HBTruncation,
     HBSolveSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpec,
     PumpAxis,
     components,
     units as u,
 )
 
 plan = CircuitPlan(id="flux_pumped_resonator")
+inputs = ParameterDefinitions(id="flux_pump_inputs")
+loop_inductance = inputs.parameter(
+    id="loop_inductance", baseline=40.0 * u.pH, spec=ParameterSpec(unit=u.pH)
+)
+pump_inductance = inputs.parameter(
+    id="pump_inductance", baseline=1.0 * u.nH, spec=ParameterSpec(unit=u.nH)
+)
 
 jpa = plan.add(
     components.grounded_parallel_symmetric_squid_resonator(
@@ -768,18 +806,18 @@ jpa = plan.add(
         capacitance=95.0 * u.fF,
         josephson_inductance=300.0 * u.pH,
         junction_capacitance=2.0 * u.fF,
-        loop_inductance=40.0 * u.pH,
+        loop_inductance=loop_inductance,
     )
 )
 pump_inductor = plan.add(
-    components.inductor(id="pump_coil", inductance=1.0 * u.nH)
+    components.inductor(id="pump_coil", inductance=pump_inductance)
 )
 
 signal_node = plan.bus(id="signal")
 pump_node = plan.bus(id="pump_drive")
 plan.link(
     id="signal_component",
-    endpoints=(signal_node, jpa.pin("terminal")),
+    endpoints=(signal_node, jpa.pin("terminal_1")),
 )
 plan.branch(
     id="pump_coil",
@@ -967,12 +1005,11 @@ reconstruction, separately verified source rows, snapshot provenance, and
 code-free review packet belong to
 [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 
-That authoring/identity/diagram scope is `CONVERGING`, with implementation
-alignment pending. The existing renderer and superseded catalog-hint classes
-are frozen interpretation evidence only. They do not satisfy the target
-contract or create a compatibility path. The physical Library, component,
-parameter, RLGC, Josephson, SQUID, and coupling meanings on this page remain
-the input authority against which future lowerings and diagrams are checked.
+That authoring/identity/diagram scope remains `CONVERGING` despite its integrated
+implementation baseline. The [central evidence status](contracts/index.qmd#implementation-evidence-status)
+separates scoped checks from unexecuted course and historical regressions.
+Superseded catalog-hint classes are not a compatibility path. The physical
+Library, RLGC, Josephson, SQUID, and coupling meanings remain the input authority.
 
 A Plan diagram represents baseline physical authoring by default and may
 project one explicitly selected `ParameterSet`. It neither selects nor displays
@@ -1061,7 +1098,7 @@ declared branch permits it; negative or non-finite values are not.
 
 - Primitive, Composite, RLGC, and transmission-line physical models retain
   their accepted Full V1 meaning. The replacement structured authoring grammar
-  is a target-only `CONVERGING` scope and is not installed behavior.
+  remains `CONVERGING` with an integrated implementation baseline.
 - The transmission line is a uniform, fixed-section general N-conductor RLGC
   ladder; N=1 uses the same matrix path.
 - AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
@@ -1081,5 +1118,5 @@ declared branch permits it; negative or non-finite values are not.
 - `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
   build those circuits from the declared generic components.
 - Authoring and compiled schematic rendering remain projections of the Plan,
-  never topology or backend authority. Certified structured projection awaits
-  an accepted implementation candidate.
+  never topology or backend authority. Implementation evidence does not confer
+  Human acceptance on certified structured projection.

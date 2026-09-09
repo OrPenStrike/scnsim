@@ -7,8 +7,9 @@ title: "Circuit Models, Subsystems, and Reuse"
 
 This page explains the `CONVERGING` target for structured circuit authoring.
 The authoring API, its structural identity integration, and certified diagrams
-are not implemented or accepted; the TARGET examples are not executable on the
-current runtime. Implementation alignment remains pending.
+have an integrated implementation baseline but are not Human-accepted. The
+[central evidence status](../contracts/index.qmd#implementation-evidence-status)
+distinguishes scoped checks from whole-course execution.
 
 Accepted numerical operations, physical component models, units, evidence
 workspace, and existing Result meanings are not reopened. Exact assembly
@@ -187,11 +188,13 @@ An ordinary two-terminal native body must belong to exactly one structure. A
 complete Composite occurrence or native multi-terminal body may instead remain
 an independent peer. Native required pins remain bound; Composite public pins
 may be partially or entirely externally open without inventing a load or wire.
-A one-public-pin
-grounded Composite is already structurally complete because its private native
-leaves were assembled inside its ownership boundary; whether its public pin
-is bound or open, it needs no second structural wrapper. Open boundaries remain
-visible. A legal assembly need not be numerically solvable.
+A grounded Composite is already structurally complete because its private native
+leaves were assembled inside its ownership boundary. The three built-in grounded
+resonators expose `terminal_1` and `terminal_2` on that same intrinsic Bus;
+either or both may remain visibly open, and their equivalent pair cannot be a
+`.between()` selection. They need no second structural wrapper. Floating pins
+remain distinct and custom Libraries keep their declared pin names.
+A legal assembly need not be numerically solvable.
 
 The [shared assembly contract](../contracts/circuit-plan-assembly.qmd) owns
 these modeling rules. Parameter resolution, Calculation, and diagrams consume

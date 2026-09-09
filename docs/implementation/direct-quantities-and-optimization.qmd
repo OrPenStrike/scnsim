@@ -9,9 +9,11 @@ toc-depth: 2
 The numerical algorithms below remain accepted. The `CONVERGING`
 [Parameter System Contract](../contracts/parameter-system.qmd) separately
 reopens ref identity, fixed non-active parameter binding, ordered batch
-execution, and sweep Results. Until runtime alignment, references below to
-component-derived refs and one `ParameterSet` describe the executable baseline,
-not a compatibility path for the target schema.
+execution, and sweep Results. Its implementation baseline is integrated;
+current refs retain independent definitions identity and each numerical point
+uses a complete effective `ParameterSet`. The
+[central evidence status](../contracts/index.qmd#implementation-evidence-status)
+does not claim full historical-regression coverage.
 
 ## Build one labeled Direct operator
 

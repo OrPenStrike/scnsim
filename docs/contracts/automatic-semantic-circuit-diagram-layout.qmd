@@ -5,16 +5,16 @@ toc-depth: 3
 ---
 
 ::: {.callout-warning}
-## CONVERGING target contract — implementation alignment pending
+## CONVERGING contract — integrated implementation baseline
 
 This document is the single target authority for diagram composition and
 certified authoring/compiled projections. Common circuit assembly is owned by
-the [assembly contract](circuit-plan-assembly.qmd). Runtime alignment to the
-target API remains pending; the target is
-not accepted or stabilized, and its examples are not yet executable.
+the [assembly contract](circuit-plan-assembly.qmd). The implementation baseline
+is integrated, but this scope is not Human-accepted or stabilized. The
+[central evidence status](index.qmd#implementation-evidence-status) bounds
+current execution and delivery claims.
 
-The existing runtime remains the frozen implementation baseline until target
-alignment. Accepted numerical operations, physical component models, units,
+Accepted numerical operations, physical component models, units,
 workspace evidence, and Result meanings remain authoritative and are not
 redefined here. No compatibility path from the frozen flat-node or
 catalog-hint candidates is promised.
@@ -784,15 +784,12 @@ No elapsed-time threshold or public timeout is part of this contract.
 The canonical Tutorial files are QMD-first TARGET Chapter containers with
 generated, zero-output Jupyter artifacts. Short Lessons inside a Chapter may
 use its preceding state; every Chapter remains complete from a clean kernel.
-They are syntax-valid documentation proposals, not runtime demonstrations:
-
-Chapter 1 begins with a provisional expected-output/design-target sketch so the
-learner knows what the authored model is meant to produce. It is not current
-renderer output or certificate evidence. Runtime alignment must replace it
-with a genuine Automatic Semantic Circuit Diagram Layout System (ASCDLS)
-figure generated from the same fully assembled Plan and the existing
-render/show/audit path, never with a separately maintained "correct circuit"
-image.
+The zero-output Notebooks are transport artifacts, not execution records.
+Selected checkpoints, including Chapter 1, have genuine source-bound ASCDLS
+authoring exports from the assembled Plan and existing render/show/audit path.
+The [central evidence status](index.qmd#implementation-evidence-status) and
+[figure inventory](../../examples/README.md) distinguish these exports from
+whole-course execution and compiled-projection evidence.
 
 | Chapter | Target authoring contribution |
 |---|---|
@@ -836,18 +833,18 @@ analysis `Result`. Successful audited rendering returns the
 
 The historical dev5/dev6 numerical meanings remain intact in their renumbered
 Chapters 12–16.
-No current fixture, source file, test, or runtime implementation is evidence
-that the target grammar already executes.
+Scoped execution evidence does not establish whole-course coverage or Human
+acceptance.
 
 ## Honest limits and supersession {#honest-limits}
 
-- This document is a `CONVERGING` target, not Human acceptance, stabilization,
-  integration, release, or scientific-result evidence.
-- Implementation alignment remains pending. Durable tests wait for later Human
-  acceptance of an exact implementation candidate.
-- The frozen implementation may still contain `net()`, `ground(*pins)`, legacy
-  diagram classes, or a catalog-hint candidate. Those bytes are interpretation
-  evidence only and do not compete with this target authority.
+- This document is a `CONVERGING` contract with an integrated implementation
+  baseline, not Human acceptance, stabilization, release, or scientific-result
+  evidence.
+- Durable tests for reopened semantics wait for Human acceptance; current
+  evidence limitations are centralized in the Contract map.
+- Superseded flat public authoring and catalog-hint APIs are historical
+  evidence, not reachable compatibility authorities.
 - This target has no public generic netlist-to-intent inference, no
   `SchematicCatalog`, no Participant/Interface/Attachment refs, no S/P/M
   relation API, and no raw coordinate override.

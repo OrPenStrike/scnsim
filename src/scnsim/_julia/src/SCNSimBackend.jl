@@ -1968,7 +1968,7 @@ function read_authorization(request, request_sha::String, staging::String, ordin
     attempt["request_sha256"] == request_sha || error("attempt request hash mismatches request")
     attempt["ordinal"] == ordinal || error("attempt ordinal mismatches staging directory")
     attempt["attempt_state"] == "launched" || error("attempt is not launched")
-    attempt["julia_threads"] == 1 && attempt["blas_threads"] == 1 || error("attempt thread evidence violates dev3 policy")
+    attempt["julia_threads"] == 1 && attempt["blas_threads"] == 1 || error("attempt thread evidence violates the single-thread execution policy")
     if get(request, "operation", nothing) == "solve_hb"
         get(attempt, "fftw_threads", nothing) == 1 || error("attempt FFTW thread evidence violates HB policy")
     end
@@ -2030,7 +2030,7 @@ function run_terminal(request_path::String, staging::String)
             optimize_direct(request, plan, request_sha, attempt_sha, staging;
                 resume_ledger_sha = resume_ledger_sha)
         else
-            fail("capability", "scaffold_unavailable", operation, "scaffold", "operation is outside the dev3 backend slice")
+            fail("capability", "scaffold_unavailable", operation, "scaffold", "operation is not supported by this backend revision")
         end
     catch failure
         if failure isa BackendFailure

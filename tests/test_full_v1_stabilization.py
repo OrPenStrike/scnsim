@@ -1,4 +1,10 @@
-"""Accepted cross-slice identity, workspace, replay, and resolve boundary."""
+"""Historical cross-slice identity/workspace/replay/resolve regressions.
+
+Fixtures and envelope expectations predate the current structured identity
+contract. Retained numerical and integrity checks are migration assets;
+superseded interface expectations are historical evidence, not acceptance or
+full-suite coverage of the current CONVERGING implementation.
+"""
 
 from __future__ import annotations
 

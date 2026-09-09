@@ -5,8 +5,9 @@ toc-depth: 3
 ---
 
 ::: {.callout-warning}
-This reopened contract is CONVERGING / NOT_INTEGRATED. It defines the current
-assembly candidate, not Human acceptance or numerical execution evidence.
+This reopened contract is CONVERGING with an integrated implementation baseline,
+not Human acceptance or numerical execution evidence. See the centralized
+[implementation and evidence status](index.qmd#implementation-evidence-status).
 :::
 
 This is the single authority for common circuit assembly, ownership, public
@@ -125,8 +126,9 @@ be bound.
 An ordinary two-terminal native body must also belong to exactly one
 `series()`, `parallel()`, or `branch()` declaration.
 
-An ordinary factory component with exactly two declared pins is itself an
-`ElementUse`; its factory-defined terminal order supplies orientation:
+An ordinary factory component with exactly two intrinsically distinct declared
+pins is itself an `ElementUse`; its factory-defined terminal order supplies
+orientation:
 
 ```python
 capacitor = scope.add(
@@ -145,10 +147,14 @@ instead remain one independent direct peer of its scope. Native multi-terminal
 bodies retain their required pin bindings; a Composite may leave public pins
 externally open when its internal physical assembly is complete. If its
 terminal schema permits structural use, the
-author may consume the whole body in exactly one structure. A grounded
-Composite with one public signal pin is already structurally complete because
-its internal native leaves are assembled; the occurrence may remain an
-independent peer with that public pin bound or externally open.
+author may consume the whole body in exactly one structure. The three built-in
+grounded resonators expose `terminal_1` and `terminal_2` on the same intrinsic
+Bus. Their internal LC, JJ, or SQUID shunts to ground are unchanged. They are
+complete independent Blocks: either or both public pins may remain externally
+open and visible. Their intrinsically equivalent pair cannot be used by
+`.between()` or as an implicit two-terminal structural use. Floating resonator
+pins remain intrinsically distinct. A custom Library retains its own declared
+terminal names; this is not a global pin-renaming rule.
 
 For one structural use of a complete multi-terminal body,
 `component.between(pin_1, pin_2)` supplies the ordered endpoint pair. It is
@@ -418,8 +424,15 @@ public_capacitance = composite.expose_parameter(
 )
 ```
 
-The built component's `parameter(name)` lookup returns the original public ref;
-it does not create a definition or mutate its baseline. Compatible factory
+The built component's `parameter(name)` lookup returns the exact original
+public ref; it does not create a definition or mutate its baseline. A primitive
+field bound directly to a `ParameterRef` exposes that original ref by field
+name, before and after clone/add. A mapped primitive field returns the original
+`AffineMap.input` ref with its input units and identity, not the transformed
+field value; mapping and physical consumers remain separately captured.
+A literal-only field raises `KeyError` on
+lookup. Composite lookup still requires explicit `expose_parameter()`.
+Compatible factory
 slots accept either a fixed `Quantity` or a compatible independent
 `ParameterRef`. Adding the part records the real field binding and any declared
 fan-out. Parameters are never decorative same-value labels disconnected from

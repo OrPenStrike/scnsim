@@ -1,4 +1,10 @@
-"""Accepted dev6 complex-anchor and harmonic-balance regression boundary."""
+"""Complex-anchor/HB regressions with mixed fixture applicability.
+
+Standalone checks remain applicable where the current CI explicitly selects
+them. Old-authoring fixtures await migration; preserved numerical assertions
+retain their scientific purpose, while superseded API expectations are history.
+Neither this file nor scoped CI establishes a current full-suite PASS.
+"""
 
 from __future__ import annotations
 

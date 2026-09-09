@@ -16,7 +16,10 @@ API authority: the Contract owns the meaning, and each Lesson is one teaching
 application. Existing Python fixtures are frozen implementation-baseline
 evidence and are not the authority for this rewritten course.
 
-The course remains `CONVERGING`, not accepted, stabilized, or released.
+The course remains `CONVERGING`, not accepted, stabilized, or released. Its
+implementation baseline is integrated; the
+[central evidence status](../docs/contracts/index.qmd#implementation-evidence-status)
+defines the scope of current validation.
 Generated authoring figures provide source-bound evidence for their selected
 diagram checkpoints, not proof that every cell in all sixteen Chapters has
 executed successfully. Compiled-diagram limitations are reported separately;
@@ -94,5 +97,5 @@ IPYNB remains a zero-output transport artifact rather than an executed record.
 Validation compares ordered semantic cells, explicit code IDs, source, and
 kernel metadata while ignoring generated Markdown cell IDs. Every committed
 Notebook must have zero execution counts, outputs, and attachments. Generation
-and validation do not imply that the target API is implemented, accepted,
-stabilized, or released.
+and validation do not prove whole-course execution or imply Human acceptance,
+stabilization, or release.

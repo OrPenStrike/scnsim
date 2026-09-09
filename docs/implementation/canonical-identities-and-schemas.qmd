@@ -5,22 +5,27 @@ toc-depth: 2
 ---
 
 **Status:** the structured Plan, Parameter, Request, and Result identity
-replacement is `CONVERGING`, with implementation alignment in progress. Each
-V1 definition explicitly referenced by the replacement retains its prior
-semantic state. The
+replacement is `CONVERGING`, with an integrated implementation baseline.
+Shared scientific and protocol definitions retain their prior semantic state. The
 [machine-readable current schema bundle](../../src/scnsim/_schemas/identity-v2.schema.json)
 is the field-and-type authority for those replacement envelopes.
 
 `scnsim/_schemas/identity-v2.schema.json` is shipped alongside
-[`identity-v1.schema.json`](../../src/scnsim/_schemas/identity-v1.schema.json)
-and located through `importlib.resources`. V2 explicitly references V1 only for
+[`identity-common.schema.json`](../../src/scnsim/_schemas/identity-common.schema.json)
+and located through `importlib.resources`. V2 references the common resource for
 named canonical primitives such as quantity and RLGC values, selected existing
-scientific request/evidence definitions, and unchanged attempt, receipt,
-outcome, generation-ledger, and artifact dependencies. It does not expose the
-V1 Plan, request, or whole Result envelope as current. V1 is therefore a
-required dependency of the current bundle, not a second current Plan, request,
-or Result schema. The documentation site publishes both package-resource byte
-streams rather than maintaining copies.
+scientific request/evidence definitions, and standalone protocol and artifact
+dependencies. Current generation ledgers and their candidate/population outcomes
+belong to V2, using current effective ParameterSets while retaining ledger wire
+version 1. Shared logical parameter refs use `definitions_id`/`parameter_id`;
+physical consumer targets separately name component path and field. Existing
+batch-manifest links retain their actual receipt/outcome fields. These are
+current-wire descriptions, not compatibility envelopes. Neither resource exposes the
+legacy Plan, request, or whole Result envelope. The common resource contains
+only current shared definitions, not a second Plan, request, or Result authority.
+The old V1 bundle is removed from package and site publication. This resource
+split introduces no new schema version or wire behavior. The documentation site
+publishes the V2 and common package-resource bytes rather than maintaining copies.
 
 Unless a section explicitly names V2, the older envelope examples below record
 the immutable Full V1 implementation baseline. They preserve historical and
@@ -157,11 +162,12 @@ The stabilized Full V1 runtime consumed every discriminator in that baseline,
 including the Composite realization and its declaration-ordered
 `public_parameters`.
 
-The current V2 bundle replaces the structured Plan, ParameterSet/Space,
+The current V2 bundle owns the structured Plan, ParameterSet/Space,
 Request, and single-point and batch Result envelopes while referencing only the
-named V1 definitions described above. The Full V1 Plan, request, and Result
+named common definitions described above. It also owns parameter-bearing
+generation-ledger outcomes. The Full V1 Plan, request, and Result
 examples remain baseline records, not another current authority. Neither
-bundle permits an unknown discriminator to fall through to a generic map.
+resource permits an unknown discriminator to fall through to a generic map.
 
 JSON Schema enforces each envelope's shape. Cross-document semantic validation
 then verifies the complete chain before reuse or `resolve()`:
@@ -399,19 +405,16 @@ Every failure evidence envelope also names the owning operation and carries its
 stage-specific canonical context; category/kind/operation mismatches fail
 semantic validation.
 
-The frozen executable runtime identifies `ParameterRef` by the ordered pair
-`(component_path, parameter_id)`. A current request carries the complete
+The current runtime identifies `ParameterRef` by definitions-collection ID plus
+local parameter ID. A current request carries the complete
 resolved binding for every Plan parameter: explicit values override the sealed
 baseline, and omitted values are expanded from that baseline before hashing.
 Bindings sort by this pair and must be unique.
 
 The `CONVERGING` [Parameter System Contract](../contracts/parameter-system.qmd#parameter-identity-alignment)
-replaces the target ref identity with definitions-collection ID plus local ID
-and adds physical-consumer closure and ordered batch identities. The V2 bundle
-is its current machine-readable schema authority; implementation alignment is
-still in progress, and no compatibility with the V1 Plan/request envelopes is
-promised. Referenced V1 shared definitions remain dependencies rather than a
-second target authority.
+owns physical-consumer closure and ordered batch identities. The V2 bundle
+is its current machine-readable schema authority, with common shared definitions
+and no compatibility path for legacy Plan/request/Result envelopes.
 
 Each population candidate stores the callback-visible raw CMA sample as
 `optimizer_latent_coordinates_f64` and its transformed unit-box sample as

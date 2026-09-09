@@ -3,7 +3,7 @@ project:
   output-dir: _site
   resources:
     - src/scnsim/_schemas/identity-v2.schema.json
-    - src/scnsim/_schemas/identity-v1.schema.json
+    - src/scnsim/_schemas/identity-common.schema.json
   render:
     - README.md
     - examples/README.md

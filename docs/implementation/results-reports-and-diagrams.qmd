@@ -6,7 +6,8 @@ toc-depth: 2
 
 **Status:** accepted numerical Result/report mechanics remain `STABILIZED`.
 Structured authoring, its identity integration, and certified diagrams are a
-`CONVERGING` target with implementation alignment pending. Adaptive
+`CONVERGING` scope with an integrated implementation baseline; see the
+[central evidence status](../contracts/index.qmd#implementation-evidence-status). Adaptive
 presentation-theme semantics remain a separate `CONVERGING` candidate.
 
 ## Separate materialized values from analysis evidence
@@ -97,9 +98,9 @@ facts from the independent
 [assembly contract](../contracts/circuit-plan-assembly.qmd), not an inferred
 neighbor partition or pre-render catalog.
 
-Runtime alignment is pending. The design below records how an implementation
-must preserve the contract; it does not describe completed behavior or
-establish implementation conformance.
+The implementation baseline is integrated. The design below retains the
+contract's required mechanisms; scoped validation does not establish universal
+layout support, whole-course execution, or Human acceptance.
 
 ### Package and capture boundaries
 
@@ -492,9 +493,10 @@ select, or depict a request-specific View, PTC-effective topology, or solver
 Result. Exact point/audit identity belongs to the
 [Parameter System Contract](../contracts/parameter-system.qmd#parameterized-diagrams).
 
-TARGET Tutorial cells do not claim execution against the frozen runtime
-baseline. Runtime implementation alignment, exact Human acceptance, and durable
-stabilization tests remain later lifecycle steps.
+Selected Tutorial diagram exports are source-bound evidence, not a claim that
+all course cells executed. The central evidence status retains current
+limitations; Human acceptance and durable stabilization of reopened semantics
+remain separate lifecycle steps.
 
 ## Assemble reports from explicit inputs
 
