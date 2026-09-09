@@ -79,15 +79,16 @@ facts; full execution records remain separate. A figure documents its actual
 checkpoint, including its A/B and composition checks, not solver correctness
 or whole-course execution. Audit-only checkpoints need no duplicate image.
 
-Two Chapter 12 authoring checkpoints—the tapped-feedline Default and explicit
-tap-order layouts—currently report `schematic_layout` with
-`fixed connector intersects occupied geometry`. Neither has an SVG or diagram
-certificate; a different authoring or compiled image must not stand in for
-either failure. The 21-checkpoint inventory therefore distinguishes 17 intended
-SVG-producing checkpoints, these two unavailable layouts, and two audit-only
-checkpoints. The final generated manifest, not that inventory, records which
-checkpoints actually succeeded in a particular source-bound batch. Compiled
-projection limitations remain separate.
+The Chapter 12 tapped-feedline Default and complete explicit tap-order
+checkpoints now have their own successful source-bound SVGs. Chapter 13's
+complete raw-loaded fixed Default checkpoint instead retains its actual typed
+`schematic_layout` failure, `fixed connector intersects occupied geometry`;
+it has no current SVG or diagram certificate. The same Chapter's explicit
+composition and final probe-tee capstone checkpoints remain successful images
+of that authored Plan, not substitutes for the unavailable Default layout.
+The 21-checkpoint inventory therefore records 18 successful SVG checkpoints,
+one unavailable fixed layout, and two successful audit-only checkpoints.
+Compiled projection limitations remain separate.
 
 The website includes these SVGs in HTML-only figure blocks with enlargement
 and a raw SVG link. Quarto keeps `execute.enabled: false`: browsing or building

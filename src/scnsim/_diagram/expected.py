@@ -248,26 +248,38 @@ def _v2_visible_contacts(
     )
 
 
-def _v2_parent_pin_contacts(point: ResolvedPlanPoint, root: Mapping[str, object]) -> set[tuple[_Path, str]]:
+def _v2_parent_pin_contacts(
+    point: ResolvedPlanPoint,
+    root: Mapping[str, object],
+) -> tuple[set[tuple[_Path, str]], set[tuple[_Path, str]]]:
     """Read actual parent pin uses from declarations, not global net equality."""
     contacts: set[tuple[_Path, str]] = set()
+    linked_boundaries: set[tuple[_Path, str]] = set()
 
-    def endpoint(raw: object, owner: _Path) -> None:
+    def endpoint(raw: object, owner: _Path) -> tuple[_Path, str] | None:
         if not isinstance(raw, Mapping) or raw.get("kind") != "pin":
-            return
+            return None
         scope = _v2_path(raw.get("scope"), "pin.scope")
         path = scope if raw.get("public") else (*scope, _string(raw.get("component"), "pin.component"))
         if path[:-1] == owner:
-            contacts.add((path, _string(raw.get("id"), "pin.id")))
+            contact = (path, _string(raw.get("id"), "pin.id"))
+            contacts.add(contact)
+            return contact
+        return None
 
     def visit(scope: Mapping[str, object]) -> None:
         owner = _v2_path(scope.get("path"), "scope.path")
         for raw in _sequence(scope.get("structures"), "scope.structures"):
             row = _mapping(raw, "structure")
+            link_boundaries: list[tuple[_Path, str]] = []
             for key in ("start", "at", "end"):
                 endpoint(row.get(key), owner)
             for raw_endpoint in row.get("endpoints", ()):
-                endpoint(raw_endpoint, owner)
+                contact = endpoint(raw_endpoint, owner)
+                if row.get("kind") == "link" and contact is not None:
+                    link_boundaries.append(contact)
+            if len(set(link_boundaries)) > 1:
+                linked_boundaries.update(link_boundaries)
             for branch in row.get("branches", (row,)):
                 for member in branch.get("elements", ()):
                     path = _v2_path(member.get("path"), "member.path")
@@ -287,7 +299,180 @@ def _v2_parent_pin_contacts(point: ResolvedPlanPoint, root: Mapping[str, object]
         for pin in group:
             scope = _v2_path(pin.get("scope"), "ground pin.scope")
             endpoint(pin, scope[:-1] if pin.get("public") else scope)
-    return contacts
+    return contacts, linked_boundaries
+
+
+def _v2_endpoint_identity(raw: object, field: str) -> tuple[object, ...]:
+    """Identify one canonical authored endpoint without composition IR."""
+    endpoint = _mapping(raw, field)
+    kind = _string(endpoint.get("kind"), f"{field}.kind")
+    if kind == "ground":
+        return ("ground",)
+    if kind == "port":
+        return ("port", _string(endpoint.get("id"), f"{field}.id"))
+    path = _v2_path(endpoint.get("scope"), f"{field}.scope")
+    if kind == "bus":
+        return ("bus", path, _string(endpoint.get("id"), f"{field}.id"))
+    if kind == "tap":
+        return (
+            "tap",
+            path,
+            _string(endpoint.get("bus"), f"{field}.bus"),
+            _string(endpoint.get("id"), f"{field}.id"),
+        )
+    if kind == "pin":
+        return (
+            "pin",
+            path,
+            _string(endpoint.get("component"), f"{field}.component"),
+            _string(endpoint.get("id"), f"{field}.id"),
+            endpoint.get("public") is True,
+        )
+    raise _fail("canonical diagram input has an unsupported endpoint", field=field, kind=kind)
+
+
+def _v2_public_analysis_labels(
+    root: Mapping[str, object],
+    net_map: Mapping[str, str],
+) -> list[dict[str, object]]:
+    """Derive public label aliases from canonical owner-local declarations."""
+    result: list[dict[str, object]] = []
+
+    def visit(scope: Mapping[str, object]) -> None:
+        path = _v2_path(scope.get("path"), "analysis label scope.path")
+        parents: dict[tuple[object, ...], tuple[object, ...]] = {}
+
+        def find(key: tuple[object, ...]) -> tuple[object, ...]:
+            parents.setdefault(key, key)
+            while parents[key] != key:
+                key = parents[key]
+            return key
+
+        def join(keys: Sequence[tuple[object, ...]]) -> None:
+            if not keys:
+                return
+            first = find(keys[0])
+            for key in keys[1:]:
+                parents[find(key)] = first
+
+        buses = tuple(
+            _mapping(raw, "analysis label bus")
+            for raw in _sequence(scope.get("buses"), "analysis label buses")
+        )
+        for bus in buses:
+            bus_id = _string(bus.get("id"), "analysis label bus.id")
+            join(
+                (
+                    ("bus", path, bus_id),
+                    *(
+                        (
+                            "tap",
+                            path,
+                            bus_id,
+                            _string(_mapping(raw, "analysis label tap").get("id"), "analysis label tap.id"),
+                        )
+                        for raw in _sequence(bus.get("taps"), "analysis label bus.taps")
+                    ),
+                )
+            )
+        exposures = _mapping(scope.get("exposures"), "analysis label exposures")
+        for raw in _sequence(exposures.get("pins"), "analysis label pin exposures"):
+            exposure = _mapping(raw, "analysis label pin exposure")
+            exposure_id = _string(exposure.get("id"), "analysis label pin exposure.id")
+            join(
+                (
+                    ("pin", path, exposure_id, exposure_id, True),
+                    _v2_endpoint_identity(
+                        exposure.get("intrinsic_endpoint"),
+                        "analysis label pin intrinsic endpoint",
+                    ),
+                )
+            )
+        for raw in _sequence(scope.get("structures"), "analysis label structures"):
+            structure = _mapping(raw, "analysis label structure")
+            if structure.get("kind") == "link":
+                join(
+                    tuple(
+                        _v2_endpoint_identity(endpoint, "analysis label Link endpoint")
+                        for endpoint in _sequence(
+                            structure.get("endpoints"),
+                            "analysis label Link endpoints",
+                        )
+                    )
+                )
+
+        public: list[tuple[str, object, str]] = []
+        if not path:
+            public.extend(
+                (
+                    _string(bus.get("id"), "root bus.id"),
+                    {
+                        "kind": "bus",
+                        "scope": [],
+                        "id": bus.get("id"),
+                    },
+                    _string(bus.get("final_net"), "root bus.final_net"),
+                )
+                for bus in buses
+                if bus.get("anonymous") is False
+            )
+        else:
+            public.extend(
+                (
+                    _string(exposure.get("id"), "analysis coordinate id"),
+                    exposure.get("intrinsic_endpoint"),
+                    _string(exposure.get("final_net"), "analysis coordinate final_net"),
+                )
+                for exposure in (
+                    _mapping(raw, "analysis coordinate exposure")
+                    for raw in _sequence(
+                        exposures.get("coordinates"),
+                        "analysis coordinate exposures",
+                    )
+                )
+            )
+        grouped: dict[tuple[object, ...], dict[str, object]] = {}
+        for name, endpoint, source_net in public:
+            group = grouped.setdefault(
+                find(_v2_endpoint_identity(endpoint, "public analysis label endpoint")),
+                {"names": [], "source_net": source_net},
+            )
+            if group["source_net"] != source_net:
+                raise _fail(
+                    "owner-local public analysis aliases disagree on electrical net",
+                    scope=list(path),
+                    names=[*cast(list[str], group["names"]), name],
+                )
+            cast(list[str], group["names"]).append(name)
+        for group in grouped.values():
+            source_net = cast(str, group["source_net"])
+            try:
+                visible_net = net_map[source_net]
+            except KeyError as error:
+                raise _fail(
+                    "public analysis label net has no visible physical contact",
+                    scope=list(path),
+                    net=source_net,
+                ) from error
+            result.append(
+                {
+                    "scope": list(path),
+                    "text": "\n".join(cast(list[str], group["names"])),
+                    "net": visible_net,
+                }
+            )
+        for raw in _sequence(scope.get("children"), "analysis label children"):
+            visit(_mapping(raw, "analysis label child"))
+        for raw in _sequence(scope.get("component_bodies"), "analysis label component bodies"):
+            visit(
+                _mapping(
+                    _mapping(raw, "analysis label component body").get("body"),
+                    "analysis label body scope",
+                )
+            )
+
+    visit(root)
+    return sorted(result, key=canonical_json_bytes)
 
 
 def _v2_structural(
@@ -298,7 +483,18 @@ def _v2_structural(
     """Build the source-side expectation for visible ownership evidence only."""
 
     root = _mapping(semantic.get("scope_hierarchy"), "scope_hierarchy")
-    parent_contacts = _v2_parent_pin_contacts(point, root)
+    parent_contacts, parent_link_boundaries = _v2_parent_pin_contacts(point, root)
+    parent_ground_contacts = {
+        (
+            _v2_path(pin.get("scope"), "ground pin.scope"),
+            _string(pin.get("id"), "ground pin.id"),
+        )
+        for group in point.snapshot.source_provenance.get("ground_pins_call_groups", ())
+        for pin in group
+        if isinstance(pin, Mapping)
+        and pin.get("kind") == "pin"
+        and pin.get("public") is True
+    }
     scope_rows = _v2_scopes(root)
     contacts_by_net, contact_owners = _v2_visible_contacts(semantic)
     boundary_rows: list[dict[str, object]] = []
@@ -341,7 +537,17 @@ def _v2_structural(
                 {
                     "region": list(path),
                     "boundary": boundary,
-                    "parent_incidence": "connected" if (path, pin["id"]) in parent_contacts else "open",
+                    # A parent-side Bus binding is source evidence, not visible
+                    # exterior incidence by itself.  B expects a connected
+                    # crossing only when that authored use reaches another
+                    # observable physical/Port contact outside the child.
+                    "parent_incidence": (
+                        "connected"
+                        if (path, pin["id"]) in parent_ground_contacts
+                        or (path, pin["id"]) in parent_link_boundaries
+                        or ((path, pin["id"]) in parent_contacts and outside)
+                        else "open"
+                    ),
                     "net": visible_net,
                     "inside_contacts": inside,
                     "outside_contacts": outside,
@@ -353,6 +559,7 @@ def _v2_structural(
             visit(_mapping(_mapping(body, "component body").get("body"), "component body scope"))
 
     visit(root)
+    analysis_labels = _v2_public_analysis_labels(root, net_map)
     physical = [
         {
             "path": list(_v2_path(row.get("path"), "physical_leaf.path")),
@@ -376,6 +583,7 @@ def _v2_structural(
                 "leaf_ownership": sorted(physical, key=lambda row: cast(list[str], row["path"])),
                 "port_ownership": sorted(ports, key=lambda row: cast(str, row["port_id"])),
                 "boundary_incidence": sorted(boundary_rows, key=canonical_json_bytes),
+                "public_analysis_labels": sorted(analysis_labels, key=canonical_json_bytes),
             }
         ),
     )

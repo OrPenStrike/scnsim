@@ -1293,72 +1293,79 @@ class StructuredLowerer:
             blocks[key] = BlockGeometry(key, Bounds(0.0, 0.0, 0.0, 0.0))
             side = self._composition_boundary_side(boundary.endpoint)
             attachments[boundary.key] = ContactGeometry(key, Point(0.0, 0.0), OPPOSITE[side])
-        for recipe in recipes:
-            for attachment in recipe.group.attachments:
-                key = attachment.block
-                if attachment.kind == "structure":
-                    side = self._structure_contact_side(key, attachment.boundary)
-                    attachments[attachment.key] = ContactGeometry(
-                        key, boundaries[key, attachment.boundary], side
-                    )
-                elif attachment.kind == "scope_pin":
-                    side = self._composition_boundary_side(attachment.endpoint)
-                    key = ("scope_boundary", path, attachment.endpoint["id"])
-                    blocks[key] = BlockGeometry(key, Bounds(0.0, 0.0, 0.0, 0.0))
-                    attachments[attachment.key] = ContactGeometry(
-                        key, Point(0.0, 0.0), OPPOSITE[side]
-                    )
-                    scope_pin_keys[key] = attachment
-                elif attachment.kind == "port":
-                    key = attachment.key
-                    row = next(
-                        row
-                        for row in self.semantic["connectivity"]["ports"]
-                        if row["id"] == attachment.endpoint["id"]
-                    )
-                    side = self.layout.port_sides.get(key, "left")
-                    fragment = StructuredLowerer(
-                        self.point, self.layout, show_values=self.show_values
-                    )
-                    fragment.active_scope = path
-                    port = port_block(
-                        port_id=row["id"],
-                        role=row["role"],
-                        reference_impedance=format_envelope(row["reference_impedance"]),
-                        boundary_anchor=Point(0.0, 0.0),
-                        side=side,
-                        load_side=self.layout.port_load_sides[key],
-                    )
-                    fragment.builder.ports.append(port)
-                    fragments[key] = fragment
-                    blocks[key] = BlockGeometry(key, port.occupied_bounds)
-                    attachments[attachment.key] = ContactGeometry(
-                        key, port.external_anchor, OPPOSITE[side]
-                    )
-                else:
-                    member_path = (
-                        tuple(key[1]) if key[0] == "scope" else (*key[1], key[2])
-                    )
-                    owner = member_owners.get(member_path, key)
-                    fragment = fragments[owner]
-                    anchor = fragment.placed[member_path].anchors[
-                        attachment.endpoint["id"]
-                    ]
-                    bounds = fragment.scope_bounds.get(
-                        member_path, fragment.placed[member_path].bounds
-                    )
-                    side = self.layout.terminal_sides.get(
-                        endpoint_key(attachment.endpoint)
-                    ) or (
-                        "left"
-                        if abs(anchor.x - bounds.xmin) <= COORDINATE_TOLERANCE
-                        else "right"
-                        if abs(anchor.x - bounds.xmax) <= COORDINATE_TOLERANCE
-                        else "bottom"
-                        if abs(anchor.y - bounds.ymin) <= COORDINATE_TOLERANCE
-                        else "top"
-                    )
-                    attachments[attachment.key] = ContactGeometry(owner, anchor, side)
+        local_attachments = tuple(
+            {
+                attachment.key: attachment
+                for group in self.layout.inventory.local_groups.values()
+                if group.scope == path
+                for attachment in group.attachments
+            }.values()
+        )
+        for attachment in local_attachments:
+            key = attachment.block
+            if attachment.kind == "structure":
+                side = self._structure_contact_side(key, attachment.boundary)
+                attachments[attachment.key] = ContactGeometry(
+                    key, boundaries[key, attachment.boundary], side
+                )
+            elif attachment.kind == "scope_pin":
+                side = self._composition_boundary_side(attachment.endpoint)
+                key = ("scope_boundary", path, attachment.endpoint["id"])
+                blocks[key] = BlockGeometry(key, Bounds(0.0, 0.0, 0.0, 0.0))
+                attachments[attachment.key] = ContactGeometry(
+                    key, Point(0.0, 0.0), OPPOSITE[side]
+                )
+                scope_pin_keys[key] = attachment
+            elif attachment.kind == "port":
+                key = attachment.key
+                row = next(
+                    row
+                    for row in self.semantic["connectivity"]["ports"]
+                    if row["id"] == attachment.endpoint["id"]
+                )
+                side = self.layout.port_sides.get(key, "left")
+                fragment = StructuredLowerer(
+                    self.point, self.layout, show_values=self.show_values
+                )
+                fragment.active_scope = path
+                port = port_block(
+                    port_id=row["id"],
+                    role=row["role"],
+                    reference_impedance=format_envelope(row["reference_impedance"]),
+                    boundary_anchor=Point(0.0, 0.0),
+                    side=side,
+                    load_side=self.layout.port_load_sides[key],
+                )
+                fragment.builder.ports.append(port)
+                fragments[key] = fragment
+                blocks[key] = BlockGeometry(key, port.occupied_bounds)
+                attachments[attachment.key] = ContactGeometry(
+                    key, port.external_anchor, OPPOSITE[side]
+                )
+            else:
+                member_path = (
+                    tuple(key[1]) if key[0] == "scope" else (*key[1], key[2])
+                )
+                owner = member_owners.get(member_path, key)
+                fragment = fragments[owner]
+                anchor = fragment.placed[member_path].anchors[
+                    attachment.endpoint["id"]
+                ]
+                bounds = fragment.scope_bounds.get(
+                    member_path, fragment.placed[member_path].bounds
+                )
+                side = self.layout.terminal_sides.get(
+                    endpoint_key(attachment.endpoint)
+                ) or (
+                    "left"
+                    if abs(anchor.x - bounds.xmin) <= COORDINATE_TOLERANCE
+                    else "right"
+                    if abs(anchor.x - bounds.xmax) <= COORDINATE_TOLERANCE
+                    else "bottom"
+                    if abs(anchor.y - bounds.ymin) <= COORDINATE_TOLERANCE
+                    else "top"
+                )
+                attachments[attachment.key] = ContactGeometry(owner, anchor, side)
 
         tap_sites = {}
         contact_order = []
@@ -1374,10 +1381,112 @@ class StructuredLowerer:
                 if any(tap not in tap_sites for tap in ordered):
                     raise _fail("named tap order requires one unambiguous actual attachment per tap", bus=bus_key, taps=ordered)
                 contact_order.append(tuple(tap_sites[tap] for tap in ordered))
+
+        # Public analysis names annotate one existing owner-local wire group.
+        # Capture grouping, measurement, and the selected physical attachment
+        # happen before the fragment is placed or its enclosing frame is fixed.
+        analysis_names = defaultdict(list)
+        analysis_guides = []
+        if not path:
+            for bus in scope["buses"]:
+                if bus["anonymous"]:
+                    continue
+                alias = ("bus", path, bus["id"])
+                group_key = self.layout.inventory.group_aliases.get(alias)
+                if group_key is None:
+                    raise _fail(
+                        "named root Bus has no owner-local wire group",
+                        bus=bus["id"],
+                    )
+                analysis_names[group_key].append(bus["id"])
+        else:
+            for exposure in scope["exposures"]["coordinates"]:
+                endpoint = exposure["intrinsic_endpoint"]
+                alias = (
+                    ("bus", path, endpoint["id"])
+                    if endpoint["kind"] == "bus"
+                    else ("bus", path, endpoint["bus"])
+                )
+                group_key = self.layout.inventory.group_aliases.get(alias)
+                if group_key is None:
+                    raise _fail(
+                        "published analysis Coordinate has no owner-local wire group",
+                        scope=path,
+                        coordinate=exposure["id"],
+                    )
+                analysis_names[group_key].append(exposure["id"])
+        for group_key, names in analysis_names.items():
+            group = self.layout.inventory.local_groups.get(group_key)
+            candidates = () if group is None else tuple(
+                (attachment, attachments[attachment.key])
+                for attachment in group.attachments
+                if attachment.key in attachments
+                and attachments[attachment.key].block in blocks
+            )
+            if not candidates:
+                raise _fail(
+                    "public analysis label has no visible authored contact",
+                    scope=path,
+                    names=tuple(names),
+                )
+            _, contact = candidates[0]
+            dx, dy = {
+                "left": (-1, 0),
+                "right": (1, 0),
+                "top": (0, 1),
+                "bottom": (0, -1),
+            }[contact.side]
+            extent = (
+                fragments[contact.block]._extent()
+                if contact.block in fragments
+                else blocks[contact.block].occupied_bounds
+                or blocks[contact.block].bounds
+            )
+            escape_distance = max(
+                DEFAULT_METRICS.terminal_stub,
+                {
+                    "left": contact.point.x - extent.xmin,
+                    "right": extent.xmax - contact.point.x,
+                    "top": extent.ymax - contact.point.y,
+                    "bottom": contact.point.y - extent.ymin,
+                }[contact.side]
+                + DEFAULT_METRICS.label_clearance,
+            )
+            escape_point = contact.point.translated(
+                dx * escape_distance,
+                dy * escape_distance,
+            )
+            label_point = escape_point.translated(
+                0.0
+                if contact.side in {"left", "right"}
+                else DEFAULT_METRICS.terminal_stub,
+                DEFAULT_METRICS.terminal_stub
+                if contact.side in {"left", "right"}
+                else 0.0,
+            )
+            label = self._contact_mark(
+                "\n".join(names),
+                label_point,
+                role="analysis-label",
+                side=contact.side,
+            )
+            analysis_guides.append(
+                (
+                    contact.block,
+                    GuideMark(
+                        "analysis_label",
+                        (Path((contact.point, label_point), "analysis-label"),),
+                        label,
+                        (contact.point,),
+                    ),
+                )
+            )
         peer_order = self.layout.order[("scope", path)]
+        guide_bounds = defaultdict(list)
+        for key, guide in analysis_guides:
+            guide_bounds[key].extend((guide.bounds, guide.label.bounds))
         boundary_rows = []
         boundary_labels = {}
-        boundary_tap_labels = defaultdict(list)
         for key, attachment in scope_pin_keys.items():
             side = self._composition_boundary_side(attachment.endpoint)
             label = None
@@ -1385,35 +1494,23 @@ class StructuredLowerer:
                 label = self._contact_mark(attachment.endpoint["id"],Point(0.0,0.0),
                     role="public-pin",side=OPPOSITE[side])
             boundary_labels[key] = label
-        # Named labels are measured decorations of their contact's owning fragment.
-        # They reserve a fixed exterior caption strip before any parent placement.
-        for ordinal,(tap,contact_key) in enumerate(tap_sites.items()):
-            contact = attachments[contact_key]
-            if contact.block in scope_pin_keys:
-                key = contact.block
-                side = self._composition_boundary_side(scope_pin_keys[key].endpoint)
-                label = self._contact_mark(tap[-1],Point(0.0,0.0),role="tap-id",side=OPPOSITE[side])
-                previous = [*(() if boundary_labels[key] is None else (boundary_labels[key],)),*boundary_tap_labels[key]]
-                if previous:
-                    gap = DEFAULT_METRICS.label_clearance
-                    dy = min(run.bounds.ymin for run in previous)-gap-label.bounds.ymax if side == "top" else max(run.bounds.ymax for run in previous)+gap-label.bounds.ymin
-                    label = _translated(label,0.0,dy)
-                boundary_tap_labels[key].append(label)
-                continue
-            fragment = fragments[contact.block]
-            extent = fragment._extent()
-            label = self._contact_mark(tap[-1],Point(contact.point.x,extent.ymax),
-                role="tap-id")
-            fragment.builder.text.append(label)
         for key,attachment in scope_pin_keys.items():
-            labels = (*(() if boundary_labels[key] is None else (boundary_labels[key],)),*boundary_tap_labels[key])
+            labels = () if boundary_labels[key] is None else (boundary_labels[key],)
+            measured = (*tuple(run.bounds for run in labels), *guide_bounds[key])
             boundary_rows.append(BoundaryContactGeometry(key,
                 self._composition_boundary_side(attachment.endpoint),
-                _bounds(tuple(run.bounds for run in labels),padding=0.0) if labels else None))
+                _bounds(measured,padding=0.0) if measured else None))
         for key,fragment in fragments.items():
-            blocks[key] = BlockGeometry(key,fragment._placement_extent(),
-                order_anchor=fragment._peer_order_anchor(key) if key[0] in {"scope","component"} else None,
-                occupied_bounds=fragment._extent())
+            blocks[key] = BlockGeometry(
+                key,
+                _bounds((fragment._placement_extent(), *guide_bounds[key]), padding=0.0),
+                order_anchor=fragment._peer_order_anchor(key)
+                if key[0] in {"scope", "component"}
+                else None,
+                occupied_bounds=_bounds(
+                    (fragment._extent(), *guide_bounds[key]), padding=0.0
+                ),
+            )
         gap = DEFAULT_METRICS.label_clearance
         header = shape_text(path[-1],at=Point(0.0,0.0),
             size=1.25*DEFAULT_METRICS.primary_text_size,role="region-id") if path else None
@@ -1446,10 +1543,11 @@ class StructuredLowerer:
             header_bounds=None if header is None else header.bounds,
             header_rotation=orientation)
         self._complete_scope(scope,fragments,attachments,scope_pin_keys,tap_sites,
-            placement,boundary_labels,boundary_tap_labels,header)
+            placement,boundary_labels,analysis_guides,header)
 
     def _complete_scope(self, scope, fragments, attachments, scope_pin_keys,
-                        tap_sites, placement, boundary_labels, boundary_tap_labels, header) -> None:
+                        tap_sites, placement, boundary_labels, analysis_guides,
+                        header) -> None:
         """Emit the one completed frame and prescribed routes without relocating ink."""
         from .composition_geometry import (
             OPPOSITE,
@@ -1462,6 +1560,9 @@ class StructuredLowerer:
         for key,fragment in fragments.items():
             origin = placement.origins[key]
             self._adopt(fragment,origin.x,origin.y)
+        for key, guide in analysis_guides:
+            origin = placement.origins[key]
+            self.builder.guides.append(_translated(guide, origin.x, origin.y))
         self.builder.conductive.extend(placement.primitives)
         bounds = placement.bounds
         self.scope_bounds[path] = bounds
@@ -1477,8 +1578,6 @@ class StructuredLowerer:
             if label is not None:
                 label = _translated(label,anchor.x,anchor.y)
             self.builder.boundary_sites.append(BoundarySite(anchor,label))
-            self.builder.text.extend(_translated(run,anchor.x,anchor.y)
-                for run in boundary_tap_labels[key])
         if header is not None:
             gap = DEFAULT_METRICS.label_clearance
             orientation = self._scope_orientation(path)
@@ -1489,6 +1588,11 @@ class StructuredLowerer:
         obstacles = [fragment._extent().translated(placement.origins[key].x,placement.origins[key].y)
             for key,fragment in fragments.items()]
         obstacles.extend(site.visible_label.bounds for site in self.builder.boundary_sites if site.visible_label is not None)
+        obstacles.extend(
+            guide.label.bounds
+            for guide in self.builder.guides
+            if guide.label is not None
+        )
         obstacles.extend(run.bounds for run in self.builder.text)
         if header is not None:
             obstacles.append(header.bounds)

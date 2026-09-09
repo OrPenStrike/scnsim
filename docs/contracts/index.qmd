@@ -35,14 +35,14 @@ source-bound exports; they are not evidence that every cell in all sixteen
 Chapters executed or that every compiled projection succeeded. The
 [figure inventory](../../examples/README.md) records diagram limitations.
 
-One known grounded-resonator diagram limitation remains: linking a bare named
-root Bus to one public pin, with no Port or external body on that Bus, passes
-model completeness and electrical witness A but fails witness B's boundary
-`parent_incidence` check (`expected connected`, `observed open`). This does not
-make ordinary single-ended use unsupported: all three grounded factories passed
-all-open, genuine two-sided coupling, single-ended Port-plus-capacitor, and
-direct Bus-plus-Port configurations (12 rendered cases). These are scoped
-candidate observations, not Human acceptance or a change to diagram semantics.
+The Chapter 12 tapped-feedline Default and complete explicit tap-order
+checkpoints are now successful source-bound exports. One fixed-layout
+limitation remains in the Tutorial inventory: Chapter 13's complete raw-loaded
+Default reports `schematic_layout` with `fixed connector intersects occupied
+geometry`. It has no current SVG or diagram certificate; the same Plan's
+successful explicit composition and final probe-tee capstone remain separately
+identified checkpoints rather than substitutes for that Default failure. The
+[figure inventory](../../examples/README.md) records the exact current count.
 
 Retained tests have three distinct evidence roles: current runnable checks;
 numerical and integrity regressions blocked by superseded authoring fixtures;

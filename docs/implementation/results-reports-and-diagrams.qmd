@@ -264,7 +264,15 @@ feeds these same field setters and fixed completion.
 ### Construct one measured scene
 
 Compact child measurement allocates only actually needed fixed route lanes on
-each side, plus measured label, title, ground, border, and escape space.
+each side, plus measured component and public-analysis labels, title, ground,
+border, and escape space. Public-analysis labels are the exact named root Buses
+and child Coordinates explicitly published by `expose_coordinate()`; anonymous
+root Buses, private child Buses, anonymous internal IDs, and other exposure
+kinds are excluded. Co-located public aliases share one measured multi-line
+text run with every exact name on its own line, while the producer never merges
+different owner-local source groups by `final_net`. These labels and their
+nonconductive leaders are measured before
+the final child frame, anchors, and fixed route lanes are committed.
 Unused full-ring reservation and redundant straight-connector spacing are
 removed. Frame and public anchors finalize together before parent translation;
 there is no post-hoc crop, global clearance reduction, search, public coordinate
@@ -334,7 +342,9 @@ not appear in that image. Ownership regions and labels remain unmistakably
 nonconductive. Literal authored local IDs remain literal display identities;
 the renderer neither title-cases them nor invents compact aliases. The existing
 `show_provenance=True` default emits a compact separated footer that can be
-hidden without changing the circuit scene or evidence.
+hidden without changing the circuit scene or evidence. Public analysis names
+remain visible when parameter values or provenance are hidden; neither switch
+controls name publication.
 
 An authoring `NodeMark` may be unlabelled; required compiled-marker labels stay
 visible. A connected two-ray bend or contact may harmlessly carry a filled dot,
@@ -411,6 +421,14 @@ never open flags, expected maps, or placement answers. A required cut connection
 still rejects. All/partial open inline, built, nested, and rotated boundaries
 use the same ink-bound evidence rule.
 
+Source capture independently verifies each public Pin-to-Bus/Tap binding.
+Witness B consumes only visible containment, contour crossings, and wire-contact
+sets; it does not derive a hidden `bound => connected` requirement from source
+metadata. A straight free-ending exterior root-Bus stub with no authored
+external physical body or Port remains ordinary visible conductor rather than
+an open child-boundary observation. A missing authored physical, Port, or real
+boundary incidence still rejects instead of being excused as a free stub.
+
 For unmarked ordinary symmetric two-terminal bodies, including L/JJ, A may
 compare electrical evidence modulo endpoint-reference reversal. It does not
 reconstruct an ordered endpoint pair from hidden placement, source rows, or
@@ -444,6 +462,14 @@ contact sets. It never stores a hidden exposure ID as an observed fact. Complete
 aliases, parameter definitions and bindings, effective point, units, ground
 provenance, and other authoring facts remain separately available as verified
 source/provenance rows rather than being smuggled into scene metadata.
+Public analysis-label correspondence is another independent visible
+text-and-leader record: it verifies exact captured names and owner scope plus
+the conductive-root net at the leader endpoint without using label text as
+connectivity. Source aliases remain distinct lines in co-located text, and the
+producer retains distinct owner-local groups when their source records share
+one `final_net`. The observation does not independently distinguish swapped
+labels at different contacts in the same scope on that same net; complete
+owner-local grouping remains captured source evidence.
 `audit.show()` labels observed A, observed B, visible-value checks, and captured
 source/provenance as distinct evidence classes. Human review C alone decides
 whether the Plan is the intended circuit.

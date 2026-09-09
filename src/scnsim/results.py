@@ -1365,6 +1365,8 @@ class CircuitDiagramAudit:
             + table("Visible leaf ownership", semantic.get("leaf_ownership", ()) if isinstance(semantic, Mapping) else ())
             + table("Visible Port ownership", semantic.get("port_ownership", ()) if isinstance(semantic, Mapping) else ())
             + table("Visible cross-boundary electrical incidence", semantic.get("boundary_incidence", ()) if isinstance(semantic, Mapping) else ())
+            + "<h3>Visible public-analysis-label observations</h3>"
+            + table("Exact text, owner scope, and attached electrical net", semantic.get("public_analysis_labels", ()) if isinstance(semantic, Mapping) else ())
             + "<h3>Observed displayed-point evidence</h3>"
             + table("Displayed selected physical values", detail_rows("displayed_parameter_value"))
             + table("Displayed Port reference impedances", detail_rows("port_impedance"))

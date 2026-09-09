@@ -122,6 +122,10 @@ def normalize_authoring(
         for field in ("inside_contacts", "outside_contacts"):
             row[field] = sorted(contact_reference(text) for text in row[field])
     structural["boundary_incidence"].sort(key=canonical_json_bytes)
+    analysis_labels = structural.get("public_analysis_labels", [])
+    for row in analysis_labels:
+        row["net"] = net_map[row["net"]]
+    analysis_labels.sort(key=canonical_json_bytes)
 
     couplings = []
     for row in electrical["couplings"]:

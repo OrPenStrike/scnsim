@@ -474,7 +474,33 @@ layout never invents a pin, Port, or load.
 
 The authoring projection is a conventional circuit schematic, not an operator
 debug view. It does not print `S:`, `P:`, `LINK:`, or `REGION:` marks, routing
-guides, or private aliases over the circuit. Native symbols, conductive wires,
+guides, or private aliases over the circuit. Its public analysis labels are
+exactly the named root Buses and the analysis Coordinates that a child
+explicitly publishes with `expose_coordinate()`. Anonymous root Buses,
+child-private Buses, anonymous internal identities, Pin/Branch exposures, and
+unpublished Coordinates are not labelled. Publishing a Coordinate does not
+grant a parent access to private built-Composite handles or create a new
+electrical node, Coordinate, attachment arm, wiring permission, or connectivity.
+Source aliases remain distinct authored names even when they share conductive
+ink. Co-located public aliases are combined into one measured multi-line text
+run with each exact name on its own line; a single name containing a literal
+middle dot therefore remains distinct from two aliases. The producer retains
+different owner-local source groups instead of merging them merely because
+compilation gives them one `final_net`.
+
+Analysis labels are measured with the wire Blocks they annotate before final
+child frames, public anchors, route lanes, and parent placement are fixed. They
+remain visible regardless of `show_parameter_values` and `show_provenance`;
+those switches control values and the optional provenance footer, not public
+names. Label leaders are nonconductive and do not participate in witness-A
+connectivity. The audit verifies the exact captured names and owner scope and
+that the leader endpoint is attached to the corresponding conductive-root net,
+without treating the text as electrical evidence. It does not independently
+distinguish a label swap between different owner-local contacts that share both
+scope and electrical net; complete owner-local grouping remains verified source
+evidence and a producer invariant.
+
+Native symbols, conductive wires,
 filled connection marks, hollow logical-Port endpoints, local grounds, physical
 coupling marks, short authored labels, and measured ownership regions carry
 the visible meaning. A `NodeMark` label is optional in the authoring projection;
@@ -614,6 +640,15 @@ entirely open public interfaces retain their actual boundaries. A cut required
 connection is still missing electrical evidence; it cannot be relabelled as a
 legal open stub.
 
+Source validation separately proves every exposed Pin's binding to its authored
+Bus or Tap. Witness B checks only observable region containment, child-boundary
+crossings, and actual inside/outside wire contacts. It does not require a hidden
+`bound => visible connected` implication. A straight free-ending exterior
+stub on a named root Bus is valid visible ink when no external physical body or
+Port was authored there; it is not reclassified as an open child boundary.
+Conversely, omitting a genuinely authored external physical, Port, or boundary
+connection still fails the applicable source check or visible A/B comparison.
+
 This certifies projection correspondence only. It can detect a drawing or
 projection-lowering mismatch, but it does not independently prove numerical
 compiler lowering or stamping, a View/PTC realization, or solver correctness.
@@ -641,6 +676,15 @@ Port shapes, and boundary crossings. It does not reconstruct invisible
 operator IDs, N-link invocation history, bus or tap names, or coordinate,
 branch, and pin-exposure names from the image. It also does not infer or certify
 the superseded S/P/M neighbor partition.
+
+Public analysis-name correspondence is a separate text-and-leader observation,
+not a hidden Witness-B connectivity answer. It records each exact visible name,
+its captured owner scope, and the conductive-root net attached at the leader
+endpoint. Multi-line text at one source group does not combine distinct
+owner-local groups, and neither the label text nor a shared `final_net` can
+supply missing conductive incidence. When distinct contacts in the same scope
+share that net, the observation does not claim to recover which contact carried
+which name independently of the source record.
 
 The complete authored series, parallel, branch, link, coupling, bus, tap,
 grounding, exposure, alias, parameter-definition, parameter-binding,

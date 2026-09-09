@@ -508,15 +508,18 @@ def _body_groups(
 def _observed_nets(
     scene: NeutralScene,
     bodies: Sequence[_Body],
-) -> tuple[object, dict[int, str], object]:
+) -> tuple[object, dict[int, str], object, tuple[tuple[Point, Point], ...]]:
     from .audit import _build_point_graph, _point_on_segment, _port_identity
 
     graph, segments = _build_point_graph(scene)
-    # Nonconductive leaders may terminate at an interior point of one visible
-    # wire segment.  Register that literal geometric incidence before naming
-    # equivalence classes; segmentation of the same continuous ink cannot
-    # change the witness.
+    # Structured semantic guides may terminate at an interior point of one
+    # visible wire segment.  Register that literal geometric incidence before
+    # naming equivalence classes; segmentation of the same continuous ink
+    # cannot change the witness.  Public analysis labels are observations and
+    # therefore never register or union electrical graph points.
     for guide in scene.guides:
+        if guide.kind == "analysis_label":
+            continue
         for terminal in guide.terminals:
             contacted = [segment for segment in segments if _point_on_segment(terminal, *segment)]
             if contacted:
@@ -564,7 +567,7 @@ def _observed_nets(
     }
     if stray:
         raise _fail("visible conductive ink forms a net with no physical terminal or Port")
-    return graph, roots, tuple(sorted(rows, key=canonical_json_bytes))
+    return graph, roots, tuple(sorted(rows, key=canonical_json_bytes)), segments
 
 
 def _net(graph: object, roots: Mapping[int, str], point: Point) -> str:
@@ -1502,7 +1505,7 @@ def _couplings(
     records: list[dict[str, object]] = []
     rows: list[dict[str, object]] = []
     for guide in scene.guides:
-        if guide.label is None or not guide.label.text.startswith("COUPLING:"):
+        if guide.kind != "coupling" or guide.label is None:
             continue
         from dataclasses import replace
         from .audit import _same_path
@@ -1514,6 +1517,11 @@ def _couplings(
         _guide_connected(replace(guide, paths=tuple(path for path in guide.paths if not path.closed)))
         if len(guide.terminals) != 2:
             raise _fail("visible mutual coupling lacks label/two oriented incidences")
+        if not guide.label.text.startswith("COUPLING:"):
+            raise _fail(
+                "visible mutual coupling label is malformed",
+                label=guide.label.text,
+            )
         payload = guide.label.text.removeprefix("COUPLING:")
         if show_values:
             identifier, separator, coefficient_text = payload.rpartition("; k=")
@@ -1606,23 +1614,69 @@ def reconstruct_authoring(
                 and _is_ground_paths(guide.paths, guide.terminals[0])
             ):
                 raise _fail("unlabelled guide lies outside the closed visible grammar")
-        elif not guide.label.text.startswith("COUPLING:"):
+        elif guide.kind == "coupling":
+            continue
+        elif not (
+            guide.label.role == "analysis-label"
+            and guide.kind == "analysis_label"
+            and len(guide.paths) == 1
+            and guide.paths[0].role == "analysis-label"
+            and len(guide.paths[0].points) == 2
+            and guide.terminals == (guide.paths[0].points[0],)
+        ):
             raise _fail(
                 "authoring scene contains a superseded semantic debug guide",
                 label=guide.label.text,
             )
     regions = _regions(scene)
     bodies = _body_groups(scene, regions, show_values=show_values)
-    graph, roots, nets = _observed_nets(scene, bodies)
+    graph, roots, nets, segments = _observed_nets(scene, bodies)
+    _verify_junction_marks(scene, _junction_segments(scene, segments))
     from .audit import _build_point_graph
 
-    _, segments = _build_point_graph(scene)
-    _verify_junction_marks(scene, _junction_segments(scene, segments))
     raw_graph, _ = _build_point_graph(scene, normalize_ground=False)
     _verify_local_grounds(scene, regions, bodies, graph, raw_graph, roots)
     coupling_structures, coupling_rows = _couplings(
         scene, regions, bodies, show_values=show_values
     )
+
+    analysis_labels = []
+    analysis_rows = []
+    from .audit import _point_on_segment
+
+    for guide in scene.guides:
+        if guide.kind != "analysis_label":
+            continue
+        assert guide.label is not None
+        wire_point, free_end = guide.paths[0].points
+        if not any(_same_point(wire_point, point) for point in graph.points):
+            raise _fail(
+                "public analysis label leader is not attached to visible electrical ink",
+                label=guide.label.text,
+            )
+        if any(_same_point(free_end, point) for point in graph.points) or any(
+            _point_on_segment(free_end, *segment) for segment in segments
+        ):
+            raise _fail(
+                "public analysis label leader falsely terminates on electrical ink",
+                label=guide.label.text,
+            )
+        contact_root = graph.root(wire_point)
+        owner = _deepest(guide.label.bounds, regions).path
+        record = {
+            "scope": list(owner),
+            "text": guide.label.text,
+            "net": "ground" if graph.is_ground(contact_root) else roots[contact_root],
+        }
+        analysis_labels.append(record)
+        analysis_rows.append(
+            {
+                "category": "observed_scene",
+                "kind": "public_analysis_label",
+                "identity": guide.label.text,
+                "facts": record,
+            }
+        )
 
     body_rows: list[dict[str, object]] = []
     value_rows: list[dict[str, object]] = []
@@ -1697,10 +1751,11 @@ def reconstruct_authoring(
         "leaf_ownership": sorted(leaf_ownership, key=lambda row: cast(list[str], row["path"])),
         "port_ownership": sorted(port_ownership, key=lambda row: cast(str, row["port_id"])),
         "boundary_incidence": boundary_incidence,
+        "public_analysis_labels": sorted(analysis_labels, key=canonical_json_bytes),
     }))
     from .equivalence import normalize_authoring
 
-    details = [*value_rows, *coupling_rows]
+    details = [*value_rows, *coupling_rows, *analysis_rows]
     values = {
         row["identity"]: row.get("comparison_value", row["value"]) for row in details
         if row["kind"] in {"displayed_parameter_value", "displayed_coupling_polarity", "port_impedance"}

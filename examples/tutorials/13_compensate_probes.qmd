@@ -456,6 +456,7 @@ from scnsim.errors import SCNSimValidationError
 from IPython.display import display
 
 automatic = None
+automatic_error = None
 try:
     automatic = plan.render_schematic(
         CircuitDiagramSpec(
@@ -468,6 +469,7 @@ try:
 except SCNSimValidationError as error:
     if error.stage != "schematic_layout":
         raise
+    automatic_error = error
     display({
         "fixed Default layout unavailable": str(error),
         "stage": error.stage,
@@ -477,20 +479,13 @@ if automatic is not None:
     display(automatic.show())
 ```
 
-::: {.content-visible when-format="html"}
-
-![Default authoring projection of the complete raw-loaded capstone.](figures/13-ptc-authoring.svg){#fig-13-ptc-authoring .lightbox fig-alt="Feedline, readout, and floating subsystems with all four original Ports before probe compensation."}
-
-[Open the SVG](figures/13-ptc-authoring.svg).
-
+::: {.callout-note title="Current fixed Default layout limitation"}
+This complete Plan currently reports `schematic_layout`: `fixed connector
+intersects occupied geometry`. No Default SVG or audit is published for this
+checkpoint. The typed failure is retained as `automatic_error`, while other
+error stages still propagate. The successful explicit compositions below use
+the same authored Plan; they do not substitute a different circuit.
 :::
-
-Fixed Default is not a universal embedding algorithm: this complete Plan can
-encounter an unsupported fixed track near a label. The cell reports an actual
-layout failure, if encountered, and continues to explicit controls below;
-other error stages propagate. It does not substitute a drawing or an audit.
-When rendering succeeds, `automatic` shows the raw authored Plan and its audit
-table is available separately.
 
 ```{python}
 #| id: inspect-ptc-authoring-audit

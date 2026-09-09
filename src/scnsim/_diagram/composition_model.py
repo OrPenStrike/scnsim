@@ -107,6 +107,7 @@ class CompositionInventory:
     plan_sha256: str
     blocks: Mapping[Key, Block]
     groups: Mapping[GroupKey, WiringGroup]
+    local_groups: Mapping[GroupKey, WiringGroup]
     endpoint_aliases: Mapping[Key, tuple[tuple[GroupKey, Key], ...]]
     group_aliases: Mapping[Key, GroupKey]
     ground_targets: Mapping[Key, GroundTarget]
@@ -436,10 +437,14 @@ def inventory(snapshot: AuthoringSnapshot) -> CompositionInventory:
             path = tuple(ep.get("scope", ()))
             owner = path[:-1] if ep.get("public") else path
             ground_targets[key] = GroundTarget(key, owner, freeze(ep), None, None, scopes[owner][1])
-    groups = {
+    local_groups = {
         key: WiringGroup(key, key[0], next(iter(values.values())).net, tuple(values.values()), tuple(alias for alias, group in group_aliases.items() if group == key), scopes[key[0]][1] and not key[1].startswith("ground:"))
         for key, values in contacts.items()
-        if len(values) >= 2
+    }
+    groups = {
+        key: group
+        for key, group in local_groups.items()
+        if len(group.attachments) >= 2
     }
     normalized_aliases = {
         alias: tuple(dict.fromkeys(entry for entry in entries if entry[1] in contacts[entry[0]]))
@@ -450,6 +455,7 @@ def inventory(snapshot: AuthoringSnapshot) -> CompositionInventory:
         sha256_hex(canonical_plan_snapshot(snapshot)),
         MappingProxyType(blocks),
         MappingProxyType(groups),
+        MappingProxyType(local_groups),
         MappingProxyType(normalized_aliases),
         MappingProxyType(group_aliases),
         MappingProxyType(ground_targets),

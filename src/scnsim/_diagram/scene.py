@@ -85,7 +85,7 @@ class Bounds:
 class Path:
     points: tuple[Point, ...]
     role: Literal[
-        "symbol", "wire", "guide", "region", "box", "coupling", "jump", "glyph"
+        "symbol", "wire", "guide", "analysis-label", "region", "box", "coupling", "jump", "glyph"
     ]
     closed: bool = False
     codes: tuple[int, ...] | None = None
@@ -258,7 +258,14 @@ class NodeMark:
 @dataclass(frozen=True, slots=True)
 class GuideMark:
     kind: Literal[
-        "bracket", "stitch", "pair", "multiparty", "coupling", "omission", "ground"
+        "bracket",
+        "stitch",
+        "pair",
+        "multiparty",
+        "coupling",
+        "omission",
+        "ground",
+        "analysis_label",
     ]
     paths: tuple[Path, ...]
     label: TextRun | None

@@ -258,13 +258,62 @@ def shape_text(
     as authored and unsupported text must fail before a scene exists.
     """
 
-    from .scene import Bounds, GlyphPath, TextRun
+    from .scene import Bounds, GlyphPath, Point, TextRun
 
     if not isinstance(text, str) or not text:
         raise ValueError("diagram text must be a nonempty literal string")
     if not isinstance(size, (float, int)) or isinstance(size, bool) or size <= 0:
         raise ValueError("diagram text size must be positive")
     size = float(size)
+    if "\n" in text:
+        lines = text.split("\n")
+        if any(not line for line in lines):
+            raise ValueError("diagram multiline text cannot contain an empty line")
+        measured = tuple(
+            shape_text(line, at=Point(0.0, 0.0), size=size, role=role)
+            for line in lines
+        )
+        line_height = max(run.ascent - run.descent for run in measured)
+        positioned = tuple(
+            shape_text(
+                line,
+                at=Point(at.x, at.y - index * line_height),
+                size=size,
+                role=role,
+            )
+            for index, line in enumerate(lines)
+        )
+        glyphs: list[GlyphPath] = []
+        for index, run in enumerate(positioned):
+            glyphs.extend(run.glyphs)
+            if index < len(positioned) - 1:
+                baseline = at.y - (index + 1) * line_height
+                glyphs.append(
+                    GlyphPath(
+                        "\n",
+                        run.glyphs[-1].font_sha256,
+                        (),
+                        (),
+                        Bounds(at.x, baseline, at.x, baseline),
+                        0.0,
+                    )
+                )
+        occupied = Bounds(
+            min(run.bounds.xmin for run in positioned),
+            min(run.bounds.ymin for run in positioned),
+            max(run.bounds.xmax for run in positioned),
+            max(run.bounds.ymax for run in positioned),
+        )
+        return TextRun(
+            text,
+            at,
+            size,
+            role,
+            tuple(glyphs),
+            occupied,
+            occupied.ymax - at.y,
+            occupied.ymin - at.y,
+        )
     cursor = at.x
     glyphs: list[GlyphPath] = []
     ascent = descent = 0.0

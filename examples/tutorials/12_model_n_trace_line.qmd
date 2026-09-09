@@ -417,36 +417,24 @@ TapRef or changes series order.
 
 ```{python}
 #| id: render-tapped-feedline-automatic
-automatic_feedline = None
-automatic_feedline_error = None
-try:
-    automatic_feedline = feedline_plan.render_schematic(
-        CircuitDiagramSpec(
-            representation="authoring",
-            show_parameter_values=True,
-        )
+automatic_feedline = feedline_plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        show_parameter_values=True,
     )
-except SCNSimValidationError as error:
-    if error.stage != "schematic_layout":
-        raise
-    automatic_feedline_error = error
-    display({
-        "authoring schematic layout unavailable": str(error),
-        "stage": error.stage,
-    })
-if automatic_feedline is not None:
-    display(automatic_feedline.show())
+)
+automatic_feedline.show()
 ```
 
-::: {.callout-note title="Current authoring layout limitation"}
-This exact Default checkpoint currently reports `schematic_layout`:
-`fixed connector intersects occupied geometry`. No successful SVG or audit is
-published for this checkpoint. This is a presentation limitation, not evidence
-that the declared electrical circuit is invalid.
+::: {.content-visible when-format="html"}
+
+![Automatic fixed placement of the complete tapped feedline.](figures/12-tapped-feedline-automatic.svg){#fig-12-tapped-feedline-automatic .lightbox fig-alt="Two transmission-line sections connected through three named attachments on one public tap bus."}
+
+[Open the SVG](figures/12-tapped-feedline-automatic.svg).
+
 :::
 
-When available, `automatic_feedline` is the unhinted drawing of the complete
-standalone Plan.
+`automatic_feedline` is the unhinted drawing of the complete standalone Plan.
 The next cell uses every explicit tap on `tap_bus` once to describe only their
 geometric progression along that bus.
 
@@ -461,32 +449,22 @@ tap_layout = SchematicLayout(
         ),
     }
 )
-hinted_feedline = None
-hinted_feedline_error = None
-try:
-    hinted_feedline = feedline_plan.render_schematic(
-        CircuitDiagramSpec(
-            representation="authoring",
-            show_parameter_values=True,
-            layout=tap_layout,
-        )
+hinted_feedline = feedline_plan.render_schematic(
+    CircuitDiagramSpec(
+        representation="authoring",
+        show_parameter_values=True,
+        layout=tap_layout,
     )
-except SCNSimValidationError as error:
-    if error.stage != "schematic_layout":
-        raise
-    hinted_feedline_error = error
-    display({
-        "hinted authoring schematic layout unavailable": str(error),
-        "stage": error.stage,
-    })
-if hinted_feedline is not None:
-    display(hinted_feedline.show())
+)
+hinted_feedline.show()
 ```
 
-::: {.callout-note title="The explicit tap-order checkpoint is also unavailable"}
-This exact hinted recipe currently reports the same `schematic_layout` failure:
-`fixed connector intersects occupied geometry`. The hint and circuit remain
-unchanged; neither a Default image nor another circuit is substituted here.
+::: {.content-visible when-format="html"}
+
+![The same tapped feedline with its complete named-tap order declared explicitly.](figures/12-tapped-feedline-tap-order.svg){#fig-12-tapped-feedline-tap-order .lightbox fig-alt="Tapped feedline authoring diagram honoring the complete left-section, coupling, right-section attachment order."}
+
+[Open the SVG](figures/12-tapped-feedline-tap-order.svg).
+
 :::
 
 `tap_order` is complete for the named taps of this bus. It controls graphical
