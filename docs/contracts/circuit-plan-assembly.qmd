@@ -494,11 +494,12 @@ root bus or zero-component Link on the resonator side. The later 120 fF point
 changes the real capacitor field on this same Plan and does not retroactively
 make every fixed component value a parameter.
 
-The migration-legacy Library Chapters repeat the same internal grammar in a Library `CompositePlan` and
-then consume one public terminal while leaving an equivalent differently named
-terminal externally open. The electrical values may match, but the
-factory-owned version has different ownership and provenance. No Plan or
-semantic digest equality is claimed across the two authoring sources.
+The migration-legacy Library Chapters repeat the same internal grammar in a
+Library `CompositePlan` and then consume one public terminal while leaving an
+equivalent differently named terminal externally open. The electrical values
+may match, but the factory-owned version has different ownership and
+provenance. No Plan or semantic digest equality is claimed across the two
+authoring sources.
 
 ### SQUID, cycles, and mutual coupling
 
@@ -632,13 +633,14 @@ conductor order, matrix coefficients, and section provenance exactly once.
 
 ### Three-subsystem model
 
-Chapters 13–16 author one `feedline`, one grounded `readout`, and one `floating`
-inline Subsystem at the root. The feedline owns two independent N=1 line
-sections and public input/tap/output pins. The floating scope owns one mutual
-C/L parallel network plus two separate ground branches. Root capacitors join
-feedline to readout and readout directly to `plus_1`/`minus_1`. Equivalent
-`plus_2`/`minus_2` pins link to the original root probe buses and coordinates.
-Root terminated and nonloading-probe Ports retain their distinct roles.
+Migration-legacy Chapters 13–16 author one `feedline`, one grounded `readout`,
+and one `floating` inline Subsystem at the root. The feedline owns two
+independent N=1 line sections and public input/tap/output pins. The floating
+scope owns one mutual C/L parallel network plus two separate ground branches.
+Root capacitors join feedline to readout and readout directly to
+`plus_1`/`minus_1`. Equivalent `plus_2`/`minus_2` pins link to the original root
+probe buses and coordinates. Root terminated and nonloading-probe Ports retain
+their distinct roles.
 
 The quarter-wave readout is explicitly a local lumped approximation, not a
 claim of distributed equivalence. The tutorials contain public generic values

@@ -825,58 +825,54 @@ No elapsed-time threshold or public timeout is part of this contract.
 
 ## Tutorial realization {#tutorial-realization}
 
-The canonical Tutorial files are QMD-first TARGET Chapter containers with
-generated, zero-output Jupyter artifacts. Short Lessons inside a Chapter may
-use its preceding state; every Chapter remains complete from a clean kernel.
-The zero-output Notebooks are transport artifacts, not execution records.
-Selected checkpoints, including Chapter 1, have genuine source-bound ASCDLS
-authoring exports from the assembled Plan and existing render/show/audit path.
-The [central evidence status](index.qmd#implementation-evidence-status) and
-[figure inventory](../../examples/README.md) distinguish these exports from
-whole-course execution and compiled-projection evidence.
+The current Engineer course is QMD-first. Engineer Chapter 1 keeps canonical
+Lesson prose and code in five YAML-free fragments, uses thin wrappers for web
+reading, and includes the fragments in one complete aggregate Chapter. Its
+generated zero-output Notebook is a transport artifact, not an execution
+record. The wrappers may use preceding Lesson state and are not independent
+execution units; the aggregate Chapter contains every import, declaration, and
+handle needed for a clean-kernel run.
 
-| Chapter | Target authoring contribution |
+Engineer Chapter 1 has a genuine source-bound ASCDLS authoring export from its
+assembled Plan and existing render/show/audit path. Its parameter-bound
+capacitor and literal inductor form the child LC; the child publishes a Pin and
+Coordinate from the same signal Bus; and the root's literal coupling capacitor
+ends directly at that public Pin beside a terminated Port. The
+[central evidence status](index.qmd#implementation-evidence-status) and
+[figure inventory](../../examples/README.md) distinguish this export from
+numerical plots and compiled-projection evidence.
+
+The sixteen earlier Tutorial QMD/IPYNB pairs and their source-bound assets are
+retained as **Migration legacy**, not a second current course. Their existing
+chapter numbers therefore do not describe the current Engineer roadmap. The
+[migration map](../implementation/engineer-course-migration-map.qmd) owns their
+future destinations without duplicating the contracts here.
+
+| Material | Retained authoring contribution |
 |---|---|
-| 1 | fixed-value inline grounded parallel LC, public pin, root coupling and Port, then diagram A/B/C review |
-| 2–3 | the complete fixed-value declaration followed by Direct response and retained-node quantity questions |
-| 4 | independent definitions, physical-field Plan binding, one selected point, and parameterized diagram evidence |
-| 5 | Cartesian and listed parameter spaces, exact point outcomes, selection, and read-only collection |
-| 6–7 | the complete parameterized declaration, optimization, report, and exact restart/resolve |
-| 8 | project-owned Library |
-| 9 | a complete reusable `CompositePlan` factory using the same structure grammar |
-| 10 | that complete factory declaration and its public Composite boundary inside another Plan |
-| 11 | automatic and handle-based hinted diagrams, one N-endpoint direct stitch, and parent-applied grounding |
-| 12 | complete N=2 matrix line, named-tap N=1 feedline, then one whole-RLGC selected-point compiled diagram |
-| 13 | one complete Chapter-local parameter-bound feedline/readout/floating capstone, its Plan diagram, then explicit probe PTC |
-| 14 | the complete model followed by PTC, pair transform, and retain using public handles |
-| 15 | the complete model followed by pump-off HB execution and exact restart/resolve routes |
-| 16 | the complete model followed by independent-grid Direct/HB presentation |
+| Current Engineer Chapter 1 | coupled grounded LC, same-bus public Pin and Coordinate, direct root coupling to the child Pin, terminated Port, and one authoring A/B/C review |
+| Migration legacy Chapters 1–11 | earlier primitive, parameter, Library, Composite, and diagram-customization applications |
+| Migration legacy Chapter 12 | complete N=2 matrix line, named-tap N=1 feedline, and one whole-RLGC selected-point compiled diagram |
+| Migration legacy Chapter 13 | parameter-bound feedline/readout/floating capstone, one unavailable fixed Default, successful explicit composition, and explicit probe PTC |
+| Migration legacy Chapters 14–16 | PTC, transform/retain, pump-off HB, resolution, and independent-grid presentations |
 
-Every Chapter is self-contained: it repeats all imports, physical declarations,
-and direct handles needed to follow that Chapter from a fresh kernel. Its short
-Lessons may share state in order, but no Chapter depends on an included builder,
-a Python fixture, or state from another Notebook. This deliberate teaching
-repetition does not duplicate contract authority; the declarations apply this
-one target grammar.
+Each migration-legacy pair remains a self-contained QMD-first Chapter with a
+generated zero-output Notebook. Its repeated imports and declarations apply
+this contract but do not duplicate its authority. Migration-legacy examples
+also retain the scoped grounding and rejected-authoring cases that demonstrate
+atomic failure rather than a partially mutated Plan.
 
-Across the course, short TARGET cases distinguish intrinsic grounding,
-parent-applied grounding, and Port loads; show two independent public returns
-grounded to the one reference; and make rejected hierarchy, transitive-bus,
-terminal-short, and grounded-Port attempts visible. A caught
-authoring failure is followed by a corrected declaration that reuses the
-rejected ID, demonstrating atomic failure rather than a partially mutated Plan.
-
-The course always completes the authored model before choosing an analysis
-question. ASCDLS translates the explicit Plan into an authoring or compiled
-diagram and independently audits that projection. `CircuitRun` separately
-supplies `run.original` and any selected analysis View. Rendering may project
-one explicit parameter point, but it neither creates nor displays PTC,
-transformed/retained coordinates, a parameter space, solver state, or an
-analysis `Result`. Successful audited rendering returns the
+The current Chapter and migration-legacy material complete the authored model
+before choosing an analysis question. ASCDLS translates the explicit Plan into
+an authoring or compiled diagram and independently audits that projection.
+`CircuitRun` separately supplies `run.original` and any selected analysis View.
+Rendering may project one explicit parameter point, but it neither creates nor
+displays PTC, transformed/retained coordinates, a parameter space, solver
+state, or an analysis `Result`. Successful audited rendering returns the
 `CircuitDiagramResult` defined above.
 
-The historical dev5/dev6 numerical meanings remain intact in their renumbered
-Chapters 12–16.
+The historical dev5/dev6 numerical meanings remain intact in the retained
+Migration legacy Chapters 12–16.
 Scoped execution evidence does not establish whole-course coverage or Human
 acceptance.
 

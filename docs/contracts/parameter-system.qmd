@@ -459,12 +459,13 @@ Gate, success threshold, or release claim.
 
 ## Reader path
 
-- [Chapter 4 — Define and bind physical parameters](../../examples/tutorials/04_define_parameters.qmd)
-- [Chapter 5 — Sweep parameter points](../../examples/tutorials/05_sweep_parameters.qmd)
-- [Chapter 6 — Tune a physical parameter](../../examples/tutorials/06_optimize_primitive.qmd)
-- [Chapter 9 — Build a Composite factory](../../examples/tutorials/09_add_composite_factory.qmd)
-- [Chapter 12 — Model ordered RLGC lines](../../examples/tutorials/12_model_n_trace_line.qmd)
-- [Chapter 13 — Assemble the capstone](../../examples/tutorials/13_compensate_probes.qmd)
+- [Engineer Chapter 1 — Build and vary a coupled LC](../../examples/engineer/chapter-01/01-build.qmd)
+- Migration legacy: [Chapter 4 — Define and bind physical parameters](../../examples/tutorials/04_define_parameters.qmd)
+- Migration legacy: [Chapter 5 — Sweep parameter points](../../examples/tutorials/05_sweep_parameters.qmd)
+- Migration legacy: [Chapter 6 — Tune a physical parameter](../../examples/tutorials/06_optimize_primitive.qmd)
+- Migration legacy: [Chapter 9 — Build a Composite factory](../../examples/tutorials/09_add_composite_factory.qmd)
+- Migration legacy: [Chapter 12 — Model ordered RLGC lines](../../examples/tutorials/12_model_n_trace_line.qmd)
+- Migration legacy: [Chapter 13 — Assemble the capstone](../../examples/tutorials/13_compensate_probes.qmd)
 - [Definitions, Bound Inputs, Points, and Optimization](../concepts/units-parameters-and-optimization.qmd)
 - [Component Authoring Contract](../component-authoring.qmd)
 - [Structured Circuit Authoring and Certified Diagrams](automatic-semantic-circuit-diagram-layout.qmd)

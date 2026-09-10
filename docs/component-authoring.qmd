@@ -46,8 +46,11 @@ A native component may bind a fixed Quantity directly. It receives a
 `ParameterRef` only when the author deliberately supports operation-time
 variation. Engineer Chapter 1 binds its capacitor because the same Plan is
 evaluated at 110 fF and 120 fF, while its 5.8 nH inductor and 6 fF coupler stay
-literal. The [Parameter System contract](contracts/parameter-system.qmd) owns
-those target identities and their operation-time values.
+literal. Its child publishes a Pin and Coordinate from the same signal Bus,
+and the parent coupling ends directly at that public Pin; a parent root Bus and
+zero-element Link remain optional assembly tools, not an analysis requirement.
+The [Parameter System contract](contracts/parameter-system.qmd) owns those
+target identities and their operation-time values.
 
 This page owns physical factory and lowering semantics. The linked structured
 contract owns the proposed assembly signatures, ownership, layout, identity,

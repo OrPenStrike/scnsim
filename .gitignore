@@ -11,3 +11,4 @@ __pycache__/
 **/*.quarto_ipynb
 /examples/**/*.html
 /examples/**/*_files/
+**/workspaces/

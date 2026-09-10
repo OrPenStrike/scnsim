@@ -37,14 +37,15 @@ and those assets do not establish execution of every migration-legacy Chapter
 or every compiled projection. The [figure inventory](../../examples/README.md)
 records both current and legacy evidence.
 
-The Chapter 12 tapped-feedline Default and complete explicit tap-order
-checkpoints are now successful source-bound exports. One fixed-layout
-limitation remains in the Tutorial inventory: Chapter 13's complete raw-loaded
-Default reports `schematic_layout` with `fixed connector intersects occupied
-geometry`. It has no current SVG or diagram certificate; the same Plan's
-successful explicit composition and final probe-tee capstone remain separately
-identified checkpoints rather than substitutes for that Default failure. The
-[figure inventory](../../examples/README.md) records the exact current count.
+Migration-legacy Chapter 12's tapped-feedline Default and complete explicit
+tap-order checkpoints are successful source-bound exports. One fixed-layout
+limitation remains in the migration-legacy inventory: Chapter 13's complete
+raw-loaded Default reports `schematic_layout` with `fixed connector intersects
+occupied geometry`. It has no current SVG or diagram certificate; the same
+Plan's successful explicit composition and final probe-tee capstone remain
+separately identified checkpoints rather than substitutes for that Default
+failure. The [figure inventory](../../examples/README.md) records the exact
+current count.
 
 Retained tests have three distinct evidence roles: current runnable checks;
 numerical and integrity regressions blocked by superseded authoring fixtures;

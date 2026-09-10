@@ -152,21 +152,24 @@ it does not certify a View, solver Result, or optimization.
 
 ## Reader path and authority
 
-- [Chapter 4](../../examples/tutorials/04_define_parameters.qmd) demonstrates
-  independent definition, physical-field binding, Plan inspection, one selected
-  calculation, and one selected diagram.
-- [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) demonstrates a
+- [Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd)
+  demonstrates independent capacitance definition, physical-field binding,
+  baseline evaluation, and one selected point on the same Plan.
+- Migration legacy: [Chapter 4](../../examples/tutorials/04_define_parameters.qmd)
+  retains the earlier extended identity, inspection, and selected-diagram
+  examples.
+- Migration legacy: [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) demonstrates a
   Cartesian grid, listed points, exact selection, point failures, and read-only
   collection.
-- [Chapter 6](../../examples/tutorials/06_optimize_primitive.qmd) fixes a
+- Migration legacy: [Chapter 6](../../examples/tutorials/06_optimize_primitive.qmd) fixes a
   non-active input, reads back the winning effective point, and renders that
   point without changing the Plan baseline.
-- [Chapters 9–10](../../examples/tutorials/09_add_composite_factory.qmd)
+- Migration legacy: [Chapters 9–10](../../examples/tutorials/09_add_composite_factory.qmd)
   publish original bound refs through a reusable component while keeping
   literal factory inputs fixed.
-- [Chapter 12](../../examples/tutorials/12_model_n_trace_line.qmd) introduces a
+- Migration legacy: [Chapter 12](../../examples/tutorials/12_model_n_trace_line.qmd) introduces a
   complete fixed-basis RLGC value only after teaching its matrix meaning.
-- [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) makes the
+- Migration legacy: [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) makes the
   advanced feedline, readout, and floating-subsystem bindings visible in the
   Plan audit.
 - [Parameter System contract](../contracts/parameter-system.qmd) owns the exact

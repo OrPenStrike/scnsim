@@ -11,6 +11,15 @@ unit. Open `chapter.ipynb`, restart its Python kernel, and use **Run All**.
 Every committed Notebook remains a zero-output transport artifact rather than
 an execution record.
 
+The Chapter's `workspace="workspaces/engineer-chapter-01"` is resolved relative
+to the process's current working directory. Starting Jupyter from the
+repository root therefore writes under the root `workspaces/` directory;
+starting it elsewhere writes under that directory instead. Directories named
+`workspaces/` are ignored at every repository depth to reduce accidental
+publication, but ignored does not mean deleted or backed up. Preserve or back
+up the workspace evidence when an exact later `resolve()` is required: moving
+or deleting those bytes can make that exact Result unavailable.
+
 QMD is the only hand-edited lesson authority. Do not edit the derived Notebook
 or duplicate lesson code in its wrappers. The website uses `execute.enabled:
 false`; browsing or building documentation starts no kernel, solver, runtime

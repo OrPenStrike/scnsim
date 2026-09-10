@@ -87,13 +87,31 @@ with the ID `tap`, but the returned object is still a `PinRef`, not a `TapRef`.
 A `CoordinateRef` belongs to analysis and cannot be used as a wire endpoint.
 
 A Python variable such as `resonator_bus` is only the Notebook's local handle;
-the authored `id="terminal"` is the identity scoped inside its owner. When the
-parent later links its `resonator_root_bus` to the child's exposed `terminal`,
-the two handles resolve to one electrical node. A single link may join three or
-more eligible endpoints when they all belong to that same zero-wire
-connection. The child pin preserves the owned boundary, while the root bus
-preserves parent-owned assembly and gives later analysis a public root
-coordinate; the link creates no extra element or electrical node.
+the authored IDs are identities scoped inside their owner. The beginner
+default publishes both boundaries from the child's same signal bus, then ends
+the parent's real coupling branch directly at the public Pin:
+
+```python
+terminal = resonator.expose_pin(id="terminal", at=resonator_bus)
+signal = resonator.expose_coordinate(id="signal", at=resonator_bus)
+plan.series(
+    id="coupling",
+    start=port_bus,
+    elements=(coupling_capacitor,),
+    end=terminal,
+)
+```
+
+The Pin is the wiring boundary; the Coordinate selects that same node for
+analysis and is never used as a wire endpoint. No extra root Bus or `link()` is
+required merely to make the child node available to analysis.
+
+A named root Bus joined to the public child Pin by `link()` remains a legal
+alternative when the author deliberately needs a separate parent-owned
+zero-element attachment or public root coordinate. A single link may join
+three or more eligible endpoints when they all belong to that same zero-wire
+connection. The link creates no extra element or electrical node, but neither
+the root Bus nor the Link should be added only as analysis scaffolding.
 
 The target grammar makes each role explicit:
 
@@ -212,10 +230,10 @@ the same Plan.
 
 An independent `ParameterRef` becomes useful when a learning task needs an
 externally addressable physical value—for example, a selected point, a sweep,
-or Optimization. Chapter 4 first defines the ref outside any Plan. The Plan
-adopts it only when a registered component's real physical field consumes it.
-Allocating a definition or mentioning the ref in a `ParameterSet` creates no
-Plan binding.
+or Optimization. [Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd)
+defines the capacitance ref outside any Plan, then the Plan adopts it only when
+a registered capacitor's real physical field consumes it. Allocating a
+definition or mentioning the ref in a `ParameterSet` creates no Plan binding.
 
 A reusable Library Composite may expose an already-bound ref as a declared
 public input. That boundary returns the original ref without opening private
