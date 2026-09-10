@@ -5,9 +5,10 @@ anchor-sections: false
 ---
 
 The engineer course is organized as eight complete, clean-kernel Chapters.
-Chapter 1 is implemented now. Chapters 2–8 are the migration roadmap, not fake
-runnable pages. The former sixteen-Chapter course remains available under one
-**Migration legacy** heading while its reviewed content moves into this order.
+Chapters 1–2 are implemented now. Chapters 3–8 are the migration roadmap, not
+fake runnable pages. The former sixteen-Chapter course remains available under
+one **Migration legacy** heading while its reviewed content moves into this
+order.
 
 ::: {.callout-warning title="Course candidate · CONVERGING" appearance="simple"}
 The public authoring grammar, Parameter System, and certified diagram scopes
@@ -68,12 +69,56 @@ the single ordered QMD aggregate. Download its
 [zero-output Notebook](../examples/engineer/chapter-01/chapter.ipynb) for the
 Human-required clean-kernel read and **Run All**.
 
+## Chapter 2 — Sweep and Optimization
+
+Rebuild the coupled grounded LC with independent C and L inputs, evaluate the
+ordered 100/110/120 fF sweep at fixed 5.8 nH, then optionally run the declared
+capacitance Optimization and explore complete grid versus listed C/L spaces.
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 1 — Build](../examples/engineer/chapter-02/01-build.qmd) {.course-card-title .unlisted}
+Bind C and L to real child fields, publish a same-bus Pin and Coordinate, and
+connect the fixed root coupler directly to that Pin.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 2 — Sweep capacitance](../examples/engineer/chapter-02/02-sweep.qmd) {.course-card-title .unlisted}
+Evaluate three author-ordered capacitance points and read their typed outcomes
+and loaded-frequency field. This is the Chapter's core stopping point.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 3 — Optimize and verify](../examples/engineer/chapter-02/03-optimize.qmd) {.course-card-title .unlisted}
+Run the fixed seed-17 request, then independently evaluate and render its
+returned best `ParameterSet` without changing the Plan baseline.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 4 — Optional C/L spaces](../examples/engineer/chapter-02/04-optional-spaces.qmd) {.course-card-title .unlisted}
+Reuse the same Plan for a complete 3 × 2 grid and two explicitly listed points
+without reshaping, interpolation, or another model construction.
+:::
+::::
+
+The [complete Chapter 2 source](../examples/engineer/chapter-02/chapter.qmd) is
+the ordered QMD aggregate. Download its
+[zero-output Notebook](../examples/engineer/chapter-02/chapter.ipynb) and run it
+in a fresh kernel; it does not continue Chapter 1 state. See the
+[shared setup](../examples/engineer/setup.qmd) before either Chapter.
+
 ## Eight-Chapter roadmap
 
 | Chapter | Outcome | Availability |
 |---|---|---|
 | 1. Coupled grounded LC | Build, diagram, S11, loaded root, selected C | Current five-Lesson Chapter |
-| 2. Sweep and Optimization | Inputs, bindings, points, spaces, and established Optimization workflow | Future |
+| 2. Sweep and Optimization | Inputs, bindings, points, spaces, and established Optimization workflow | Current four-Lesson Chapter |
 | 3. CPW feedline/readout S21 | Ordered two-section CPW, coupled readout, two-Port response | Future; bounded Default diagram currently reports a fixed-layout collision |
 | 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, and pump-off HB | Future; existing explicit capstone diagram is viable |
 | 5. Library | Create, publish, instantiate, and reuse a Composite | Future |
@@ -91,7 +136,7 @@ The sixteen prior QMD/IPYNB pairs and their source-bound figures remain intact
 under [`examples/tutorials/`](../examples/tutorials/01_author_primitive.qmd).
 They are readable migration inputs, not a second current syllabus. Their
 historical fixtures remain implementation-baseline evidence and are not
-imported by Chapter 1.
+imported by either current Chapter.
 
 For rationale, read [Concept](concepts/physical-authority-and-reusable-composition.qmd).
 For exact signatures, equations, invariants, identities, and failure behavior,

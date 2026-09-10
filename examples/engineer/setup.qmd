@@ -1,0 +1,36 @@
+---
+title: "Engineer course setup"
+subtitle: "One locked environment and one clean kernel per Chapter"
+format: html
+---
+
+Clone the current development course, install its locked environment, and
+start Jupyter from the repository root:
+
+```bash
+git clone --branch develop --single-branch https://github.com/OrPenStrike/scnsim.git
+cd scnsim
+uv sync --locked
+uv run --with jupyterlab jupyter lab
+```
+
+The `jupyterlab` package is ephemeral tooling for that command; it is not added
+to SCNSim or its lock. An editor-provided Jupyter frontend may instead open the
+Chapter Notebook after `uv sync --locked`. Select the repository's `.venv`
+Python kernel, restart it, and use **Run All**.
+
+Each Chapter is its own clean-kernel execution unit. Chapter 2 rebuilds its
+model and does not continue Chapter 1's Python state. The shorter web Lessons
+are reading views over ordered source fragments and are not independently
+runnable.
+
+On a cold machine, the first numerical request may prepare the locked Julia
+runtime and take longer than later requests. A relative path such as
+`workspaces/engineer-chapter-02` is resolved from the process's current working
+directory. That workspace is Result evidence, not a disposable calculation
+cache: ignoring it in Git neither deletes nor backs it up, and exact later
+resolution requires its preserved bytes.
+
+- [Begin Chapter 1](chapter-01/01-build.qmd)
+- [Begin Chapter 2](chapter-02/01-build.qmd)
+- [Course map](../../docs/index.qmd)

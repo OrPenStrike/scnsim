@@ -155,6 +155,9 @@ it does not certify a View, solver Result, or optimization.
 - [Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd)
   demonstrates independent capacitance definition, physical-field binding,
   baseline evaluation, and one selected point on the same Plan.
+- [Engineer Chapter 2](../../examples/engineer/chapter-02/01-build.qmd) applies
+  ordered grid and listed spaces, typed point outcomes, read-only collection,
+  and the established Optimization workflow on one rebuilt Plan.
 - Migration legacy: [Chapter 4](../../examples/tutorials/04_define_parameters.qmd)
   retains the earlier extended identity, inspection, and selected-diagram
   examples.

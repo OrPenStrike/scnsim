@@ -1,24 +1,26 @@
 # SCNSim engineer course sources
 
-`engineer/chapter-01/` is the current course entry point. Five YAML-free QMD
-fragments hold the canonical Lesson prose and code. Five thin QMD wrappers make
-those Lessons readable as separate HTML pages, while `chapter.qmd` includes the
-same fragments in order and generates one complete `chapter.ipynb`.
+`engineer/setup.qmd` is the shared environment entry. `engineer/chapter-01/`
+and `engineer/chapter-02/` are the current course Chapters. YAML-free QMD
+fragments hold each Chapter's canonical Lesson prose and code. Thin QMD
+wrappers make those Lessons readable as separate HTML pages, while each
+`chapter.qmd` includes its fragments in order and generates one complete
+`chapter.ipynb`.
 
-The web Lessons are not independently runnable: Lessons 2–5 plainly state the
-earlier state they require. The aggregate Chapter is the clean-kernel execution
-unit. Open `chapter.ipynb`, restart its Python kernel, and use **Run All**.
-Every committed Notebook remains a zero-output transport artifact rather than
-an execution record.
+The web Lessons are not independently runnable: each later Lesson plainly
+states the earlier state it requires. The aggregate Chapter is the clean-kernel
+execution unit. Open `chapter.ipynb`, restart its Python kernel, and use
+**Run All**. Every committed Notebook remains a zero-output transport artifact
+rather than an execution record.
 
-The Chapter's `workspace="workspaces/engineer-chapter-01"` is resolved relative
-to the process's current working directory. Starting Jupyter from the
-repository root therefore writes under the root `workspaces/` directory;
-starting it elsewhere writes under that directory instead. Directories named
-`workspaces/` are ignored at every repository depth to reduce accidental
-publication, but ignored does not mean deleted or backed up. Preserve or back
-up the workspace evidence when an exact later `resolve()` is required: moving
-or deleting those bytes can make that exact Result unavailable.
+A Chapter's relative `workspace="workspaces/..."` path is resolved from the
+process's current working directory. Starting Jupyter from the repository root
+therefore writes under the root `workspaces/` directory; starting it elsewhere
+writes under that directory instead. Directories named `workspaces/` are
+ignored at every repository depth to reduce accidental publication, but
+ignored does not mean deleted or backed up. Preserve or back up the workspace
+evidence when an exact later `resolve()` is required: moving or deleting those
+bytes can make that exact Result unavailable.
 
 QMD is the only hand-edited lesson authority. Do not edit the derived Notebook
 or duplicate lesson code in its wrappers. The website uses `execute.enabled:
@@ -63,6 +65,39 @@ shows its `1e9` scale factor. Numerical plots are typed Result presentations,
 not ASCDLS certificates. The loaded root is a separate Result and is not
 inferred from a dip or from the unloaded LC formula.
 
+## Generate Chapter 2 evidence explicitly
+
+Chapter 2's point tables, parameter-field figures, and selected-winner diagram
+come from its exact fragment cells:
+
+```bash
+uv run --locked python scripts/generate_engineer_chapter2.py \
+  --workspace /tmp/scnsim-engineer-chapter2-run
+```
+
+The workspace must again be new or empty and outside the repository. Verify
+the committed bindings without importing SCNSim or running a solver:
+
+```bash
+uv run --locked python scripts/generate_engineer_chapter2.py --check
+```
+
+`engineer/figures/chapter-02-artifacts.json` binds the aggregate, four
+fragments, four wrappers, package source tree, environment, exact Result
+identities, winner certificate, and these public artifacts:
+
+- `02-capacitance-sweep.svg`, `.csv`, and `.md`: the three ordered C points at
+  fixed 5.8 nH, including typed status and loaded root values;
+- `02-optimized-winner.svg`, `.csv`, and `.md`: the genuine returned winner,
+  its independent loaded-root readback, and the same Plan rendered at that
+  exact `ParameterSet`; and
+- `02-optional-grid.svg` plus `02-optional-spaces.csv` and `.md`: the complete
+  3 × 2 Cartesian field beside the two separately listed C/L points.
+
+The numerical figures are typed Result presentations, while only the winner
+schematic carries an ASCDLS diagram certificate. Neither the optimizer's small
+cost nor a generated artifact creates scientific or Human acceptance.
+
 ## Migration legacy
 
 `tutorials/01_*.qmd` through `tutorials/16_*.qmd`, their same-named zero-output
@@ -88,7 +123,7 @@ successful explicit composition and probe-tee SVGs remain distinct evidence,
 not fallbacks for that failure.
 
 Historical Python fixtures in `tutorials/fixtures/` are **KEEP** implementation
-baseline evidence. Neither the new Chapter nor its generator imports them.
+baseline evidence. Neither current Chapter nor its generator imports them.
 Source-bound figures, generated Notebooks, and passing static checks do not by
 themselves establish Human acceptance, whole-course execution, release, or
 scientific validity.

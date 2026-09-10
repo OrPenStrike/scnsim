@@ -1,0 +1,19 @@
+---
+title: "Chapter 2 · Lesson 2 — Sweep capacitance"
+subtitle: "Sweep and Optimization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite: Lesson 1" appearance="simple"}
+This web Lesson shares the Plan built in Lesson 1 and is not independently
+runnable. Use the [complete Chapter Notebook](chapter.ipynb) for execution.
+:::
+
+{{< include _02-sweep.qmd >}}
+
+[Previous: Lesson 1 — Build](01-build.qmd) ·
+[Next: Lesson 3 — Optimize and verify](03-optimize.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

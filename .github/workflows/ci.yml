@@ -252,40 +252,57 @@ jobs:
 
           legacy_sources = sorted(Path("examples/tutorials").glob("[0-9][0-9]_*.qmd"))
           assert len(legacy_sources) == 16, legacy_sources
-          aggregate = Path("examples/engineer/chapter-01/chapter.qmd")
-          sources = [*legacy_sources, aggregate]
+          chapter_specs = (
+              (
+                  Path("examples/engineer/chapter-01/chapter.qmd"),
+                  (
+                      "_01-build.qmd", "_02-diagram.qmd", "_03-s11.qmd",
+                      "_04-root.qmd", "_05-change-capacitance.qmd",
+                  ),
+                  (
+                      "01-build.qmd", "02-diagram.qmd", "03-s11.qmd",
+                      "04-root.qmd", "05-change-capacitance.qmd",
+                  ),
+                  17,
+              ),
+              (
+                  Path("examples/engineer/chapter-02/chapter.qmd"),
+                  (
+                      "_01-build.qmd", "_02-sweep.qmd", "_03-optimize.qmd",
+                      "_04-optional-spaces.qmd",
+                  ),
+                  (
+                      "01-build.qmd", "02-sweep.qmd", "03-optimize.qmd",
+                      "04-optional-spaces.qmd",
+                  ),
+                  17,
+              ),
+          )
+          aggregates = [item[0] for item in chapter_specs]
+          sources = [*legacy_sources, *aggregates]
           notebooks = [path.with_suffix(".ipynb") for path in sources]
           assert all(path.is_file() for path in notebooks), notebooks
 
-          fragments = [
-              aggregate.parent / name
-              for name in (
-                  "_01-build.qmd", "_02-diagram.qmd", "_03-s11.qmd",
-                  "_04-root.qmd", "_05-change-capacitance.qmd",
-              )
-          ]
-          aggregate_text = aggregate.read_text(encoding="utf-8")
-          includes = re.findall(r"\{\{< include ([^ ]+) >\}\}", aggregate_text)
-          assert includes == [path.name for path in fragments], includes
-          fragment_text = "".join(path.read_text(encoding="utf-8") for path in fragments)
-          assert all(not path.read_text(encoding="utf-8").lstrip().startswith("---") for path in fragments)
-          aggregate_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", fragment_text)
-          assert len(aggregate_ids) == fragment_text.count("```{python}") == 17
-          assert len(aggregate_ids) == len(set(aggregate_ids))
+          expanded_sources = {}
+          for aggregate, fragment_names, wrapper_names, expected_cells in chapter_specs:
+              fragments = [aggregate.parent / name for name in fragment_names]
+              aggregate_text = aggregate.read_text(encoding="utf-8")
+              includes = re.findall(r"\{\{< include ([^ ]+) >\}\}", aggregate_text)
+              assert includes == [path.name for path in fragments], includes
+              fragment_text = "".join(path.read_text(encoding="utf-8") for path in fragments)
+              assert all(not path.read_text(encoding="utf-8").lstrip().startswith("---") for path in fragments)
+              aggregate_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", fragment_text)
+              assert len(aggregate_ids) == fragment_text.count("```{python}") == expected_cells
+              assert len(aggregate_ids) == len(set(aggregate_ids))
+              expanded_sources[aggregate] = fragment_text
 
-          wrappers = [
-              aggregate.parent / name
-              for name in (
-                  "01-build.qmd", "02-diagram.qmd", "03-s11.qmd",
-                  "04-root.qmd", "05-change-capacitance.qmd",
-              )
-          ]
-          for wrapper, fragment in zip(wrappers, fragments, strict=True):
-              text = wrapper.read_text(encoding="utf-8")
-              frontmatter = text.split("---", 2)[1]
-              assert re.search(r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$", frontmatter)
-              assert re.findall(r"\{\{< include ([^ ]+) >\}\}", text) == [fragment.name]
-              assert not wrapper.with_suffix(".ipynb").exists()
+              wrappers = [aggregate.parent / name for name in wrapper_names]
+              for wrapper, fragment in zip(wrappers, fragments, strict=True):
+                  text = wrapper.read_text(encoding="utf-8")
+                  frontmatter = text.split("---", 2)[1]
+                  assert re.search(r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$", frontmatter)
+                  assert re.findall(r"\{\{< include ([^ ]+) >\}\}", text) == [fragment.name]
+                  assert not wrapper.with_suffix(".ipynb").exists()
 
           for source, artifact in zip(sources, notebooks):
               qmd = source.read_text(encoding="utf-8")
@@ -295,7 +312,7 @@ jobs:
                   r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$",
                   frontmatter,
               ), source
-              expanded = fragment_text if source == aggregate else qmd
+              expanded = expanded_sources.get(source, qmd)
               code_chunks = expanded.count("```{python}")
               declared_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", expanded)
               assert len(declared_ids) == code_chunks, f"missing QMD code id: {source}"
@@ -326,13 +343,14 @@ jobs:
                   fresh, f"fresh render of {source}"
               ), f"generated notebook drift: {artifact}"
 
-          print("verified", len(legacy_sources), "legacy pairs and one expanded Chapter aggregate")
+          print("verified", len(legacy_sources), "legacy pairs and", len(aggregates), "expanded Chapter aggregates")
           PY
 
       - name: Verify source-bound Tutorial figures without executing them
         run: |
           uv run --locked python scripts/generate_tutorial_diagrams.py --check
           uv run --locked python scripts/generate_engineer_chapter1.py --check
+          uv run --locked python scripts/generate_engineer_chapter2.py --check
 
       - name: Render and inspect documentation
         run: |

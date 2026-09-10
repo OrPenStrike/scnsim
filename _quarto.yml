@@ -8,12 +8,18 @@ project:
     - README.md
     - examples/README.md
     - docs/index.qmd
+    - examples/engineer/setup.qmd
     - examples/engineer/chapter-01/01-build.qmd
     - examples/engineer/chapter-01/02-diagram.qmd
     - examples/engineer/chapter-01/03-s11.qmd
     - examples/engineer/chapter-01/04-root.qmd
     - examples/engineer/chapter-01/05-change-capacitance.qmd
     - examples/engineer/chapter-01/chapter.qmd
+    - examples/engineer/chapter-02/01-build.qmd
+    - examples/engineer/chapter-02/02-sweep.qmd
+    - examples/engineer/chapter-02/03-optimize.qmd
+    - examples/engineer/chapter-02/04-optional-spaces.qmd
+    - examples/engineer/chapter-02/chapter.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
     - examples/tutorials/03_evaluate_quantity.qmd
@@ -93,6 +99,8 @@ website:
       contents:
         - text: "Course map"
           href: docs/index.qmd
+        - text: "Setup"
+          href: examples/engineer/setup.qmd
         - section: "Chapter 1 — Coupled grounded LC"
           contents:
             - text: "Lesson 1 — Build"
@@ -107,6 +115,18 @@ website:
               href: examples/engineer/chapter-01/05-change-capacitance.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-01/chapter.qmd
+        - section: "Chapter 2 — Sweep and Optimization"
+          contents:
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-02/01-build.qmd
+            - text: "Lesson 2 — Sweep capacitance"
+              href: examples/engineer/chapter-02/02-sweep.qmd
+            - text: "Lesson 3 — Optimize and verify"
+              href: examples/engineer/chapter-02/03-optimize.qmd
+            - text: "Lesson 4 — Optional C/L spaces"
+              href: examples/engineer/chapter-02/04-optional-spaces.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-02/chapter.qmd
         - section: "Migration legacy"
           contents:
             - text: "01 — Author primitive"

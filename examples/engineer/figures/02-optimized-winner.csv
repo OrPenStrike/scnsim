@@ -1,0 +1,2 @@
+capacitance_fF,inductance_nH,target_frequency_GHz,loaded_root_frequency_GHz,loaded_root_linewidth_MHz,cost,lower_bound_fF,upper_bound_fF,seed,max_evaluations,completed_generation_ledgers
+107.61399118659521,5.800000000000001,6.2,6.199999996353995,3.8260510763645135,3.458209432254905e-19,80.0,140.0,17,200,49

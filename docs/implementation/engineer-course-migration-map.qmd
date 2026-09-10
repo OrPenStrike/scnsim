@@ -6,8 +6,8 @@ toc-depth: 3
 
 ::: {.callout-warning title="CONVERGING course structure" appearance="simple"}
 This map records the current migration, not a second course or a claim that the
-future Chapters run. Chapter 1 is the only new Chapter implemented in the
-current batch. The sixteen existing Chapter sources, generated Notebooks, and
+future Chapters run. Chapters 1–2 are implemented in the current course. The
+sixteen existing Chapter sources, generated Notebooks, and
 source-bound assets remain readable under **Migration legacy** until their
 content is moved and reviewed. Exact behavior stays in Contract pages; the
 course teaches how to apply it.
@@ -18,7 +18,7 @@ course teaches how to apply it.
 | Chapter | Engineer outcome | Current batch |
 |---|---|---|
 | 1. Coupled grounded LC | Build one explicit model, review its authoring diagram, inspect one-port S11, read the loaded root, and change the physical capacitance on the same Plan | Implemented in Batch 2 |
-| 2. Sweep and Optimization | Define independent inputs, bind physical fields, evaluate points and spaces, and use the established Optimization workflow | Future |
+| 2. Sweep and Optimization | Define independent inputs, bind physical fields, evaluate points and spaces, and use the established Optimization workflow | Implemented in Batch 3A |
 | 3. CPW feedline and readout S21 | Build an ordered two-section CPW feedline, couple a readout, and inspect a two-Port response | Future |
 | 4. Four-Port capstone | Build the original physical Plan, apply PTC, then optionally retain/transform coordinates, evaluate quantities, and compare Direct with pump-off HB | Future |
 | 5. Library | Package, instantiate, and reuse a Composite with deliberate public boundaries | Future |
@@ -39,9 +39,9 @@ its same-named zero-output IPYNB and any checkpoint-bound SVG move with it.
 | `01_author_primitive` | Chapter 1 | Replace the older three-lesson presentation with the five-lesson coupled-LC path. Keep fixed component values and structured assembly as applications of the assembly Contract. |
 | `02_solve_direct` | Chapters 1 and 3 | Move the one-Port response reading into Chapter 1; reserve two-Port response teaching for Chapter 3. Direct request/result meaning remains Contract authority. |
 | `03_evaluate_quantity` | Chapters 1 and 4 | Teach the first loaded diagonal root in Chapter 1; move broader retained-coordinate quantities to the optional Chapter 4 continuation. |
-| `04_define_parameters` | Chapter 2 | Condense definition, physical binding, and selected-point teaching around the existing Parameter System Contract; move identity/reuse examples into short Contract tables instead of duplicating them in Concept prose. |
-| `05_sweep_parameters` | Chapter 2 | Combine with input definition and Optimization without changing point/space or batch-result semantics. |
-| `06_optimize_primitive` | Chapter 2 | Preserve the established Optimization objective, bounds, solver, and genuine winner workflow. |
+| `04_define_parameters` | Chapter 2 | The current Chapter now teaches independent C/L definition and real physical binding. The earlier extended identity examples remain classified Migration legacy until final migration cleanup. |
+| `05_sweep_parameters` | Chapter 2 | The current Chapter teaches the ordered fixed-L capacitance sweep plus optional Cartesian and listed spaces without changing point/space or batch-result semantics. |
+| `06_optimize_primitive` | Chapter 2 | The current Chapter preserves the established objective, bounds, solver, seed, budget, genuine winner, and independent readback workflow. |
 | `07_report_resolve` | Chapter 8 | Keep report, resolve, workspace, and exact identity material together. |
 | `08_create_library` | Chapter 5 | Introduce the immutable custom Library before its factory. |
 | `09_add_composite_factory` | Chapter 5 | Keep factory ownership, provenance, and deliberate public exposure together. |
@@ -53,7 +53,7 @@ its same-named zero-output IPYNB and any checkpoint-bound SVG move with it.
 | `15_prepare_hb` | Chapter 4 | Keep pump-off HB setup optional and bound to the same rebuilt physical declaration. |
 | `16_compare_direct_hb` | Chapters 4 and 8 | Interpret each Result on its own declared grid in Chapter 4, with no interpolation or new comparison contract; move durable reporting and resolution practice to Chapter 8. |
 
-No existing source, Notebook, or SVG is deleted in Batch 1 or Batch 2. The
+No existing source, Notebook, or SVG is deleted in Batches 1–3A. The
 legacy grouping is temporary migration custody, not another current syllabus.
 Chapter 4's core stops after the original four-Port Plan and explicit PTC are
 complete. Transform/retain, quantity evaluation, and pump-off HB remain
@@ -68,7 +68,7 @@ diagram refusal tables are later-batch custody, not Batch 2 rewrites.
 | Contract map, CircuitPlan Assembly, ASCDLS, Parameter System, Component Authoring, and V1 Runtime Contract | Keep exact interfaces, invariants, identities, equations, and failure behavior here. Lessons show one use and do not restate a parallel contract. |
 | Implementation pages | Keep maintainer ownership, schemas, lowering, process protocol, workspaces, numerical procedures, diagram reconstruction, and evidence mechanics. Course pages do not become implementation authority. |
 | Historical fixtures in `examples/tutorials/fixtures/` | **KEEP.** They remain classified implementation-baseline evidence, not builders imported by the new Chapter. |
-| Root `README.md`, `docs/index.qmd`, `examples/README.md`, and `_quarto.yml` | Point readers to the new Chapter 1, show only the eight-Chapter destination as the current roadmap, and place all sixteen old Chapters in one Migration legacy group. |
+| Root `README.md`, `docs/index.qmd`, `examples/README.md`, and `_quarto.yml` | Point readers to current Chapters 1–2, show only the eight-Chapter destination as the current roadmap, and place all sixteen old Chapters in one Migration legacy group. |
 | Existing 16 QMD/IPYNB pairs and `examples/tutorials/figures/` | **KEEP during migration.** Preserve source/asset bindings and zero-output Notebook identities unless a later authorized batch migrates that exact Chapter. |
 
 For Chapter 1, the existing Concept and Contract pages need only concise links
@@ -77,6 +77,11 @@ an exposed child coordinate is analysis access to the same signal bus; a
 terminated Port owns its declared reference load; rendering and numerical
 requests are independent consumers; and a selected physical capacitance point
 does not create another Plan.
+
+Chapter 2 applies the existing Parameter System authority: its three-point
+fixed-L sweep, returned Optimization winner, independent winner evaluation,
+and optional grid/listed spaces teach the public surfaces without redefining
+their identities, failure behavior, or numerical algorithms.
 
 ## Batch 1 bounded render evidence
 

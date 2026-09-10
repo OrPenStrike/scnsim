@@ -21,12 +21,13 @@ their separately selected View and request. Tutorial authoring figures are
 genuine exports tied to their source checkpoints; they are not solver outputs
 or evidence that every course cell has executed successfully.
 
-Start with [Chapter 1, Lesson 1](examples/engineer/chapter-01/01-build.qmd).
-Its five short Lessons build one coupled grounded LC, review the authored
-diagram, inspect one-port S11, evaluate the loaded root, and select another
-capacitance on the same Plan. The complete
-[zero-output Chapter Notebook](examples/engineer/chapter-01/chapter.ipynb) is
-the clean-kernel execution unit. The remaining seven Chapters are a published
+Begin with the [engineer course setup](examples/engineer/setup.qmd), then use
+[Chapter 1](examples/engineer/chapter-01/01-build.qmd) to build and inspect one
+coupled grounded LC. [Chapter 2](examples/engineer/chapter-02/01-build.qmd)
+rebuilds that circuit with independent C and L inputs, completes a three-point
+capacitance sweep, and then teaches the established Optimization workflow and
+optional C/L spaces. Each complete zero-output Chapter Notebook is its own
+clean-kernel execution unit. The remaining six Chapters are a published
 roadmap, not placeholder pages. The former sixteen-Chapter sources remain in a
 single Migration legacy group while later batches move their reviewed content.
 
@@ -118,8 +119,8 @@ acceptance.
 
 - [Overview](README.md) — the model-first workflow, product boundary, status,
   and installation.
-- [Engineer course](docs/index.qmd) — five current Chapter 1 Lessons and the
-  future eight-Chapter roadmap.
+- [Engineer course](docs/index.qmd) — current Chapters 1–2 and the
+  eight-Chapter roadmap, with the remaining six Chapters marked future.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim separates authored circuit facts, diagram geometry, and analysis
   Views while keeping one Plan authority.

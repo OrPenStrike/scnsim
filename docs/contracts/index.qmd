@@ -32,7 +32,10 @@ Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
 source-bound figures, static publication, and unchanged standalone RLGC rejection
 and HB failure-classifier checks. Engineer Chapter 1 has one explicitly
 generated source-bound authoring diagram, two typed-result S11 presentations,
-complex response data, and a quantity table. Its web build launches no solver,
+complex response data, and a quantity table. Chapter 2 has source-bound
+three-point sweep evidence, a genuine fixed-request
+Optimization winner with independent root readback and selected diagram, and
+optional grid/listed-point evidence. The course web build launches no solver,
 and those assets do not establish execution of every migration-legacy Chapter
 or every compiled projection. The [figure inventory](../../examples/README.md)
 records both current and legacy evidence.

@@ -1,0 +1,103 @@
+## Lesson 1 — Build a parameterized coupled LC {#lesson-ch2-build}
+
+### Begin from a clean Chapter kernel
+
+Follow the [engineer course setup](../setup.qmd), then open this Chapter's
+`chapter.ipynb`, restart its Python kernel, and use **Run All**. Chapter 2
+rebuilds the circuit below; it does not continue Chapter 1's kernel.
+
+Both C and L are independent physical inputs because the optional final Lesson
+varies both. The coupling capacitor and terminated Port remain fixed literals.
+
+```{python}
+#| id: ch2-import-and-define-parameters
+from IPython.display import display
+
+from scnsim import (
+    CMAESSpec,
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CircuitRun,
+    CostObjective,
+    DiagonalRootSpec,
+    OptimizationSpec,
+    OptimizationVariable,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpace,
+    ParameterSpec,
+    ReductionPipeline,
+    components,
+    units as u,
+)
+
+inputs = ParameterDefinitions(id="engineer_lc_sweep_design")
+capacitance = inputs.parameter(
+    id="capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+inductance = inputs.parameter(
+    id="inductance",
+    baseline=5.8 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+```
+
+A definition becomes part of this Plan only when a real component field
+consumes it. The Subsystem owns the reusable, readable LC unit; the coupler and
+Port remain parent-owned connections to its environment.
+
+```{python}
+#| id: ch2-build-grounded-lc-child
+plan = CircuitPlan(id="engineer_swept_coupled_lc")
+resonator = plan.subsystem(id="resonator")
+
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=capacitance)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=inductance)
+)
+resonator_bus = resonator.bus(id="signal")
+resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+resonator_terminal = resonator.expose_pin(
+    id="terminal",
+    at=resonator_bus,
+)
+resonator_coordinate = resonator.expose_coordinate(
+    id="signal",
+    at=resonator_bus,
+)
+```
+
+The Pin is the parent's wiring boundary. The Coordinate selects that same child
+signal Bus for analysis; it is not a wire endpoint and adds no electrical node.
+
+```{python}
+#| id: ch2-assemble-coupler-and-port
+signal_bus = plan.bus(id="signal_boundary")
+coupling_capacitor = plan.add(
+    components.capacitor(id="coupling_capacitor", capacitance=6.0 * u.fF)
+)
+plan.series(
+    id="coupling",
+    start=signal_bus,
+    elements=(coupling_capacitor,),
+    end=resonator_terminal,
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The 6 fF coupling branch ends directly at the public child Pin. No analysis-only
+root Bus or zero-component Link is required.
