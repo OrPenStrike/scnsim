@@ -1,0 +1,19 @@
+---
+title: "Chapter 7 · Lesson 2 — Four signal Ports"
+subtitle: "Multi-conductor line engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite" appearance="simple"}
+Complete [Lesson 1](01-rlgc.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _02-ports.qmd >}}
+
+[Previous: Lesson 1 — Ordered RLGC](01-rlgc.qmd) ·
+[Next: Lesson 3 — Diagrams](03-diagrams.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

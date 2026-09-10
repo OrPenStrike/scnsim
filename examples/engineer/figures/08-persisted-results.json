@@ -1,0 +1,19 @@
+{
+  "direct_identity": {
+    "attempt_sha256": "5674946e544f3117934d4a3b2243ea7ceb00c5f825d6ea5ad5cd516e5de479a2",
+    "plan_sha256": "4ee10aba61f0dd6895bd9252a555ff98f637024b8374ee0dc46a83677458b0ae",
+    "request_sha256": "d12f1b9ffa328e384a54b3fd8b2e37a2157a940fd602a1d8495cc60215dc3452",
+    "result_sha256": "7e9757d216d4de03f2357c8e97c564e2b9cce993e665ac8e7988d00b820500ac"
+  },
+  "matrix_coordinates": [
+    "signal_in"
+  ],
+  "root_frequency_GHz": 6.135903847793649,
+  "root_identity": {
+    "attempt_sha256": "f22f58686311b3f70b9b9d777ecf042f2e7a638bfef893144d6a17fa4a03edae",
+    "plan_sha256": "4ee10aba61f0dd6895bd9252a555ff98f637024b8374ee0dc46a83677458b0ae",
+    "request_sha256": "b2fb60197887b8c772aadfb543bc80c43389c7f1ce214ccee9fd63947193d225",
+    "result_sha256": "c99a1775b8ec7c24be6d49e914c4a99ae1a3a6e4ffb50af1a7365e0a4fd89fa6"
+  },
+  "root_linewidth_MHz": 3.670280662141818
+}

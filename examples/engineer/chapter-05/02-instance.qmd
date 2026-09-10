@@ -1,0 +1,19 @@
+---
+title: "Chapter 5 · Lesson 2 — Public instance"
+subtitle: "Library and reusable Composite engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite" appearance="simple"}
+Read [Lesson 1](01-library.qmd), then execute the
+[complete Chapter Notebook](chapter.ipynb) rather than this page alone.
+:::
+
+{{< include _02-instance.qmd >}}
+
+[Previous: Lesson 1 — Library boundary](01-library.qmd) ·
+[Next: Lesson 3 — Parent reuse](03-reuse.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

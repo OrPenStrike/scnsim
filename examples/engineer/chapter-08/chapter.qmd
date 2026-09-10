@@ -1,0 +1,18 @@
+---
+title: "Chapter 8 — Report and resolve"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 8 — Report and resolve
+
+This Chapter has two self-contained halves with one shared workspace. Execute
+Lesson 1 in a fresh kernel, stop it, then start a second fresh kernel and run
+only Lesson 2. The web Lessons remain reading views, and `chapter.ipynb` is a
+zero-output transport artifact rather than restart evidence.
+
+{{< include _01-persist.qmd >}}
+
+{{< include _02-resolve.qmd >}}

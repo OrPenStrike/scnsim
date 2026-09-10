@@ -71,6 +71,11 @@ feedline View; its optional continuation transforms the same retained lineage.
 These are applications of the existing View contract, not reduced replacement
 Plans.
 
+Engineer [Chapter 7](../../examples/engineer/chapter-07/01-rlgc.qmd) likewise
+keeps one ordered N=2 authoring body distinct from its eight-section finite-pi
+compiled model. Its four signal Ports belong to the declared network; the RLGC
+reference conductor remains model metadata rather than another Port.
+
 ## Values are bound before a View is realized
 
 A `ParameterSet` selects values only for refs already consumed by the Plan. A

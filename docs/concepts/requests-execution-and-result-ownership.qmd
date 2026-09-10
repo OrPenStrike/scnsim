@@ -86,6 +86,10 @@ workspace evidence.
 It performs no computation, retry, latest-result search, or process-cache
 lookup. This is why a lesson can restart the kernel, recreate the same model
 and request, skip the execution cell, and still resolve one exact prior Result.
+[Engineer Chapter 8](../../examples/engineer/chapter-08/01-persist.qmd) makes
+that boundary executable: one kernel persists the Result and report, while a
+second independent kernel reconstructs and calls only `resolve()` in the same
+preserved workspace.
 
 By default, a workspace is replaceable for Notebook iteration. A caller that
 needs several Plan topologies opts into versioned workspaces. In either mode,

@@ -796,6 +796,10 @@ presentation, not certification or scientific evidence.
 
 Assembly failures and editable-state atomicity are defined by the
 [assembly contract](circuit-plan-assembly.qmd#assembly-failures).
+That authority also contains the concise four-case table for child-private
+Buses, transitive same-scope Bus merges, shorted physical elements, and
+grounding a Port-bound signal. Those are rejected before layout and therefore
+are not A/B rendering failures.
 
 Rendering returns no `CircuitDiagramResult` when:
 
@@ -825,13 +829,11 @@ No elapsed-time threshold or public timeout is part of this contract.
 
 ## Tutorial realization {#tutorial-realization}
 
-The current Engineer course is QMD-first. Engineer Chapter 1 keeps canonical
-Lesson prose and code in five YAML-free fragments, uses thin wrappers for web
-reading, and includes the fragments in one complete aggregate Chapter. Its
-generated zero-output Notebook is a transport artifact, not an execution
-record. The wrappers may use preceding Lesson state and are not independent
-execution units; the aggregate Chapter contains every import, declaration, and
-handle needed for a clean-kernel run.
+The current Engineer course is QMD-first. Each Chapter keeps canonical Lesson
+prose and code in YAML-free fragments, uses thin wrappers for web reading, and
+includes those fragments in one complete aggregate Chapter. Generated
+zero-output Notebooks are transport artifacts, not execution records. Wrappers
+may use preceding Lesson state and are not independent execution units.
 
 Engineer Chapter 1 has a genuine source-bound ASCDLS authoring export from its
 assembled Plan and existing render/show/audit path. Its parameter-bound
@@ -851,6 +853,9 @@ future destinations without duplicating the contracts here.
 | Material | Retained authoring contribution |
 |---|---|
 | Current Engineer Chapter 1 | coupled grounded LC, same-bus public Pin and Coordinate, direct root coupling to the child Pin, terminated Port, and one authoring A/B/C review |
+| Current Engineer Chapter 5 | reusable Composite with public C/L parameters, equivalent Pins, one Coordinate, and parent-only coupling/Port ownership |
+| Current Engineer Chapter 6 | Default composition, complete Port poses, genuine T/Cross primitives, A/B review, and exact-Plan fixed reuse |
+| Current Engineer Chapter 7 | exact N=2 RLGC declaration; its current four-Port authoring request retains a typed fixed-layout failure separately from numerical evidence |
 | Migration legacy Chapters 1–11 | earlier primitive, parameter, Library, Composite, and diagram-customization applications |
 | Migration legacy Chapter 12 | complete N=2 matrix line, named-tap N=1 feedline, and one whole-RLGC selected-point compiled diagram |
 | Migration legacy Chapter 13 | parameter-bound feedline/readout/floating capstone, one unavailable fixed Default, successful explicit composition, and explicit probe PTC |

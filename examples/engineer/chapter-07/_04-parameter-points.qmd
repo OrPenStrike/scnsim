@@ -1,0 +1,94 @@
+## Lesson 4 — Evaluate three complete parameter points {#lesson-ch7-points}
+
+### Change length or the whole capacitance matrix
+
+The second point changes only length to 1.8 mm. The third scales the complete C
+matrix by the named teaching factor 170/175; R, L, and G remain byte-for-value
+the baseline declaration and `n_sections` remains 8.
+
+```{python}
+#| id: ch7-define-three-points
+scaled_rlgc = RLGC(
+    conductors=("readout", "filter"),
+    reference_conductor="ground",
+    resistance_per_length=baseline_rlgc.resistance_per_length,
+    inductance_per_length=baseline_rlgc.inductance_per_length,
+    conductance_per_length=baseline_rlgc.conductance_per_length,
+    capacitance_per_length=(170.0 / 175.0)
+    * baseline_rlgc.capacitance_per_length,
+)
+parameter_points = ParameterSpace.points(
+    (
+        ParameterSet(),
+        ParameterSet({line_length: 1.8 * u.mm}),
+        ParameterSet({line_rlgc: scaled_rlgc}),
+    )
+)
+point_labels = ("baseline", "length_1p8_mm", "capacitance_times_170_over_175")
+```
+
+This is a list of three complete points, not Q2D, an element scan, a matrix-entry
+axis, or an interpolation contract.
+
+### Name the complete four-Port channel inventory
+
+The Direct Result contains the complete 4×4 S matrix. Sixteen named trace
+projections expose every output-from-input channel without launching another
+solve.
+
+```{python}
+#| id: ch7-prepare-complete-s-request
+channel_traces = tuple(
+    SParameterTrace(
+        id=f"s_{output}_from_{input_}",
+        input_port=input_,
+        input_mode=(),
+        output_port=output,
+        output_mode=(),
+    )
+    for output in port_ids
+    for input_ in port_ids
+)
+run = CircuitRun(plan=plan, workspace="workspaces/engineer-chapter-07")
+direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    traces=channel_traces,
+)
+run.explain(run.original, direct_spec, parameters=ParameterSet()).show()
+```
+
+The three frequencies are declared samples. No curve between them is used to
+claim a continuous resonance or root.
+
+```{python}
+#| id: ch7-solve-three-points
+direct_points = run.solve(
+    run.original,
+    direct_spec,
+    parameters=parameter_points,
+)
+direct_points.show()
+```
+
+```{python}
+#| id: ch7-show-named-reflection-examples
+for label, point in zip(point_labels, direct_points.points, strict=True):
+    if not point.succeeded:
+        display({label: point.failure})
+        continue
+    display({"point": label, "matrix coordinates": point.result.s.view.coordinates})
+    display(point.result.traces["s_readout_head_from_readout_head"].show(magnitude="db"))
+```
+
+The plotted `[0,0]`-position example is explicitly named
+`s_readout_head_from_readout_head`: readout-head reflection. It is not described
+as the complete matrix. The generated table and CSV inventory all sixteen
+named channels for every point.
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/07-response-points.md >}}
+
+[Download all exact complex named-channel samples](../figures/07-response-points.csv)
+
+:::

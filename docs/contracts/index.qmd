@@ -44,7 +44,17 @@ Chapter 4 adds the certified explicit four-Port capstone, separately labeled
 raw and PTC Direct core Results, and optional transformed-view scalar-response,
 Direct, and pump-off HB
 evidence. Direct and HB preserve their separately declared grids without
-interpolation. These assets do not establish execution of every
+interpolation. Chapter 5 adds one certified reusable-Composite occurrence whose
+public surface includes both physical parameter refs, equivalent ordinary
+Pins, and one explicitly published Coordinate. Chapter 6 adds certified
+Default, T, Cross, and exact-Plan reuse diagrams without changing the Plan to
+satisfy presentation. Chapter 7 records typed authoring and compiled diagram
+limitations alongside three successful Direct points and all sixteen labeled
+four-Port channels; its plotted `[0,0]` trace is identified only as one
+reflection example. Chapter 8 records two distinct Jupyter kernel sessions:
+the first persists Direct/root Results and a Report, and the second reconstructs
+the exact declaration and calls only `resolve()` while leaving the shared
+workspace bytes unchanged. These assets do not establish execution of every
 migration-legacy Chapter or every compiled projection. The
 [figure inventory](../../examples/README.md) records current and legacy
 evidence.

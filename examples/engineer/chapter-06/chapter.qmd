@@ -1,0 +1,21 @@
+---
+title: "Chapter 6 — Diagram customization"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 6 — Diagram customization
+
+This complete Chapter is one clean-kernel execution unit. Its four web Lessons
+are reading views over the ordered source fragments. The required API changes
+presentation only; the circuit Plan remains authoritative.
+
+{{< include _01-default.qmd >}}
+
+{{< include _02-port-poses.qmd >}}
+
+{{< include _03-junctions.qmd >}}
+
+{{< include _04-reuse.qmd >}}

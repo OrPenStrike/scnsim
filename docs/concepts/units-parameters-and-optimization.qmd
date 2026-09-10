@@ -167,11 +167,12 @@ it does not certify a View, solver Result, or optimization.
 - Migration legacy: [Chapter 6](../../examples/tutorials/06_optimize_primitive.qmd) fixes a
   non-active input, reads back the winning effective point, and renders that
   point without changing the Plan baseline.
-- Migration legacy: [Chapters 9–10](../../examples/tutorials/09_add_composite_factory.qmd)
-  publish original bound refs through a reusable component while keeping
-  literal factory inputs fixed.
-- Migration legacy: [Chapter 12](../../examples/tutorials/12_model_n_trace_line.qmd) introduces a
-  complete fixed-basis RLGC value only after teaching its matrix meaning.
+- [Engineer Chapter 5](../../examples/engineer/chapter-05/01-library.qmd)
+  publishes original bound C and L refs through a reusable component while
+  keeping literal factory inputs fixed.
+- [Engineer Chapter 7](../../examples/engineer/chapter-07/01-rlgc.qmd)
+  introduces a complete fixed-basis RLGC value before selecting whole-value
+  parameter points.
 - Migration legacy: [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) makes the
   advanced feedline, readout, and floating-subsystem bindings visible in the
   Plan audit.

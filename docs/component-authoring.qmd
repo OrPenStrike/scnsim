@@ -62,10 +62,10 @@ Results. The
 Direct/HB execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
-[Engineer Chapter 1](../examples/engineer/chapter-01/01-build.qmd). Library and
-Composite teaching remains in the
-[migration legacy](implementation/engineer-course-migration-map.qmd)
-until the future Library Chapter is implemented.
+[Engineer Chapter 1](../examples/engineer/chapter-01/01-build.qmd), then use
+[Engineer Chapter 5](../examples/engineer/chapter-05/01-library.qmd) for the
+current Library, Composite factory, deliberate public boundary, and parent
+reuse path.
 For the design reasoning behind the boundary, read
 [Physical authority and structured composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and

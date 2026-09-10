@@ -1,0 +1,108 @@
+## Lesson 2 — Restart, reconstruct, and resolve only {#lesson-ch8-resolve}
+
+### Start a second independent kernel
+
+Stop the first kernel. Start a new Python kernel in the same preserved working
+directory, then run only the three cells in this Lesson. They deliberately
+repeat the complete declaration and request. Do not run Lesson 1's execution
+cells in the second kernel.
+
+```{python}
+#| id: ch8-rebuild-plan-after-restart
+from IPython.display import display
+
+from scnsim import (
+    CircuitPlan,
+    CircuitRun,
+    DiagonalRootSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpec,
+    ReductionPipeline,
+    components,
+    units as u,
+)
+
+restart_inputs = ParameterDefinitions(id="report_resolve_design")
+restart_capacitance = restart_inputs.parameter(
+    id="capacitance", baseline=110.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+restart_inductance = restart_inputs.parameter(
+    id="inductance", baseline=5.8 * u.nH, spec=ParameterSpec(unit=u.nH)
+)
+restart_plan = CircuitPlan(id="report_resolve_resonator")
+restart_resonator = restart_plan.subsystem(id="resonator")
+restart_capacitor = restart_resonator.add(
+    components.capacitor(id="capacitor", capacitance=restart_capacitance)
+)
+restart_inductor = restart_resonator.add(
+    components.inductor(id="inductor", inductance=restart_inductance)
+)
+restart_resonator_bus = restart_resonator.bus(id="terminal")
+restart_resonator.parallel(
+    id="parallel_lc",
+    start=restart_resonator_bus,
+    branches=((restart_capacitor,), (restart_inductor,)),
+    end=restart_resonator.ground,
+)
+restart_pin = restart_resonator.expose_pin(
+    id="terminal", at=restart_resonator_bus
+)
+restart_coordinate = restart_resonator.expose_coordinate(
+    id="terminal_node", at=restart_resonator_bus
+)
+restart_signal_bus = restart_plan.bus(id="signal_boundary")
+restart_coupler = restart_plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+restart_plan.series(
+    id="coupling",
+    start=restart_signal_bus,
+    elements=(restart_coupler,),
+    end=restart_pin,
+)
+restart_plan.add_port(
+    id="signal_in",
+    at=restart_signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+```{python}
+#| id: ch8-rebuild-request-after-restart
+restart_workspace = "workspaces/engineer-chapter-08"
+restart_run = CircuitRun(plan=restart_plan, workspace=restart_workspace)
+restart_view = restart_run.original.reduce(
+    ReductionPipeline().retain(restart_coordinate)
+)
+restart_root_spec = DiagonalRootSpec(
+    coordinate=restart_coordinate,
+    root_hint=6.0 * u.GHz,
+)
+restart_parameters = ParameterSet()
+```
+
+### Resolve without execution fallback
+
+```{python}
+#| id: ch8-resolve-only-after-restart
+resolved_root = restart_run.resolve(
+    restart_view,
+    restart_root_spec,
+    parameters=restart_parameters,
+)
+resolved_root.show()
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/08-resolve-only.md >}}
+
+:::
+
+The second kernel contains no `solve()`, `evaluate()`, retry, or fallback. It
+reconstructs the exact request identity and loads verified evidence from the
+shared workspace. Running every cell sequentially in one ordinary kernel does
+not prove this restart contract; the source-bound generation receipt records
+the two independent kernel sessions.

@@ -1,0 +1,173 @@
+{
+  "artifacts": {
+    "08-direct-s11.svg": "5f0666fd41519816c7e5578f83c5d5f12d663270e2f5d38b9f44722da813d019",
+    "08-persisted-results.json": "15d03f295574e490c25a21e121d5a8a9a5895d8dd4724642d0dd3dfa16d0bcc2",
+    "08-persisted-results.md": "5694b0939b4d405f2282c0dfff188c4a3fefe93074dd88bd92b64598bd8ad8f9",
+    "08-report.html": "ccded0dfcb4173f05383b1876f4e10bd541f9de79230cac47d4dd6c76cf1a003",
+    "08-resolve-only.md": "68edb300161a6aafd0632a384747731378419fa0da9c1cb7ae48e52c4c1e8d55"
+  },
+  "binding": {
+    "cell_ids": [
+      "ch8-build-persisted-plan",
+      "ch8-prepare-persisted-requests",
+      "ch8-execute-persisted-results",
+      "ch8-build-result-report",
+      "ch8-rebuild-plan-after-restart",
+      "ch8-rebuild-request-after-restart",
+      "ch8-resolve-only-after-restart"
+    ],
+    "cells": {
+      "ch8-build-persisted-plan": "be79055e2ffc0f2d4898e60686cda8d0307805056ba8be35717a80b2187bfb33",
+      "ch8-build-result-report": "a0094b5af32c6c6f46587480a810404fe53b8f41032b84bc087a12119c237eb9",
+      "ch8-execute-persisted-results": "30e9dc3dd5794e035b18ea00468d57b02e979faf6ef779236c03637b4350d5f7",
+      "ch8-prepare-persisted-requests": "d8d14809a6ff14b84f05b40b6bb7dd63c5529aa78385a62fe4b28af57344b2e8",
+      "ch8-rebuild-plan-after-restart": "bb98191a448859bacd0d5ab6ceddf775503ce49ab088d4b398b6fbce84b43354",
+      "ch8-rebuild-request-after-restart": "863d0242c444be404248ea04849a55b7175dd55ec1cb2e8621ec43b19df44741",
+      "ch8-resolve-only-after-restart": "ad1162845ddf397348f3ce256e200b90320e75ba51903fba0af5d4b5bf66c1dc"
+    },
+    "generator_sha256": "4b814c49a2c897a3df9912e93c42661e2e4c09b42f3ff5d13cf811337f48403f",
+    "source_tree": {
+      "files": {
+        "src/scnsim/__init__.py": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
+        "src/scnsim/_authoring_snapshot.py": "6a94d0a1191bd5ced0ce082edb5aeaaf76af5510639af46f01319bb34fbd997a",
+        "src/scnsim/_backend.py": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
+        "src/scnsim/_canonical.py": "ea8f70bb63c9d608e68404e7410c72228ee681c7cf6c7c3c5d6b39e59763ab3f",
+        "src/scnsim/_diagram/__init__.py": "f7f4b4d6f0379c1378eb673825f1841f1ba95261dd6402b0f7c2eade0828cfef",
+        "src/scnsim/_diagram/audit.py": "5221231ce043308d9ba6fea435e9738c8d8f1b519c01d12b65c1ab95f879c48b",
+        "src/scnsim/_diagram/compiled.py": "8933dd1d492952655956629130b3ffa75714258dd3d69a869b6ebc23ef30e092",
+        "src/scnsim/_diagram/composition_constraints.py": "2745e4946f0fe9e68f834676e2c58d49fb85ca8353ec1ccaabec15031b1766f6",
+        "src/scnsim/_diagram/composition_geometry.py": "43401b0a4ad5585f88d0d4e99e69d0d5c93cc734b23293cff6ba1bce9b67b7f5",
+        "src/scnsim/_diagram/composition_model.py": "3dfef84848446eddfbe3e8983a678f9da40ff0e493a6130c4711626034bf5260",
+        "src/scnsim/_diagram/composition_planner.py": "013a45f74faeb35c1924d64e811ea2ff6efe602f0b41438d5f44891650d712dd",
+        "src/scnsim/_diagram/drawing.py": "1eb88ddc11cdc04eafd166255046f62a56c6b14f9905a5fbd1ff20d637b4f166",
+        "src/scnsim/_diagram/equivalence.py": "e0dadb13ff5026746071193128cd91105d35419c64b2a635b4c0c812621acae4",
+        "src/scnsim/_diagram/expected.py": "a3877c634c90e98c1bfd4f602e64ebfc379ecc264b85610f2bfceadc7a30bf46",
+        "src/scnsim/_diagram/metrics.py": "d74f27fb7ef3a7e8577d5cb4c612a5c06cb353c58ab00136ffdbde378f3a5410",
+        "src/scnsim/_diagram/native.py": "5530eb5a92b824cce3ce25d0c797d2b72989db88c4c7d333ee08029fc3b0f106",
+        "src/scnsim/_diagram/pipeline.py": "adce23bb4264723037e6e07f22bfe3c0b50edb1dcacc0853ee632b355d16207a",
+        "src/scnsim/_diagram/reconstruction.py": "00b0e62579c8cac0f4657c7406df775aa0674c637b2db080c3317626f333a5ea",
+        "src/scnsim/_diagram/routing.py": "3db6eecdeca06a8be0ba3783546cce4424465cbe9282cdb0afd0818fb26012ad",
+        "src/scnsim/_diagram/scene.py": "8f8f4dfccb7b8c3153325957c4e28d1336e49c4960e2224b9fb3501e14eedcb2",
+        "src/scnsim/_diagram/structured.py": "fcff970134f7a02f6aedba6defc2c5dab97700e299c7288d32e3d6eab1125811",
+        "src/scnsim/_diagram/values.py": "5206479f6ad431e1534d0ae129961054b0c0ce7315c2e95e7a2375681e0a1862",
+        "src/scnsim/_diagram/witness.py": "b716b16f3f1f3ab11ef83d33aa5c8fe17a05cfa6ee0fe12786b50661c4dfacb0",
+        "src/scnsim/_diagram_spec.py": "71c066820bc6df7e4f157018abcd7ac0b4fb3cc734c8522c72e48e5d614c9de5",
+        "src/scnsim/_julia/Manifest.toml": "e6b7e3c33d3b21dba19e19661967766e86591d37ed289458b5276e9b3eada4d3",
+        "src/scnsim/_julia/Project.toml": "10b3c41423bb258ee2bfad157de6d115d702e8c1ff7bce2e9fd4cea3d5dd3f12",
+        "src/scnsim/_julia/bin/scnsim_request.jl": "3510ba25cce96b716e75ac2ac92ae0a2b96004f4c7d55547c9de88ddaee14907",
+        "src/scnsim/_julia/runtime.json": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
+        "src/scnsim/_julia/src/SCNSimBackend.jl": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
+        "src/scnsim/_julia/src/batch_v2.jl": "9504a1f35b5406c3b59555ea2294d440409d890f57b4d3dfd792203baffd98d8",
+        "src/scnsim/_julia/src/hb.jl": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902",
+        "src/scnsim/_julia/src/structured_v2.jl": "f3e0f412fbd096c5a90bc5c5269bf258f8e7afdd4c54e2402b7a86abe308c629",
+        "src/scnsim/_parameter_resolution.py": "ee04e7f4861edaab38d364f9646f91adb74ffbbba13e1dd5295c1e29cdcc17f6",
+        "src/scnsim/_parameters.py": "a526aab8648d4c5a9af7b82d974941bb47cb4afe03026a6547d69416c7e1fef6",
+        "src/scnsim/_physical_values.py": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
+        "src/scnsim/_scaffold.py": "0d45b7ecb1d26875c91226db6291960d5ad72d045adee66666e632ed7435f690",
+        "src/scnsim/_schemas/identity-common.schema.json": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
+        "src/scnsim/_schemas/identity-v2.schema.json": "9f5994e95931d3f89bf361fd6b8f217b4051927c1d48c4b61d8a68435a41ea32",
+        "src/scnsim/_workspace.py": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
+        "src/scnsim/authoring.py": "5f37cc05d1982fd587877c1065f81ff3c88a2bae85ec968a9bb15a0d39428bca",
+        "src/scnsim/composition.py": "0e8450a61d8e924558866325988543a0912944ff5f5bb379cdcde795cf34cadf",
+        "src/scnsim/errors.py": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
+        "src/scnsim/io.py": "4999f89d4171cf248a5393dc5c54254436d4d65a0f590ef421f251fa248db36f",
+        "src/scnsim/presentation.py": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
+        "src/scnsim/results.py": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
+        "src/scnsim/runtime.py": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
+        "src/scnsim/schematic.py": "9bf407c117a9a706cd7cc3bce761fb56452e82d1d4a68e608f0493575a3fcd66",
+        "src/scnsim/specs.py": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
+        "src/scnsim/units.py": "b42db68916c5904e360d04a2a78abc7e4dc04cd1fc4999f8560c59dcce2c5b53"
+      },
+      "sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+    },
+    "sources": {
+      "examples/engineer/chapter-08/01-persist.qmd": "14aa0d8456ed653640e0e1fd195ef78d5814527d619f9ceb292fa7a7288db595",
+      "examples/engineer/chapter-08/02-resolve.qmd": "62a9b8b94e76627bc1eea8f889848db7d25dfab995d2438f75adf1f32c82431d",
+      "examples/engineer/chapter-08/_01-persist.qmd": "10055ee0163109ac811c700232f10ceb0e8b7e4fd658685aa7464aac03deabb1",
+      "examples/engineer/chapter-08/_02-resolve.qmd": "9afa4ea41a4031b24b1294f7e5e3eda5e7733c79ded4ca69e6bc41051b63b841",
+      "examples/engineer/chapter-08/chapter.qmd": "96d0a481de802b36c675142f9f84c4b4d1691f88b13fb2d07e3fdbd1f9183a83"
+    }
+  },
+  "environment": {
+    "jupyter_client": "8.10.0",
+    "matplotlib": "3.10.9",
+    "numpy": "2.2.6",
+    "pint": "0.24.4",
+    "python": "3.12.13",
+    "schemdraw": "0.23",
+    "scnsim": "1.0.0.dev6"
+  },
+  "execution": {
+    "cells": {
+      "ch8-build-persisted-plan": "be79055e2ffc0f2d4898e60686cda8d0307805056ba8be35717a80b2187bfb33",
+      "ch8-build-result-report": "a0094b5af32c6c6f46587480a810404fe53b8f41032b84bc087a12119c237eb9",
+      "ch8-execute-persisted-results": "30e9dc3dd5794e035b18ea00468d57b02e979faf6ef779236c03637b4350d5f7",
+      "ch8-prepare-persisted-requests": "d8d14809a6ff14b84f05b40b6bb7dd63c5529aa78385a62fe4b28af57344b2e8",
+      "ch8-rebuild-plan-after-restart": "bb98191a448859bacd0d5ab6ceddf775503ce49ab088d4b398b6fbce84b43354",
+      "ch8-rebuild-request-after-restart": "863d0242c444be404248ea04849a55b7175dd55ec1cb2e8621ec43b19df44741",
+      "ch8-resolve-only-after-restart": "ad1162845ddf397348f3ce256e200b90320e75ba51903fba0af5d4b5bf66c1dc"
+    },
+    "first_kernel_cell_ids": [
+      "ch8-build-persisted-plan",
+      "ch8-prepare-persisted-requests",
+      "ch8-execute-persisted-results",
+      "ch8-build-result-report"
+    ],
+    "generator_sha256": "ab3adafd77d39319728c21c18d56c069d645c071128c2d307810066402de76f2",
+    "kernels": {
+      "first": {
+        "connection_file": "tmpr5zivdpo.json",
+        "kernel_id": "a59d2618-1f1a-4674-a35b-fb78317b8089",
+        "pid": 1797823
+      },
+      "second": {
+        "connection_file": "tmptcog50bl.json",
+        "kernel_id": "cec64642-83a2-4c38-8428-1170687406f5",
+        "pid": 1807737
+      }
+    },
+    "second_kernel_cell_ids": [
+      "ch8-rebuild-plan-after-restart",
+      "ch8-rebuild-request-after-restart",
+      "ch8-resolve-only-after-restart"
+    ],
+    "second_kernel_operations": [
+      "resolve"
+    ],
+    "shared_workspace_unchanged_during_resolve": true,
+    "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+  },
+  "metadata_rebind": {
+    "executed_generator_sha256": "ab3adafd77d39319728c21c18d56c069d645c071128c2d307810066402de76f2",
+    "kind": "source_only_generator_formatting_and_checker_correction",
+    "numerical_artifacts_unchanged": true,
+    "reason": "keep checking independent of optional Jupyter tooling, normalize QMD end-of-file whitespace, enforce exact Chapter-owned artifacts, and verify persisted/resolved root identity without changing executable cells",
+    "source_receipt_sha256": "77301eba5058bcf30ca87c61c798caa4ab7d751610922cd1ce94a5755b44e48c"
+  },
+  "results": {
+    "direct_identity": {
+      "attempt_sha256": "5674946e544f3117934d4a3b2243ea7ceb00c5f825d6ea5ad5cd516e5de479a2",
+      "plan_sha256": "4ee10aba61f0dd6895bd9252a555ff98f637024b8374ee0dc46a83677458b0ae",
+      "request_sha256": "d12f1b9ffa328e384a54b3fd8b2e37a2157a940fd602a1d8495cc60215dc3452",
+      "result_sha256": "7e9757d216d4de03f2357c8e97c564e2b9cce993e665ac8e7988d00b820500ac"
+    },
+    "matrix_coordinates": [
+      "signal_in"
+    ],
+    "resolved_identity": {
+      "attempt_sha256": "f22f58686311b3f70b9b9d777ecf042f2e7a638bfef893144d6a17fa4a03edae",
+      "plan_sha256": "4ee10aba61f0dd6895bd9252a555ff98f637024b8374ee0dc46a83677458b0ae",
+      "request_sha256": "b2fb60197887b8c772aadfb543bc80c43389c7f1ce214ccee9fd63947193d225",
+      "result_sha256": "c99a1775b8ec7c24be6d49e914c4a99ae1a3a6e4ffb50af1a7365e0a4fd89fa6"
+    },
+    "root_frequency_GHz": 6.135903847793649,
+    "root_identity": {
+      "attempt_sha256": "f22f58686311b3f70b9b9d777ecf042f2e7a638bfef893144d6a17fa4a03edae",
+      "plan_sha256": "4ee10aba61f0dd6895bd9252a555ff98f637024b8374ee0dc46a83677458b0ae",
+      "request_sha256": "b2fb60197887b8c772aadfb543bc80c43389c7f1ce214ccee9fd63947193d225",
+      "result_sha256": "c99a1775b8ec7c24be6d49e914c4a99ae1a3a6e4ffb50af1a7365e0a4fd89fa6"
+    },
+    "root_linewidth_MHz": 3.670280662141818
+  },
+  "schema": "scnsim.engineer_chapter8_artifacts.v1"
+}

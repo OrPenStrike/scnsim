@@ -1,0 +1,19 @@
+---
+title: "Chapter 8 · Lesson 1 — Persist Results"
+subtitle: "Report and resolve engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="First independent kernel" appearance="simple"}
+Begin with the [course setup](../setup.qmd). In the
+[complete Chapter Notebook](chapter.ipynb), run only Lesson 1 in a fresh kernel,
+then stop that kernel before continuing.
+:::
+
+{{< include _01-persist.qmd >}}
+
+[Next: Lesson 2 — Restart and resolve](02-resolve.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

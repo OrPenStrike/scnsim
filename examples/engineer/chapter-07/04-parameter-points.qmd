@@ -1,0 +1,19 @@
+---
+title: "Chapter 7 · Lesson 4 — Parameter points"
+subtitle: "Multi-conductor line engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lessons 1–3](01-rlgc.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _04-parameter-points.qmd >}}
+
+[Previous: Lesson 3 — Diagrams](03-diagrams.qmd) ·
+[Course map](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

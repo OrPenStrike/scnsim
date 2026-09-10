@@ -1,0 +1,71 @@
+## Lesson 1 — Declare ordered N=2 RLGC {#lesson-ch7-rlgc}
+
+### Keep conductor order and full matrices explicit
+
+The ordered signal conductors are `readout` and `filter`. `ground` is reference
+metadata, not a fifth electrical Pin or Port.
+
+```{python}
+#| id: ch7-define-parameters-and-rlgc
+from IPython.display import display
+
+from scnsim import (
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CircuitRun,
+    DirectSolveSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpace,
+    ParameterSpec,
+    RLGC,
+    RLGCParameterSpec,
+    SCNSimValidationError,
+    SParameterTrace,
+    Theme,
+    components,
+    units as u,
+)
+
+inputs = ParameterDefinitions(id="coupled_line_design")
+baseline_rlgc = RLGC(
+    conductors=("readout", "filter"),
+    reference_conductor="ground",
+    resistance_per_length=[[0.18, 0.0], [0.0, 0.22]] * u.ohm / u.m,
+    inductance_per_length=[[420.0, 75.0], [75.0, 395.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0, 0.0], [0.0, 0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0, -22.0], [-22.0, 168.0]] * u.pF / u.m,
+)
+line_length = inputs.parameter(
+    id="line_length",
+    baseline=1.6 * u.mm,
+    spec=ParameterSpec(unit=u.mm),
+)
+line_rlgc = inputs.parameter(
+    id="line_rlgc",
+    baseline=baseline_rlgc,
+    spec=RLGCParameterSpec(
+        conductors=("readout", "filter"), reference_conductor="ground"
+    ),
+)
+```
+
+R is diagonal, L is symmetric with +75 nH/m mutual entries, G is exactly zero,
+and C is symmetric with -22 pF/m off-diagonals. A whole RLGC value is one
+structured parameter; its individual matrix entries are not sweep axes.
+
+```{python}
+#| id: ch7-add-native-line
+plan = CircuitPlan(id="ordered_n2_line")
+line = plan.add(
+    components.transmission_line(
+        id="coupled",
+        length=line_length,
+        rlgc=line_rlgc,
+        n_sections=8,
+    )
+)
+```
+
+`n_sections=8` is fixed model structure. The finite-pi expansion retains the
+full coupled matrices; it does not split this body into two scalar lines.

@@ -164,21 +164,15 @@ evidence. The model developer may expose `optimize_readout(target, workspace)`
 or another domain-named function; SCNSim does not prescribe those project
 names and does not own their Design Target.
 
-The native-API micro-course keeps those responsibilities visible instead of
-wrapping them in a project façade. It begins by
-[authoring and diagramming a complete fixed-value circuit](../examples/tutorials/01_author_primitive.qmd),
-then asks Direct and retained-coordinate questions before
-[defining and physically binding public inputs](../examples/tutorials/04_define_parameters.qmd),
-[sweeping ordered points](../examples/tutorials/05_sweep_parameters.qmd), and
-[using a bound input in Optimization](../examples/tutorials/06_optimize_primitive.qmd).
-Only after that does it move to
-[creating a custom Library](../examples/tutorials/08_create_library.qmd),
-[adding a Composite factory](../examples/tutorials/09_add_composite_factory.qmd),
-and [using](../examples/tutorials/10_use_custom_component.qmd) its component. The
-advanced lessons apply the same Run/Ref/Spec vocabulary directly to
-[RLGC](../examples/tutorials/12_model_n_trace_line.qmd),
-[PTC and transforms](../examples/tutorials/14_transform_retain.qmd), and
-[Direct/HB comparison](../examples/tutorials/16_compare_direct_hb.qmd).
+The current native-API engineer course keeps those responsibilities visible
+instead of wrapping them in a project façade. It begins with
+[one complete physical circuit](../examples/engineer/chapter-01/01-build.qmd),
+then teaches [points and Optimization](../examples/engineer/chapter-02/01-build.qmd),
+[a custom Library and Composite](../examples/engineer/chapter-05/01-library.qmd),
+[complete RLGC values](../examples/engineer/chapter-07/01-rlgc.qmd), and
+[restart-safe report/resolve](../examples/engineer/chapter-08/01-persist.qmd).
+PTC, transformed Views, scalar response lookup, and independent Direct/HB
+Results remain in [Chapter 4](../examples/engineer/chapter-04/01-physical-plan.qmd).
 
 This separation is a UX boundary, not a second Runtime. Both users ultimately
 receive the same typed SCNSim Results and exact receipt identities.
@@ -1991,10 +1985,10 @@ replayed deterministically rather than published as complete evidence.
 
 ### Tutorial realization {#ipf-optimization-example}
 
-The Contract does not duplicate a complete workflow. The micro-course teaches
-[primitive optimization](../examples/tutorials/06_optimize_primitive.qmd),
-[general RLGC](../examples/tutorials/12_model_n_trace_line.qmd), and
-[Direct/HB comparison](../examples/tutorials/16_compare_direct_hb.qmd) as
+The Contract does not duplicate a complete workflow. The engineer course
+teaches [Optimization](../examples/engineer/chapter-02/01-build.qmd),
+[general RLGC](../examples/engineer/chapter-07/01-rlgc.qmd), and
+[Direct/HB analysis](../examples/engineer/chapter-04/01-physical-plan.qmd) as
 separate native-API operations without becoming a second contract authority.
 
 ### Relative objective normalization

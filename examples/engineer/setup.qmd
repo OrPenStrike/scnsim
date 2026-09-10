@@ -19,10 +19,11 @@ to SCNSim or its lock. An editor-provided Jupyter frontend may instead open the
 Chapter Notebook after `uv sync --locked`. Select the repository's `.venv`
 Python kernel, restart it, and use **Run All**.
 
-Each Chapter is its own clean-kernel execution unit. Chapter 2 rebuilds its
-model and does not continue Chapter 1's Python state. The shorter web Lessons
-are reading views over ordered source fragments and are not independently
-runnable.
+Chapters 1–7 are separate clean-kernel execution units. Chapter 8 instead has
+an explicit two-kernel procedure: execute Lesson 1, stop that kernel, then use
+a second fresh kernel to run only Lesson 2 against the same preserved working
+directory. The shorter web Lessons are reading views over ordered source
+fragments and are not independently runnable.
 
 On a cold machine, the first numerical request may prepare the locked Julia
 runtime and take longer than later requests. A relative path such as
@@ -33,4 +34,10 @@ resolution requires its preserved bytes.
 
 - [Begin Chapter 1](chapter-01/01-build.qmd)
 - [Begin Chapter 2](chapter-02/01-build.qmd)
+- [Begin Chapter 3](chapter-03/01-build.qmd)
+- [Begin Chapter 4](chapter-04/01-physical-plan.qmd)
+- [Begin Chapter 5](chapter-05/01-library.qmd)
+- [Begin Chapter 6](chapter-06/01-default.qmd)
+- [Begin Chapter 7](chapter-07/01-rlgc.qmd)
+- [Begin Chapter 8](chapter-08/01-persist.qmd)
 - [Course map](../../docs/index.qmd)

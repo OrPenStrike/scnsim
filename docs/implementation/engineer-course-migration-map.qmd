@@ -6,7 +6,7 @@ toc-depth: 3
 
 ::: {.callout-warning title="CONVERGING course structure" appearance="simple"}
 This map records the current migration, not a second course or a claim that the
-future Chapters run. Chapters 1–4 are implemented in the current course. The
+course is accepted. Chapters 1–8 are implemented in the current course. The
 sixteen existing Chapter sources, generated Notebooks, and
 source-bound assets remain readable under **Migration legacy** until their
 content is moved and reviewed. Exact behavior stays in Contract pages; the
@@ -21,10 +21,10 @@ course teaches how to apply it.
 | 2. Sweep and Optimization | Define independent inputs, bind physical fields, evaluate points and spaces, and use the established Optimization workflow | Implemented in Batch 3A |
 | 3. CPW feedline and readout S21 | Build an ordered two-section CPW feedline, couple a readout, and inspect a two-Port response | Implemented in Batch 3B |
 | 4. Four-Port capstone | Build the original physical Plan, apply PTC, then optionally retain/transform coordinates, evaluate quantities, and inspect Direct and pump-off HB on their own grids | Implemented in Batch 3B |
-| 5. Library | Package, instantiate, and reuse a Composite with deliberate public boundaries | Future |
-| 6. Diagram customization | Review Default layout, set bounded composition hints, and read A/B correspondence | Future |
-| 7. MTL | Author ordered multi-conductor RLGC and distinguish authoring from finite-pi compiled projections | Future |
-| 8. Report and resolve | Preserve exact request, Result, report, workspace, and resolution lineage | Future |
+| 5. Library | Package, instantiate, and reuse a Composite with deliberate public boundaries | Implemented in Batch 3C |
+| 6. Diagram customization | Review Default layout, set bounded composition hints, and read A/B correspondence | Implemented in Batch 3C |
+| 7. MTL | Author ordered multi-conductor RLGC and distinguish authoring from finite-pi compiled projections | Implemented in Batch 3C |
+| 8. Report and resolve | Preserve exact request, Result, report, workspace, and resolution lineage | Implemented in Batch 3C |
 
 The order is pedagogical only. It does not change the public API, numerical
 algorithms, scientific definitions, or lifecycle state of an existing scope.
@@ -46,14 +46,14 @@ its same-named zero-output IPYNB and any checkpoint-bound SVG move with it.
 | `08_create_library` | Chapter 5 | Introduce the immutable custom Library before its factory. |
 | `09_add_composite_factory` | Chapter 5 | Keep factory ownership, provenance, and deliberate public exposure together. |
 | `10_use_custom_component` | Chapter 5 | Follow the factory immediately with one real reuse in a parent Plan. |
-| `11_review_customize_schematic` | Chapter 6 | Keep authoring projection, A/B audit, Default completion, and explicit fixed composition in one diagram Chapter; move exact refusal cases into a short diagram-Contract table. |
+| `11_review_customize_schematic` | Chapter 6 | Keep authoring projection, A/B audit, Default completion, and explicit fixed composition in one diagram Chapter; move the four Plan-authoring refusal cases into the CircuitPlan Assembly Contract. |
 | `12_model_n_trace_line` | Chapters 3 and 7 | Use scalar CPW continuity in Chapter 3; keep ordered multi-conductor RLGC and finite-pi evidence in Chapter 7. |
 | `13_compensate_probes` | Chapters 3 and 4 | Use a reduced two-Port feedline/readout declaration as the Chapter 3 destination; keep the original four-Port physical Plan and PTC core in Chapter 4. |
 | `14_transform_retain` | Chapter 4 | Make transform/retain an optional continuation after the original Plan and PTC are understood. |
 | `15_prepare_hb` | Chapter 4 | Keep pump-off HB setup optional and bound to the same rebuilt physical declaration. |
 | `16_compare_direct_hb` | Chapters 4 and 8 | Interpret each Result on its own declared grid in Chapter 4, with no interpolation or new comparison contract; move durable reporting and resolution practice to Chapter 8. |
 
-No existing source, Notebook, or SVG is deleted in Batches 1–3B. The
+No existing source, Notebook, or SVG is deleted in Batches 1–3C. The
 legacy grouping is temporary migration custody, not another current syllabus.
 Chapter 4's core stops after the original four-Port Plan, raw Direct Result,
 and explicit PTC Direct Result are complete. Transform/retain, quantity
@@ -69,7 +69,7 @@ diagram refusal tables are later-batch custody, not Batch 2 rewrites.
 | Contract map, CircuitPlan Assembly, ASCDLS, Parameter System, Component Authoring, and V1 Runtime Contract | Keep exact interfaces, invariants, identities, equations, and failure behavior here. Lessons show one use and do not restate a parallel contract. |
 | Implementation pages | Keep maintainer ownership, schemas, lowering, process protocol, workspaces, numerical procedures, diagram reconstruction, and evidence mechanics. Course pages do not become implementation authority. |
 | Historical fixtures in `examples/tutorials/fixtures/` | **KEEP.** They remain classified implementation-baseline evidence, not builders imported by the new Chapter. |
-| Root `README.md`, `docs/index.qmd`, `examples/README.md`, and `_quarto.yml` | Point readers to current Chapters 1–4, show only the eight-Chapter destination as the current roadmap, and place all sixteen old Chapters in one Migration legacy group. |
+| Root `README.md`, `docs/index.qmd`, `examples/README.md`, and `_quarto.yml` | Point readers to the current eight-Chapter course and place all sixteen old Chapters in one Migration legacy group until Batch 3D cleanup. |
 | Existing 16 QMD/IPYNB pairs and `examples/tutorials/figures/` | **KEEP during migration.** Preserve source/asset bindings and zero-output Notebook identities unless a later authorized batch migrates that exact Chapter. |
 
 For Chapter 1, the existing Concept and Contract pages need only concise links
@@ -106,3 +106,26 @@ and independent Direct and pump-off HB Results are optional continuations.
   not overlaid.
 
 Neither Chapter changes renderer behavior or creates a new success condition.
+
+## Batch 3C source-bound evidence
+
+- Chapter 5 builds one reusable LC Composite that exposes its capacitance and
+  inductance refs, two equivalent ordinary Pins, and one analysis Coordinate.
+  A parent-owned coupling capacitor connects directly to one public Pin; the
+  other equivalent Pin remains open. Its authoring diagram is certified.
+- Chapter 6 keeps one four-arm Plan fixed while publishing certified Default,
+  Cross, and explicit-reuse compositions. A separate tapped-feedline Plan
+  supplies the genuine certified T request. These bounded examples do not
+  claim arbitrary pose or junction placement.
+- Chapter 7 evaluates the exact ordered N=2 RLGC model at the baseline,
+  1.8 mm, and whole-C-matrix ×170/175 points on the declared three-sample grid.
+  Every Result records all sixteen labeled four-Port channels; the public plots
+  show only the named readout-head reflection example. Authoring and finite-pi
+  compiled diagrams both remain typed layout failures, with no substitute SVG.
+- Chapter 8 records two independent Jupyter kernel identities in one preserved
+  workspace. Kernel 1 persists Direct/root Results and a Report. Kernel 2
+  reconstructs the exact Plan/View/Spec and calls only `resolve()`; the Result
+  identity matches and the workspace file hashes remain unchanged.
+
+These outcomes are generated evidence for the current course, not acceptance
+of the reopened authoring, parameter, or diagram scopes.

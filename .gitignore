@@ -10,5 +10,6 @@ __pycache__/
 
 **/*.quarto_ipynb
 /examples/**/*.html
+!/examples/engineer/figures/08-report.html
 /examples/**/*_files/
 **/workspaces/

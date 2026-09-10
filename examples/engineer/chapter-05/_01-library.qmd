@@ -1,0 +1,62 @@
+## Lesson 1 — Put one physical unit behind a Library boundary {#lesson-ch5-library}
+
+### Define the catalog and factory
+
+Use a Composite when a group of elements has one owner, a deliberate public
+boundary, and a useful name outside its implementation. This grounded LC is a
+good reusable unit: the factory owns its capacitor, inductor, local bus, and
+ground relation. The parent will own the coupler and Port.
+
+```{python}
+#| id: ch5-define-library-and-factory
+from IPython.display import display
+
+from scnsim import (
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CompositePlan,
+    Library,
+    ParameterDefinitions,
+    ParameterRef,
+    ParameterSpec,
+    Theme,
+    components,
+    units as u,
+)
+
+
+class ResonatorLibrary(Library):
+    """Project-owned reusable resonator catalog."""
+
+    def parallel_linear_lc_resonator(self, *, id, capacitance, inductance):
+        """Build one grounded LC with a deliberate public boundary."""
+        composite = CompositePlan(id=id, library=self)
+        capacitor = composite.add(
+            components.capacitor(id="capacitor", capacitance=capacitance)
+        )
+        inductor = composite.add(
+            components.inductor(id="inductor", inductance=inductance)
+        )
+        if isinstance(capacitance, ParameterRef):
+            composite.expose_parameter(id="capacitance", parameter=capacitance)
+        if isinstance(inductance, ParameterRef):
+            composite.expose_parameter(id="inductance", parameter=inductance)
+        terminal_bus = composite.bus(id="terminal")
+        composite.parallel(
+            id="parallel_lc",
+            start=terminal_bus,
+            branches=((capacitor,), (inductor,)),
+            end=composite.ground,
+        )
+        composite.expose_pin(id="terminal", at=terminal_bus)
+        composite.expose_pin(id="alternate_terminal", at=terminal_bus)
+        composite.expose_coordinate(id="terminal_node", at=terminal_bus)
+        return composite.build()
+
+
+components_library = ResonatorLibrary()
+```
+
+The two Pins are equivalent public wiring occurrences on the same internal
+signal bus. The Coordinate is analysis access to that bus, not a wire. C and L
+are published only when the caller supplied real `ParameterRef` values.

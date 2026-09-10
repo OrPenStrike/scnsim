@@ -31,6 +31,23 @@ project:
     - examples/engineer/chapter-04/05-optional-quantity.qmd
     - examples/engineer/chapter-04/06-optional-hb.qmd
     - examples/engineer/chapter-04/chapter.qmd
+    - examples/engineer/chapter-05/01-library.qmd
+    - examples/engineer/chapter-05/02-instance.qmd
+    - examples/engineer/chapter-05/03-reuse.qmd
+    - examples/engineer/chapter-05/chapter.qmd
+    - examples/engineer/chapter-06/01-default.qmd
+    - examples/engineer/chapter-06/02-port-poses.qmd
+    - examples/engineer/chapter-06/03-junctions.qmd
+    - examples/engineer/chapter-06/04-reuse.qmd
+    - examples/engineer/chapter-06/chapter.qmd
+    - examples/engineer/chapter-07/01-rlgc.qmd
+    - examples/engineer/chapter-07/02-ports.qmd
+    - examples/engineer/chapter-07/03-diagrams.qmd
+    - examples/engineer/chapter-07/04-parameter-points.qmd
+    - examples/engineer/chapter-07/chapter.qmd
+    - examples/engineer/chapter-08/01-persist.qmd
+    - examples/engineer/chapter-08/02-resolve.qmd
+    - examples/engineer/chapter-08/chapter.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
     - examples/tutorials/03_evaluate_quantity.qmd
@@ -164,6 +181,48 @@ website:
               href: examples/engineer/chapter-04/06-optional-hb.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-04/chapter.qmd
+        - section: "Chapter 5 — Library"
+          contents:
+            - text: "Lesson 1 — Library boundary"
+              href: examples/engineer/chapter-05/01-library.qmd
+            - text: "Lesson 2 — Public instance"
+              href: examples/engineer/chapter-05/02-instance.qmd
+            - text: "Lesson 3 — Parent reuse"
+              href: examples/engineer/chapter-05/03-reuse.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-05/chapter.qmd
+        - section: "Chapter 6 — Diagram customization"
+          contents:
+            - text: "Lesson 1 — Default"
+              href: examples/engineer/chapter-06/01-default.qmd
+            - text: "Lesson 2 — Port poses"
+              href: examples/engineer/chapter-06/02-port-poses.qmd
+            - text: "Lesson 3 — T and Cross"
+              href: examples/engineer/chapter-06/03-junctions.qmd
+            - text: "Lesson 4 — Reuse"
+              href: examples/engineer/chapter-06/04-reuse.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-06/chapter.qmd
+        - section: "Chapter 7 — Multi-conductor RLGC"
+          contents:
+            - text: "Lesson 1 — Ordered RLGC"
+              href: examples/engineer/chapter-07/01-rlgc.qmd
+            - text: "Lesson 2 — Four signal Ports"
+              href: examples/engineer/chapter-07/02-ports.qmd
+            - text: "Lesson 3 — Diagrams"
+              href: examples/engineer/chapter-07/03-diagrams.qmd
+            - text: "Lesson 4 — Parameter points"
+              href: examples/engineer/chapter-07/04-parameter-points.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-07/chapter.qmd
+        - section: "Chapter 8 — Report and resolve"
+          contents:
+            - text: "Lesson 1 — Persist Results"
+              href: examples/engineer/chapter-08/01-persist.qmd
+            - text: "Lesson 2 — Restart and resolve"
+              href: examples/engineer/chapter-08/02-resolve.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-08/chapter.qmd
         - section: "Migration legacy"
           contents:
             - text: "01 — Author primitive"

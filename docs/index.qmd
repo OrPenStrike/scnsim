@@ -4,9 +4,9 @@ description: "Build one explicit circuit, inspect its diagram and response, then
 anchor-sections: false
 ---
 
-The engineer course is organized as eight complete, clean-kernel Chapters.
-Chapters 1–4 are implemented now. Chapters 5–8 are the migration roadmap, not
-fake runnable pages. The former sixteen-Chapter course remains available under
+The engineer course is organized as eight complete Chapters. Chapters 1–7 are
+ordinary clean-kernel units; Chapter 8 deliberately uses two independent
+kernels and one shared preserved workspace. The former sixteen-Chapter course remains available under
 one **Migration legacy** heading while its reviewed content moves into this
 order.
 
@@ -194,6 +194,59 @@ the ordered aggregate. Download its
 [zero-output Notebook](../examples/engineer/chapter-04/chapter.ipynb) and run
 all six Lessons in a fresh kernel.
 
+## Chapter 5 — Library and reusable Composite
+
+Package the grounded LC behind one Library factory, publish only C, L, two
+equivalent Pins, and one same-bus Coordinate, then reuse that boundary from a
+parent-owned 6 fF coupler and 50 ohm Port.
+
+- [Lesson 1 — Library boundary](../examples/engineer/chapter-05/01-library.qmd)
+- [Lesson 2 — Public instance](../examples/engineer/chapter-05/02-instance.qmd)
+- [Lesson 3 — Parent reuse](../examples/engineer/chapter-05/03-reuse.qmd)
+- [Complete Chapter source](../examples/engineer/chapter-05/chapter.qmd) and
+  [zero-output Notebook](../examples/engineer/chapter-05/chapter.ipynb)
+
+## Chapter 6 — Diagram customization
+
+Keep the Plan fixed while reviewing Default composition, the eight valid Port
+poses, genuine T and Cross junction requests, A/B audit evidence, and exact-Plan
+reuse of one completed composition.
+
+- [Lesson 1 — Default composition](../examples/engineer/chapter-06/01-default.qmd)
+- [Lesson 2 — Port poses](../examples/engineer/chapter-06/02-port-poses.qmd)
+- [Lesson 3 — T and Cross](../examples/engineer/chapter-06/03-junctions.qmd)
+- [Lesson 4 — Reuse](../examples/engineer/chapter-06/04-reuse.qmd)
+- [Complete Chapter source](../examples/engineer/chapter-06/chapter.qmd) and
+  [zero-output Notebook](../examples/engineer/chapter-06/chapter.ipynb)
+
+## Chapter 7 — Ordered multi-conductor RLGC
+
+Author one ordered N=2 body with exact full RLGC matrices, eight finite pi
+sections, and four 50 ohm signal Ports. Evaluate the baseline, 1.8 mm length,
+and whole-C-matrix ×170/175 points on one three-frequency Direct request.
+
+- [Lesson 1 — Ordered RLGC](../examples/engineer/chapter-07/01-rlgc.qmd)
+- [Lesson 2 — Four signal Ports](../examples/engineer/chapter-07/02-ports.qmd)
+- [Lesson 3 — Authoring and compiled diagrams](../examples/engineer/chapter-07/03-diagrams.qmd)
+- [Lesson 4 — Parameter points](../examples/engineer/chapter-07/04-parameter-points.qmd)
+- [Complete Chapter source](../examples/engineer/chapter-07/chapter.qmd) and
+  [zero-output Notebook](../examples/engineer/chapter-07/chapter.ipynb)
+
+The current deterministic renderer reports a typed fixed-connector collision
+for the exact four-Port authoring layout. That presentation limitation does not
+replace the model or its complete sixteen-channel Direct Result.
+
+## Chapter 8 — Report and resolve
+
+Persist Direct and loaded-root Results and build their report in one kernel.
+Then start a second independent kernel, reconstruct the exact Plan/View/Spec in
+the same preserved workspace, and call only `resolve()` for the root.
+
+- [Lesson 1 — Persist Results](../examples/engineer/chapter-08/01-persist.qmd)
+- [Lesson 2 — Restart and resolve](../examples/engineer/chapter-08/02-resolve.qmd)
+- [Complete Chapter source](../examples/engineer/chapter-08/chapter.qmd) and
+  [zero-output Notebook](../examples/engineer/chapter-08/chapter.ipynb)
+
 ## Eight-Chapter roadmap
 
 | Chapter | Outcome | Availability |
@@ -202,10 +255,10 @@ all six Lessons in a fresh kernel.
 | 2. Sweep and Optimization | Inputs, bindings, points, spaces, and established Optimization workflow | Current four-Lesson Chapter |
 | 3. CPW feedline/readout S21 | Ordered two-section CPW, coupled readout, two-Port response | Current three-Lesson Chapter; complete Default diagram reports a typed fixed-layout collision |
 | 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, and pump-off HB | Current six-Lesson Chapter |
-| 5. Library | Create, publish, instantiate, and reuse a Composite | Future |
-| 6. Diagram customization | Default completion, bounded hints, composition, and A/B review | Future |
-| 7. MTL | Ordered multi-conductor RLGC and finite-pi compiled evidence | Future |
-| 8. Report and resolve | Exact requests, Results, workspaces, reports, and restart-safe resolution | Future |
+| 5. Library | Create, publish, instantiate, and reuse a Composite | Current three-Lesson Chapter |
+| 6. Diagram customization | Default completion, bounded hints, composition, and A/B review | Current four-Lesson Chapter |
+| 7. MTL | Ordered multi-conductor RLGC and finite-pi compiled evidence | Current four-Lesson Chapter; exact four-Port authoring layout reports a typed fixed-layout collision |
+| 8. Report and resolve | Exact requests, Results, workspaces, reports, and restart-safe resolution | Current two-Lesson, two-kernel Chapter |
 
 The [durable migration map](implementation/engineer-course-migration-map.qmd)
 records how each former Chapter moves and which Concept, Contract, or

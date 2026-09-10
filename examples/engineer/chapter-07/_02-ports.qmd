@@ -1,0 +1,53 @@
+## Lesson 2 — Bind four ordered signal Ports {#lesson-ch7-ports}
+
+### Use the complete occurrence once
+
+The body's four public signal Pins are ordered by conductor and head/tail.
+
+```{python}
+#| id: ch7-bind-signal-pins
+readout_head_pin = line.pin("head", conductor="readout")
+readout_tail_pin = line.pin("tail", conductor="readout")
+filter_head_pin = line.pin("head", conductor="filter")
+filter_tail_pin = line.pin("tail", conductor="filter")
+
+signal_buses = {
+    name: plan.bus(id=name)
+    for name in ("readout_head", "readout_tail", "filter_head", "filter_tail")
+}
+plan.series(
+    id="readout_conductor",
+    start=signal_buses["readout_head"],
+    elements=(line.between(readout_head_pin, readout_tail_pin),),
+    end=signal_buses["readout_tail"],
+)
+plan.link(
+    id="filter_head_binding",
+    endpoints=(signal_buses["filter_head"], filter_head_pin),
+)
+plan.link(
+    id="filter_tail_binding",
+    endpoints=(signal_buses["filter_tail"], filter_tail_pin),
+)
+```
+
+`.between()` supplies one ordered endpoint pair for the complete occurrence; it
+does not extract the readout conductor or clone the line. The explicit Links
+bind the remaining signal Pins.
+
+```{python}
+#| id: ch7-add-four-signal-ports
+port_ids = ("readout_head", "readout_tail", "filter_head", "filter_tail")
+ports = {
+    name: plan.add_port(
+        id=name,
+        at=signal_buses[name],
+        role="terminated",
+        reference_impedance=50.0 * u.ohm,
+    )
+    for name in port_ids
+}
+```
+
+There are exactly four 50 ohm signal Ports. `reference_conductor="ground"`
+does not create another Port or public Pin.

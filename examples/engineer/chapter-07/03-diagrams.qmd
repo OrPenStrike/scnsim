@@ -1,0 +1,19 @@
+---
+title: "Chapter 7 · Lesson 3 — Authoring and compiled diagrams"
+subtitle: "Multi-conductor line engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lessons 1–2](01-rlgc.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _03-diagrams.qmd >}}
+
+[Previous: Lesson 2 — Four signal Ports](02-ports.qmd) ·
+[Next: Lesson 4 — Parameter points](04-parameter-points.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

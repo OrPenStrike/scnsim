@@ -1,0 +1,18 @@
+---
+title: "Chapter 5 · Lesson 1 — Library boundary"
+subtitle: "Library and reusable Composite engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+Begin with the [course setup](../setup.qmd). This page is for reading; execute
+the [complete Chapter Notebook](chapter.ipynb) from a clean kernel.
+:::
+
+{{< include _01-library.qmd >}}
+
+[Next: Lesson 2 — Public instance](02-instance.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

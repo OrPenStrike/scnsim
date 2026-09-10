@@ -494,7 +494,7 @@ root bus or zero-component Link on the resonator side. The later 120 fF point
 changes the real capacitor field on this same Plan and does not retroactively
 make every fixed component value a parameter.
 
-The migration-legacy Library Chapters repeat the same internal grammar in a
+Engineer Chapter 5 repeats the same internal grammar in a
 Library `CompositePlan` and then consume one public terminal while leaving an
 equivalent differently named terminal externally open. The electrical values
 may match, but the factory-owned version has different ownership and
@@ -721,6 +721,18 @@ including:
 - a child Port, invalid Port role/load, implicit load/ground, invalid
   multi-terminal pair selection, or ineligible/unoriented/foreign mutual
   coupling.
+
+The migrated four-case authoring table makes these atomic boundaries concrete:
+
+| Attempt | Why it rejects | Legal correction |
+|---|---|---|
+| A parent `link()` uses a Bus owned privately by its child | A Python variable does not publish a child-private endpoint | Expose that Bus as an immediate-child public Pin and link the Pin |
+| A second parent Bus is linked, directly or transitively, to a public Pin already attached to a different Bus in that same parent scope | The operation would silently merge two distinct same-scope buses | Connect the buses through a real physical element and structure |
+| A physical two-terminal element is structured with both endpoints on one Bus | The relation would short that element | Use two distinct endpoint classes for the physical body |
+| `ground_pins()` targets a public signal Pin whose final net carries a Port | A Port-bound signal net cannot also become canonical ground | Ground the distinct public return Pin, not the Port-bound signal Pin |
+
+These are Plan-authoring refusals, not diagram-layout failures. Each failed call
+leaves the previous editable declaration unchanged and its rejected ID reusable.
 
 Incomplete editable authoring is legal between calls. In particular, `add()`
 does not fail merely because its new component has not yet been bound or given

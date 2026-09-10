@@ -1,0 +1,19 @@
+---
+title: "Chapter 6 · Lesson 4 — Reuse composition"
+subtitle: "Diagram customization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lessons 1–3](01-default.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _04-reuse.qmd >}}
+
+[Previous: Lesson 3 — T and Cross](03-junctions.qmd) ·
+[Course map](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

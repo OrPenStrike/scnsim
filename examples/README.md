@@ -1,7 +1,7 @@
 # SCNSim engineer course sources
 
 `engineer/setup.qmd` is the shared environment entry. `engineer/chapter-01/`
-through `engineer/chapter-04/` are the current course Chapters. YAML-free QMD
+through `engineer/chapter-08/` are the current course Chapters. YAML-free QMD
 fragments hold each Chapter's canonical Lesson prose and code. Thin QMD
 wrappers make those Lessons readable as separate HTML pages, while each
 `chapter.qmd` includes its fragments in order and generates one complete
@@ -10,8 +10,9 @@ wrappers make those Lessons readable as separate HTML pages, while each
 The web Lessons are not independently runnable: each later Lesson plainly
 states the earlier state it requires. The aggregate Chapter is the clean-kernel
 execution unit. Open `chapter.ipynb`, restart its Python kernel, and use
-**Run All**. Every committed Notebook remains a zero-output transport artifact
-rather than an execution record.
+**Run All** for Chapters 1–7. Chapter 8 explicitly uses two independent kernels
+and tells the reader which half to run in each. Every committed Notebook remains
+a zero-output transport artifact rather than an execution record.
 
 A Chapter's relative `workspace="workspaces/..."` path is resolved from the
 process's current working directory. Starting Jupyter from the repository root
@@ -140,6 +141,42 @@ Optional evidence includes the exact 6.2 GHz `04-response-element.*` lookup,
 the separate `04-optional-direct-s21.*` Result, and the
 `04-pump-off-hb.*` Result. Direct and HB keep their separately declared grids;
 the generated summary does not overlay or interpolate them.
+
+## Generate Chapters 5–8 evidence explicitly
+
+Each remaining Chapter has its own bounded generator and source-only checker:
+
+```bash
+uv run --locked python scripts/generate_engineer_chapter5.py \
+  --workspace /tmp/scnsim-engineer-chapter5-run
+uv run --locked python scripts/generate_engineer_chapter6.py \
+  --workspace /tmp/scnsim-engineer-chapter6-run
+uv run --locked python scripts/generate_engineer_chapter7.py \
+  --workspace /tmp/scnsim-engineer-chapter7-run
+uv run --locked python scripts/generate_engineer_chapter8.py \
+  --workspace /tmp/scnsim-engineer-chapter8-run
+
+uv run --locked python scripts/generate_engineer_chapter5.py --check
+uv run --locked python scripts/generate_engineer_chapter6.py --check
+uv run --locked python scripts/generate_engineer_chapter7.py --check
+uv run --locked python scripts/generate_engineer_chapter8.py --check
+```
+
+Chapter 5 generates the certified reusable-Composite authoring diagram.
+Its public surface contains both C and L refs, two equivalent ordinary Pins,
+and one explicitly published Coordinate; the parent couples directly to one
+Pin and leaves the other open. Chapter 6 generates certified Default, T,
+Cross, and fixed-reuse diagrams. Chapter 7 records typed `schematic_layout`
+failures for both its authoring and finite-pi compiled diagrams; neither
+failure has an SVG substitute. Its actual three-point Direct batch still
+publishes complete sixteen-channel tables and three figures labeled as
+readout-head reflection examples. Chapter 8 launches
+two independent Jupyter kernels in one fresh execution directory: the first
+persists Results and the standalone Report, while the second reconstructs and
+calls only `resolve()` against the unchanged shared workspace. Its manifest
+records both kernel identities, the exact matching Result identity, and the
+source-only checker rebind separately from the generator that performed the
+execution.
 
 ## Migration legacy
 

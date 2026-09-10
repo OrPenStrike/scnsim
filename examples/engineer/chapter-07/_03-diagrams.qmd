@@ -1,0 +1,65 @@
+## Lesson 3 — Separate authoring and finite-pi views {#lesson-ch7-diagrams}
+
+### Review the declared body
+
+```{python}
+#| id: ch7-render-authoring
+authoring = None
+try:
+    authoring = plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="authoring",
+            theme=Theme.AUTO,
+            show_parameter_values=True,
+        )
+    )
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({"authoring layout unavailable": str(error), "stage": error.stage})
+if authoring is not None:
+    display(authoring.show())
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/07-n2-authoring.md >}}
+
+:::
+
+```{python}
+#| id: ch7-show-authoring-audit
+if authoring is not None:
+    authoring.audit.show()
+```
+
+### Request the compiled presentation independently
+
+```{python}
+#| id: ch7-render-compiled
+compiled = None
+try:
+    compiled = plan.render_schematic(
+        CircuitDiagramSpec(
+            representation="compiled",
+            theme=Theme.AUTO,
+            show_parameter_values=True,
+        )
+    )
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({"compiled layout unavailable": str(error), "stage": error.stage})
+if compiled is not None:
+    display(compiled.show())
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/07-n2-compiled.md >}}
+
+:::
+
+When available, the compiled diagram expands eight finite pi sections and its
+audit retains conductor order, full matrices, and exact-zero evidence. A typed
+layout failure does not change the authored Plan or numerical model.

@@ -1,0 +1,18 @@
+---
+title: "Chapter 6 · Lesson 1 — Default composition"
+subtitle: "Diagram customization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+Begin with the [course setup](../setup.qmd). Read here, but execute the
+[complete Chapter Notebook](chapter.ipynb) from a clean kernel.
+:::
+
+{{< include _01-default.qmd >}}
+
+[Next: Lesson 2 — Port poses](02-port-poses.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

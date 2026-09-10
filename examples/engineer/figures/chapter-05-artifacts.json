@@ -1,0 +1,124 @@
+{
+  "artifacts": {
+    "05-reusable-composite.svg": "fe6a5f108d8bf8a06f8bc92383d57f96fca7358fe948bc32fdfda385d2ef1828"
+  },
+  "binding": {
+    "cell_ids": [
+      "ch5-define-library-and-factory",
+      "ch5-instantiate-composite",
+      "ch5-show-public-surface",
+      "ch5-connect-parent-boundary",
+      "ch5-render-reused-composite",
+      "ch5-show-reused-composite-audit"
+    ],
+    "cells": {
+      "ch5-connect-parent-boundary": "4cc36dd24eb1150dbd7ba9f006646afcbeef170d63675151cd30d8882013381d",
+      "ch5-define-library-and-factory": "41f479b225e70d1847dbc28b4acd12db8da60d903e64f151e2351175a455ca4a",
+      "ch5-instantiate-composite": "49fdd68999fdca6cb46ef045fda31471eb7ad9227b9e8c2ef6304420fe6ef27e",
+      "ch5-render-reused-composite": "0112463f2a0bc2cf87b015c6691ba017a56561627f62d37af1a80afb3772b5a8",
+      "ch5-show-public-surface": "2018de2a80567ace5cdfd2c298cc37d45fa25bff67b37a38ad85dd844b5756b4",
+      "ch5-show-reused-composite-audit": "2d6c1bdc6105b75ccf1b242370c5e64e154560fa61f38cf496346c58846ea08c"
+    },
+    "generator_sha256": "d2839249881fe50faaedc20f87513ceb6631e61818ee481afb6bcb8298cef77f",
+    "source_tree": {
+      "files": {
+        "src/scnsim/__init__.py": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
+        "src/scnsim/_authoring_snapshot.py": "6a94d0a1191bd5ced0ce082edb5aeaaf76af5510639af46f01319bb34fbd997a",
+        "src/scnsim/_backend.py": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
+        "src/scnsim/_canonical.py": "ea8f70bb63c9d608e68404e7410c72228ee681c7cf6c7c3c5d6b39e59763ab3f",
+        "src/scnsim/_diagram/__init__.py": "f7f4b4d6f0379c1378eb673825f1841f1ba95261dd6402b0f7c2eade0828cfef",
+        "src/scnsim/_diagram/audit.py": "5221231ce043308d9ba6fea435e9738c8d8f1b519c01d12b65c1ab95f879c48b",
+        "src/scnsim/_diagram/compiled.py": "8933dd1d492952655956629130b3ffa75714258dd3d69a869b6ebc23ef30e092",
+        "src/scnsim/_diagram/composition_constraints.py": "2745e4946f0fe9e68f834676e2c58d49fb85ca8353ec1ccaabec15031b1766f6",
+        "src/scnsim/_diagram/composition_geometry.py": "43401b0a4ad5585f88d0d4e99e69d0d5c93cc734b23293cff6ba1bce9b67b7f5",
+        "src/scnsim/_diagram/composition_model.py": "3dfef84848446eddfbe3e8983a678f9da40ff0e493a6130c4711626034bf5260",
+        "src/scnsim/_diagram/composition_planner.py": "013a45f74faeb35c1924d64e811ea2ff6efe602f0b41438d5f44891650d712dd",
+        "src/scnsim/_diagram/drawing.py": "1eb88ddc11cdc04eafd166255046f62a56c6b14f9905a5fbd1ff20d637b4f166",
+        "src/scnsim/_diagram/equivalence.py": "e0dadb13ff5026746071193128cd91105d35419c64b2a635b4c0c812621acae4",
+        "src/scnsim/_diagram/expected.py": "a3877c634c90e98c1bfd4f602e64ebfc379ecc264b85610f2bfceadc7a30bf46",
+        "src/scnsim/_diagram/metrics.py": "d74f27fb7ef3a7e8577d5cb4c612a5c06cb353c58ab00136ffdbde378f3a5410",
+        "src/scnsim/_diagram/native.py": "5530eb5a92b824cce3ce25d0c797d2b72989db88c4c7d333ee08029fc3b0f106",
+        "src/scnsim/_diagram/pipeline.py": "adce23bb4264723037e6e07f22bfe3c0b50edb1dcacc0853ee632b355d16207a",
+        "src/scnsim/_diagram/reconstruction.py": "00b0e62579c8cac0f4657c7406df775aa0674c637b2db080c3317626f333a5ea",
+        "src/scnsim/_diagram/routing.py": "3db6eecdeca06a8be0ba3783546cce4424465cbe9282cdb0afd0818fb26012ad",
+        "src/scnsim/_diagram/scene.py": "8f8f4dfccb7b8c3153325957c4e28d1336e49c4960e2224b9fb3501e14eedcb2",
+        "src/scnsim/_diagram/structured.py": "fcff970134f7a02f6aedba6defc2c5dab97700e299c7288d32e3d6eab1125811",
+        "src/scnsim/_diagram/values.py": "5206479f6ad431e1534d0ae129961054b0c0ce7315c2e95e7a2375681e0a1862",
+        "src/scnsim/_diagram/witness.py": "b716b16f3f1f3ab11ef83d33aa5c8fe17a05cfa6ee0fe12786b50661c4dfacb0",
+        "src/scnsim/_diagram_spec.py": "71c066820bc6df7e4f157018abcd7ac0b4fb3cc734c8522c72e48e5d614c9de5",
+        "src/scnsim/_julia/Manifest.toml": "e6b7e3c33d3b21dba19e19661967766e86591d37ed289458b5276e9b3eada4d3",
+        "src/scnsim/_julia/Project.toml": "10b3c41423bb258ee2bfad157de6d115d702e8c1ff7bce2e9fd4cea3d5dd3f12",
+        "src/scnsim/_julia/bin/scnsim_request.jl": "3510ba25cce96b716e75ac2ac92ae0a2b96004f4c7d55547c9de88ddaee14907",
+        "src/scnsim/_julia/runtime.json": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
+        "src/scnsim/_julia/src/SCNSimBackend.jl": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
+        "src/scnsim/_julia/src/batch_v2.jl": "9504a1f35b5406c3b59555ea2294d440409d890f57b4d3dfd792203baffd98d8",
+        "src/scnsim/_julia/src/hb.jl": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902",
+        "src/scnsim/_julia/src/structured_v2.jl": "f3e0f412fbd096c5a90bc5c5269bf258f8e7afdd4c54e2402b7a86abe308c629",
+        "src/scnsim/_parameter_resolution.py": "ee04e7f4861edaab38d364f9646f91adb74ffbbba13e1dd5295c1e29cdcc17f6",
+        "src/scnsim/_parameters.py": "a526aab8648d4c5a9af7b82d974941bb47cb4afe03026a6547d69416c7e1fef6",
+        "src/scnsim/_physical_values.py": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
+        "src/scnsim/_scaffold.py": "0d45b7ecb1d26875c91226db6291960d5ad72d045adee66666e632ed7435f690",
+        "src/scnsim/_schemas/identity-common.schema.json": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
+        "src/scnsim/_schemas/identity-v2.schema.json": "9f5994e95931d3f89bf361fd6b8f217b4051927c1d48c4b61d8a68435a41ea32",
+        "src/scnsim/_workspace.py": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
+        "src/scnsim/authoring.py": "5f37cc05d1982fd587877c1065f81ff3c88a2bae85ec968a9bb15a0d39428bca",
+        "src/scnsim/composition.py": "0e8450a61d8e924558866325988543a0912944ff5f5bb379cdcde795cf34cadf",
+        "src/scnsim/errors.py": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
+        "src/scnsim/io.py": "4999f89d4171cf248a5393dc5c54254436d4d65a0f590ef421f251fa248db36f",
+        "src/scnsim/presentation.py": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
+        "src/scnsim/results.py": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
+        "src/scnsim/runtime.py": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
+        "src/scnsim/schematic.py": "9bf407c117a9a706cd7cc3bce761fb56452e82d1d4a68e608f0493575a3fcd66",
+        "src/scnsim/specs.py": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
+        "src/scnsim/units.py": "b42db68916c5904e360d04a2a78abc7e4dc04cd1fc4999f8560c59dcce2c5b53"
+      },
+      "sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+    },
+    "sources": {
+      "examples/engineer/chapter-05/01-library.qmd": "5734b961bc9197202b6c8f0e9985e5c4bf796389c25c579c058eb7d3d3ca944a",
+      "examples/engineer/chapter-05/02-instance.qmd": "083dbe6f77c6d832feb05948214a6cef8642167c363b728577d24f881244be20",
+      "examples/engineer/chapter-05/03-reuse.qmd": "9a958f376b9c21ec987790c931d58cbf1aebcac8c4f7613e813cda633dd49807",
+      "examples/engineer/chapter-05/_01-library.qmd": "d4a7a4d03a5da7674833b2cefbe97192aced2d8042e25629afb58b802d8b1f8d",
+      "examples/engineer/chapter-05/_02-instance.qmd": "32087a1f0227559012a238b9f2d1f73549413eec846dd8f3bfd3808b51f5d8ca",
+      "examples/engineer/chapter-05/_03-reuse.qmd": "e84b82bb84fe98c4ceee6b28fe8338dcf49c7ad067328249f596e32b4a4c9df7",
+      "examples/engineer/chapter-05/chapter.qmd": "f1f1f521d80cd809dd3fb8fc1854d769747e583511f73f4a84ea5ffe0afd6e39"
+    }
+  },
+  "certificate": {
+    "connectivity_sha256": "19478f93bf84b1a53ec00edc0922dbf0fd85d0132ffd9b6cea80cb6871e2df68",
+    "parameters_sha256": "cb42a1ad434abc3d2f5748f091d2c1ded9ec02979b3857bdbec8ed5fc99b7528",
+    "plan_id": "reusable_resonator",
+    "plan_sha256": "f80cff66b8479359c812468d59d4136d4c928c15545fcd219d6febff77e95bcd",
+    "presentation_sha256": "2826dec7b8a7399b4f4186f8dac256e38d4467a4f3ec13211b90b7ad2602377a",
+    "representation": "authoring",
+    "semantic_sha256": "ca478dd91f7401b0f8289619d33ea0c6ac2d26426e1ec27bf8c562fd1554aaa1"
+  },
+  "environment": {
+    "matplotlib": "3.10.9",
+    "numpy": "2.2.6",
+    "pint": "0.24.4",
+    "python": "3.12.13",
+    "schemdraw": "0.23",
+    "scnsim": "1.0.0.dev6"
+  },
+  "execution": {
+    "cells": {
+      "ch5-connect-parent-boundary": "4cc36dd24eb1150dbd7ba9f006646afcbeef170d63675151cd30d8882013381d",
+      "ch5-define-library-and-factory": "41f479b225e70d1847dbc28b4acd12db8da60d903e64f151e2351175a455ca4a",
+      "ch5-instantiate-composite": "49fdd68999fdca6cb46ef045fda31471eb7ad9227b9e8c2ef6304420fe6ef27e",
+      "ch5-render-reused-composite": "0112463f2a0bc2cf87b015c6691ba017a56561627f62d37af1a80afb3772b5a8",
+      "ch5-show-public-surface": "2018de2a80567ace5cdfd2c298cc37d45fa25bff67b37a38ad85dd844b5756b4",
+      "ch5-show-reused-composite-audit": "2d6c1bdc6105b75ccf1b242370c5e64e154560fa61f38cf496346c58846ea08c"
+    },
+    "generator_sha256": "28f3fc9079475e2ab61f153c7abf3bf2a21dd3be9a13fc6cc8ba0a16a2dd0f01",
+    "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+  },
+  "metadata_rebind": {
+    "executed_generator_sha256": "28f3fc9079475e2ab61f153c7abf3bf2a21dd3be9a13fc6cc8ba0a16a2dd0f01",
+    "kind": "source_only_formatting_and_checker_correction",
+    "numerical_artifacts_unchanged": true,
+    "reason": "normalize QMD end-of-file whitespace and enforce the exact Chapter-owned artifact inventory without changing executable cells",
+    "source_receipt_sha256": "ca4bd9f7ca712912fb641fef063636830b9d0e98ba2b31b6f97acf55875326d0"
+  },
+  "schema": "scnsim.engineer_chapter5_artifacts.v1"
+}
