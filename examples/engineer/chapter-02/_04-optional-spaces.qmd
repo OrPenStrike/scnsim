@@ -47,11 +47,11 @@ optional_grid_sweep = run.evaluate(
 
 ```{python}
 #| id: ch2-show-optional-grid
-display(optional_grid_sweep.show())
+display(optional_grid_sweep.plot())
 optional_grid_frequency = optional_grid_sweep.collect(
     quantity=root_spec.frequency
 )
-optional_grid_figure = optional_grid_frequency.show(
+optional_grid_figure = optional_grid_frequency.plot(
     x=capacitance,
     y=inductance,
 )
@@ -65,7 +65,7 @@ listed_pair_sweep = run.evaluate(
     root_spec,
     parameters=listed_pairs,
 )
-listed_pair_sweep.show()
+listed_pair_sweep.plot()
 ```
 
 ::: {.content-visible when-format="html"}

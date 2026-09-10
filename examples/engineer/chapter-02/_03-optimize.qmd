@@ -65,7 +65,7 @@ winner_root = run.evaluate(
 )
 display(winner_root.frequency)
 display(winner_root.linewidth)
-winner_root.show()
+winner_root.plot()
 ```
 
 Render that exact returned `ParameterSet` on the same Plan. The schematic is

@@ -53,11 +53,11 @@ quantity already requested by `root_spec`; it launches no new calculation.
 
 ```{python}
 #| id: ch2-show-capacitance-sweep
-display(capacitance_sweep.show())
+display(capacitance_sweep.plot())
 capacitance_frequency = capacitance_sweep.collect(
     quantity=root_spec.frequency
 )
-capacitance_sweep_figure = capacitance_frequency.show(x=capacitance)
+capacitance_sweep_figure = capacitance_frequency.plot(x=capacitance)
 capacitance_sweep_figure
 ```
 

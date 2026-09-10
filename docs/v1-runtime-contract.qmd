@@ -2176,10 +2176,11 @@ audit surface.
 
 ### Display is explicit
 
-`result.show()` returns the actual Figure, Drawing, or HTML presentation object.
-Notebook and interactive frontends may display that object. Headless use simply
-returns it and never claims that a window opened. Presentation cannot execute,
-interpolate, or alter result identity.
+Numeric `result.show()` displays one native Plotly Figure and returns `None`, so
+a final notebook expression does not trigger a duplicate MIME display. Numeric
+`result.plot()` returns the Figure without displaying it. Diagram and HTML
+presentation objects retain their documented return behavior. Presentation
+cannot execute, interpolate, or alter result identity.
 
 `plot()` is not a universal Result method. Only a Result subtype with a natural
 figure contract exposes it. Plot methods return the supported figure object so
@@ -2318,27 +2319,35 @@ reason discriminator (`topology`, `load_or_ptc`, `reference_plane`,
 prefix that remained comparable; it is neither `None` nor a fabricated
 residual.
 
-Batch display supports both declared traces and complete-matrix inspection:
+Batch display supports declared traces, selected matrix channels, and
+exact-frequency complete-matrix inspection through native Plotly Figures:
 
 ```python
-hb.show(theme=Theme.AUTO)  # magnitude="linear"
-hb.show(magnitude="db", theme=Theme.DARK)
-hb.cases["dc_pump_a_low"].show(theme=Theme.LIGHT)
-hb.cases["dc_pump_a_low"].s.show(magnitude="db", theme=Theme.AUTO)
+figure = hb.plot(theme=Theme.AUTO)  # detached; magnitude="linear"
+hb.show(magnitude="db", theme=Theme.DARK)  # displays once; returns None
+case_figure = hb.cases["dc_pump_a_low"].plot(theme=Theme.LIGHT)
+matrix_figure = hb.cases["dc_pump_a_low"].s.plot(
+    input_channel=("signal_in", (0,)),
+    output_channel=("signal_out", (0,)),
+    magnitude="db",
+)
 ```
 
-When traces are declared, `hb.show()` creates one panel per trace and overlays
-the cases in declaration order. With no named traces, it expands every element
-of each requested selected-view response matrix and overlays the same cases.
-An overlay requires identical selected-view port, mode tuple, signed-frequency,
-reference-plane, reference-matrix, and wave-normalization identities across
-the cases. The request-global pump axes normally establish those identities;
-any backend mismatch fails the presentation with the exact mismatched identity
-rather than drawing incomparable lines. The full-matrix fallback applies the
-same rule. It does not guess S21, truncate the matrix, rerun a request,
-interpolate, or mix backend-native evidence into the selected-view plot.
+When traces are declared, `hb.plot()` creates one panel per trace and overlays
+the cases in declaration order; `trace="signal_gain"` selects one declared
+trace. With no named traces, the default selects the first stored input/output
+channel pair and labels that exact pair. Callers select any other pair through
+`input_channel=` and `output_channel=`; the complete stored channel inventory
+remains inspectable in Figure metadata. SCNSim does not materialize a hidden
+Cartesian dropdown or guess S21. Every curve keeps its native grid and case
+identity without interpolation, and presentation never mixes backend-native
+evidence into the selected-view plot. Native `add_to()` overlays bind both
+axes' physical meanings, display units, and source Result/View/case identity.
+Compatible frequency coordinates are converted to the subplot's established
+display unit before insertion; parameter refs and categorical channel bases
+must match exactly. Rejection occurs before mutating the caller Figure.
 
-For a partially successful batch, `hb.show()` plots only the successful
+For a partially successful batch, `hb.plot()` plots only the successful
 outcomes and appends a visible failed-case summary containing every failed case
 ID and typed reason. It never silently omits a declared case. An all-failed
 numerical batch produces the failure summary without inventing an empty plot or
@@ -2351,6 +2360,15 @@ or clipping, and its phase is shown as undefined rather than zero. This option
 changes presentation only. Dimensionful Y/Z results retain their
 Quantity-valued linear presentation.
 
+`OptimizationResult.plot()` presents completed total candidate cost and an
+exact winner summary. Completed objective cost, normalized residual, and
+parameter histories require `kind="objective", objective=...`,
+`kind="residual", objective=...`, or `kind="parameter", parameter=...`.
+`kind="table"` presents every retained component term, value, View lineage,
+status, and failure, together with each component's evaluated value,
+normalized residual, weighted cost, and status. None of these surfaces
+observes a live optimizer.
+
 ### Independent Direct and HB grids {#independent-direct-and-hb-grids}
 
 Direct and HB Results retain the exact grids requested by their own Specs.
@@ -2358,7 +2376,7 @@ SCNSim does not create a hidden shared grid, interpolate one Result onto the
 other, or derive pointwise residuals merely because both Results describe the
 same selected network.
 
-`show()` and Report presentation may overlay traces that use different grids;
+`plot()`, `show()`, and Report presentation may overlay traces that use different grids;
 each curve keeps its own coordinates and identity. Numerical comparison is an
 explicit downstream calculation on already materialized typed scalar
 Quantities with compatible dimensionality. V1 adds no general `compare()` API
@@ -2389,14 +2407,23 @@ turns a Design Target into a pass/fail Gate.
 
 `ReportResult.save(path)` accepts only a new `.html` path whose parent already
 exists. It refuses overwrite, writes atomically, and returns a `Path`. The
-single self-contained HTML embeds plots, summary tables, and every
+single self-contained HTML embeds Plotly plots, summary tables, and every
 source identity, but not complete large raw arrays, workspace links,
-timestamps, or inferred PASS/FAIL claims.
+timestamps, or inferred PASS/FAIL claims. It bundles Plotly JavaScript once,
+uses no CDN, and does not open a browser. User-derived labels and failure text
+are escaped before entering the document.
 
 `ReportSpec.theme` accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK`.
-The report body, tables, and embedded Direct/HB SVG share that one theme.
-`AUTO` uses self-contained `prefers-color-scheme` rules with a readable light
-fallback; explicit themes stay fixed regardless of host UI.
+The report body, tables, and embedded Direct/HB Figures share that one theme.
+For numeric Figures, `AUTO` resolves to Plotly's configured template when each
+Figure is built and does not track later browser/OS theme changes. Report
+assembly resolves `AUTO` once from that same template and applies its paper,
+text, grid, and first accent colors to the surrounding body and tables.
+Omitted colors in a custom template use Plotly's ordinary light fallback;
+unrecognized custom background syntax affects only the browser control-scheme
+hint, not the resolved body color. Explicit themes stay fixed. Report HTML adds
+no custom JavaScript solely for theme tracking; independent diagram SVG
+behavior remains unchanged.
 
 An invalid suffix raises `ValueError`, a missing parent raises
 `FileNotFoundError`, and an existing target raises `FileExistsError`; other

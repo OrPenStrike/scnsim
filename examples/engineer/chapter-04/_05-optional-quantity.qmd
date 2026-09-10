@@ -26,7 +26,7 @@ display(transmission_at_6_2.value)
 display(transmission_at_6_2.magnitude)
 display(transmission_at_6_2.real)
 display(transmission_at_6_2.imag)
-transmission_at_6_2.show()
+transmission_at_6_2.plot()
 ```
 
 ::: {.content-visible when-format="html"}

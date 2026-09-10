@@ -53,23 +53,80 @@ mismatch fails verification instead of returning a partial typed object.
 
 ## Keep presentation downstream of execution
 
-Matplotlib renders numerical `show()` surfaces. `magnitude="linear" | "db"`
-changes only displayed S magnitude; source arrays remain unchanged. Every
-theme entry accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK` and
-raises `TypeError` for raw strings. Matplotlib still returns a real `Figure`,
-Schemdraw a real `Drawing`, and HTML presentation its HTML object.
+Plotly renders every numerical Result surface. `plot()` returns one detached
+native `plotly.graph_objects.Figure` without displaying it; `show()` displays
+the same presentation exactly once and returns `None`, preventing a final
+notebook expression from displaying its MIME representation a second time.
+Editing a Figure returned by `plot()` cannot mutate verified Result arrays,
+evidence, or identity. `add_to(fig, row=..., col=..., ...)` adds one
+explicitly selected trace, heatmap, or table to a compatible caller-owned
+subplot and returns the same Figure. It never replaces the caller's template,
+layout, or unrelated traces. Every inserted native trace carries its complete
+x/y physical semantics, display units, and source Result/View/point identity.
+An occupied subplot must have compatible axis semantics before any mutation;
+frequency coordinates are converted to its established compatible display
+unit, while parameter refs and categorical channel bases must match exactly.
 
-`Theme.AUTO` uses a light-styled portable static fallback and a self-contained
-SVG/HTML rich representation whose foreground and background switch together
-under `prefers-color-scheme: dark`. `Theme.LIGHT` and `Theme.DARK` remain
-fixed. Existing `Drawing.save()` and `Figure.savefig()` preserve an explicit
-theme; `AUTO` saves the light fallback. Presentation does not read environment
-variables or mutate global Matplotlib/Schemdraw configuration.
+Matrix response plots select channels from the stored
+`MatrixView.input_channels` and `output_channels`. An omitted channel pair uses
+the first stored pair and labels it visibly; a coordinate string must resolve
+uniquely, while `(coordinate, mode)` selects one exact channel. The default
+response contains magnitude and wrapped phase; an explicit component creates a
+single-component figure. Exact-frequency table and heatmap views use the whole
+stored channel-ordered matrix and never interpolate. Tables retain real and
+imaginary values with units. Heatmaps require one real-valued component.
+Incompatible or unused arguments fail instead of being ignored.
 
-Notebook rich display wraps the same SVG in self-contained zoom, pan, copy,
-reset, and open controls. If JavaScript or clipboard access is blocked,
-ordinary scrolling and the static SVG remain readable. These controls do not
-alter the returned object, its geometry, a report, or static output.
+S magnitude accepts `magnitude="linear" | "db"`; dB is
+$20\log_{10}|S|$. Exact zero remains negative infinity and has undefined
+phase. A dB response whose complete finite span is under 0.1 dB starts with a
+0.1 dB viewport so numerical roundoff is not magnified into a visual feature;
+the exact values and hover data are unchanged, and callers may zoom or update
+the detached Figure. Dimensionful Y/Z families remain linear because no reference-unit API
+exists. Scalar quantities use evidence tables, not invented curves. Sweep,
+operator, HB, and completed Optimization presentations use the same trace,
+heatmap, and table builders; missing and failed values remain explicit gaps or
+status rows rather than zeros. A partial scalar Parameter field pairs its gaps
+with visible source-index, parameter-identity, and typed-failure evidence; an
+all-failed field is a status table rather than an empty curve or exception.
+
+`OptimizationResult.plot()` shows completed total-cost history plus the exact
+winner summary. `kind="objective"` or `kind="residual"` requires one explicit
+`objective=` ID, `kind="parameter"` requires one `parameter=ParameterRef`, and
+`kind="table"` shows each candidate status/cost, retained objective value,
+normalized residual, weighted cost, component status, and every term value,
+View lineage, status, and failure. These are views of the completed ledger,
+never live optimizer progress.
+
+Numerical presentation lazily imports Plotly only when `plot()`, `show()`,
+`add_to()`, or report assembly is requested. Solve, evaluate, optimize, and
+resolve do not import Plotly or Kaleido. Native Plotly HTML export is supported
+without a browser or network dependency. Static Plotly export is optional and
+requires separately installed Kaleido/Chrome support; SCNSim adds no export
+wrapper and never opens a browser or downloads an engine automatically.
+
+```bash
+uv sync --extra static-export
+```
+
+This installs Kaleido; a compatible Chrome/Chromium installation remains an
+explicit host prerequisite for `Figure.write_image(...)`.
+
+Every numerical theme entry accepts only `Theme.AUTO`, `Theme.LIGHT`, or
+`Theme.DARK` and raises `TypeError` for raw strings. `AUTO` resolves at Figure
+construction to Plotly's configured default template; detached Figures do not
+track later OS/browser media changes. `LIGHT` and `DARK` are deterministic.
+Report assembly resolves `AUTO` once from that same configured Plotly template
+and applies its paper background, text, grid, and first accent colors to the
+report body and tables; it does not add browser/OS theme tracking. A custom
+template with an omitted body color uses Plotly's ordinary light fallback.
+The independent SVG diagram surface retains its existing adaptive `AUTO`
+semantics, Schemdraw `Drawing`, and Matplotlib-backed helpers.
+
+Notebook diagram display continues to wrap the same SVG in self-contained
+zoom, pan, copy, reset, and open controls. If JavaScript or clipboard access is
+blocked, ordinary scrolling and the static SVG remain readable. These controls
+do not alter the returned object, its geometry, a report, or static output.
 
 The light and dark palettes share one paired ten-color cycle. Changing theme
 cannot change arrays, curve/case order, line count, labels, diagram geometry,
@@ -521,8 +578,9 @@ remain separate lifecycle steps.
 caller, and `ReportSpec.theme` selects the same strict presentation enum used
 by diagrams and figures. Report assembly verifies result identities, preserves
 each native grid, and records every failed outcome carried by an input HB
-batch. Its HTML, tables, and embedded Direct/HB SVG use one theme; `AUTO`
-adapts in the browser while explicit themes remain fixed. It does not search
+batch. Its HTML and embedded native Plotly Figures use one theme; `AUTO`
+resolves when each Figure is constructed while explicit themes remain fixed.
+It does not search
 the workspace, infer a latest Result, run an analysis, interpolate curves, or
 decide whether a Design Target passed.
 

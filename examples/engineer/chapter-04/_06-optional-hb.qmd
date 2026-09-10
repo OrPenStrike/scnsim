@@ -69,7 +69,8 @@ hb = run.solve(transformed_view, hb_spec)
 
 ```{python}
 #| id: ch4-show-independent-direct-and-hb
-optional_direct.traces["transmission"].show(
+optional_direct.traces["transmission"].plot(
+    component="magnitude",
     magnitude="db",
     theme=Theme.AUTO,
 )
@@ -77,7 +78,8 @@ display(optional_direct.s.view)
 
 pump_off = hb.cases["pump_off"]
 if pump_off.succeeded:
-    pump_off.traces["transmission"].show(
+    pump_off.traces["transmission"].plot(
+        component="magnitude",
         magnitude="db",
         theme=Theme.AUTO,
     )

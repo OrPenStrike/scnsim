@@ -95,7 +95,7 @@ from .errors import (
     ScaffoldUnavailableError,
     UnsupportedSingularCapacitanceForDiagonalRootV1,
 )
-from .presentation import _figure_data_uri, _report_html
+from .presentation import _report_html
 from .results import (
     BiasState,
     DirectQuantityResult,
@@ -918,74 +918,40 @@ class CircuitRun:
             "<tr>" + "".join(f"<td>{escape(getattr(result.identity, field))}</td>" for field in ("plan_sha256", "request_sha256", "attempt_sha256", "result_sha256")) + "</tr>"
             for result in spec.inputs
         )
-        sections: list[str] = []
+        figures: list[tuple[str, object]] = []
         for result in spec.inputs:
             if isinstance(result, DirectSolveResult):
-                figure = result.s.show(magnitude="db", theme=spec.theme)
-                import matplotlib.pyplot as plt
-
-                try:
-                    data_uri = _figure_data_uri(figure, spec.theme)
-                finally:
-                    plt.close(figure)
-                sections.append(
-                    '<h2>Direct response</h2><img alt="Direct S magnitude and phase" '
-                    f'src="{data_uri}">'
-                )
+                figures.append(("Direct response", result.s.plot(magnitude="db", theme=spec.theme)))
             elif isinstance(result, HBBatchResult):
-                case_rows = "".join(
-                    "<tr>"
-                    f"<td>{escape(outcome.id)}</td>"
-                    f"<td>{'success' if outcome.succeeded else 'failure'}</td>"
-                    f"<td>{escape(outcome.bias_state.value) if outcome.succeeded else '&mdash;'}</td>"
-                    f"<td>{escape(outcome.pump_state.value) if outcome.succeeded else '&mdash;'}</td>"
-                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.kind)}</td>"
-                    f"<td>{'&mdash;' if outcome.succeeded else escape(outcome.failure.stage)}</td>"
-                    f"<td>{'&mdash;' if outcome.succeeded else escape(str(outcome.failure))}</td>"
-                    "</tr>"
-                    for outcome in result.cases.values()
-                )
-                section = (
-                    "<h2>HB batch</h2>"
-                    "<table><thead><tr><th>Case</th><th>Status</th><th>Bias</th><th>Pump</th>"
-                    "<th>Failure kind</th><th>Failure stage</th><th>Failure message</th></tr></thead>"
-                    f"<tbody>{case_rows}</tbody></table>"
-                )
+                hb_presentation: dict[str, object] = {"theme": spec.theme}
                 if any(outcome.succeeded for outcome in result.cases.values()):
-                    figure = result.show(magnitude="db", theme=spec.theme)
-                    import matplotlib.pyplot as plt
-
-                    try:
-                        data_uri = _figure_data_uri(figure, spec.theme)
-                    finally:
-                        plt.close(figure)
-                    section += (
-                        '<img alt="HB selected S magnitude and phase" '
-                        f'src="{data_uri}">'
-                    )
-                sections.append(section)
-            elif isinstance(result, DiagonalRootResult):
-                sections.append(
-                    "<h2>Loaded root</h2><table><tbody>"
-                    f"<tr><th>Frequency</th><td>{escape(str(result.frequency))}</td></tr>"
-                    f"<tr><th>Linewidth</th><td>{escape(str(result.linewidth))}</td></tr>"
-                    "</tbody></table>"
-                )
+                    hb_presentation["magnitude"] = "db"
+                figures.append(("HB batch", result.plot(**hb_presentation)))
+            elif isinstance(result, DirectQuantityResult):
+                figures.append(("Direct scalar quantity", result.plot(theme=spec.theme)))
             elif isinstance(result, OptimizationResult):
-                bindings = "".join(
-                    f"<li>{escape(parameter.definitions_id)}.{escape(parameter.id)} = {escape(str(value))}</li>"
-                    for parameter, value in result.best.parameters.values.items()
+                figures.extend((
+                    ("Optimization history", result.plot(kind="history", theme=spec.theme)),
+                    ("Optimization term evidence", result.plot(kind="table", theme=spec.theme)),
+                ))
+            elif isinstance(result, OperatorResult):
+                figures.extend(
+                    (f"Operator at {point.frequency}", result.plot(frequency=point.frequency, theme=spec.theme))
+                    for point in result.points
                 )
-                sections.append(
-                    "<h2>Optimization winner</h2>"
-                    f"<p>Cost: {escape(str(result.best.cost))}</p><ul>{bindings}</ul>"
-                )
-        embedded = "".join(sections)
+            elif isinstance(result, ParameterSweepResult):
+                figures.append(("Parameter sweep outcomes", result.plot(theme=spec.theme)))
+        from ._numeric_presentation import figure_fragments, report_palette
+
+        embedded = figure_fragments(figures)
         body = (
             "<h1>SCNSim report</h1><table><thead><tr><th>Plan</th><th>Request</th><th>Attempt</th><th>Result</th></tr></thead>"
             f"<tbody>{rows}</tbody></table>{embedded}"
         )
-        html = _report_html(body, spec.theme)
+        palette, color_scheme = report_palette(spec.theme)
+        html = _report_html(
+            body, spec.theme, palette=palette, color_scheme=color_scheme
+        )
         return _verified_result(ReportResult, html=html, inputs=spec.inputs)
 
     def _require_ref(self, ref: NetworkViewRef) -> None:
@@ -2085,15 +2051,51 @@ class CircuitRun:
                         s[:, coordinates.index(output_coordinate), coordinates.index(input_coordinate)],
                         "dimensionless",
                     ),
+                    _parent_identity=identity,
+                    _presentation={
+                        "id": identifier,
+                        "family": "S",
+                        "input_channel": {"coordinate": input_coordinate, "mode": []},
+                        "output_channel": {"coordinate": output_coordinate, "mode": []},
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
                 )
 
             return _verified_result(
                 DirectSolveResult,
                 identity=identity,
                 frequencies=frequencies,
-                s=_verified_result(ScatteringMatrixResult, view=view(s, "dimensionless")),
-                y=_verified_result(MatrixFamilyResult, view=view(y, "siemens")),
-                z=_verified_result(MatrixFamilyResult, view=view(z, "ohm")),
+                s=_verified_result(
+                    ScatteringMatrixResult,
+                    view=view(s, "dimensionless"),
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "S",
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
+                ),
+                y=_verified_result(
+                    MatrixFamilyResult,
+                    view=view(y, "siemens"),
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "Y",
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
+                ),
+                z=_verified_result(
+                    MatrixFamilyResult,
+                    view=view(z, "ohm"),
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "Z",
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
+                ),
                 traces=trace_results,
             )
         if kind == "diagonal_root":
@@ -2109,6 +2111,11 @@ class CircuitRun:
                 magnitude=None,
                 real=None,
                 imag=None,
+                _presentation={
+                    "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    "spec": request.get("spec"),
+                },
             )
         if kind == "hybridized_pole":
             scalars = result["scalar_catalog"]
@@ -2119,6 +2126,11 @@ class CircuitRun:
                 frequency=quantity_from_envelope(scalars["frequency"], registry=units.registry),
                 linewidth=quantity_from_envelope(scalars["linewidth"], registry=units.registry),
                 slope=complex_quantity_from_envelope(scalars["slope"], registry=units.registry),
+                _presentation={
+                    "view": request.get("view"),
+                    "ref_lineage": result.get("ref_lineage"),
+                    "spec": request.get("spec"),
+                },
             )
         if kind == "transfer_zero":
             scalars = result["scalar_catalog"]
@@ -2129,6 +2141,11 @@ class CircuitRun:
                 frequency=quantity_from_envelope(scalars["frequency"], registry=units.registry),
                 numerator_slope=complex_quantity_from_envelope(scalars["numerator_slope"], registry=units.registry),
                 denominator=complex_quantity_from_envelope(scalars["denominator"], registry=units.registry),
+                _presentation={
+                    "view": request.get("view"),
+                    "ref_lineage": result.get("ref_lineage"),
+                    "spec": request.get("spec"),
+                },
             )
         if kind == "residue_normalized_coupling":
             scalars = result["scalar_catalog"]
@@ -2139,6 +2156,11 @@ class CircuitRun:
                 magnitude=quantity_from_envelope(scalars["magnitude"], registry=units.registry),
                 branch_a_residue=complex_quantity_from_envelope(scalars["branch_a_residue"], registry=units.registry),
                 branch_b_residue=complex_quantity_from_envelope(scalars["branch_b_residue"], registry=units.registry),
+                _presentation={
+                    "view": request.get("view"),
+                    "ref_lineage": result.get("ref_lineage"),
+                    "spec": request.get("spec"),
+                },
             )
         if kind == "response_element":
             scalars = result["scalar_catalog"]
@@ -2150,6 +2172,11 @@ class CircuitRun:
                 magnitude=quantity_from_envelope(scalars["magnitude"], registry=units.registry),
                 real=quantity_from_envelope(scalars["real"], registry=units.registry),
                 imag=quantity_from_envelope(scalars["imag"], registry=units.registry),
+                _presentation={
+                    "view": request.get("view"),
+                    "ref_lineage": result.get("ref_lineage"),
+                    "spec": request.get("spec"),
+                },
             )
         if kind == "operator":
             arrays = result["array_catalog"]
@@ -2657,6 +2684,16 @@ class CircuitRun:
                     TraceResult,
                     frequencies=frequencies,
                     value=units.registry.Quantity(values, "dimensionless"),
+                    _parent_identity=identity,
+                    _presentation={
+                        "id": identifier,
+                        "family": "S",
+                        "case_id": case_id,
+                        "input_channel": {"coordinate": input_channel[0], "mode": list(input_channel[1])},
+                        "output_channel": {"coordinate": output_channel[0], "mode": list(output_channel[1])},
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
                 )
             states = decoded_arrays["states"]
             if states.ndim != 2 or states.shape[1] != len(state_node_map):
@@ -2683,9 +2720,36 @@ class CircuitRun:
                     view=selected_s,
                     backend_native=native_s,
                     reconciliation=recon,
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "S",
+                        "case_id": case_id,
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
                 ),
-                y=_verified_result(MatrixFamilyResult, view=selected_y),
-                z=_verified_result(MatrixFamilyResult, view=selected_z),
+                y=_verified_result(
+                    MatrixFamilyResult,
+                    view=selected_y,
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "Y",
+                        "case_id": case_id,
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
+                ),
+                z=_verified_result(
+                    MatrixFamilyResult,
+                    view=selected_z,
+                    _parent_identity=identity,
+                    _presentation={
+                        "family": "Z",
+                        "case_id": case_id,
+                        "view": request.get("view"),
+                        "ref_lineage": result.get("ref_lineage"),
+                    },
+                ),
                 traces=traces,
                 states=units.registry.Quantity(states, "weber"),
                 state_node_map=tuple(state_node_map),

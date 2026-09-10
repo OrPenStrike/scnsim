@@ -53,9 +53,9 @@ raw_transmission = raw_direct.traces["transmission"]
 ptc_direct = run.solve(ptc_view, ptc_direct_spec)
 ptc_transmission = ptc_direct.traces["transmission"]
 display(raw_direct.s.view)
-raw_transmission.show(magnitude="db", theme=Theme.AUTO)
+raw_transmission.plot(component="magnitude", magnitude="db", theme=Theme.AUTO)
 display(ptc_direct.s.view)
-ptc_transmission.show(magnitude="db", theme=Theme.AUTO)
+ptc_transmission.plot(component="magnitude", magnitude="db", theme=Theme.AUTO)
 ```
 
 ::: {.content-visible when-format="html"}

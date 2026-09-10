@@ -29,7 +29,7 @@ baseline_root = run.evaluate(
 #| id: ch1-show-baseline-root
 display(baseline_root.frequency)
 display(baseline_root.linewidth)
-baseline_root.show()
+baseline_root.plot()
 ```
 
 ::: {.content-visible when-format="html"}

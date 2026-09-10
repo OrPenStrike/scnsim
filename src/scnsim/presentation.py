@@ -8,12 +8,10 @@ does not change ordinary package import behavior.
 from __future__ import annotations
 
 import base64
-import re
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
 from hashlib import sha256
-from io import BytesIO
 from typing import Any
 
 
@@ -116,33 +114,6 @@ def _strip_svg_preamble(svg: str) -> str:
     if start < 0:
         raise ValueError("renderer did not produce SVG")
     return svg[start:]
-
-
-def _normalize_svg_ids(svg: str) -> str:
-    """Replace renderer-generated SVG IDs without changing their references."""
-
-    identifiers = tuple(dict.fromkeys(re.findall(r'\bid="([^"]+)"', svg)))
-    mapping = {
-        identifier: f"scnsim-svg-{index}"
-        for index, identifier in enumerate(identifiers)
-    }
-    normalized = re.sub(
-        r'\bid="([^"]+)"',
-        lambda match: f'id="{mapping[match.group(1)]}"',
-        svg,
-    )
-    normalized = re.sub(
-        r'((?:xlink:)?href)="#([^"]+)"',
-        lambda match: (
-            f'{match.group(1)}="#{mapping.get(match.group(2), match.group(2))}"'
-        ),
-        normalized,
-    )
-    return re.sub(
-        r'url\(#([^)]+)\)',
-        lambda match: f"url(#{mapping.get(match.group(1), match.group(1))})",
-        normalized,
-    )
 
 
 def _adaptive_svg(svg: str, theme: Theme) -> str:
@@ -317,16 +288,26 @@ def _html_fragment(fragment: str, theme: Theme) -> str:
     )
 
 
-def _report_html(body: str, theme: Theme) -> str:
+def _report_html(
+    body: str,
+    theme: Theme,
+    *,
+    palette: _Palette | None = None,
+    color_scheme: str | None = None,
+) -> str:
     checked = _require_theme(theme)
-    css = _theme_css(checked, selector=":root")
-    color_scheme = "light dark" if checked is Theme.AUTO else checked.value
+    if palette is None:
+        css = _theme_css(checked, selector=":root")
+        resolved_scheme = "light dark" if checked is Theme.AUTO else checked.value
+    else:
+        css = f":root{{{_theme_variables(palette)}}}"
+        resolved_scheme = color_scheme or "light"
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
-        f"<meta name=\"color-scheme\" content=\"{color_scheme}\">"
+        f"<meta name=\"color-scheme\" content=\"{resolved_scheme}\">"
         "<title>SCNSim report</title>"
         f"<style>{css}"
-        f"html{{color-scheme:{color_scheme};background:var(--scnsim-bg)}}"
+        f"html{{color-scheme:{resolved_scheme};background:var(--scnsim-bg)}}"
         "body{box-sizing:border-box;max-width:76rem;margin:0 auto;padding:2rem;"
         "font-family:system-ui,sans-serif;color:var(--scnsim-fg);background:var(--scnsim-bg)}"
         "table{border-collapse:collapse;margin-block:1rem}"
@@ -337,107 +318,6 @@ def _report_html(body: str, theme: Theme) -> str:
         "</style></head>"
         f"<body>{body}</body></html>"
     )
-
-
-@lru_cache(maxsize=1)
-def _themed_figure_class() -> type[Any]:
-    from matplotlib.figure import Figure
-
-    class _ThemedFigure(Figure):
-        def __init__(self, *args: object, theme: Theme, **kwargs: object) -> None:
-            self._scnsim_theme = _require_theme(theme)
-            kwargs.setdefault("facecolor", _palette(self._scnsim_theme).background)
-            super().__init__(*args, **kwargs)
-
-        def _repr_mimebundle_(
-            self,
-            include: object = None,
-            exclude: object = None,
-        ) -> dict[str, str]:
-            del include, exclude
-            svg = _figure_svg(self, self._scnsim_theme)
-            return {
-                "text/html": _notebook_svg_viewer(svg, self._scnsim_theme)
-            }
-
-        def _ipython_display_(self) -> None:
-            # Matplotlib's inline backend also registers PNG/SVG formatters for
-            # every Figure subclass.  The explicit display hook makes the
-            # adaptive HTML bundle the single Notebook representation.
-            from IPython.display import HTML, display
-
-            svg = _figure_svg(self, self._scnsim_theme)
-            display(HTML(_notebook_svg_viewer(svg, self._scnsim_theme)))
-
-        def savefig(self, *args: object, **kwargs: object) -> object:
-            background = _palette(self._scnsim_theme).background
-            kwargs["facecolor"] = background
-            kwargs["edgecolor"] = background
-            kwargs["transparent"] = False
-            return super().savefig(*args, **kwargs)
-
-    _ThemedFigure.__module__ = __name__
-    return _ThemedFigure
-
-
-def _themed_subplots(theme: Theme, *args: object, **kwargs: object) -> tuple[Any, Any]:
-    checked = _require_theme(theme)
-    import matplotlib.pyplot as plt
-
-    figure, axes = plt.subplots(
-        *args,
-        FigureClass=_themed_figure_class(),
-        theme=checked,
-        **kwargs,
-    )
-    palette = _palette(checked)
-    flattened = axes.flat if hasattr(axes, "flat") else (axes,)
-    for axis in flattened:
-        axis.set_prop_cycle(color=palette.cycle)
-    return figure, axes
-
-
-def _finish_figure(figure: Any, theme: Theme) -> Any:
-    palette = _palette(_require_theme(theme))
-    figure.patch.set_facecolor(palette.background)
-    for axis in figure.axes:
-        axis.set_facecolor(palette.background)
-        axis.tick_params(colors=palette.secondary)
-        axis.xaxis.label.set_color(palette.foreground)
-        axis.yaxis.label.set_color(palette.foreground)
-        axis.title.set_color(palette.foreground)
-        for spine in axis.spines.values():
-            spine.set_color(palette.grid)
-        for gridline in (*axis.get_xgridlines(), *axis.get_ygridlines()):
-            gridline.set_color(palette.grid)
-        legend = axis.get_legend()
-        if legend is not None:
-            legend.get_frame().set_facecolor(palette.background)
-            legend.get_frame().set_edgecolor(palette.grid)
-            for text in legend.get_texts():
-                text.set_color(palette.foreground)
-    for text in figure.texts:
-        text.set_color(palette.foreground)
-    return figure
-
-
-def _figure_svg(figure: Any, theme: Theme) -> str:
-    checked = _require_theme(theme)
-    output = BytesIO()
-    figure.savefig(
-        output,
-        format="svg",
-        facecolor=_palette(checked).background,
-        bbox_inches="tight",
-        metadata={"Date": None},
-    )
-    normalized = _normalize_svg_ids(output.getvalue().decode("utf-8"))
-    return _adaptive_svg(normalized, checked)
-
-
-def _figure_data_uri(figure: Any, theme: Theme) -> str:
-    svg = _figure_svg(figure, theme).encode("utf-8")
-    return "data:image/svg+xml;base64," + base64.b64encode(svg).decode("ascii")
 
 
 @lru_cache(maxsize=1)

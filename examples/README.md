@@ -52,7 +52,7 @@ wrappers, package source tree, environment, exact result identities, and these
 public artifacts:
 
 - `01-authoring.svg`: certified authoring projection of the baseline Plan;
-- `01-s11-baseline.svg` and `01-s11-selected.svg`: public `.s.show()` magnitude
+- `01-s11-baseline.svg` and `01-s11-selected.svg`: public `.s.plot()` magnitude
   and phase presentations, with a fixed ±0.05 dB display-only magnitude range;
 - `01-s11-data.csv`: unrounded complex baseline and selected one-port response
   on the exact 401-point grid; and
@@ -61,8 +61,8 @@ public artifacts:
 
 The ideal lossless one-port magnitude is approximately 0 dB. The phase remains
 readable; its wrapped discontinuity is ordinary angle presentation, not a
-numerical failure. The horizontal axis contains frequency in Hz and Matplotlib
-shows its `1e9` scale factor. Numerical plots are typed Result presentations,
+numerical failure. Plotly displays the horizontal axis in GHz while the Result
+retains its declared frequency units. Numerical plots are typed Result presentations,
 not ASCDLS certificates. The loaded root is a separate Result and is not
 inferred from a dip or from the unloaded LC formula.
 
@@ -176,7 +176,10 @@ persists Results and the standalone Report, while the second reconstructs and
 calls only `resolve()` against the unchanged shared workspace. Its manifest
 records both kernel identities, the exact matching Result identity, and the
 source-only checker rebind separately from the generator that performed the
-execution.
+execution. Every source-only rebind preserves an immutable historical
+execution-payload seal and accepts only the exact reviewed teaching-cell
+transitions; changing a computation/result/identity payload cannot be
+reclassified as presentation-only by rerunning the checker.
 
 ## Former Chapter URL guides
 

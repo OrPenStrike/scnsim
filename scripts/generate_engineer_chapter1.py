@@ -155,7 +155,7 @@ def _environment() -> dict[str, str]:
     if Path(scnsim.__file__).resolve() != expected:
         raise RuntimeError("generation imported scnsim from outside this checkout")
     versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("matplotlib", "numpy", "pint", "schemdraw"):
+    for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
     return versions
 
@@ -285,7 +285,7 @@ def _write_outputs(namespace: dict[str, object], exports: Path) -> dict[str, obj
         ("selected_s11_figure", "01-s11-selected.svg"),
     ):
         figure = namespace[variable]
-        figure.savefig(exports / name, format="svg", metadata={"Date": None})
+        figure.write_image(exports / name, format="svg")
 
     baseline_response = namespace["baseline_response"]
     selected_response = namespace["selected_response"]

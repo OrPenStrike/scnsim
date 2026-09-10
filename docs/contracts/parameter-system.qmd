@@ -256,21 +256,24 @@ The public read-only surface is:
 
 ```text
 ParameterSweepResult.points -> ParameterPointAccessor
-ParameterSweepResult.show() -> HtmlPresentation
+ParameterSweepResult.plot(...) -> plotly.graph_objects.Figure
+ParameterSweepResult.show(...) -> None
 ParameterSweepResult.select(
     *, parameters: ParameterSet,
 ) -> ParameterSweepSelection
 ParameterSweepResult.collect(
     *, quantity: QuantitySelector,
 ) -> ParameterField
-ParameterSweepSelection.show() -> HtmlPresentation
+ParameterSweepSelection.plot(...) -> plotly.graph_objects.Figure
+ParameterSweepSelection.show(...) -> None
 ParameterSweepSelection.collect(
     *, quantity: QuantitySelector,
 ) -> ParameterField
 ParameterSweepSelection.points -> Sequence[ParameterPointOutcome]
-ParameterField.show(
+ParameterField.plot(
     *, x: ParameterRef, y: ParameterRef | None = None,
-) -> matplotlib.figure.Figure
+) -> plotly.graph_objects.Figure
+ParameterField.show(...) -> None
 ```
 
 `ParameterPointAccessor` is a read-only lazy accessor with deterministic
@@ -318,18 +321,22 @@ quantity that was requested but is missing at a numerically failed point
 instead produces a masked entry linked to that preserved point failure. The
 field retains units, original parameter-axis order and sample positions,
 source indices, batch and point identities, and repeats.
+Plot presentation keeps a failed sample as a non-numeric gap and displays its
+source index, parameter identity, and typed reason. If every collected sample
+failed, the default presentation is the complete status table rather than a
+fabricated zero curve or a missing-data exception.
 
 A complete Cartesian slice may be shown as a one-axis curve or labeled
 two-axis grid after every other varying parameter axis has been fixed by exact
 selection. Repeated parameter values remain distinct sample cells rather than
 interpolation intervals. A listed, scattered, empty, or incomplete slice stays
 an indexed point collection; it is not reshaped, averaged, or interpolated.
-For `ParameterField.show()`, leaving a non-displayed varying parameter axis
+For `ParameterField.plot()`, leaving a non-displayed varying parameter axis
 ambiguous, requesting this minimal plot surface for a non-scalar quantity, or
 having no selected samples raises `ValueError`. Wrong argument types raise
 `TypeError`. Frequency, channel, and HB axes cannot be implicitly dropped.
-`HtmlPresentation` and the Matplotlib `Figure` are the existing real
-presentation surfaces; displaying them never starts analysis.
+Native Plotly Figures are the numerical presentation surface; displaying them
+never starts analysis.
 
 An exact fixed-axis workflow is therefore:
 

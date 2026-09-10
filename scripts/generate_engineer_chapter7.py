@@ -109,7 +109,7 @@ def _environment() -> dict[str, str]:
     import scnsim
     if Path(scnsim.__file__).resolve() != (ROOT / "src" / "scnsim" / "__init__.py").resolve(): raise RuntimeError("generation imported scnsim from outside this checkout")
     values = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("matplotlib", "numpy", "pint", "schemdraw"): values[name] = importlib.metadata.version(name)
+    for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"): values[name] = importlib.metadata.version(name)
     return values
 
 
@@ -151,7 +151,7 @@ def _write_points(namespace: dict[str, object], output: Path) -> tuple[list[dict
                 trace = result.traces[trace_id]; frequencies = np.asarray(trace.frequencies.to("gigahertz").magnitude); values = np.asarray(trace.value.to("dimensionless").magnitude)
                 for frequency, value in zip(frequencies, values, strict=True): writer.writerow((label, point.source_index, "success", trace_id, float(frequency), float(value.real), float(value.imag), float(abs(value))))
             plot_name = {"baseline": "07-baseline-reflection.svg", "length_1p8_mm": "07-length-1p8-mm-reflection.svg", "capacitance_times_170_over_175": "07-capacitance-times-170-over-175-reflection.svg"}[label]
-            result.traces["s_readout_head_from_readout_head"].show(magnitude="db").savefig(output / plot_name, bbox_inches="tight"); plots.append(plot_name)
+            result.traces["s_readout_head_from_readout_head"].plot(component="magnitude", magnitude="db").write_image(output / plot_name, format="svg"); plots.append(plot_name)
             observations.append({"label": label, "status": "success", "coordinates": coordinates, "trace_ids": list(trace_ids), "identity": identity})
     lines = ["### Three exact Direct points", "", "| point | status | complete named S channels |", "|---|---|---:|"]
     for row in observations: lines.append(f"| `{row['label']}` | {row['status']} | {len(row.get('trace_ids', ())) if row['status'] == 'success' else '—'} |")

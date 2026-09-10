@@ -67,7 +67,7 @@ direct_points = run.solve(
     direct_spec,
     parameters=parameter_points,
 )
-direct_points.show()
+direct_points.plot()
 ```
 
 ```{python}
@@ -77,7 +77,10 @@ for label, point in zip(point_labels, direct_points.points, strict=True):
         display({label: point.failure})
         continue
     display({"point": label, "matrix coordinates": point.result.s.view.coordinates})
-    display(point.result.traces["s_readout_head_from_readout_head"].show(magnitude="db"))
+    display(point.result.traces["s_readout_head_from_readout_head"].plot(
+        component="magnitude",
+        magnitude="db",
+    ))
 ```
 
 The plotted `[0,0]`-position example is explicitly named

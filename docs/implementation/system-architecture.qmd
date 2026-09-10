@@ -17,7 +17,7 @@ from ordinary Python discovery:
 - workspace locking, request/attempt discovery, receipt verification, and
   exact `resolve()`;
 - AEDT Q2D parsing; and
-- Matplotlib and Schemdraw presentation.
+- Plotly numerical presentation and Matplotlib/Schemdraw diagram presentation.
 
 Julia never imports Notebook objects or calls a Python objective callback. It
 receives one sealed request and owns the numerical work inside that request:
@@ -55,7 +55,7 @@ validator. CircuitPlan convenience delegates and Runtime uses its own frozen
 snapshot directly. No numerical operation depends on rendering success, and
 compiled diagrams remain one-way evidence consumers.
 
-The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Matplotlib, and Schemdraw
+The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Plotly, Matplotlib, and Schemdraw
 in Python. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
 JosephsonCircuits, and Julia standard libraries. The lockfile and committed
 Julia project/Manifest are the executable dependency authority; this page

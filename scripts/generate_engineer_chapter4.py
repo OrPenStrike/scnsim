@@ -234,7 +234,7 @@ def _environment() -> dict[str, str]:
     if Path(scnsim.__file__).resolve() != expected:
         raise RuntimeError("generation imported scnsim from outside this checkout")
     versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("matplotlib", "numpy", "pint", "schemdraw"):
+    for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
     return versions
 
@@ -310,7 +310,9 @@ def _write_trace(trace: object, stem: str, output: Path) -> dict[str, object]:
         raise RuntimeError(f"{stem} trace shape is invalid")
     if not np.all(np.isfinite(frequencies)) or not np.all(np.isfinite(values)):
         raise RuntimeError(f"{stem} trace contains non-finite values")
-    trace.show(magnitude="db").savefig(output / f"{stem}.svg", bbox_inches="tight")
+    trace.plot(component="magnitude", magnitude="db").write_image(
+        output / f"{stem}.svg", format="svg"
+    )
     with (output / f"{stem}.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(("frequency_GHz", "real", "imag", "magnitude", "magnitude_dB"))
@@ -396,7 +398,9 @@ def _write_hb(namespace: dict[str, object], output: Path) -> tuple[dict[str, obj
     trace = pump_off.traces["transmission"]
     frequencies = np.asarray(trace.frequencies.to("gigahertz").magnitude)
     values = np.asarray(trace.value.to("dimensionless").magnitude)
-    trace.show(magnitude="db").savefig(output / "04-pump-off-hb.svg", bbox_inches="tight")
+    trace.plot(component="magnitude", magnitude="db").write_image(
+        output / "04-pump-off-hb.svg", format="svg"
+    )
     with (output / "04-pump-off-hb.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(("frequency_GHz", "real", "imag", "magnitude", "magnitude_dB"))

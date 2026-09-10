@@ -23,8 +23,8 @@ selected_response = run.solve(
 
 ```{python}
 #| id: ch1-show-selected-s11
-selected_s11_figure = selected_response.s.show(magnitude="db")
-selected_s11_figure.axes[0].set_ylim(-0.05, 0.05)
+selected_s11_figure = selected_response.s.plot(magnitude="db")
+selected_s11_figure.update_yaxes(range=[-0.05, 0.05], row=1, col=1)
 selected_s11_figure
 ```
 
@@ -52,7 +52,7 @@ selected_root = run.evaluate(
 #| id: ch1-show-selected-root
 display(selected_root.frequency)
 display(selected_root.linewidth)
-selected_root.show()
+selected_root.plot()
 ```
 
 The generated quantity table reports both loaded Results beside the separate

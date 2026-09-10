@@ -92,7 +92,7 @@ resolved_root = restart_run.resolve(
     restart_root_spec,
     parameters=restart_parameters,
 )
-resolved_root.show()
+resolved_root.plot()
 ```
 
 ::: {.content-visible when-format="html"}

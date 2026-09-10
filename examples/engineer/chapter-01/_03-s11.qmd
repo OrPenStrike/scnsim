@@ -32,13 +32,13 @@ fixed ±0.05 dB display range keeps floating-point roundoff from being visually
 autoscaled into a false feature; it does not round or change the response data.
 The phase is shown as returned, including its ordinary wrapped-phase
 discontinuity; that jump is angle presentation, not a numerical failure. The
-horizontal values are Hz, and Matplotlib displays the `1e9` scale factor for
-this GHz-range request.
+horizontal axis is displayed in GHz while the Result retains the original
+frequency units. Phase is displayed in degrees.
 
 ```{python}
 #| id: ch1-show-baseline-s11
-baseline_s11_figure = baseline_response.s.show(magnitude="db")
-baseline_s11_figure.axes[0].set_ylim(-0.05, 0.05)
+baseline_s11_figure = baseline_response.s.plot(magnitude="db")
+baseline_s11_figure.update_yaxes(range=[-0.05, 0.05], row=1, col=1)
 baseline_s11_figure
 ```
 

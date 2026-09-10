@@ -135,7 +135,7 @@ def _environment() -> dict[str, str]:
     if Path(scnsim.__file__).resolve() != expected:
         raise RuntimeError("generation imported scnsim from outside this checkout")
     versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("matplotlib", "numpy", "pint", "schemdraw"):
+    for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
     return versions
 
@@ -229,8 +229,8 @@ def _write_trace(namespace: dict[str, object], output: Path) -> dict[str, object
         raise RuntimeError("Chapter 3 transmission is not the declared three samples")
     if not np.all(np.isfinite(frequencies)) or not np.all(np.isfinite(values)):
         raise RuntimeError("Chapter 3 transmission contains non-finite values")
-    figure = trace.show(magnitude="db")
-    figure.savefig(output / "03-direct-s21.svg", bbox_inches="tight")
+    figure = trace.plot(component="magnitude", magnitude="db")
+    figure.write_image(output / "03-direct-s21.svg", format="svg")
     with (output / "03-direct-s21.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
         writer.writerow(("frequency_GHz", "real", "imag", "magnitude", "magnitude_dB"))

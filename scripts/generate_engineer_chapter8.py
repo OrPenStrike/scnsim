@@ -78,7 +78,7 @@ def _environment() -> dict[str, str]:
     import scnsim
     if Path(scnsim.__file__).resolve() != (ROOT / "src" / "scnsim" / "__init__.py").resolve(): raise RuntimeError("generation imported scnsim from outside this checkout")
     values = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("jupyter_client", "matplotlib", "numpy", "pint", "schemdraw"): values[name] = importlib.metadata.version(name)
+    for name in ("jupyter_client", "kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"): values[name] = importlib.metadata.version(name)
     return values
 
 
@@ -141,7 +141,7 @@ def _identity_code(name: str) -> str:
 def generate(workspace: Path) -> None:
     cells = dict(_parse_cells()); execution = workspace / "execution"; execution.mkdir(); output = workspace / "artifacts"; output.mkdir()
     report_path = output / "08-report.html"; figure_path = output / "08-direct-s11.svg"
-    first_code = f'''\nimport json as _receipt_json, os as _receipt_os\nfrom pathlib import Path as _ReceiptPath\nreport.save(_ReceiptPath({str(report_path)!r}))\ndirect.s.show(magnitude="db", theme=Theme.AUTO).savefig(_ReceiptPath({str(figure_path)!r}), bbox_inches="tight")\n_receipt_payload = {{\n "pid": _receipt_os.getpid(),\n "direct_identity": {_identity_code("direct")},\n "root_identity": {_identity_code("root")},\n "root_frequency_GHz": float(root.frequency.to("gigahertz").magnitude),\n "root_linewidth_MHz": float(root.linewidth.to("megahertz").magnitude),\n "matrix_coordinates": list(direct.s.view.coordinates),\n}}\nprint("__SCNSIM_FIRST__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))\n'''
+    first_code = f'''\nimport json as _receipt_json, os as _receipt_os\nfrom pathlib import Path as _ReceiptPath\nreport.save(_ReceiptPath({str(report_path)!r}))\ndirect.s.plot(magnitude="db", theme=Theme.AUTO).write_image(_ReceiptPath({str(figure_path)!r}), format="svg")\n_receipt_payload = {{\n "pid": _receipt_os.getpid(),\n "direct_identity": {_identity_code("direct")},\n "root_identity": {_identity_code("root")},\n "root_frequency_GHz": float(root.frequency.to("gigahertz").magnitude),\n "root_linewidth_MHz": float(root.linewidth.to("megahertz").magnitude),\n "matrix_coordinates": list(direct.s.view.coordinates),\n}}\nprint("__SCNSIM_FIRST__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))\n'''
     first_cells = tuple((cell_id, cells[cell_id]) for cell_id in FIRST_KERNEL_IDS)
     first_kernel, first = _run_kernel(first_cells, execution, first_code, "__SCNSIM_FIRST__")
     shared = execution / "workspaces" / "engineer-chapter-08"; before = _tree_hashes(shared)

@@ -165,7 +165,7 @@ def _environment() -> dict[str, str]:
     if Path(scnsim.__file__).resolve() != expected:
         raise RuntimeError("generation imported scnsim from outside this checkout")
     versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
-    for name in ("matplotlib", "numpy", "pint", "schemdraw"):
+    for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
     return versions
 
@@ -433,10 +433,8 @@ def _write_outputs(
     )
     _write_point_csv(exports / "02-capacitance-sweep.csv", capacitance_rows)
     _write_sweep_markdown(exports / "02-capacitance-sweep.md", capacitance_rows)
-    namespace["capacitance_sweep_figure"].savefig(
-        exports / "02-capacitance-sweep.svg",
-        format="svg",
-        metadata={"Date": None},
+    namespace["capacitance_sweep_figure"].write_image(
+        exports / "02-capacitance-sweep.svg", format="svg"
     )
 
     optimization = namespace["optimization"]
@@ -468,10 +466,8 @@ def _write_outputs(
     optional_rows = [*grid_rows, *listed_rows]
     _write_point_csv(exports / "02-optional-spaces.csv", optional_rows)
     _write_optional_markdown(exports / "02-optional-spaces.md", optional_rows)
-    namespace["optional_grid_figure"].savefig(
-        exports / "02-optional-grid.svg",
-        format="svg",
-        metadata={"Date": None},
+    namespace["optional_grid_figure"].write_image(
+        exports / "02-optional-grid.svg", format="svg"
     )
 
     return {

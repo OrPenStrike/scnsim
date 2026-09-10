@@ -25,13 +25,7 @@ from . import units
 from ._scaffold import unavailable
 from .authoring import ParameterRef, ParameterSet
 from .errors import HBCaseFailure, SCNSimError
-from .presentation import (
-    Theme,
-    _finish_figure,
-    _html_fragment,
-    _require_theme,
-    _themed_subplots,
-)
+from .presentation import Theme
 
 if TYPE_CHECKING:
     import schemdraw
@@ -295,9 +289,78 @@ class MatrixFamilyResult(Result):
     """One typed matrix family on an immutable selected-network View."""
 
     view: MatrixView
+    _parent_identity: ResultIdentity | ParameterPointIdentity | None = field(
+        default=None, repr=False, compare=False
+    )
+    _presentation: Mapping[str, object] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
+
+    def plot(
+        self,
+        *,
+        input_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        output_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        kind: Literal["response", "table", "heatmap"] = "response",
+        frequency: Quantity | None = None,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+        magnitude: Literal["linear", "db"] = "linear",
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        """Build a detached native Plotly Figure from this stored matrix."""
+
+        from ._numeric_presentation import matrix_plot
+
+        return matrix_plot(
+            self,
+            input_channel=input_channel,
+            output_channel=output_channel,
+            kind=kind,
+            frequency=frequency,
+            component=component,
+            magnitude=magnitude,
+            theme=theme,
+        )
+
+    def show(self, **presentation: object) -> None:
+        """Display this stored matrix once."""
+
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        kind: Literal["trace", "table", "heatmap"],
+        input_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        output_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        frequency: Quantity | None = None,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+        magnitude: Literal["linear", "db"] = "linear",
+    ) -> object:
+        """Insert one explicit matrix presentation into a caller subplot."""
+
+        from ._numeric_presentation import matrix_add_to
+
+        return matrix_add_to(
+            self,
+            fig,
+            row=row,
+            col=col,
+            kind=kind,
+            input_channel=input_channel,
+            output_channel=output_channel,
+            frequency=frequency,
+            component=component,
+            magnitude=magnitude,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,38 +369,6 @@ class ScatteringMatrixResult(MatrixFamilyResult):
 
     def __init__(self) -> None:
         unavailable("ScatteringMatrixResult construction")
-
-    def show(
-        self,
-        *,
-        magnitude: Literal["linear", "db"] = "linear",
-        theme: Theme = Theme.AUTO,
-    ) -> object:
-        checked_theme = _require_theme(theme)
-        if magnitude not in {"linear", "db"}:
-            raise ValueError("magnitude must be 'linear' or 'db'")
-
-        matrix = np.asarray(getattr(self.view.matrix, "magnitude", self.view.matrix))
-        if matrix.ndim != 3:
-            raise ValueError("S matrix must have [frequency, output, input] axes")
-        values = matrix[:, 0, 0]
-        shown_magnitude = np.abs(values)
-        if magnitude == "db":
-            shown_magnitude = 20.0 * np.log10(shown_magnitude)
-        frequencies = np.asarray(self.view.frequencies.magnitude)
-        figure, (upper, lower) = _themed_subplots(
-            checked_theme,
-            2,
-            1,
-            sharex=True,
-        )
-        upper.plot(frequencies, shown_magnitude)
-        phase = np.where(np.abs(values) == 0.0, np.nan, np.angle(values, deg=True))
-        lower.plot(frequencies, phase)
-        upper.set_ylabel("|S| (dB)" if magnitude == "db" else "|S|")
-        lower.set_ylabel("phase (deg; exact zero undefined)")
-        lower.set_xlabel("frequency")
-        return _finish_figure(figure, checked_theme)
 
 
 @dataclass(frozen=True, slots=True)
@@ -374,6 +405,32 @@ class DirectSolveResult(AnalysisResult):
     def __init__(self) -> None:
         unavailable("DirectSolveResult construction")
 
+    def _family(self, family: Literal["S", "Y", "Z"]) -> MatrixFamilyResult:
+        if family == "S":
+            return self.s
+        if family == "Y":
+            return self.y
+        if family == "Z":
+            return self.z
+        raise ValueError("family must be 'S', 'Y', or 'Z'")
+
+    def plot(self, *, family: Literal["S", "Y", "Z"] = "S", **presentation: object) -> object:
+        return self._family(family).plot(**presentation)
+
+    def show(self, *, family: Literal["S", "Y", "Z"] = "S", **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(family=family, **presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        family: Literal["S", "Y", "Z"] = "S",
+        **presentation: object,
+    ) -> object:
+        return self._family(family).add_to(fig, **presentation)
+
 
 @dataclass(frozen=True, slots=True)
 class DirectQuantityResult(AnalysisResult):
@@ -394,9 +451,25 @@ class DirectQuantityResult(AnalysisResult):
     branch_a_residue: Quantity | None = None
     branch_b_residue: Quantity | None = None
     family: Literal["S", "Y", "Z"] | None = None
+    _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
 
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
+
+    def plot(self, *, theme: Theme = Theme.AUTO) -> object:
+        from ._numeric_presentation import scalar_plot
+
+        return scalar_plot(self, theme=theme)
+
+    def show(self, *, theme: Theme = Theme.AUTO) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(theme=theme))
+
+    def add_to(self, fig: object, *, row: int, col: int) -> object:
+        from ._numeric_presentation import scalar_add_to
+
+        return scalar_add_to(self, fig, row=row, col=col)
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,6 +514,39 @@ class OperatorResult(AnalysisResult):
                 return point
         raise KeyError("frequency was not materialized")
 
+    def plot(
+        self,
+        *,
+        frequency: Quantity,
+        kind: Literal["table", "heatmap"] = "table",
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        from ._numeric_presentation import operator_plot
+
+        return operator_plot(self, frequency=frequency, kind=kind, component=component, theme=theme)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        frequency: Quantity,
+        kind: Literal["table", "heatmap"],
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+    ) -> object:
+        from ._numeric_presentation import operator_add_to
+
+        return operator_add_to(
+            self, fig, row=row, col=col, frequency=frequency, kind=kind, component=component
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class OptimizationBest:
@@ -462,6 +568,47 @@ class OptimizationResult(AnalysisResult):
 
     def __init__(self) -> None:
         unavailable("OptimizationResult construction")
+
+    def plot(
+        self,
+        *,
+        kind: Literal["history", "objective", "residual", "parameter", "table"] = "history",
+        objective: str | None = None,
+        parameter: ParameterRef | None = None,
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        from ._numeric_presentation import optimization_plot
+
+        return optimization_plot(
+            self, kind=kind, objective=objective, parameter=parameter, theme=theme
+        )
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        kind: Literal["history", "objective", "residual", "parameter", "table"],
+        objective: str | None = None,
+        parameter: ParameterRef | None = None,
+    ) -> object:
+        from ._numeric_presentation import optimization_add_to
+
+        return optimization_add_to(
+            self,
+            fig,
+            row=row,
+            col=col,
+            kind=kind,
+            objective=objective,
+            parameter=parameter,
+        )
 
 
 class HBCaseOutcome(Result):
@@ -546,24 +693,20 @@ class HBCaseOutcome(Result):
     def state_node_map(self) -> tuple[Mapping[str, object], ...]:
         return self._success(self._state_node_map)  # type: ignore[return-value]
 
-    def show(
-        self,
-        *,
-        magnitude: Literal["linear", "db"] = "linear",
-        theme: Theme = Theme.AUTO,
-    ) -> object:
-        checked_theme = _require_theme(theme)
-        if self._failure is not None:
-            failure = self._failure
-            return HtmlPresentation(
-                _html_fragment(
-                    f"<h3>HB case {escape(self.id)}</h3><p>failure: "
-                    f"kind={escape(failure.kind)}; stage={escape(failure.stage)}; "
-                    f"message={escape(str(failure))}</p>",
-                    checked_theme,
-                )
-            )
-        return self.s.show(magnitude=magnitude, theme=checked_theme)
+    def plot(self, **presentation: object) -> object:
+        from ._numeric_presentation import hb_case_plot
+
+        return hb_case_plot(self, **presentation)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(self, fig: object, *, row: int, col: int, **presentation: object) -> object:
+        from ._numeric_presentation import hb_case_add_to
+
+        return hb_case_add_to(self, fig, row=row, col=col, **presentation)
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,79 +717,60 @@ class HBBatchResult(AnalysisResult):
     def __init__(self) -> None:
         unavailable("HBBatchResult construction")
 
-    def show(
+    def plot(
         self,
         *,
+        trace: str | None = None,
+        input_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        output_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
         theme: Theme = Theme.AUTO,
     ) -> object:
-        checked_theme = _require_theme(theme)
-        if magnitude not in {"linear", "db"}:
-            raise ValueError("magnitude must be 'linear' or 'db'")
-        successes = tuple(outcome for outcome in self.cases.values() if outcome.succeeded)
-        failures = tuple(outcome for outcome in self.cases.values() if not outcome.succeeded)
-        if not successes:
-            rows = "".join(
-                f"<li>{escape(outcome.id)}: kind={escape(outcome.failure.kind)}; "
-                f"stage={escape(outcome.failure.stage)}; "
-                f"message={escape(str(outcome.failure))}</li>"
-                for outcome in failures
-            )
-            return HtmlPresentation(
-                _html_fragment(f"<h3>HB cases</h3><ul>{rows}</ul>", checked_theme)
-            )
+        from ._numeric_presentation import hb_batch_plot
 
-        trace_ids = tuple(successes[0].traces)
-        if trace_ids:
-            panels: tuple[tuple[str, object], ...] = tuple((identifier, identifier) for identifier in trace_ids)
-        else:
-            view = successes[0].s.view
-            panels = tuple(
-                (
-                    f"S[{output_coordinate},{output_mode} <- {input_coordinate},{input_mode}]",
-                    (output_index, input_index),
-                )
-                for output_index, (output_coordinate, output_mode) in enumerate(view.output_channels)
-                for input_index, (input_coordinate, input_mode) in enumerate(view.input_channels)
-            )
-        figure, axes = _themed_subplots(
-            checked_theme,
-            len(panels),
-            2,
-            squeeze=False,
-            sharex=True,
+        return hb_batch_plot(
+            self,
+            trace=trace,
+            input_channel=input_channel,
+            output_channel=output_channel,
+            component=component,
+            magnitude=magnitude,
+            theme=theme,
         )
-        for (magnitude_axis, phase_axis), (panel_label, selector) in zip(axes, panels):
-            for outcome in successes:
-                if trace_ids:
-                    trace = outcome.traces[selector]  # type: ignore[index]
-                    frequency = np.asarray(trace.frequencies.magnitude)
-                    values = np.asarray(trace.value.magnitude)
-                else:
-                    frequency = np.asarray(outcome.s.view.frequencies.magnitude)
-                    output_index, input_index = selector  # type: ignore[misc]
-                    values = np.asarray(outcome.s.view.matrix.magnitude)[:, output_index, input_index]
-                shown = np.abs(values)
-                if magnitude == "db":
-                    shown = 20.0 * np.log10(shown)
-                phase = np.where(np.abs(values) == 0.0, np.nan, np.angle(values, deg=True))
-                magnitude_axis.plot(frequency, shown, label=outcome.id)
-                phase_axis.plot(frequency, phase, label=outcome.id)
-            magnitude_axis.set_ylabel(f"{panel_label} (dB)" if magnitude == "db" else panel_label)
-            phase_axis.set_ylabel("phase (deg; exact zero undefined)")
-            magnitude_axis.legend()
-            phase_axis.legend()
-        axes[-1, 0].set_xlabel("frequency")
-        axes[-1, 1].set_xlabel("frequency")
-        if failures:
-            figure.suptitle(
-                "failures: " + "; ".join(
-                    f"{outcome.id}: kind={outcome.failure.kind}, "
-                    f"stage={outcome.failure.stage}, message={outcome.failure}"
-                    for outcome in failures
-                )
-            )
-        return _finish_figure(figure, checked_theme)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        kind: Literal["trace", "status"],
+        trace: str | None = None,
+        input_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        output_channel: str | tuple[str, tuple[int, ...]] | None = None,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+        magnitude: Literal["linear", "db"] = "linear",
+    ) -> object:
+        from ._numeric_presentation import hb_batch_add_to
+
+        return hb_batch_add_to(
+            self,
+            fig,
+            row=row,
+            col=col,
+            kind=kind,
+            trace=trace,
+            input_channel=input_channel,
+            output_channel=output_channel,
+            component=component,
+            magnitude=magnitude,
+        )
 
 
 class ParameterPointOutcome(Result):
@@ -765,68 +889,34 @@ class ParameterField(Result):
             for sample in self._samples
         )
 
-    def show(self, *, x: ParameterRef, y: ParameterRef | None = None) -> object:
-        if not isinstance(x, ParameterRef) or (y is not None and not isinstance(y, ParameterRef)):
-            raise TypeError("x and y must be ParameterRef values")
-        if y is x or (y is not None and y == x):
-            raise ValueError("x and y must name distinct parameters")
-        if not self._samples:
-            raise ValueError("an empty ParameterField has no plottable samples")
-        displayed = {x} if y is None else {x, y}
-        varying: set[ParameterRef] = set()
-        first = self._samples[0]["parameters"]
-        if not isinstance(first, ParameterSet):
-            raise TypeError("ParameterField sample parameters are malformed")
-        for parameter in first.values:
-            values = {
-                _parameter_value_bytes(sample["parameters"].values[parameter], parameter)
-                for sample in self._samples
-            }
-            if len(values) > 1:
-                varying.add(parameter)
-        if varying - displayed:
-            raise ValueError("every varying non-displayed parameter must be fixed by selection")
+    def plot(
+        self,
+        *,
+        x: ParameterRef,
+        y: ParameterRef | None = None,
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        from ._numeric_presentation import parameter_field_plot
 
-        quantity_values = [sample["value"] for sample in self._samples if sample["value"] is not None]
-        if not quantity_values or any(not isinstance(value, Quantity) or np.asarray(value.magnitude).ndim != 0 for value in quantity_values):
-            raise ValueError("ParameterField.show() requires at least one scalar quantity")
-        unit = quantity_values[0].units
-        masked = np.ma.array(
-            [0.0 if sample["value"] is None else float(sample["value"].to(unit).magnitude) for sample in self._samples],
-            mask=[sample["value"] is None for sample in self._samples],
-        )
-        x_values = [float(sample["parameters"].values[x].to(x.spec.si_unit).magnitude) for sample in self._samples]
-        if y is None:
-            figure, axis = _themed_subplots(Theme.AUTO)
-            axis.plot(x_values, masked)
-            axis.set_xlabel(f"{x.definitions_id}.{x.id} ({x.spec.si_unit})")
-            axis.set_ylabel(str(unit))
-            return _finish_figure(figure, Theme.AUTO)
+        return parameter_field_plot(self, x=x, y=y, theme=theme)
 
-        if self._kind != "grid":
-            raise ValueError("listed or scattered parameter samples do not define a Cartesian heatmap")
-        if x not in self._axis_parameters or y not in self._axis_parameters:
-            raise ValueError("heatmap axes must be declared ParameterSpace grid axes")
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
 
-        y_values = [float(sample["parameters"].values[y].to(y.spec.si_unit).magnitude) for sample in self._samples]
-        xs = tuple(dict.fromkeys(x_values))
-        ys = tuple(dict.fromkeys(y_values))
-        cells: dict[tuple[float, float], int] = {}
-        for index, cell in enumerate(zip(x_values, y_values)):
-            if cell in cells:
-                raise ValueError("repeated parameter cells remain indexed and cannot form a grid")
-            cells[cell] = index
-        if len(cells) != len(xs) * len(ys):
-            raise ValueError("listed, scattered, or incomplete samples cannot form a grid")
-        grid = np.ma.empty((len(ys), len(xs)))
-        for row, y_value in enumerate(ys):
-            for column, x_value in enumerate(xs):
-                grid[row, column] = masked[cells[(x_value, y_value)]]
-        figure, axis = _themed_subplots(Theme.AUTO)
-        axis.pcolormesh(xs, ys, grid, shading="nearest")
-        axis.set_xlabel(f"{x.definitions_id}.{x.id} ({x.spec.si_unit})")
-        axis.set_ylabel(f"{y.definitions_id}.{y.id} ({y.spec.si_unit})")
-        return _finish_figure(figure, Theme.AUTO)
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        x: ParameterRef,
+        y: ParameterRef | None = None,
+    ) -> object:
+        from ._numeric_presentation import parameter_field_add_to
+
+        return parameter_field_add_to(self, fig, row=row, col=col, x=x, y=y)
 
 
 class ParameterSweepSelection(Result):
@@ -844,8 +934,48 @@ class ParameterSweepSelection(Result):
     def collect(self, *, quantity: object) -> ParameterField:
         return self._parent._collect(quantity, self.points)
 
-    def show(self) -> HtmlPresentation:
-        return _parameter_points_presentation(self.points)
+    def plot(
+        self,
+        *,
+        quantity: object | None = None,
+        x: ParameterRef | None = None,
+        y: ParameterRef | None = None,
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        from ._numeric_presentation import points_plot
+
+        if quantity is None:
+            if x is not None or y is not None:
+                raise ValueError("x and y require an explicitly collected quantity")
+            return points_plot(self.points, theme=theme, title="Selected parameter sweep outcomes")
+        if x is None:
+            raise ValueError("x is required when plotting a collected quantity")
+        return self.collect(quantity=quantity).plot(x=x, y=y, theme=theme)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        quantity: object | None = None,
+        x: ParameterRef | None = None,
+        y: ParameterRef | None = None,
+    ) -> object:
+        if quantity is None:
+            if x is not None or y is not None:
+                raise ValueError("x and y require an explicitly collected quantity")
+            from ._numeric_presentation import points_add_to
+
+            return points_add_to(self.points, fig, row=row, col=col)
+        if x is None:
+            raise ValueError("x is required when adding a collected quantity")
+        return self.collect(quantity=quantity).add_to(fig, row=row, col=col, x=x, y=y)
 
 
 class ParameterSweepResult(AnalysisResult):
@@ -928,8 +1058,48 @@ class ParameterSweepResult(AnalysisResult):
         object.__setattr__(result, "quantity", quantity)
         return result
 
-    def show(self) -> HtmlPresentation:
-        return _parameter_points_presentation(self.points)
+    def plot(
+        self,
+        *,
+        quantity: object | None = None,
+        x: ParameterRef | None = None,
+        y: ParameterRef | None = None,
+        theme: Theme = Theme.AUTO,
+    ) -> object:
+        from ._numeric_presentation import points_plot
+
+        if quantity is None:
+            if x is not None or y is not None:
+                raise ValueError("x and y require an explicitly collected quantity")
+            return points_plot(self.points, theme=theme)
+        if x is None:
+            raise ValueError("x is required when plotting a collected quantity")
+        return self.collect(quantity=quantity).plot(x=x, y=y, theme=theme)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        quantity: object | None = None,
+        x: ParameterRef | None = None,
+        y: ParameterRef | None = None,
+    ) -> object:
+        if quantity is None:
+            if x is not None or y is not None:
+                raise ValueError("x and y require an explicitly collected quantity")
+            from ._numeric_presentation import points_add_to
+
+            return points_add_to(self.points, fig, row=row, col=col)
+        if x is None:
+            raise ValueError("x is required when adding a collected quantity")
+        return self.collect(quantity=quantity).add_to(fig, row=row, col=col, x=x, y=y)
 
 
 def _parameter_value_bytes(value: object, parameter: ParameterRef) -> bytes:
@@ -1013,46 +1183,49 @@ def _parameter_sweep_result(
     return result
 
 
-def _parameter_points_presentation(points: Sequence[ParameterPointOutcome]) -> HtmlPresentation:
-    rows = "".join(
-        "<tr>"
-        f"<td>{escape(str(point.source_index))}</td>"
-        f"<td>{'success' if point.succeeded else 'failure'}</td>"
-        f"<td>{escape(point.identity.parameters_sha256)}</td>"
-        f"<td>{'—' if point.succeeded else escape(point.failure.kind)}</td>"
-        "</tr>"
-        for point in points
-    )
-    return HtmlPresentation(
-        "<table><thead><tr><th>source index</th><th>status</th><th>parameters</th><th>failure</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class TraceResult(Result):
     frequencies: Quantity
     value: Quantity
+    _parent_identity: ResultIdentity | ParameterPointIdentity | None = field(
+        default=None, repr=False, compare=False
+    )
+    _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
 
     def __init__(self) -> None:
         unavailable("TraceResult construction")
 
-    def show(
+    def plot(
         self,
         *,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
         theme: Theme = Theme.AUTO,
     ) -> object:
-        checked_theme = _require_theme(theme)
-        if magnitude not in {"linear", "db"}:
-            raise ValueError("magnitude must be 'linear' or 'db'")
+        from ._numeric_presentation import trace_plot
 
-        values = np.abs(np.asarray(self.value.magnitude))
-        if magnitude == "db":
-            values = 20.0 * np.log10(values)
-        figure, axis = _themed_subplots(checked_theme)
-        axis.plot(np.asarray(self.frequencies.magnitude), values)
-        return _finish_figure(figure, checked_theme)
+        return trace_plot(self, component=component, magnitude=magnitude, theme=theme)
+
+    def show(self, **presentation: object) -> None:
+        from ._numeric_presentation import show_figure
+
+        return show_figure(self.plot(**presentation))
+
+    def add_to(
+        self,
+        fig: object,
+        *,
+        row: int,
+        col: int,
+        component: Literal["magnitude", "phase", "real", "imag"],
+        magnitude: Literal["linear", "db"] = "linear",
+        name: str | None = None,
+    ) -> object:
+        from ._numeric_presentation import trace_add_to
+
+        return trace_add_to(
+            self, fig, row=row, col=col, component=component, magnitude=magnitude, name=name
+        )
 
 
 @dataclass(frozen=True, slots=True)

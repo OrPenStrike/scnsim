@@ -89,8 +89,8 @@ run.explain(quantity_view, root_spec, parameters=baseline_parameters).show()
 #| id: ch8-execute-persisted-results
 direct = run.solve(run.original, direct_spec, parameters=baseline_parameters)
 root = run.evaluate(quantity_view, root_spec, parameters=baseline_parameters)
-display(direct.s.show(magnitude="db", theme=Theme.AUTO))
-display(root.show())
+display(direct.s.plot(magnitude="db", theme=Theme.AUTO))
+display(root.plot())
 ```
 
 The Direct request uses exactly four declared samples. The loaded root uses a

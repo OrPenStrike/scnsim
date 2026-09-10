@@ -45,7 +45,7 @@ imaginary parts at every declared frequency.
 display(direct.s.view)
 display(transmission.frequencies)
 display(transmission.value)
-transmission.show(magnitude="db", theme=Theme.AUTO)
+transmission.plot(component="magnitude", magnitude="db", theme=Theme.AUTO)
 ```
 
 ::: {.content-visible when-format="html"}
