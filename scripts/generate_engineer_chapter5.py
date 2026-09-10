@@ -14,6 +14,8 @@ import tempfile
 import types
 import xml.etree.ElementTree as ET
 
+from engineer_publication_binding import check_publication_binding
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAPTER = ROOT / "examples" / "engineer" / "chapter-05"
@@ -176,8 +178,7 @@ def generate(workspace: Path) -> None:
 
 def check() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if manifest.get("binding") != _binding():
-        raise RuntimeError("Chapter 5 source binding is stale")
+    check_publication_binding(manifest, _binding())
     expected = manifest.get("artifacts")
     if not isinstance(expected, dict) or set(expected) != set(ARTIFACT_NAMES):
         raise RuntimeError("Chapter 5 artifact inventory is malformed")

@@ -1436,7 +1436,7 @@ def _verify_request_document(
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -1467,7 +1467,10 @@ def _verify_request_document(
     elif operation == "evaluate_direct":
         _verify_v1_evaluation_spec(spec, terminal, port_realizable)
     else:
-        _verify_v1_optimization_spec(spec, terminal, port_realizable)
+        _verify_v1_optimization_spec(spec, plan)
+        leaves = _optimization_selector_leaves(spec)
+        if not leaves or request["view"] != leaves[0].get("view"):
+            raise _integrity("Optimization primary View is not its first normalized selector View.")
         parameters = request["parameter_source"].get("parameters")
         if not isinstance(parameters, Mapping):
             raise _integrity("Optimization request requires one complete parameter point.")
@@ -2012,7 +2015,7 @@ def _verify_frequency_anchor(value: object) -> None:
         _verify_quantity_role(value, complex_value=True, unit="hertz", dimensionality="inverse_time")
 
 
-def _verify_v1_optimization_spec(spec: object, terminal: list[str], port_realizable: bool) -> None:
+def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object]) -> None:
     if not isinstance(spec, dict) or set(spec) != {"type", "variables", "objectives", "optimizer", "allow_extrapolation"} or spec.get("type") != "optimization":
         raise _integrity("Optimization Spec is malformed.")
     variables, objectives, optimizer, authorizations = spec.get("variables"), spec.get("objectives"), spec.get("optimizer"), spec.get("allow_extrapolation")
@@ -2044,7 +2047,7 @@ def _verify_v1_optimization_spec(spec: object, terminal: list[str], port_realiza
         if not isinstance(objective, dict) or set(objective) != {"id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"} or not isinstance(objective.get("id"), str) or _IDENTIFIER.fullmatch(objective["id"]) is None or objective["id"] in objective_ids:
             raise _integrity("Optimization objective is malformed.")
         objective_ids.add(objective["id"])
-        role = _verify_selector(objective.get("quantity"), terminal, port_realizable)
+        role = _verify_selector(objective.get("quantity"), plan)
         _verify_quantity_role(objective.get("target"), complex_value=False, unit=role[0], dimensionality=role[1])
         _verify_quantity_role(objective.get("resolved_scale"), complex_value=False, unit=role[0], dimensionality=role[1])
         if not _finite_f64(objective.get("weight_f64")) or objective.get("scale_source") not in {"relative_target", "dimensionless_unity", "explicit"}:
@@ -2094,17 +2097,32 @@ def _verify_quantity_compatible(left: object, right: object) -> None:
     _verify_quantity_role(right, complex_value=False, unit=unit, dimensionality=dimensionality)
 
 
-def _verify_selector(value: object, terminal: list[str], port_realizable: bool) -> tuple[str, str]:
+def _optimization_selector_leaves(spec: object) -> list[Mapping[str, object]]:
+    if not isinstance(spec, Mapping) or not isinstance(spec.get("objectives"), list):
+        return []
+    leaves: list[Mapping[str, object]] = []
+    for objective in spec["objectives"]:
+        quantity = objective.get("quantity") if isinstance(objective, Mapping) else None
+        if isinstance(quantity, Mapping) and quantity.get("type") == "quantity_sum":
+            terms = quantity.get("terms")
+            if isinstance(terms, list):
+                leaves.extend(term for term in terms if isinstance(term, Mapping))
+        elif isinstance(quantity, Mapping):
+            leaves.append(quantity)
+    return leaves
+
+
+def _verify_selector(value: object, plan: Mapping[str, object]) -> tuple[str, str]:
     if not isinstance(value, dict):
         raise _integrity("Optimization selector is malformed.")
     if value.get("type") == "quantity_sum":
         if set(value) != {"type", "terms"} or not isinstance(value.get("terms"), list) or not value["terms"]:
             raise _integrity("QuantitySum is malformed.")
-        roles = [_verify_selector(item, terminal, port_realizable) for item in value["terms"]]
+        roles = [_verify_selector(item, plan) for item in value["terms"]]
         if any(role[1] != roles[0][1] for role in roles[1:]):
             raise _integrity("QuantitySum terms have incompatible physical roles.")
         return roles[0]
-    fields = {"type", "spec", "projection"}
+    fields = {"type", "spec", "projection", "view"}
     kind = value.get("type")
     expected = {
         "diagonal_root_projection": ("diagonal_root", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
@@ -2115,6 +2133,7 @@ def _verify_selector(value: object, terminal: list[str], port_realizable: bool) 
     }.get(kind)
     if set(value) != fields or expected is None or value.get("projection") not in expected[1] or not isinstance(value.get("spec"), dict) or value["spec"].get("type") != expected[0]:
         raise _integrity("Optimization selector is outside the Direct catalog.")
+    terminal, port_realizable = _verify_view_declaration(value.get("view"), plan)
     _verify_v1_evaluation_spec(value["spec"], terminal, port_realizable)
     if expected[2] is not None:
         return expected[2]
@@ -4308,7 +4327,7 @@ def _verify_generation_artifacts(
         ledger = _decode_bytes(raw, "optimization ledger")
         if (
             ledger.get("schema") != "scnsim.optimization_ledger"
-            or ledger.get("schema_version") != 1
+            or ledger.get("schema_version") != 2
             or ledger.get("request_sha256") != request_sha256
             or ledger.get("generation") != generation
         ):
@@ -4394,7 +4413,7 @@ def _verify_generation_ledger(
     candidates = ledger.get("candidates")
     if (
         set(ledger) != expected
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
         or not isinstance(population_size, int)
         or isinstance(population_size, bool)
         or population_size < 2
@@ -4411,7 +4430,7 @@ def _verify_generation_ledger(
         _verify_candidate_outcome(
             candidate,
             variables=len(variables),
-            objective_ids=[str(objective.get("id")) for objective in objectives if isinstance(objective, dict)],
+            objectives=objectives,
             plan=plan,
             optimization_authorizations=spec.get("allow_extrapolation", []),
             generation=generation,
@@ -4472,11 +4491,154 @@ def _verify_continuation_certificate(value: object, generation: int) -> None:
         raise _integrity("CMA continuation certificate is open or malformed.")
 
 
+def _verify_selector_lineage(
+    selector: Mapping[str, object],
+    lineage: object,
+    plan: Mapping[str, object],
+) -> None:
+    declaration = selector.get("view")
+    declared_terminal, declared_port_realizable = _verify_view_declaration(declaration, plan)
+    terminal, port_realizable = _verify_v1_lineage(lineage, plan)
+    if terminal != declared_terminal or port_realizable != declared_port_realizable:
+        raise _integrity("Optimization term lineage disagrees with its declared View.")
+    if not isinstance(declaration, Mapping) or not isinstance(lineage, Mapping):
+        raise _integrity("Optimization term View evidence is malformed.")
+    declared_ptc = declaration.get("ptc")
+    actual_ptc = lineage.get("ptc")
+    if (None if actual_ptc is None else {"selected_ports": actual_ptc.get("selected_ports")}) != declared_ptc:
+        raise _integrity("Optimization term PTC lineage disagrees with its declaration.")
+    declared_transforms = declaration.get("transforms")
+    actual_transforms = lineage.get("transforms")
+    if not isinstance(declared_transforms, list) or not isinstance(actual_transforms, list) or len(actual_transforms) != len(declared_transforms):
+        raise _integrity("Optimization term transform lineage count is inconsistent.")
+    for declared, actual in zip(declared_transforms, actual_transforms):
+        if (
+            not isinstance(declared, Mapping)
+            or not isinstance(actual, Mapping)
+            or actual.get("input_coordinates") != declared.get("input_coordinates")
+            or [actual.get("common_id"), actual.get("differential_id")] != declared.get("output_coordinates")
+        ):
+            raise _integrity("Optimization term transform lineage disagrees with its declaration.")
+    declared_retain = declaration.get("retain")
+    actual_retain = lineage.get("retain")
+    if (None if actual_retain is None else {"retained_coordinates": actual_retain.get("retained_coordinates")}) != declared_retain:
+        raise _integrity("Optimization term retain lineage disagrees with its declaration.")
+
+
+def _selector_terms(value: object) -> list[Mapping[str, object]]:
+    if not isinstance(value, Mapping):
+        raise _integrity("Optimization objective quantity is malformed.")
+    if value.get("type") == "quantity_sum":
+        terms = value.get("terms")
+        if not isinstance(terms, list) or not terms or any(not isinstance(term, Mapping) for term in terms):
+            raise _integrity("Optimization QuantitySum terms are malformed.")
+        return list(terms)
+    return [value]
+
+
+def _convert_selector_value(value: float, source_unit: object, target_unit: object) -> float:
+    if source_unit == target_unit:
+        return value
+    if source_unit == "radian / second" and target_unit == "hertz":
+        return value / (2.0 * math.pi)
+    if source_unit == "hertz" and target_unit == "radian / second":
+        return value * (2.0 * math.pi)
+    raise _integrity("Optimization term unit conversion is unsupported.")
+
+
+def _verify_objective_component(
+    component: object,
+    objective: object,
+    plan: Mapping[str, object],
+    *,
+    expected_status: str,
+) -> None:
+    if not isinstance(component, dict) or not isinstance(objective, dict):
+        raise _integrity("Optimization objective component is malformed.")
+    quantity = objective.get("quantity")
+    expected_terms = _selector_terms(quantity)
+    terms = component.get("terms")
+    common = {"objective_id", "quantity", "status", "terms"}
+    expected_fields = (
+        common | {"value", "normalized_residual_f64", "weighted_cost_f64"}
+        if expected_status == "success"
+        else common | {"failure"}
+    )
+    if (
+        set(component) != expected_fields
+        or component.get("objective_id") != objective.get("id")
+        or component.get("quantity") != quantity
+        or component.get("status") != expected_status
+        or not isinstance(terms, list)
+        or len(terms) != len(expected_terms)
+    ):
+        raise _integrity("Optimization objective component is open or inconsistent.")
+    term_statuses: list[str] = []
+    total = 0.0
+    target_unit = objective.get("target", {}).get("si_unit") if isinstance(objective.get("target"), Mapping) else None
+    for ordinal, (term, selector) in enumerate(zip(terms, expected_terms), 1):
+        if not isinstance(term, dict) or term.get("term_ordinal") != ordinal or term.get("selector") != selector:
+            raise _integrity("Optimization term evidence is out of order or names another selector.")
+        status = term.get("status")
+        term_statuses.append(str(status))
+        if status == "success":
+            if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "value"}:
+                raise _integrity("Successful optimization term is open or malformed.")
+            _verify_selector_lineage(selector, term.get("ref_lineage"), plan)
+            role = _verify_selector(selector, plan)
+            _verify_quantity_role(term.get("value"), complex_value=False, unit=role[0], dimensionality=role[1])
+            total += _convert_selector_value(_f64_value(term["value"]["si_value_f64"]), role[0], target_unit)
+        elif status == "failure":
+            if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "failure"}:
+                raise _integrity("Failed optimization term is open or malformed.")
+            _verify_selector_lineage(selector, term.get("ref_lineage"), plan)
+            _verify_failure_document(term.get("failure"), "optimize_direct")
+        elif status == "not_evaluated":
+            if set(term) != {"term_ordinal", "selector", "status", "failure"}:
+                raise _integrity("Unevaluated optimization term is open or malformed.")
+            _verify_failure_document(term.get("failure"), "optimize_direct")
+        else:
+            raise _integrity("Optimization term status is unknown.")
+    if expected_status == "success":
+        if any(status != "success" for status in term_statuses):
+            raise _integrity("Successful objective contains an unevaluated term.")
+        _verify_quantity_role(
+            component.get("value"), complex_value=False,
+            unit=objective["target"]["si_unit"], dimensionality=objective["target"]["dimensionality"],
+        )
+        if struct.pack(">d", total).hex() != component["value"]["si_value_f64"]:
+            raise _integrity("Optimization objective value does not equal its ordered terms.")
+        residual = (total - _f64_value(objective["target"]["si_value_f64"])) / _f64_value(objective["resolved_scale"]["si_value_f64"])
+        weighted = _f64_value(objective["weight_f64"]) * residual * residual
+        if (
+            not _finite_f64(component.get("normalized_residual_f64"))
+            or not _finite_f64(component.get("weighted_cost_f64"))
+            or struct.pack(">d", residual).hex() != component["normalized_residual_f64"]
+            or struct.pack(">d", weighted).hex() != component["weighted_cost_f64"]
+            or weighted < 0.0
+        ):
+            raise _integrity("Optimization objective normalization does not reproduce.")
+    else:
+        _verify_failure_document(component.get("failure"), "optimize_direct")
+        if any(
+            term.get("status") in {"failure", "not_evaluated"}
+            and term.get("failure") != component.get("failure")
+            for term in terms
+            if isinstance(term, Mapping)
+        ):
+            raise _integrity("Optimization term failure disagrees with its objective failure.")
+        if expected_status == "failure":
+            if "failure" not in term_statuses or term_statuses[term_statuses.index("failure") + 1:] != ["not_evaluated"] * (len(term_statuses) - term_statuses.index("failure") - 1):
+                raise _integrity("Failed objective term status order is inconsistent.")
+        elif any(status != "not_evaluated" for status in term_statuses):
+            raise _integrity("Unevaluated objective contains evaluated terms.")
+
+
 def _verify_candidate_outcome(
     value: object,
     *,
     variables: int,
-    objective_ids: list[str],
+    objectives: list[object],
     plan: Mapping[str, object],
     optimization_authorizations: object,
     generation: int,
@@ -4529,26 +4691,23 @@ def _verify_candidate_outcome(
             or not _finite_f64(outcome.get("cost_f64"))
             or _f64_value(outcome["cost_f64"]) < 0.0
             or not isinstance(components, list)
-            or len(components) != len(objective_ids)
+            or len(components) != len(objectives)
         ):
             raise _integrity("Successful optimization candidate is malformed.")
         total = 0.0
-        for objective_id, component in zip(objective_ids, components):
-            if (
-                not isinstance(component, dict)
-                or set(component) != {"objective_id", "value", "normalized_residual_f64", "weighted_cost_f64"}
-                or component.get("objective_id") != objective_id
-                or not _finite_f64(component.get("normalized_residual_f64"))
-                or not _finite_f64(component.get("weighted_cost_f64"))
-                or _f64_value(component["weighted_cost_f64"]) < 0.0
-            ):
-                raise _integrity("Optimization objective component is malformed.")
-            _verify_quantity_any(component.get("value"))
+        for objective, component in zip(objectives, components):
+            _verify_objective_component(component, objective, plan, expected_status="success")
             total += _f64_value(component["weighted_cost_f64"])
         if struct.pack(">d", total).hex() != outcome.get("cost_f64"):
             raise _integrity("Optimization candidate cost does not equal its ordered components.")
     elif outcome.get("status") == "failure":
-        if set(outcome) != {"status", "penalty", "failure"} or outcome.get("penalty") != "positive_infinity":
+        components = outcome.get("objective_components")
+        if (
+            set(outcome) != {"status", "penalty", "failure", "objective_components"}
+            or outcome.get("penalty") != "positive_infinity"
+            or not isinstance(components, list)
+            or len(components) != len(objectives)
+        ):
             raise _integrity("Failed optimization candidate is malformed.")
         _verify_failure_document(outcome.get("failure"), "optimize_direct")
         if outcome["failure"].get("kind") not in {
@@ -4556,6 +4715,25 @@ def _verify_candidate_outcome(
             "root_slope_unresolved", "numerical_resolution_unresolved",
         }:
             raise _integrity("Optimization candidate uses a request-level failure kind.")
+        saw_failure = False
+        for objective, component in zip(objectives, components):
+            status = component.get("status") if isinstance(component, Mapping) else None
+            if status == "success" and not saw_failure:
+                _verify_objective_component(component, objective, plan, expected_status="success")
+            elif status == "failure" and not saw_failure:
+                _verify_objective_component(component, objective, plan, expected_status="failure")
+                if component.get("failure") != outcome["failure"]:
+                    raise _integrity("Failed objective does not bind the candidate failure.")
+                saw_failure = True
+            elif status == "not_evaluated":
+                _verify_objective_component(component, objective, plan, expected_status="not_evaluated")
+                if component.get("failure") != outcome["failure"]:
+                    raise _integrity("Unevaluated objective does not bind the candidate failure.")
+                saw_failure = True
+            else:
+                raise _integrity("Failed candidate objective status order is inconsistent.")
+        if not saw_failure:
+            raise _integrity("Failed candidate has no failed or unevaluated objective.")
     else:
         raise _integrity("Optimization candidate outcome discriminator is unknown.")
 
@@ -4571,12 +4749,11 @@ def _verify_optimization_winner(
     optimizer = spec.get("optimizer")
     if not isinstance(variables, list) or not isinstance(objectives, list) or not isinstance(optimizer, dict):
         raise _integrity("Optimization Result request spec is malformed.")
-    objective_ids = [str(objective.get("id")) for objective in objectives if isinstance(objective, dict)]
     baseline = result.get("baseline")
     _verify_candidate_outcome(
         baseline,
         variables=len(variables),
-        objective_ids=objective_ids,
+        objectives=objectives,
         plan=plan,
         optimization_authorizations=spec.get("allow_extrapolation", []),
         generation=0,

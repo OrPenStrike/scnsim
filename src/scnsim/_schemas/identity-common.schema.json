@@ -640,7 +640,7 @@
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -1311,51 +1311,66 @@
         "root_hint": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
       }
     },
+    "networkViewDeclaration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "ptc", "transforms", "retain"],
+      "properties": {
+        "type": { "const": "network_view" },
+        "ptc": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["selected_ports"], "properties": { "selected_ports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } } } }] },
+        "transforms": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["id", "input_coordinates", "output_coordinates"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "input_coordinates": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/identifier" } }, "output_coordinates": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/identifier" } } } } },
+        "retain": { "oneOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["retained_coordinates"], "properties": { "retained_coordinates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/identifier" } } } }] }
+      }
+    },
     "quantitySelector": {
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "spec", "projection"],
+          "required": ["type", "spec", "projection", "view"],
           "properties": {
             "type": { "const": "diagonal_root_projection" },
             "spec": { "$ref": "#/$defs/diagonalRootSpec" },
-            "projection": { "enum": ["frequency", "linewidth"] }
+            "projection": { "enum": ["frequency", "linewidth"] },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "spec", "projection"],
+          "required": ["type", "spec", "projection", "view"],
           "properties": {
             "type": { "const": "hybridized_pole_projection" },
             "spec": { "$ref": "#/$defs/hybridizedPoleSpec" },
-            "projection": { "enum": ["frequency", "linewidth"] }
+            "projection": { "enum": ["frequency", "linewidth"] },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "spec", "projection"],
+          "required": ["type", "spec", "projection", "view"],
           "properties": {
             "type": { "const": "transfer_zero_projection" },
             "spec": { "$ref": "#/$defs/transferZeroSpec" },
-            "projection": { "const": "frequency" }
+            "projection": { "const": "frequency" },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "spec", "projection"],
+          "required": ["type", "spec", "projection", "view"],
           "properties": {
             "type": { "const": "residue_coupling_projection" },
             "spec": { "$ref": "#/$defs/residueNormalizedCouplingSpec" },
-            "projection": { "const": "magnitude" }
+            "projection": { "const": "magnitude" },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "spec", "projection"],
+          "required": ["type", "spec", "projection", "view"],
           "properties": {
             "type": { "const": "response_element_projection" },
             "spec": { "$ref": "#/$defs/responseElementSpec" },
-            "projection": { "enum": ["magnitude", "real", "imag"] }
+            "projection": { "enum": ["magnitude", "real", "imag"] },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         }
       ]
@@ -2222,6 +2237,70 @@
         "evidence_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
+    "optimizationTermEvidence": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["term_ordinal", "selector", "status", "ref_lineage", "value"],
+          "properties": {
+            "term_ordinal": { "type": "integer", "minimum": 1 },
+            "selector": { "$ref": "#/$defs/quantitySelector" },
+            "status": { "const": "success" },
+            "ref_lineage": { "$ref": "#/$defs/refLineage" },
+            "value": { "$ref": "#/$defs/quantity" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["term_ordinal", "selector", "status", "ref_lineage", "failure"],
+          "properties": {
+            "term_ordinal": { "type": "integer", "minimum": 1 },
+            "selector": { "$ref": "#/$defs/quantitySelector" },
+            "status": { "const": "failure" },
+            "ref_lineage": { "$ref": "#/$defs/refLineage" },
+            "failure": { "$ref": "#/$defs/failure" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["term_ordinal", "selector", "status", "failure"],
+          "properties": {
+            "term_ordinal": { "type": "integer", "minimum": 1 },
+            "selector": { "$ref": "#/$defs/quantitySelector" },
+            "status": { "const": "not_evaluated" },
+            "failure": { "$ref": "#/$defs/failure" }
+          }
+        }
+      ]
+    },
+    "optimizationObjectiveComponent": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["objective_id", "quantity", "status", "terms", "value", "normalized_residual_f64", "weighted_cost_f64"],
+          "properties": {
+            "objective_id": { "type": "string", "minLength": 1 },
+            "quantity": { "$ref": "#/$defs/scalarExpression" },
+            "status": { "const": "success" },
+            "terms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/optimizationTermEvidence" } },
+            "value": { "$ref": "#/$defs/quantity" },
+            "normalized_residual_f64": { "$ref": "#/$defs/f64" },
+            "weighted_cost_f64": { "$ref": "#/$defs/f64" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["objective_id", "quantity", "status", "terms", "failure"],
+          "properties": {
+            "objective_id": { "type": "string", "minLength": 1 },
+            "quantity": { "$ref": "#/$defs/scalarExpression" },
+            "status": { "enum": ["failure", "not_evaluated"] },
+            "terms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/optimizationTermEvidence" } },
+            "failure": { "$ref": "#/$defs/failure" }
+          }
+        }
+      ]
+    },
     "candidateSuccess": {
       "type": "object",
       "additionalProperties": false,
@@ -2232,30 +2311,21 @@
         "objective_components": {
           "type": "array",
           "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "objective_id", "value", "normalized_residual_f64",
-              "weighted_cost_f64"
-            ],
-            "properties": {
-              "objective_id": { "type": "string", "minLength": 1 },
-              "value": { "$ref": "#/$defs/quantity" },
-              "normalized_residual_f64": { "$ref": "#/$defs/f64" },
-              "weighted_cost_f64": { "$ref": "#/$defs/f64" }
-            }
-          }
+          "items": { "$ref": "#/$defs/optimizationObjectiveComponent" }
         }
       }
     },
     "candidateFailure": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "penalty", "failure"],
+      "required": ["status", "penalty", "failure", "objective_components"],
       "properties": {
         "status": { "const": "failure" },
         "penalty": { "const": "positive_infinity" },
+        "objective_components": {
+          "type": "array", "minItems": 1,
+          "items": { "$ref": "#/$defs/optimizationObjectiveComponent" }
+        },
         "failure": {
           "allOf": [
             { "$ref": "#/$defs/failure" },

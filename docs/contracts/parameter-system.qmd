@@ -194,10 +194,11 @@ not a Cartesian product. Both constructors freeze their inputs. Neither form
 changes a Plan, creates a parameter definition, or attaches itself to one
 Plan.
 
-Each request that uses a space independently binds one Plan, one selected View,
-and one calculation Spec and revalidates that Plan's consumption and definition
-compatibility. The same immutable space may therefore be reused by another
-compatible Plan request. Full effective values are captured at every point.
+Each request that uses a space independently binds one Plan, the View or Views
+selected by its calculation, and one calculation Spec, and revalidates that
+Plan's consumption and definition compatibility. The same immutable space may
+therefore be reused by another compatible Plan request. Full effective values
+are captured at every point.
 Frequency samples, Direct matrix channels, HB cases/modes, and Result array axes
 remain calculation dimensions rather than parameter axes.
 
@@ -223,6 +224,10 @@ CircuitRun.resolve(
 ) -> SolveResult | EvaluationResult | ParameterSweepResult
 CircuitRun.optimize(
     ref: NetworkViewRef, spec: OptimizationSpec,
+    *, parameters: ParameterSet | None = None,
+) -> OptimizationResult
+CircuitRun.optimize(
+    spec: OptimizationSpec,
     *, parameters: ParameterSet | None = None,
 ) -> OptimizationResult
 ```
@@ -363,6 +368,27 @@ back to a baseline, another Plan, an independent root, or a nearest stored
 request.
 
 ## Optimization binding {#parameter-optimization-binding}
+
+Every scalar `QuantitySelector` used by optimization is bound immutably to one
+existing View with `selector.on(view)`. Binding is non-executing. It does not
+evaluate the selector, create a View, or capture a Python callback. A
+`QuantitySum` may contain same-dimensionality terms bound to different Views;
+the View belongs to each leaf rather than to the objective as a whole.
+
+`run.optimize(spec, ...)` requires every selector leaf to be explicitly bound.
+The convenience form `run.optimize(default_view, spec, ...)` fills only
+unbound leaves. Explicit leaf bindings always win. Both forms normalize to one
+complete bound selector tree before canonical request encoding, and therefore
+have the same request identity when their effective leaf bindings are equal.
+The request envelope's primary View is derived from the first normalized leaf
+in declaration order; it supports the existing Result lineage envelope but is
+not the sole View of a multi-View optimization.
+
+Every bound View must belong to the same `CircuitRun` and captured Plan.
+Missing or foreign bindings and selector/View incompatibility fail before a
+Julia process starts. One candidate is one complete effective ParameterSet
+shared by all bound Views; it is not a collection of independently optimized
+View-local points.
 
 `OptimizationVariable` continues to identify one scalar ref, finite physical
 bounds, and its accepted transform. Bounds are not inferred from grid extrema,

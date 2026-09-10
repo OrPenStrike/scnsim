@@ -118,7 +118,7 @@ Runtime algorithms are likewise closed for full V1:
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
@@ -128,7 +128,14 @@ exact CMAEvolutionStrategy.jl release and registry tree, Julia patch,
 population hash encoding, candidate compile/Direct/objective algorithm IDs,
 continuation projection and boundaries, replay order, and winner/tie rule.
 Changing any bound dependency requires a new outer ID even when the public
-`CMAESSpec` fields do not change.
+`CMAESSpec` fields do not change. Version 3 retains the version-2 CMA
+sampling/update mathematics and controls while newly binding normalized
+per-selector View declarations, View-qualified dependency/continuation keys,
+and generation-ledger version 2 term evidence.
+Version-2 optimization requests and ledgers remain historical evidence under
+their original runtime identity. They are not decoded or relabeled as
+version-3 Results; resolving them with the current runtime therefore requires
+their original source-bound leaf rather than a compatibility fallback.
 
 Source values and units from the executed attempt remain receipt evidence, but
 only the coherent-SI bits, canonical SI unit, and dimensionality enter Plan or
@@ -391,14 +398,22 @@ ID/path against the matching manifest before receipt sealing and again on
 
 A diagonal-root quantity requires root, frequency, linewidth, and slope
 scalars; every other Direct quantity discriminator requires its own closed
-scalar catalog. An optimization result
-requires the successful baseline outcome, a winner, completed-generation count,
-unused budget, and the complete hash-linked ledger inventory. Each successful
-ledger objective component carries its evaluated Quantity, signed normalized
-residual, and weighted cost so the request-owned target, resolved scale/source,
-and weight reproduce the total. Semantic validation requires exactly one
-component for every request objective, in request order, with matching unique
-objective IDs. A success receipt requires the Result hash.
+scalar catalog. An optimization result requires the successful baseline
+outcome, a winner, completed-generation count, unused budget, and the complete
+hash-linked ledger inventory. Each selector leaf in an optimization request
+carries its complete View declaration. The top-level View is deterministically
+copied from the first normalized leaf only for the existing Result envelope;
+it is not authority for other leaves. Generation-ledger version 2 records
+every objective's bound quantity and each leaf term in declaration order.
+Successful terms carry their actual realized View lineage and Quantity; failed
+or skipped terms use closed status/failure records and cannot supply a
+fabricated value. Successful objective components also carry evaluated
+Quantity, signed normalized residual, and weighted cost so the request-owned
+target, resolved scale/source, and weight reproduce the total. Semantic
+validation derives expected leaf View lineages from the Plan and request, then
+requires exactly one component for every request objective in request order.
+It never accepts ledger metadata as its own View authority. A success receipt
+requires the Result hash.
 Failure receipts require a closed typed failure; interruption receipts require
 explicit interruption evidence. Neither may advertise a Result.
 Every failure evidence envelope also names the owning operation and carries its

@@ -13,6 +13,8 @@ import sys
 import tempfile
 from typing import Any
 
+from engineer_publication_binding import check_publication_binding
+
 ROOT = Path(__file__).resolve().parents[1]
 CHAPTER = ROOT / "examples" / "engineer" / "chapter-08"
 FIGURES = ROOT / "examples" / "engineer" / "figures"
@@ -166,7 +168,7 @@ def generate(workspace: Path) -> None:
 
 def check() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if manifest.get("binding") != _binding(): raise RuntimeError("Chapter 8 source binding is stale")
+    check_publication_binding(manifest, _binding())
     if set(manifest.get("artifacts", {})) != set(ARTIFACT_NAMES): raise RuntimeError("Chapter 8 artifact inventory is malformed")
     if _inventory(FIGURES) != set(ARTIFACT_NAMES): raise RuntimeError("Chapter 8 published artifact inventory is not exact")
     if manifest["artifacts"] != {name: _hash(FIGURES / name) for name in ARTIFACT_NAMES}: raise RuntimeError("Chapter 8 artifacts are stale")

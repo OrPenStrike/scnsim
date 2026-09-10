@@ -35,6 +35,12 @@ The output selected by an objective is a typed quantity, not a `ParameterRef`.
 `root_hint` remains a numerical branch locator, not a parameter value, target,
 bound, or Gate.
 
+An optimization selector can be attached non-executingly to an existing View
+with `selector.on(view)`. This says which retained network supplies that scalar;
+it does not calculate a value. Different same-dimensionality terms in one
+`QuantitySum` may name different Views of the same captured Plan, while every
+candidate still supplies one shared parameter point to the whole objective.
+
 ## Definitions are independent; physical fields assign them to a Plan
 
 `ParameterDefinitions(id="readout_design")` owns a namespace. Its
@@ -126,6 +132,11 @@ Every candidate and the winner record a complete effective `ParameterSet`.
 The winner can therefore be re-evaluated or rendered explicitly without
 changing the Plan baseline. A `ParameterSpace` is not an implicit batch of
 optimizations, and a low cost does not create scientific or Human acceptance.
+
+The fully explicit form binds every selector leaf with `.on(view)`. The
+convenience form supplies a default View only for leaves that are still
+unbound. These are two spellings of the same normalized request when the
+effective leaf bindings match; an unused default does not enter identity.
 
 ## Structured RLGC values have a bounded support scope
 

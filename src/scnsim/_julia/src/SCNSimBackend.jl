@@ -24,6 +24,13 @@ Base.showerror(io::IO, failure::BackendFailure) = print(io, failure.message)
 fail(category, kind, stage, context, message) =
     throw(BackendFailure(category, kind, stage, context, message))
 
+is_candidate_failure(error::BackendFailure) = error.kind in (
+    "invalid_candidate_physical_parameter",
+    "eliminated_block_solve_failure",
+    "root_slope_unresolved",
+    "numerical_resolution_unresolved",
+)
+
 function plain(value)
     if value isa JSON3.Object
         return Dict{String,Any}(String(key) => plain(item) for (key, item) in pairs(value))
@@ -2106,8 +2113,8 @@ function has_offdiagonal_series_resistance(compiled::CompiledPrimitive)::Bool
     return false
 end
 
-function declarative_lineage(plan, request, compiled::CompiledPrimitive)
-    view = plain(request["view"])
+function declarative_lineage(plan, request, compiled::CompiledPrimitive; view_declaration = nothing)
+    view = plain(view_declaration === nothing ? request["view"] : view_declaration)
     get(view, "type", nothing) == "network_view" || fail("execution", "compiler_invariant", "view", "compile", "request View discriminator is invalid")
     exact_keys(view, ("type", "ptc", "transforms", "retain")) || fail("execution", "compiler_invariant", "view", "compile", "request View fields are invalid")
     ptc = get(view, "ptc", nothing); retain = get(view, "retain", nothing); transforms = get(view, "transforms", nothing)
@@ -2151,6 +2158,7 @@ function preflight(plan_path::String, request_path::String)
         authorized = parameter_set_authorizations(request), authorization_source = "parameter_set",
         emit_audit = true)
     realized_lineage, view = realized_ref_lineage(raw_compiled, declarative_lineage(plan, request, raw_compiled))
+    operation == "optimize_direct" && candidate_view_cache(plan, request, raw_compiled)
     compiled = view.compiled
     load = port_load_admittance(compiled)
     realized_request = deepcopy(request); realized_request["ref_lineage"] = realized_lineage
@@ -2336,24 +2344,39 @@ function baseline_z(request, values::Dict{String,Any})
     return coordinates
 end
 
+selector_dependency_key(selector) = canonical_json(Dict(
+    "type" => selector["type"],
+    "spec" => selector["spec"],
+    "view" => selector["view"],
+))
+
 function root_selector_key(selector)
-    get(selector, "type", nothing) == "diagonal_root_projection" ||
-        fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "root continuation requires a diagonal-root selector")
-    return canonical_json(selector["spec"])
+    kind = get(selector, "type", nothing)
+    kind in ("diagonal_root_projection", "residue_diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection") ||
+        fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "root continuation requires a root-like selector")
+    return selector_dependency_key(selector)
 end
 
-selector_key(selector) = canonical_json(selector)
+function selector_leaves(selector)::Vector{Any}
+    if get(selector, "type", nothing) == "quantity_sum"
+        terms = get(selector, "terms", nothing)
+        terms isa AbstractVector && !isempty(terms) ||
+            fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum requires one or more terms")
+        return Any[term for term in terms]
+    end
+    return Any[selector]
+end
 
 function root_selector_specs(selector, found::Dict{String,Any} = Dict{String,Any}())
     selector_type = get(selector, "type", nothing)
     if selector_type in ("diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
-        found[selector_key(selector)] = selector
+        found[root_selector_key(selector)] = selector
     elseif selector_type == "residue_coupling_projection"
         # A residue objective has two anchored branch locators.  They are
         # private continuation dependencies, not a second public selector.
         for branch in (selector["spec"]["branch_a"], selector["spec"]["branch_b"])
-            branch_selector = residue_branch_selector(branch)
-            found[selector_key(branch_selector)] = branch_selector
+            branch_selector = residue_branch_selector(branch, selector["view"])
+            found[root_selector_key(branch_selector)] = branch_selector
         end
     elseif selector_type == "response_element_projection"
         nothing
@@ -2370,14 +2393,17 @@ function root_selector_specs(selector, found::Dict{String,Any} = Dict{String,Any
     return found
 end
 
-function residue_branch_selector(branch)
+function residue_branch_selector(branch, view_declaration = nothing)
     kind = String(branch["type"])
-    if kind == "diagonal_root"
-        return Dict{String,Any}("type" => "residue_diagonal_root_projection", "spec" => branch, "projection" => "frequency")
+    selector = if kind == "diagonal_root"
+        Dict{String,Any}("type" => "residue_diagonal_root_projection", "spec" => branch, "projection" => "frequency")
     elseif kind == "hybridized_pole"
-        return Dict{String,Any}("type" => "hybridized_pole_projection", "spec" => branch, "projection" => "frequency")
+        Dict{String,Any}("type" => "hybridized_pole_projection", "spec" => branch, "projection" => "frequency")
+    else
+        fail("validation", "invalid_optimization_spec", "residue_branch", "optimization_candidate", "residue branch has an unsupported locator")
     end
-    fail("validation", "invalid_optimization_spec", "residue_branch", "optimization_candidate", "residue branch has an unsupported locator")
+    view_declaration === nothing || (selector["view"] = view_declaration)
+    return selector
 end
 
 function selector_root_at(selector, compiled::CompiledPrimitive, view::RealizedView;
@@ -2399,16 +2425,16 @@ function selector_root_at(selector, compiled::CompiledPrimitive, view::RealizedV
     fail("execution", "compiler_invariant", "optimization", "optimization_candidate", "selector has no continuation root")
 end
 
-function compiled_candidate_view(plan, request, values::Dict{String,Any}; context_kind::String)
-    raw = compile_primitive(plan, values; context_kind = context_kind,
-        authorized = context_kind == "optimization_candidate" ? optimization_authorizations(request) : parameter_set_authorizations(request),
-        authorization_source = context_kind == "optimization_candidate" ? "optimization_spec" : "parameter_set")
-    _, view = realized_ref_lineage(raw, declarative_lineage(plan, request, raw))
-    return view.compiled, view
+function realize_candidate_view(plan, request, raw::CompiledPrimitive, view_declaration)
+    return realized_ref_lineage(
+        raw,
+        declarative_lineage(plan, request, raw; view_declaration = view_declaration),
+    )
 end
 
 function selector_root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root::ComplexF64, selector;
-        context_kind::String = "optimization_candidate")
+        context_kind::String = "optimization_candidate",
+        candidate_view::Union{Nothing,RealizedView} = nothing)
     function values_at(t::Float64)
         t == 0.0 && return copy(baseline_values)
         t == 1.0 && return copy(candidate_values)
@@ -2426,7 +2452,16 @@ function selector_root_with_continuation(plan, request, baseline_values, candida
     end
     function advance(left_t::Float64, left_root::ComplexF64, right_t::Float64, depth::Int)::ComplexF64
         try
-            compiled, view = compiled_candidate_view(plan, request, values_at(right_t); context_kind = context_kind)
+            view = if right_t == 1.0 && candidate_view !== nothing
+                candidate_view::RealizedView
+            else
+                raw = compile_primitive(plan, values_at(right_t); context_kind = context_kind,
+                    authorized = context_kind == "optimization_candidate" ? optimization_authorizations(request) : parameter_set_authorizations(request),
+                    authorization_source = context_kind == "optimization_candidate" ? "optimization_spec" : "parameter_set")
+                declaration = get(selector, "view", request["view"])
+                realize_candidate_view(plan, request, raw, declaration)[2]
+            end
+            compiled = view.compiled
             return selector_root_at(selector, compiled, view; start = left_root)
         catch error
             error isa BackendFailure || rethrow()
@@ -2504,56 +2539,59 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
     end
     projection = selector["projection"]
     if selector_type == "diagonal_root_projection"
-        key = selector_key(selector)
+        key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
         projection == "frequency" && return real(root) / (2.0 * pi)
         projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
     elseif selector_type == "hybridized_pole_projection"
-        key = selector_key(selector)
+        key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
         projection == "frequency" && return real(root) / (2.0 * pi)
         projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
     elseif selector_type == "transfer_zero_projection"
         spec = selector["spec"]; input = findfirst(==(String(spec["input_coordinate"])), view.terminal); output = findfirst(==(String(spec["output_coordinate"])), view.terminal)
         (input === nothing || output === nothing) && fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "transfer-zero selector coordinate is absent")
-        key = selector_key(selector)
+        key = root_selector_key(selector)
         zero = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
         projection == "frequency" && return real(zero) / (2.0 * pi)
     elseif selector_type == "response_element_projection"
         spec = selector["spec"]; input = findfirst(==(String(spec["input_coordinate"])), view.terminal); output = findfirst(==(String(spec["output_coordinate"])), view.terminal)
         (input === nothing || output === nothing) && fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "response selector coordinate is absent")
-        value = try
-            transfer_family_value(view, String(spec["family"]), output::Int, input::Int, complex(2.0 * pi * quantity_value(spec["frequency"])))[1]
-        catch error
-            error isa BackendFailure || rethrow()
-            if !same_parameter_values(baseline_values, values) && error.kind == "direct_response_formation"
-                fail("execution", "numerical_resolution_unresolved", error.stage, "optimization_candidate", "candidate selected response is numerically unresolved")
+        key = selector_dependency_key(selector)
+        value = get!(roots, key) do
+            try
+                transfer_family_value(view, String(spec["family"]), output::Int, input::Int, complex(2.0 * pi * quantity_value(spec["frequency"])))[1]
+            catch error
+                error isa BackendFailure || rethrow()
+                if !same_parameter_values(baseline_values, values) && error.kind == "direct_response_formation"
+                    fail("execution", "numerical_resolution_unresolved", error.stage, "optimization_candidate", "candidate selected response is numerically unresolved")
+                end
+                rethrow()
             end
-            rethrow()
         end
         projection == "magnitude" && return abs(value)
         projection == "real" && return real(value)
         projection == "imag" && return imag(value)
     elseif selector_type == "residue_coupling_projection"
-        branch_a_selector = residue_branch_selector(selector["spec"]["branch_a"])
-        branch_b_selector = residue_branch_selector(selector["spec"]["branch_b"])
-        key_a, key_b = selector_key(branch_a_selector), selector_key(branch_b_selector)
+        branch_a_selector = residue_branch_selector(selector["spec"]["branch_a"], selector["view"])
+        branch_b_selector = residue_branch_selector(selector["spec"]["branch_b"], selector["view"])
+        key_a, key_b = root_selector_key(branch_a_selector), root_selector_key(branch_b_selector)
         root_a = get!(roots, key_a) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key_a] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key_a], branch_a_selector)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key_a], branch_a_selector; candidate_view = view)
         end
         root_b = get!(roots, key_b) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key_b] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key_b], branch_b_selector)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key_b], branch_b_selector; candidate_view = view)
         end
         value = residue_normalized_coupling_value(compiled, view.terminal, selector["spec"];
             branch_a_root = root_a, branch_b_root = root_b)[1]
@@ -2566,6 +2604,46 @@ function same_parameter_values(left::Dict{String,Any}, right::Dict{String,Any}):
     Set(keys(left)) == Set(keys(right)) || return false
     return all((left[key] isa Float64 && right[key] isa Float64) ?
         f64_hex(left[key]) == f64_hex(right[key]) : canonical_json(left[key]) == canonical_json(right[key]) for key in keys(left))
+end
+
+function candidate_view_cache(plan, request, raw::CompiledPrimitive)
+    views = Dict{String,Any}()
+    for objective in request["spec"]["objectives"]
+        for selector in selector_leaves(objective["quantity"])
+            declaration = selector["view"]
+            key = canonical_json(declaration)
+            if !haskey(views, key)
+                lineage, view = realize_candidate_view(plan, request, raw, declaration)
+                views[key] = Dict{String,Any}("lineage" => lineage, "view" => view)
+            end
+        end
+    end
+    return views
+end
+
+function unevaluated_term(selector, ordinal::Int, request, failure::BackendFailure)
+    return Dict{String,Any}(
+        "term_ordinal" => ordinal,
+        "selector" => selector,
+        "status" => "not_evaluated",
+        "failure" => failure_object(request, failure),
+    )
+end
+
+function unevaluated_objective_components(request, failure::BackendFailure; first_index::Int = 1)
+    components = Any[]
+    for (objective_index, objective) in enumerate(request["spec"]["objectives"])
+        objective_index < first_index && continue
+        terms = selector_leaves(objective["quantity"])
+        push!(components, Dict{String,Any}(
+            "objective_id" => objective["id"],
+            "quantity" => objective["quantity"],
+            "status" => "not_evaluated",
+            "terms" => Any[unevaluated_term(term, ordinal, request, failure) for (ordinal, term) in enumerate(terms)],
+            "failure" => failure_object(request, failure),
+        ))
+    end
+    return components
 end
 
 function plan_parameter_values(plan)::Dict{String,Any}
@@ -2629,19 +2707,71 @@ function root_with_continuation(plan, request, baseline_values, candidate_values
 end
 
 function objective_outcome(plan, request, baseline_values, values, baseline_roots;
-        extrapolation_evidence::Vector{Any} = Any[])
-    raw_compiled = compile_primitive(plan, values; context_kind = "optimization_candidate",
+        extrapolation_evidence::Vector{Any} = Any[], prepared_raw = nothing,
+        prepared_views = nothing)
+    raw_compiled = prepared_raw === nothing ? compile_primitive(
+        plan, values; context_kind = "optimization_candidate",
         authorized = optimization_authorizations(request), extrapolation_evidence = extrapolation_evidence,
-        authorization_source = "optimization_spec")
-    _, view = realized_ref_lineage(raw_compiled, declarative_lineage(plan, request, raw_compiled))
-    compiled = view.compiled
+        authorization_source = "optimization_spec",
+    ) : prepared_raw
+    views = prepared_views === nothing ? candidate_view_cache(plan, request, raw_compiled) : prepared_views
     components = Any[]
     total = 0.0
     roots = Dict{String,ComplexF64}()
-    for objective in request["spec"]["objectives"]
+    for (objective_index, objective) in enumerate(request["spec"]["objectives"])
         selector = objective["quantity"]
         selector isa AbstractDict || fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "optimization quantity must be a selector record")
-        value = root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled, view)
+        terms = selector_leaves(selector)
+        public_unit = selector_public_unit(terms[1])
+        term_records = Any[]
+        value = 0.0
+        failed = nothing
+        for (term_index, term) in enumerate(terms)
+            selected = views[canonical_json(term["view"])]
+            view = selected["view"]::RealizedView
+            try
+                term_value = root_selector_value(
+                    term, plan, request, baseline_values, values, baseline_roots,
+                    roots, view.compiled, view,
+                )
+                value += selector_value_in_unit(term_value, selector_public_unit(term), public_unit)
+                push!(term_records, Dict{String,Any}(
+                    "term_ordinal" => term_index,
+                    "selector" => term,
+                    "status" => "success",
+                    "ref_lineage" => selected["lineage"],
+                    "value" => quantity(term_value, selector_public_unit(term), objective["target"]["dimensionality"]),
+                ))
+            catch error
+                error isa BackendFailure || rethrow()
+                is_candidate_failure(error) || rethrow()
+                failed = error
+                push!(term_records, Dict{String,Any}(
+                    "term_ordinal" => term_index,
+                    "selector" => term,
+                    "status" => "failure",
+                    "ref_lineage" => selected["lineage"],
+                    "failure" => failure_object(request, error),
+                ))
+                for remaining_index in (term_index + 1):length(terms)
+                    push!(term_records, unevaluated_term(terms[remaining_index], remaining_index, request, error))
+                end
+                break
+            end
+        end
+        if failed !== nothing
+            failure = failed::BackendFailure
+            push!(components, Dict{String,Any}(
+                "objective_id" => objective["id"],
+                "quantity" => selector,
+                "status" => "failure",
+                "terms" => term_records,
+                "failure" => failure_object(request, failure),
+            ))
+            append!(components, unevaluated_objective_components(request, failure; first_index = objective_index + 1))
+            sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
+            return Inf, components, extrapolation_evidence, failure
+        end
         target = quantity_value(objective["target"])
         scale = quantity_value(objective["resolved_scale"])
         scale > 0.0 || fail("validation", "invalid_optimization_spec", "objective_scale", "optimization_candidate", "objective scale must be positive")
@@ -2651,6 +2781,9 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
         total += weighted
         push!(components, Dict{String,Any}(
             "objective_id" => objective["id"],
+            "quantity" => selector,
+            "status" => "success",
+            "terms" => term_records,
             "value" => quantity(value, String(objective["target"]["si_unit"]), String(objective["target"]["dimensionality"])),
             "normalized_residual_f64" => f64_hex(residual),
             "weighted_cost_f64" => f64_hex(weighted),
@@ -2658,7 +2791,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
     end
     isfinite(total) || fail("execution", "numerical_resolution_unresolved", "objective", "optimization_candidate", "candidate total cost is non-finite")
     sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-    return total, components, extrapolation_evidence
+    return total, components, extrapolation_evidence, nothing
 end
 
 function failure_object(request, failure::BackendFailure)
@@ -2695,10 +2828,10 @@ end
 function write_generation_ledger(staging, request, request_sha, attempt_sha, generation::Int, previous_sha, raw::Matrix{Float64}, transformed::Matrix{Float64}, candidates, certificate)
     ledger = Dict{String,Any}(
         "schema" => "scnsim.optimization_ledger",
-        "schema_version" => 1,
+        "schema_version" => 2,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3",
         "generation" => generation,
         "previous_ledger_sha256" => previous_sha,
         "population_size" => size(transformed, 2),
@@ -2740,7 +2873,7 @@ function staged_generation_links(staging::String, request_sha::String, attempt_s
         ledger = canonical_document(file)
         digest = file_sha256(file)
         get(ledger, "schema", nothing) == "scnsim.optimization_ledger" &&
-            get(ledger, "schema_version", nothing) == 1 &&
+            get(ledger, "schema_version", nothing) == 2 &&
             get(ledger, "request_sha256", nothing) == request_sha &&
             get(ledger, "attempt_sha256", nothing) isa AbstractString &&
             get(ledger, "generation", nothing) == expected &&
@@ -2802,7 +2935,7 @@ function finalized_attempt_ledgers(entry::String, request_sha::String, current_a
             fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "sibling ledger digest disagrees with its receipt")
         ledger = canonical_document(file)
         get(ledger, "schema", nothing) == "scnsim.optimization_ledger" &&
-            get(ledger, "schema_version", nothing) == 1 &&
+            get(ledger, "schema_version", nothing) == 2 &&
             get(ledger, "request_sha256", nothing) == request_sha &&
             get(ledger, "attempt_sha256", nothing) == attempt_sha ||
             fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "sibling ledger has incompatible identity")
@@ -2822,7 +2955,7 @@ function sibling_ledgers(staging::String, request_sha::String, attempt_sha::Stri
         occursin(r"^(?!000000$)(?:[0-9]{6}|[1-9][0-9]{6,})$", name) || continue
         isdir(entry) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "final attempt is not a directory")
         for (digest, ledger) in finalized_attempt_ledgers(entry, request_sha, attempt_sha)
-            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2" ||
+            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3" ||
                 fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "prior generation ledger has incompatible algorithm identity")
             if haskey(discovered, digest)
                 canonical_json(discovered[digest]) == canonical_json(ledger) ||
@@ -2974,21 +3107,27 @@ function verify_callback_costs(expected::Vector{Float64}, received)
     return nothing
 end
 
-function optimization_baseline_roots(plan, request, values)
+function optimization_baseline_roots(plan, request, values;
+        extrapolation_evidence::Vector{Any} = Any[])
     # The closed failure envelope has no separate baseline context.  Baseline
     # binding uses the same declared optimization authorization and typed
     # `optimization_candidate` context; its ledger position distinguishes it.
-    compiled, view = compiled_candidate_view(plan, request, values; context_kind = "optimization_candidate")
+    raw = compile_primitive(plan, values; context_kind = "optimization_candidate",
+        authorized = optimization_authorizations(request),
+        extrapolation_evidence = extrapolation_evidence,
+        authorization_source = "optimization_spec")
+    views = candidate_view_cache(plan, request, raw)
     roots = Dict{String,ComplexF64}()
     for objective in request["spec"]["objectives"]
         selector = objective["quantity"]
         for (key, root_selector) in root_selector_specs(selector)
             if !haskey(roots, key)
-                roots[key] = selector_root_at(root_selector, compiled, view)
+                view = views[canonical_json(root_selector["view"])]["view"]::RealizedView
+                roots[key] = selector_root_at(root_selector, view.compiled, view)
             end
         end
     end
-    return roots
+    return roots, raw, views
 end
 
 function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vector{Float64}, latent, generation::Int, column::Int, ordinal::Int, cache::Dict{String,Any})
@@ -3011,29 +3150,33 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
                 "affine input is outside its declared support")
         end
         empty!(extrapolation_evidence)
-        cost, components, extrapolation_evidence = objective_outcome(plan, request, baseline_values, values, baseline_roots;
+        cost, components, extrapolation_evidence, objective_failure = objective_outcome(plan, request, baseline_values, values, baseline_roots;
             extrapolation_evidence = extrapolation_evidence)
-        outcome = Dict{String,Any}(
-            "status" => "success",
-            "cost_f64" => f64_hex(cost),
-            "objective_components" => components,
-        )
+        outcome = if objective_failure === nothing
+            Dict{String,Any}(
+                "status" => "success",
+                "cost_f64" => f64_hex(cost),
+                "objective_components" => components,
+            )
+        else
+            Dict{String,Any}(
+                "status" => "failure",
+                "penalty" => "positive_infinity",
+                "failure" => failure_object(request, objective_failure::BackendFailure),
+                "objective_components" => components,
+            )
+        end
         cache[key] = Dict("outcome" => outcome, "cost" => cost, "extrapolation_evidence" => extrapolation_evidence)
         return candidate_record(request, ordinal, generation, column, z, latent, parameters, false, outcome;
             extrapolation_evidence = extrapolation_evidence), cost
     catch error
         error isa BackendFailure || rethrow()
-        allowed = error.kind in (
-            "invalid_candidate_physical_parameter",
-            "eliminated_block_solve_failure",
-            "root_slope_unresolved",
-            "numerical_resolution_unresolved",
-        )
-        allowed || rethrow()
+        is_candidate_failure(error) || rethrow()
         outcome = Dict{String,Any}(
             "status" => "failure",
             "penalty" => "positive_infinity",
             "failure" => failure_object(request, error),
+            "objective_components" => unevaluated_objective_components(request, error),
         )
         sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
         cache[key] = Dict("outcome" => outcome, "cost" => Inf, "extrapolation_evidence" => extrapolation_evidence)
@@ -3080,17 +3223,21 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
     seed = Int64(controls["seed"])
     base_values = parameter_values(request)
     z0 = baseline_z(request, base_values)
-    baseline_roots = optimization_baseline_roots(plan, request, base_values)
+    baseline_evidence = Any[]
+    baseline_roots, baseline_raw, baseline_views = optimization_baseline_roots(
+        plan, request, base_values; extrapolation_evidence = baseline_evidence,
+    )
     cache = Dict{String,Any}()
     baseline_parameters = candidate_parameter_set(request, base_values)
-    baseline_evidence = Any[]
-    baseline_cost, baseline_components, baseline_evidence = try
+    baseline_cost, baseline_components, baseline_evidence, baseline_failure = try
         objective_outcome(plan, request, base_values, base_values, baseline_roots;
-            extrapolation_evidence = baseline_evidence)
+            extrapolation_evidence = baseline_evidence,
+            prepared_raw = baseline_raw, prepared_views = baseline_views)
     catch error
         error isa BackendFailure || rethrow()
         rethrow()
     end
+    baseline_failure === nothing || throw(baseline_failure)
     baseline_outcome = Dict{String,Any}(
         "status" => "success",
         "cost_f64" => f64_hex(baseline_cost),

@@ -22,6 +22,8 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
+from engineer_publication_binding import check_publication_binding
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAPTER = ROOT / "examples" / "engineer" / "chapter-03"
@@ -318,8 +320,7 @@ def generate(workspace: Path) -> None:
 
 def check() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if manifest.get("binding") != _binding():
-        raise RuntimeError("Chapter 3 source binding is stale")
+    check_publication_binding(manifest, _binding())
     expected = manifest.get("artifacts")
     actual = {name: _hash(FIGURES / name) for name in ARTIFACT_NAMES}
     if expected != actual:

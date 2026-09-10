@@ -22,6 +22,8 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
+from engineer_publication_binding import check_publication_binding
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAPTER = ROOT / "examples" / "engineer" / "chapter-01"
@@ -378,8 +380,7 @@ def _write_outputs(namespace: dict[str, object], exports: Path) -> dict[str, obj
 def _check(manifest: dict[str, object]) -> None:
     if manifest.get("schema") != "scnsim.engineer_chapter1_artifacts.v1":
         raise RuntimeError("unsupported Chapter 1 artifact manifest")
-    if manifest.get("binding") != _binding():
-        raise RuntimeError("Chapter 1 artifact source binding is stale")
+    check_publication_binding(manifest, _binding())
     execution = manifest.get("execution")
     binding = manifest["binding"]
     if (

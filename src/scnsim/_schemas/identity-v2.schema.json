@@ -828,7 +828,7 @@
           "const": "scnsim.optimization_ledger"
         },
         "schema_version": {
-          "const": 1
+          "const": 2
         },
         "request_sha256": {
           "$ref": "identity-common.schema.json#/$defs/sha256"
@@ -837,7 +837,7 @@
           "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "algorithm_id": {
-          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
+          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
         },
         "generation": {
           "type": "integer",

@@ -359,7 +359,7 @@ different user-visible jobs:
 | What are the named HB case responses? | `run.solve(ref, spec)` | `HBSolveSpec` | `HBBatchResult` with one typed outcome per declared case |
 | What is one Direct root, pole, zero, coupling, or response scalar? | `run.evaluate(ref, spec)` | Typed Direct quantity Spec | Typed quantity Result |
 | What is the complete Direct dynamic operator? | `run.evaluate(ref, spec)` | `OperatorSpec` | `OperatorResult` |
-| Which parameters minimize declared typed quantity objectives? | `run.optimize(ref, spec)` | `OptimizationSpec` | `OptimizationResult` |
+| Which parameters minimize declared typed quantity objectives? | `run.optimize(spec)` or `run.optimize(default_view, spec)` | `OptimizationSpec` | `OptimizationResult` |
 
 The `SolveSpec` suffix means “produce a response surface.” A
 `DirectSolveSpec` solves the complete selected-view N-port response over its
@@ -1626,9 +1626,11 @@ angular-frequency Quantity, `.frequency` is `real(Omega) / (2 * pi)`, and the
 positive passive linewidth is `-2 * imag(Omega) / (2 * pi)`. The Result records
 the convention instead of inferring a sign from a plotted trace.
 
-`QuantitySum(a, b, ...)` is the only V1 scalar composition and is legal only
+`QuantitySelector.on(view)` immutably and non-executingly binds one scalar
+projection to an existing `NetworkViewRef`. `QuantitySum(a, b, ...)` is the only V1 scalar composition and is legal only
 inside a `CostObjective`; it is not a standalone `run.evaluate()` request.
-Every term must have the same dimensionality. SCNSim exposes no general
+Every term must have the same dimensionality, but terms may bind different
+Views belonging to the same captured Plan. SCNSim exposes no general
 expression tree or Python callable objective. A consumer may still request `OperatorSpec` and use
 its labeled Quantity matrix for ordinary Python/NumPy calculation; a full
 operator or matrix cannot itself become one scalar cost.
@@ -1652,9 +1654,9 @@ evidenced.
 
 ### Quantity objectives and one Julia execution
 
-V1 optimization evaluates Direct objectives only. It accepts one selected
-`NetworkViewRef`, any number of optimization variables, and any number of
-scalar quantity objectives:
+V1 optimization evaluates Direct objectives only. It accepts any number of
+same-Plan bound `NetworkViewRef` leaves, optimization variables, and scalar
+quantity objectives:
 
 ```text
 Definitions author
@@ -1776,6 +1778,40 @@ optimization_spec = OptimizationSpec(
 
 optimization = run.optimize(quantity_view, optimization_spec)
 ```
+
+The example uses the convenience form: `quantity_view` fills only selectors
+that have not already been bound with `.on(view)`. Calling
+`run.optimize(optimization_spec)` instead requires every leaf to be explicitly
+bound. Normalization happens before request hashing; an unused convenience
+default does not enter the request, and the two forms are identity-equivalent
+when their effective leaf bindings match. All bound Views must belong to this
+run and captured Plan or validation fails before Julia starts.
+
+When objectives genuinely use different retained Views, bind each scalar leaf
+instead of passing a default. In this excerpt, `qubit_view` and `readout_view`
+are already-derived Views of the same `run` and captured Plan:
+
+```python
+cross_view_objective = CostObjective(
+    id="combined_linewidth",
+    quantity=QuantitySum(
+        qubit_root.linewidth.on(qubit_view),
+        readout_root.linewidth.on(readout_view),
+    ),
+    target=2.0 * u.MHz,
+    weight=10.0 * u.dimensionless,
+)
+optimization = run.optimize(
+    OptimizationSpec(
+        variables=optimization_spec.variables,
+        objectives=(cross_view_objective,),
+        optimizer=optimization_spec.optimizer,
+    )
+)
+```
+
+Both Views receive the same candidate `ParameterSet`. This is not two searches
+or a comparison between independently selected winners.
 
 The best values remain an immutable `ParameterSet`. Reusing them is an
 explicitly new request and never mutates the Plan baseline or the selected
@@ -1905,7 +1941,7 @@ mirror, or apply another physical box transform. The signed Int64 seed is
 reinterpreted as UInt64 with the same bits.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -1952,10 +1988,14 @@ callback before update or evidence publication. These hashes are
 continuation-integrity evidence, not independently reconstructable state
 artifacts, and are never restored as optimizer state.
 
-For every successful candidate, the ledger stores each objective's evaluated
-Quantity, signed normalized residual, and weighted component cost in request
-objective order. The request-owned target, resolved scale/source, and weight
-must reproduce each component and their total. A candidate-dependent invalid
+For every candidate, generation-ledger version 2 stores each objective's bound
+quantity plus one record for every leaf selector and View in request order.
+Successful leaves carry their actual realized lineage and evaluated Quantity;
+failures preserve already evaluated terms and mark the exact failed or
+not-evaluated remainder. Successful objectives additionally store their
+evaluated Quantity, signed normalized residual, and weighted component cost.
+The request-owned target, resolved scale/source, and weight must reproduce each
+successful component and total. A candidate-dependent invalid
 primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,
 local-slope, and Newton/continuation failures retain their corresponding typed
 root errors and tagged positive-infinity penalty. If any of those occurs while

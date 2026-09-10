@@ -753,18 +753,41 @@ class CircuitRun:
         request, source_units, _ = self._materialized_request("evaluate_direct", ref, spec, parameters)
         return self._execute(request, source_units, bound_spec=spec)
 
+    @overload
+    def optimize(
+        self,
+        spec: OptimizationSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OptimizationResult: ...
+
+    @overload
     def optimize(
         self,
         ref: NetworkViewRef,
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+    ) -> OptimizationResult: ...
+
+    def optimize(
+        self,
+        ref_or_spec: NetworkViewRef | OptimizationSpec,
+        spec: OptimizationSpec | None = None,
+        *,
+        parameters: ParameterSet | None = None,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
-        self._require_ref(ref)
-        request, source_units, _ = self._materialized_request("optimize_direct", ref, spec, parameters)
-        return self._execute(request, source_units, bound_spec=spec)
+        if parameters is not None and not isinstance(parameters, ParameterSet):
+            raise TypeError("OptimizationSpec parameters must be a ParameterSet or None")
+        default_ref, optimization_spec = self._optimization_arguments(ref_or_spec, spec)
+        ref, selector_views = self._optimization_views(optimization_spec, default_ref=default_ref)
+        request, source_units, _ = self._materialized_request(
+            "optimize_direct", ref, optimization_spec, parameters,
+            selector_views=selector_views,
+        )
+        return self._execute(request, source_units, bound_spec=optimization_spec)
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DirectSolveResult | ParameterSweepResult: ...
@@ -812,7 +835,12 @@ class CircuitRun:
             operation = "optimize_direct"
         else:
             unavailable(f"CircuitRun.resolve({type(spec).__name__})")
-        declaration, _ = self._request_declaration(operation, ref, spec, parameters)
+        selector_views = None
+        if isinstance(spec, OptimizationSpec):
+            ref, selector_views = self._optimization_views(spec, default_ref=ref)
+        declaration, _ = self._request_declaration(
+            operation, ref, spec, parameters, selector_views=selector_views,
+        )
         request_sha256 = sha256_hex(canonical_json_bytes(declaration))
         with self._binding.reader():
             success = self._binding.resolve_success(request_sha256)
@@ -836,7 +864,12 @@ class CircuitRun:
             else "evaluate_direct" if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec))
             else "optimize_direct"
         )
-        request, _, compiled = self._materialized_request(operation, ref, spec, parameters)
+        selector_views = None
+        if isinstance(spec, OptimizationSpec):
+            ref, selector_views = self._optimization_views(spec, default_ref=ref)
+        request, _, compiled = self._materialized_request(
+            operation, ref, spec, parameters, selector_views=selector_views,
+        )
         if compiled is None:
             compiled = self._preflight(request)
         return _verified_result(
@@ -959,6 +992,45 @@ class CircuitRun:
         if not isinstance(ref, NetworkViewRef) or ref._run is not self:
             raise ValueError("NetworkViewRef belongs to another CircuitRun")
 
+    def _optimization_arguments(
+        self,
+        ref_or_spec: NetworkViewRef | OptimizationSpec,
+        spec: OptimizationSpec | None,
+    ) -> tuple[NetworkViewRef | None, OptimizationSpec]:
+        if isinstance(ref_or_spec, OptimizationSpec):
+            if spec is not None:
+                raise TypeError("optimize() received two OptimizationSpec values")
+            return None, ref_or_spec
+        if not isinstance(ref_or_spec, NetworkViewRef) or not isinstance(spec, OptimizationSpec):
+            raise TypeError("optimize() requires OptimizationSpec or NetworkViewRef, OptimizationSpec")
+        self._require_ref(ref_or_spec)
+        return ref_or_spec, spec
+
+    def _optimization_views(
+        self,
+        spec: OptimizationSpec,
+        *,
+        default_ref: NetworkViewRef | None,
+    ) -> tuple[NetworkViewRef, Mapping[int, NetworkViewRef]]:
+        bindings: dict[int, NetworkViewRef] = {}
+        ordered: list[NetworkViewRef] = []
+        for objective in spec.objectives:
+            for selector in _quantity_selectors(objective.quantity):
+                selected = selector._view if selector._view is not None else default_ref
+                if not isinstance(selected, NetworkViewRef) or selected._run is not self:
+                    raise InvalidOptimizationSpec(
+                        "every optimization selector must bind a View from this CircuitRun",
+                        stage="spec_validation",
+                    )
+                bindings[id(selector)] = selected
+                ordered.append(selected)
+        if not ordered:
+            raise InvalidOptimizationSpec(
+                "optimization requires at least one bound selector",
+                stage="spec_validation",
+            )
+        return ordered[0], MappingProxyType(bindings)
+
     def _coordinate_id(self, value: str | ElectricNodeRef | CoordinateRef) -> str:
         """Resolve a public alias to the snapshot's canonical compiler node."""
 
@@ -989,6 +1061,8 @@ class CircuitRun:
         operation: str,
         ref: NetworkViewRef,
         spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        *,
+        selector_views: Mapping[int, NetworkViewRef] | None = None,
     ) -> None:
         if isinstance(spec, DirectSolveSpec):
             if ref._lineage["port_realizable"] is not True:
@@ -1037,7 +1111,13 @@ class CircuitRun:
                 )
         for objective in spec.objectives:
             for selector in _quantity_selectors(objective.quantity):
-                self._validate_direct_quantity_spec(operation, ref, selector.spec)
+                selected = None if selector_views is None else selector_views.get(id(selector))
+                if selected is None:
+                    raise InvalidOptimizationSpec(
+                        "optimization selector View normalization is incomplete",
+                        stage="spec_validation",
+                    )
+                self._validate_direct_quantity_spec(operation, selected, selector.spec)
 
     def _validate_direct_quantity_spec(
         self,
@@ -1267,10 +1347,14 @@ class CircuitRun:
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet | ParameterSpace | None,
+        *,
+        selector_views: Mapping[int, NetworkViewRef] | None = None,
     ) -> tuple[dict[str, object], list[dict[str, object]], Mapping[str, object] | None]:
         """Build the closed declarative request without launching Julia."""
 
-        request, source_units = self._request_declaration(operation, ref, spec, parameters)
+        request, source_units = self._request_declaration(
+            operation, ref, spec, parameters, selector_views=selector_views,
+        )
         return request, source_units, None
 
     def _request_declaration(
@@ -1279,15 +1363,21 @@ class CircuitRun:
         ref: NetworkViewRef,
         spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet | ParameterSpace | None,
+        *,
+        selector_views: Mapping[int, NetworkViewRef] | None = None,
     ) -> tuple[dict[str, object], list[dict[str, object]]]:
         """Encode a read-only lazy View declaration without invoking Julia."""
 
+        if isinstance(spec, OptimizationSpec) and selector_views is None:
+            ref, selector_views = self._optimization_views(spec, default_ref=ref)
         if isinstance(spec, HBSolveSpec):
             if operation != "solve_hb":
                 raise CompilerInvariantError("HB Spec has a non-HB operation", stage="request_encode")
             self._validate_hb_request(ref, spec)
         else:
-            self._validate_direct_request(operation, ref, spec)
+            self._validate_direct_request(
+                operation, ref, spec, selector_views=selector_views,
+            )
         parameter_source, resolved = self._parameter_source(parameters)
         if isinstance(spec, OptimizationSpec):
             active = {_parameter_key(variable.parameter) for variable in spec.variables}
@@ -1318,6 +1408,12 @@ class CircuitRun:
                 effective,
                 coordinate_id=lambda value: self._view_coordinate_id(ref, value),
                 trace_channel_id=lambda value: self._trace_request_channel(ref, value),
+                selector_view=(
+                    None if selector_views is None
+                    else lambda selector: selector_views[id(selector)]
+                ),
+                view_declaration=lambda selected: _view_declaration(selected._lineage),
+                coordinate_id_for_view=lambda selected, value: self._view_coordinate_id(selected, value),
             )
             source_units = self._source_units(spec, effective, parameter_space=parameters)
         except InvalidOptimizationSpec:
@@ -1344,7 +1440,7 @@ class CircuitRun:
                 "operator": "scnsim.direct_operator.v1",
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
-            semantic["algorithm_id"] = "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"
+            semantic["algorithm_id"] = "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
         else:
             raise CompilerInvariantError("operation is outside the runtime", stage="request_encode")
         preliminary = canonical_request_document(
@@ -3140,18 +3236,43 @@ def _encode_scalar_expression(
     value: object,
     *,
     coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
+    selector_view: Callable[[QuantitySelector], NetworkViewRef] | None = None,
+    view_declaration: Callable[[NetworkViewRef], Mapping[str, object]] | None = None,
+    coordinate_id_for_view: Callable[[NetworkViewRef, str | ElectricNodeRef | CoordinateRef], str] | None = None,
 ) -> dict[str, object]:
     if isinstance(value, QuantitySelector):
+        if selector_view is None and view_declaration is None and coordinate_id_for_view is None:
+            return {
+                "type": value.type,
+                "spec": _encode_direct_quantity(value.spec, coordinate_id=coordinate_id),
+                "projection": value.projection,
+            }
+        if selector_view is None or view_declaration is None or coordinate_id_for_view is None:
+            raise CompilerInvariantError(
+                "optimization selector View encoder is incomplete",
+                stage="request_encode",
+            )
+        selected = selector_view(value)
         return {
             "type": value.type,
-            "spec": _encode_direct_quantity(value.spec, coordinate_id=coordinate_id),
+            "spec": _encode_direct_quantity(
+                value.spec,
+                coordinate_id=lambda coordinate: coordinate_id_for_view(selected, coordinate),
+            ),
             "projection": value.projection,
+            "view": dict(view_declaration(selected)),
         }
     if isinstance(value, QuantitySum):
         return {
             "type": "quantity_sum",
             "terms": [
-                _encode_scalar_expression(term, coordinate_id=coordinate_id)
+                _encode_scalar_expression(
+                    term,
+                    coordinate_id=coordinate_id,
+                    selector_view=selector_view,
+                    view_declaration=view_declaration,
+                    coordinate_id_for_view=coordinate_id_for_view,
+                )
                 for term in value.terms
             ],
         }
@@ -3208,6 +3329,9 @@ def _encode_spec(
     *,
     coordinate_id: Callable[[str | ElectricNodeRef | CoordinateRef], str] = _coordinate_id,
     trace_channel_id: Callable[[str], str] = lambda value: value,
+    selector_view: Callable[[QuantitySelector], NetworkViewRef] | None = None,
+    view_declaration: Callable[[NetworkViewRef], Mapping[str, object]] | None = None,
+    coordinate_id_for_view: Callable[[NetworkViewRef, str | ElectricNodeRef | CoordinateRef], str] | None = None,
 ) -> dict[str, object]:
     def trace_record(trace: SParameterTrace) -> dict[str, object]:
         record = dict(trace._canonical_record())
@@ -3360,6 +3484,9 @@ def _encode_spec(
                 "quantity": _encode_scalar_expression(
                     objective.quantity,
                     coordinate_id=coordinate_id,
+                    selector_view=selector_view,
+                    view_declaration=view_declaration,
+                    coordinate_id_for_view=coordinate_id_for_view,
                 ),
                 "target": target,
                 "weight_f64": float64_hex(weight),

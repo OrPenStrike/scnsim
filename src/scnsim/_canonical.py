@@ -61,7 +61,7 @@ _UNITS: dict[str, str] = {
 _DIRECT_ALGORITHMS = {
     "solve_direct": "scnsim.direct_response.v1",
     "solve_hb": "scnsim.hb_response.josephsoncircuits.v1",
-    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2",
+    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3",
 }
 _EVALUATION_ALGORITHMS = {
     "diagonal_root": "scnsim.diagonal_root.newton32.v1",

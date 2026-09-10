@@ -34,6 +34,7 @@ from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_res
 
 if TYPE_CHECKING:
     from ._diagram_spec import CircuitDiagramSpec
+    from .runtime import NetworkViewRef
 
 
 Coordinate = str | ElectricNodeRef | CoordinateRef
@@ -253,6 +254,16 @@ class QuantitySelector:
     spec: object
     projection: str
     type: str
+    _view: object | None = None
+
+    def on(self, view: NetworkViewRef) -> QuantitySelector:
+        """Return this selector immutably bound to one existing network View."""
+
+        from .runtime import NetworkViewRef
+
+        if not isinstance(view, NetworkViewRef):
+            raise TypeError("QuantitySelector.on() requires NetworkViewRef")
+        return QuantitySelector(self.spec, self.projection, self.type, view)
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"type": self.type, "spec": self.spec._canonical_record(), "projection": self.projection}

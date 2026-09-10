@@ -77,7 +77,16 @@ optimizer candidate.
 The Julia request planner deduplicates identical compile, reduction,
 factorization, and root nodes. A Direct response and quantity remain distinct
 public requests, but objectives within one optimization candidate share their
-common dependency graph.
+common dependency graph. Multi-View optimization compiles the candidate's raw
+Plan once and realizes each distinct leaf View from that compiled primitive.
+It does not start a subprocess or recursively invoke Python for a leaf. View
+realization is keyed by its complete canonical declaration.
+
+Each baseline continuation anchor is keyed by canonical View lineage plus the
+root-like quantity Spec. Projection is excluded, so frequency and linewidth of
+the same root reuse one anchor, while the same Spec on different Views cannot
+share an anchor accidentally. Every candidate continues from that baseline
+anchor; candidates do not select branches from one another.
 
 The `dev3` restriction to an original one-Port Direct view with no named traces
 belongs only to `solve_direct`. It is neither a general View law nor an
@@ -198,7 +207,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v2"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -207,7 +216,10 @@ stop configuration, box transform, candidate compile/Direct/objective
 algorithm IDs, raw/transformed hash encoding, continuation-certificate
 projection and boundary timing, replay checks, and winner/tie rule. A change to
 any of those dependencies requires another outer ID rather than silently
-preserving `.v2`.
+preserving the old ID. Version 3 binds complete per-leaf View declarations,
+multi-View dependency realization, View-qualified continuation keys, and the
+closed per-term evidence ledger. It does not rename or change the pinned CMA
+sampling, update, box transform, stop, seed, or winner rule.
 
 Only complete generations count:
 
@@ -217,7 +229,7 @@ $$
 
 Candidate failure and cache reuse still consume population ordinals. Exact
 cost ties resolve by the earliest baseline/generation/population ordinal. The
-The original `dev3` slice established any number of primitive R/L/C parameters
+original `dev3` slice established any number of primitive R/L/C parameters
 and objectives, with `DiagonalRootSpec.frequency` and `.linewidth` selectors
 on a supported retained View.
 
@@ -254,9 +266,16 @@ candidate arrays in the same ledger. The raw hash binds callback-visible $y$;
 the transformed hash binds the $z$ actually consumed by physical evaluation.
 Neither may be inferred from the other or from rounded physical values.
 
-Each successful objective component records its evaluated Quantity, signed
-normalized residual, and weighted cost; the request-owned target, resolved
-scale/source, and weight therefore reproduce both the component and total cost.
+Every objective component records its declared bound quantity and one term
+record per selector leaf in declaration order. A successful term binds the
+leaf selector, its realized View lineage, and evaluated Quantity. A failed or
+not-yet-evaluated term carries its exact closed status and typed failure rather
+than an invented value. A successful objective additionally records its
+evaluated Quantity, signed normalized residual, and weighted cost; the
+request-owned target, resolved scale/source, and weight therefore reproduce
+both the component and total cost. A failed candidate still carries one
+component for every request objective, preserving already evaluated terms and
+marking the exact remaining terms without dropping objectives.
 It contains exactly $\lambda$ population outcomes in column order, with their
 global evaluation ordinals; the successful baseline outcome is stored once in
 the optimization Result rather than repeated in every generation.

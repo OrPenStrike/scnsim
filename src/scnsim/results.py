@@ -900,6 +900,8 @@ class ParameterSweepResult(AnalysisResult):
         return self._collect(quantity, self.points)
 
     def _collect(self, quantity: object, points: Sequence[ParameterPointOutcome]) -> ParameterField:
+        if getattr(quantity, "_view", None) is not None:
+            raise ValueError("View-bound selectors are supported only by optimization")
         key = self._selector_encoder(quantity)
         if key not in self._allowed_selectors:
             raise ValueError("quantity was not requested by this sweep")
