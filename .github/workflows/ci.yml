@@ -250,8 +250,6 @@ jobs:
                       capture_output=True,
                   ).stdout
 
-          legacy_sources = sorted(Path("examples/tutorials").glob("[0-9][0-9]_*.qmd"))
-          assert len(legacy_sources) == 16, legacy_sources
           chapter_specs = (
               (
                   Path("examples/engineer/chapter-01/chapter.qmd"),
@@ -323,7 +321,7 @@ jobs:
               ),
           )
           aggregates = [item[0] for item in chapter_specs]
-          sources = [*legacy_sources, *aggregates]
+          sources = aggregates
           notebooks = [path.with_suffix(".ipynb") for path in sources]
           assert all(path.is_file() for path in notebooks), notebooks
 
@@ -393,12 +391,11 @@ jobs:
                   fresh, f"fresh render of {source}"
               ), f"generated notebook drift: {artifact}"
 
-          print("verified", len(legacy_sources), "legacy pairs and", len(aggregates), "expanded Chapter aggregates")
+          print("verified", len(aggregates), "expanded Chapter aggregates")
           PY
 
       - name: Verify source-bound Tutorial figures without executing them
         run: |
-          uv run --locked python scripts/generate_tutorial_diagrams.py --check
           uv run --locked python scripts/generate_engineer_chapter1.py --check
           uv run --locked python scripts/generate_engineer_chapter2.py --check
           uv run --locked python scripts/generate_engineer_chapter3.py --check

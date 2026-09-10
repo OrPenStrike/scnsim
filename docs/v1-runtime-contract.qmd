@@ -65,7 +65,7 @@ This document defines public product/runtime behavior. Circuit physics,
 scientific Gates, and consumer Design Targets remain in their own authorized
 sources.
 
-The model-first [Tutorial](index.qmd) teaches these objects in short Lessons
+The model-first [Engineer course](index.qmd) teaches these objects in short Lessons
 grouped into complete clean-kernel Chapters. The
 Concept pages explain the design pressures behind
 [circuit models, subsystems, and reuse](concepts/physical-authority-and-reusable-composition.qmd),
@@ -1983,7 +1983,7 @@ objectives, expanded normalization, algorithm, controls, seed, runtime, and
 completed-generation ledger. An interrupted generation is discarded and
 replayed deterministically rather than published as complete evidence.
 
-### Tutorial realization {#ipf-optimization-example}
+### Engineer course realization {#ipf-optimization-example}
 
 The Contract does not duplicate a complete workflow. The engineer course
 teaches [Optimization](../examples/engineer/chapter-02/01-build.qmd),

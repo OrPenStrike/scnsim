@@ -69,7 +69,7 @@ reuse path.
 For the design reasoning behind the boundary, read
 [Physical authority and structured composition](concepts/physical-authority-and-reusable-composition.qmd).
 This Contract retains exact signatures, invariants, failure behavior, and
-evidence requirements; it is not the guided Tutorial.
+evidence requirements; it is not the guided Engineer course.
 
 ## One component-catalog model {#one-library-model}
 

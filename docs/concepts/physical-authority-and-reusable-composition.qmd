@@ -406,13 +406,12 @@ approximation is correct.
 
 - [Engineer Chapter 1](../../examples/engineer/chapter-01/01-build.qmd) builds
   one parameter-bound coupled LC before independently drawing and analyzing it.
-- The [eight-Chapter roadmap](../index.qmd) shows where sweeps, Optimization,
+- The [eight-Chapter course](../index.qmd) teaches sweeps, Optimization,
   feedlines, the four-Port capstone, Library reuse, diagram customization, MTL,
-  and report/resolve will move. Unimplemented destinations are not linked as
-  runnable pages.
+  and report/resolve. Chapters 1–4 are mainline; Chapters 5–8 are optional.
 - The [migration map](../implementation/engineer-course-migration-map.qmd)
-  keeps the former sixteen Chapter sources classified until their content is
-  migrated.
+  records where the former sixteen Chapter bodies moved; their original URLs
+  remain short guides and Git retains the superseded executable material.
 - [Compilation, Coordinates, and Network Views](compilation-coordinates-and-network-views.qmd)
   explains why analysis coordinates remain separate from wiring endpoints.
 - [Shared assembly contract](../contracts/circuit-plan-assembly.qmd)

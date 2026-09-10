@@ -56,8 +56,8 @@ hashes explain mechanics only; they do not transfer acceptance or consumers.
 
 The public V1 documentation and integrated runtime are complete in the
 Human-accepted dev1–dev6 scope. The 13 ordered QMD/IPYNB lesson pairs that
-existed at stabilization exercised that implementation. The current Tutorial
-adds and renumbers CONVERGING Chapters over the integrated implementation
+existed at stabilization exercised that implementation. The current Engineer
+course organizes CONVERGING Chapters over the integrated implementation
 baseline; the [central evidence status](../contracts/index.qmd#implementation-evidence-status)
 does not claim whole-course execution. This does not retroactively
 change the historical slice identities below. Full V1 is `STABILIZED`;

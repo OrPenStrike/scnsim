@@ -24,7 +24,7 @@ stating five things:
 5. the operation that answers that kind of question.
 
 This keeps “what circuit exists?” separate from “what should be calculated?”
-A diagram review is the recommended Tutorial step, but it is not an execution
+A diagram review is the recommended Engineer-course step, but it is not an execution
 prerequisite: the analysis API requires a complete Plan, not a prior
 render/show/audit call. A diagram request does not choose the View or perform
 the analysis.

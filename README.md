@@ -17,7 +17,7 @@ from names, numerical values, a picture, or a calculated mode.
 The engineer course works toward a complete review package: a diagram
 generated from the authored circuit, its independent A/B correspondence audit,
 and typed analytical Results that point back to the same Plan while recording
-their separately selected View and request. Tutorial authoring figures are
+their separately selected View and request. Engineer-course authoring figures are
 genuine exports tied to their source checkpoints; they are not solver outputs
 or evidence that every course cell has executed successfully.
 
@@ -33,8 +33,9 @@ adds a two-section CPW feedline, grounded readout, and named two-Port S21.
 four-Port capstone, completes its original/PTC core, then offers transform,
 quantity, and pump-off HB continuations. [Chapters 5–8](docs/index.qmd#chapter-5--library-and-reusable-composite)
 complete the reusable-Library, diagram-composition, ordered multi-conductor,
-and restart-safe report/resolve path. The former sixteen-Chapter sources remain in a
-single Migration legacy group while later batches move their reviewed content.
+and restart-safe report/resolve path. Chapters 1–4 are the mainline path;
+Chapters 5–8 are optional continuations. The sixteen former Chapter URLs now
+lead to short migration guides rather than a second course.
 
 ## Start with the circuit, then choose the question
 
@@ -79,7 +80,7 @@ simulation remain SCGSim responsibilities.
 > System, and parameterized diagrams remain `CONVERGING` with an integrated
 > implementation baseline. See the centralized
 > [implementation and evidence status](docs/contracts/index.qmd#implementation-evidence-status)
-> for scoped CI, Tutorial, historical-test, and delivery limitations.
+> for scoped CI, Engineer-course, historical-test, and delivery limitations.
 
 ## Install for development
 
@@ -107,7 +108,7 @@ uv run python -c "from scnsim import CircuitPlan, components; help(components.ca
 ```
 
 These commands inspect the installed package surface. They do not establish
-that the complete TARGET Tutorial is executable. The retained numerical
+that every Engineer-course calculation has executed. The retained numerical
 contracts still cover Direct, HB, optimization, views, exact resolution, and
 reports; this documentation rewrite does not change those meanings or add HB
 optimization, interpolation, release delivery, or a SCQGate handoff.
@@ -124,8 +125,8 @@ acceptance.
 
 - [Overview](README.md) — the model-first workflow, product boundary, status,
   and installation.
-- [Engineer course](docs/index.qmd) — the current eight-Chapter path and its
-  separately classified Migration legacy inputs.
+- [Engineer course](docs/index.qmd) — the current eight-Chapter path, with
+  Chapters 1–4 as the mainline and Chapters 5–8 as optional continuations.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim separates authored circuit facts, diagram geometry, and analysis
   Views while keeping one Plan authority.
@@ -138,8 +139,9 @@ acceptance.
 Each implemented Chapter has one zero-output generated Notebook for GitHub or
 VS Code/Jupyter review. QMD fragments are the only editable lesson source; the
 aggregate Notebook is a derived transport artifact, not an execution record.
-The old sixteen QMD/IPYNB pairs remain under `examples/tutorials/` as migration
-legacy with their source bindings intact.
+The sixteen former QMD URLs remain under `examples/tutorials/` as short
+no-code migration guides. Their superseded executable bodies, Notebooks, and
+checkpoint figures remain available in Git history.
 The website displays separately generated authoring SVGs without executing
 kernels or solvers. See the [source and figure workflow](examples/README.md)
 for the execution boundary. Neither a figure nor a Notebook establishes

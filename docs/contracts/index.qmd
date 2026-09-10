@@ -55,19 +55,10 @@ reflection example. Chapter 8 records two distinct Jupyter kernel sessions:
 the first persists Direct/root Results and a Report, and the second reconstructs
 the exact declaration and calls only `resolve()` while leaving the shared
 workspace bytes unchanged. These assets do not establish execution of every
-migration-legacy Chapter or every compiled projection. The
-[figure inventory](../../examples/README.md) records current and legacy
-evidence.
-
-Migration-legacy Chapter 12's tapped-feedline Default and complete explicit
-tap-order checkpoints are successful source-bound exports. One fixed-layout
-limitation remains in the migration-legacy inventory: Chapter 13's complete
-raw-loaded Default reports `schematic_layout` with `fixed connector intersects
-occupied geometry`. It has no current SVG or diagram certificate; the same
-Plan's successful explicit composition and final probe-tee capstone remain
-separately identified checkpoints rather than substitutes for that Default
-failure. The [figure inventory](../../examples/README.md) records the exact
-current count.
+compiled projection. The [figure inventory](../../examples/README.md) records
+the current source-bound evidence and typed layout limitations. The sixteen
+former Chapter URLs are short migration guides; superseded executable bodies,
+Notebooks, and checkpoint figures remain in Git history.
 
 Retained tests have three distinct evidence roles: current runnable checks;
 numerical and integrity regressions blocked by superseded authoring fixtures;
@@ -83,7 +74,7 @@ coupling-coefficient parameter binding and optimization are not supported.
 The Runtime's illustrative optimization therefore varies capacitance only,
 not the superseded two-variable example.
 
-The model-first [Tutorial](../index.qmd) and
+The model-first [Engineer course](../index.qmd) and
 [Concept](../concepts/physical-authority-and-reusable-composition.qmd) explain
 the reader workflow before these exact contracts: author one complete Plan,
 inspect its ASCDLS projection, then independently select `run.original` or a
@@ -123,7 +114,7 @@ replace a public invariant.
 ## Implementation Design {#implementation-design}
 
 Read this collection in order before changing the implementation. Each page
-answers one maintainer question. Together they cover the full Tutorial and every
+answers one maintainer question. Together they cover the Engineer course and every
 currently declared public V1 surface. Post-V1 surfaces remain fail-fast unless
 a later Human-accepted scope implements them.
 

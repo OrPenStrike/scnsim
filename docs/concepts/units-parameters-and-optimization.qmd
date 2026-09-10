@@ -158,24 +158,20 @@ it does not certify a View, solver Result, or optimization.
 - [Engineer Chapter 2](../../examples/engineer/chapter-02/01-build.qmd) applies
   ordered grid and listed spaces, typed point outcomes, read-only collection,
   and the established Optimization workflow on one rebuilt Plan.
-- Migration legacy: [Chapter 4](../../examples/tutorials/04_define_parameters.qmd)
-  retains the earlier extended identity, inspection, and selected-diagram
-  examples.
-- Migration legacy: [Chapter 5](../../examples/tutorials/05_sweep_parameters.qmd) demonstrates a
-  Cartesian grid, listed points, exact selection, point failures, and read-only
-  collection.
-- Migration legacy: [Chapter 6](../../examples/tutorials/06_optimize_primitive.qmd) fixes a
-  non-active input, reads back the winning effective point, and renders that
-  point without changing the Plan baseline.
+- [Engineer Chapter 2 — Optional C/L spaces](../../examples/engineer/chapter-02/04-optional-spaces.qmd)
+  distinguishes a Cartesian grid from an explicitly listed point space.
+- [Engineer Chapter 2 — Optimize and verify](../../examples/engineer/chapter-02/03-optimize.qmd)
+  fixes the non-active input, reads back the winning effective point, and
+  renders it without changing the Plan baseline.
 - [Engineer Chapter 5](../../examples/engineer/chapter-05/01-library.qmd)
   publishes original bound C and L refs through a reusable component while
   keeping literal factory inputs fixed.
 - [Engineer Chapter 7](../../examples/engineer/chapter-07/01-rlgc.qmd)
   introduces a complete fixed-basis RLGC value before selecting whole-value
   parameter points.
-- Migration legacy: [Chapter 13](../../examples/tutorials/13_compensate_probes.qmd) makes the
-  advanced feedline, readout, and floating-subsystem bindings visible in the
-  Plan audit.
+- [Engineer Chapter 4](../../examples/engineer/chapter-04/01-physical-plan.qmd)
+  makes the advanced feedline, readout, and floating-subsystem bindings
+  visible in the Plan audit.
 - [Parameter System contract](../contracts/parameter-system.qmd) owns the exact
   signatures, identities, supported values, Result surface, and failures.
 - [Component authoring](../component-authoring.qmd#pins-and-public-parameters)

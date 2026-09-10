@@ -19,7 +19,9 @@ to SCNSim or its lock. An editor-provided Jupyter frontend may instead open the
 Chapter Notebook after `uv sync --locked`. Select the repository's `.venv`
 Python kernel, restart it, and use **Run All**.
 
-Chapters 1–7 are separate clean-kernel execution units. Chapter 8 instead has
+Chapters 1–4 form the mainline course; Chapters 5–8 are optional
+continuations. Chapters 1–7 are separate clean-kernel execution units.
+Chapter 8 instead has
 an explicit two-kernel procedure: execute Lesson 1, stop that kernel, then use
 a second fresh kernel to run only Lesson 2 against the same preserved working
 directory. The shorter web Lessons are reading views over ordered source

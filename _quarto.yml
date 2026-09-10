@@ -129,7 +129,7 @@ website:
           href: docs/index.qmd
         - text: "Setup"
           href: examples/engineer/setup.qmd
-        - section: "Chapter 1 — Coupled grounded LC"
+        - section: "Mainline Chapter 1 — Coupled grounded LC"
           contents:
             - text: "Lesson 1 — Build"
               href: examples/engineer/chapter-01/01-build.qmd
@@ -143,7 +143,7 @@ website:
               href: examples/engineer/chapter-01/05-change-capacitance.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-01/chapter.qmd
-        - section: "Chapter 2 — Sweep and Optimization"
+        - section: "Mainline Chapter 2 — Sweep and Optimization"
           contents:
             - text: "Lesson 1 — Build"
               href: examples/engineer/chapter-02/01-build.qmd
@@ -155,7 +155,7 @@ website:
               href: examples/engineer/chapter-02/04-optional-spaces.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-02/chapter.qmd
-        - section: "Chapter 3 — CPW feedline/readout S21"
+        - section: "Mainline Chapter 3 — CPW feedline/readout S21"
           contents:
             - text: "Lesson 1 — Build"
               href: examples/engineer/chapter-03/01-build.qmd
@@ -165,7 +165,7 @@ website:
               href: examples/engineer/chapter-03/03-s21.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-03/chapter.qmd
-        - section: "Chapter 4 — Four-Port capstone"
+        - section: "Mainline Chapter 4 — Four-Port capstone"
           contents:
             - text: "Lesson 1 — Physical Plan"
               href: examples/engineer/chapter-04/01-physical-plan.qmd
@@ -181,7 +181,7 @@ website:
               href: examples/engineer/chapter-04/06-optional-hb.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-04/chapter.qmd
-        - section: "Chapter 5 — Library"
+        - section: "Optional Chapter 5 — Library"
           contents:
             - text: "Lesson 1 — Library boundary"
               href: examples/engineer/chapter-05/01-library.qmd
@@ -191,7 +191,7 @@ website:
               href: examples/engineer/chapter-05/03-reuse.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-05/chapter.qmd
-        - section: "Chapter 6 — Diagram customization"
+        - section: "Optional Chapter 6 — Diagram customization"
           contents:
             - text: "Lesson 1 — Default"
               href: examples/engineer/chapter-06/01-default.qmd
@@ -203,7 +203,7 @@ website:
               href: examples/engineer/chapter-06/04-reuse.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-06/chapter.qmd
-        - section: "Chapter 7 — Multi-conductor RLGC"
+        - section: "Optional Chapter 7 — Multi-conductor RLGC"
           contents:
             - text: "Lesson 1 — Ordered RLGC"
               href: examples/engineer/chapter-07/01-rlgc.qmd
@@ -215,7 +215,7 @@ website:
               href: examples/engineer/chapter-07/04-parameter-points.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-07/chapter.qmd
-        - section: "Chapter 8 — Report and resolve"
+        - section: "Optional Chapter 8 — Report and resolve"
           contents:
             - text: "Lesson 1 — Persist Results"
               href: examples/engineer/chapter-08/01-persist.qmd
@@ -223,40 +223,6 @@ website:
               href: examples/engineer/chapter-08/02-resolve.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-08/chapter.qmd
-        - section: "Migration legacy"
-          contents:
-            - text: "01 — Author primitive"
-              href: examples/tutorials/01_author_primitive.qmd
-            - text: "02 — Solve Direct"
-              href: examples/tutorials/02_solve_direct.qmd
-            - text: "03 — Evaluate quantity"
-              href: examples/tutorials/03_evaluate_quantity.qmd
-            - text: "04 — Define parameters"
-              href: examples/tutorials/04_define_parameters.qmd
-            - text: "05 — Sweep parameters"
-              href: examples/tutorials/05_sweep_parameters.qmd
-            - text: "06 — Optimize primitive"
-              href: examples/tutorials/06_optimize_primitive.qmd
-            - text: "07 — Report and resolve"
-              href: examples/tutorials/07_report_resolve.qmd
-            - text: "08 — Create Library"
-              href: examples/tutorials/08_create_library.qmd
-            - text: "09 — Add Composite factory"
-              href: examples/tutorials/09_add_composite_factory.qmd
-            - text: "10 — Use custom component"
-              href: examples/tutorials/10_use_custom_component.qmd
-            - text: "11 — Review schematic"
-              href: examples/tutorials/11_review_customize_schematic.qmd
-            - text: "12 — Model N-trace line"
-              href: examples/tutorials/12_model_n_trace_line.qmd
-            - text: "13 — Compensate probes"
-              href: examples/tutorials/13_compensate_probes.qmd
-            - text: "14 — Transform and retain"
-              href: examples/tutorials/14_transform_retain.qmd
-            - text: "15 — Prepare pump-off HB"
-              href: examples/tutorials/15_prepare_hb.qmd
-            - text: "16 — Compare Direct and HB"
-              href: examples/tutorials/16_compare_direct_hb.qmd
     - id: concept
       title: "Concept"
       style: "floating"

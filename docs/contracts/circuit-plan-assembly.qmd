@@ -633,8 +633,8 @@ conductor order, matrix coefficients, and section provenance exactly once.
 
 ### Three-subsystem model
 
-Migration-legacy Chapters 13–16 author one `feedline`, one grounded `readout`,
-and one `floating` inline Subsystem at the root. The feedline owns two
+Engineer Chapters 3–4 author one `feedline`, one grounded `readout`, and one
+`floating` inline Subsystem at the root. The complete Chapter 4 Plan owns two
 independent N=1 line sections and public input/tap/output pins. The floating
 scope owns one mutual C/L parallel network plus two separate ground branches.
 Root capacitors join feedline to readout and readout directly to

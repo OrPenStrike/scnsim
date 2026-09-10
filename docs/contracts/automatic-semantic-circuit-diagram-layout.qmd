@@ -827,7 +827,7 @@ success. It does not label the circuit itself invalid or prove that no other
 layout exists. Programming, protocol, and audit-integrity failures propagate.
 No elapsed-time threshold or public timeout is part of this contract.
 
-## Tutorial realization {#tutorial-realization}
+## Engineer course realization {#tutorial-realization}
 
 The current Engineer course is QMD-first. Each Chapter keeps canonical Lesson
 prose and code in YAML-free fragments, uses thin wrappers for web reading, and
@@ -844,31 +844,22 @@ ends directly at that public Pin beside a terminated Port. The
 [figure inventory](../../examples/README.md) distinguish this export from
 numerical plots and compiled-projection evidence.
 
-The sixteen earlier Tutorial QMD/IPYNB pairs and their source-bound assets are
-retained as **Migration legacy**, not a second current course. Their existing
-chapter numbers therefore do not describe the current Engineer roadmap. The
-[migration map](../implementation/engineer-course-migration-map.qmd) owns their
-future destinations without duplicating the contracts here.
+The sixteen former Chapter URLs are retained as short no-code migration
+guides, not a second current course. Their superseded executable bodies,
+Notebooks, and checkpoint figures remain in Git history. The
+[migration map](../implementation/engineer-course-migration-map.qmd) records
+their current destinations without duplicating this contract.
 
-| Material | Retained authoring contribution |
+| Current material | Authoring contribution |
 |---|---|
 | Current Engineer Chapter 1 | coupled grounded LC, same-bus public Pin and Coordinate, direct root coupling to the child Pin, terminated Port, and one authoring A/B/C review |
+| Current Engineer Chapters 3–4 | ordered scalar-RLGC feedline/readout and the complete four-Port physical capstone with explicit probe-tee composition |
 | Current Engineer Chapter 5 | reusable Composite with public C/L parameters, equivalent Pins, one Coordinate, and parent-only coupling/Port ownership |
 | Current Engineer Chapter 6 | Default composition, complete Port poses, genuine T/Cross primitives, A/B review, and exact-Plan fixed reuse |
 | Current Engineer Chapter 7 | exact N=2 RLGC declaration; its current four-Port authoring request retains a typed fixed-layout failure separately from numerical evidence |
-| Migration legacy Chapters 1–11 | earlier primitive, parameter, Library, Composite, and diagram-customization applications |
-| Migration legacy Chapter 12 | complete N=2 matrix line, named-tap N=1 feedline, and one whole-RLGC selected-point compiled diagram |
-| Migration legacy Chapter 13 | parameter-bound feedline/readout/floating capstone, one unavailable fixed Default, successful explicit composition, and explicit probe PTC |
-| Migration legacy Chapters 14–16 | PTC, transform/retain, pump-off HB, resolution, and independent-grid presentations |
 
-Each migration-legacy pair remains a self-contained QMD-first Chapter with a
-generated zero-output Notebook. Its repeated imports and declarations apply
-this contract but do not duplicate its authority. Migration-legacy examples
-also retain the scoped grounding and rejected-authoring cases that demonstrate
-atomic failure rather than a partially mutated Plan.
-
-The current Chapter and migration-legacy material complete the authored model
-before choosing an analysis question. ASCDLS translates the explicit Plan into
+The current course completes the authored model before choosing an analysis
+question. ASCDLS translates the explicit Plan into
 an authoring or compiled diagram and independently audits that projection.
 `CircuitRun` separately supplies `run.original` and any selected analysis View.
 Rendering may project one explicit parameter point, but it neither creates nor
@@ -876,8 +867,8 @@ displays PTC, transformed/retained coordinates, a parameter space, solver
 state, or an analysis `Result`. Successful audited rendering returns the
 `CircuitDiagramResult` defined above.
 
-The historical dev5/dev6 numerical meanings remain intact in the retained
-Migration legacy Chapters 12–16.
+The historical dev5/dev6 numerical meanings remain intact in the current
+Engineer course and Runtime Contract.
 Scoped execution evidence does not establish whole-course coverage or Human
 acceptance.
 

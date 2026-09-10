@@ -484,33 +484,24 @@ is presentation identity, not an authenticity/security signature, and does
 not alter Plan, compiler, request, Result, connectivity, semantic, or
 expanded-graph identities.
 
-### TARGET Tutorial alignment
+### Engineer course alignment
 
-The 16 canonical QMD Chapter containers and generated zero-output Notebooks
-teach the target proposal through short model-first Lessons. Each Chapter is a
-complete clean-kernel document; Lessons may share preceding state only inside
-that Chapter. They are documentation artifacts, not runtime evidence:
+The eight current QMD Chapter aggregates and generated zero-output Notebooks
+teach the model-first workflow. Each Chapter is a complete clean-kernel
+document; Lessons may share preceding state only inside that Chapter. Chapter
+8 instead specifies two independent kernels over one preserved workspace.
+They are documentation artifacts, not runtime evidence:
 
-- Chapters 1–3 repeat one complete fixed-value inline-resonator circuit, inspect
-  its Plan projection, and only then ask Direct and retained-node questions.
-- Chapter 4 defines independent inputs, binds them through registered physical
-  fields, and inspects the Plan-specific consumers before selecting one point.
-- Chapter 5 requests Cartesian and listed spaces, then inspects exact point
-  outcomes and collects one already-computed typed quantity.
-- Chapters 6–7 preserve the accepted optimization, report, and restart/resolve
-  routes on the same physical model.
-- Chapters 8–10 introduce Library and Composite only after the inline subsystem
-  is familiar.
-- Chapter 11 builds two inline LC scopes, compares automatic/hinted diagrams,
-  and uses a separate complete Plan for a direct stitch.
-- Chapter 12 teaches transmission-line context before complete matrix RLGC,
-  compiled evidence, a tapped two-section feedline, and a selected whole-RLGC
-  response point.
-- Chapter 13 first assembles and reviews the complete
-  parameter-bound feedline/readout/floating capstone before selecting probe
-  PTC. Chapters
-  14–16 repeat that complete model before independently selecting
-  transformed/retained Views, HB, and Direct/HB requests.
+- Chapters 1–2 build the coupled grounded LC, inspect its Plan projection, and
+  teach Direct/root Results, selected points, sweeps, and Optimization.
+- Chapters 3–4 build the scalar feedline/readout and complete four-Port
+  capstone before PTC and optional transform, quantity, and pump-off HB work.
+- Chapters 5–6 teach deliberate Composite publication/reuse and bounded
+  diagram customization on unchanged Plans.
+- Chapter 7 teaches ordered N=2 RLGC, labeled four-Port channels, and separate
+  authoring/compiled diagram limitations.
+- Chapter 8 persists Results and a Report, then reconstructs and resolves the
+  exact root request in a second independent kernel.
 
 Every ASCDLS diagram remains a projection of the explicit authored or compiled
 Plan. It may bind one explicit `ParameterSet`, including an optimization
@@ -519,7 +510,7 @@ select, or depict a request-specific View, PTC-effective topology, or solver
 Result. Exact point/audit identity belongs to the
 [Parameter System Contract](../contracts/parameter-system.qmd#parameterized-diagrams).
 
-Selected Tutorial diagram exports are source-bound evidence, not a claim that
+Selected Engineer-course diagram exports are source-bound evidence, not a claim that
 all course cells executed. The central evidence status retains current
 limitations; Human acceptance and durable stabilization of reopened semantics
 remain separate lifecycle steps.

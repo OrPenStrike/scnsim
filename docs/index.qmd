@@ -4,11 +4,11 @@ description: "Build one explicit circuit, inspect its diagram and response, then
 anchor-sections: false
 ---
 
-The engineer course is organized as eight complete Chapters. Chapters 1–7 are
+The engineer course is organized as eight complete Chapters. Chapters 1–4 are
+the mainline path; Chapters 5–8 are optional continuations. Chapters 1–7 are
 ordinary clean-kernel units; Chapter 8 deliberately uses two independent
-kernels and one shared preserved workspace. The former sixteen-Chapter course remains available under
-one **Migration legacy** heading while its reviewed content moves into this
-order.
+kernels and one shared preserved workspace. The sixteen former Chapter URLs
+now lead to short migration guides, not a second current course.
 
 ::: {.callout-warning title="Course candidate · CONVERGING" appearance="simple"}
 The public authoring grammar, Parameter System, and certified diagram scopes
@@ -264,11 +264,12 @@ The [durable migration map](implementation/engineer-course-migration-map.qmd)
 records how each former Chapter moves and which Concept, Contract, or
 implementation page remains authoritative.
 
-## Migration legacy
+## Former Chapter URL guides
 
-The sixteen prior QMD/IPYNB pairs and their source-bound figures remain intact
-under [`examples/tutorials/`](../examples/tutorials/01_author_primitive.qmd).
-They are readable migration inputs, not a second current syllabus. Their
+The sixteen prior QMD URLs remain as short no-code
+[migration guides](../examples/tutorials/01_author_primitive.qmd). Their
+superseded executable bodies, Notebooks, and checkpoint figures remain
+available in Git history rather than as a second current syllabus. The five
 historical fixtures remain implementation-baseline evidence and are not
 imported by the current Chapters.
 

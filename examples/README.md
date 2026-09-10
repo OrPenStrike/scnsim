@@ -178,32 +178,19 @@ records both kernel identities, the exact matching Result identity, and the
 source-only checker rebind separately from the generator that performed the
 execution.
 
-## Migration legacy
+## Former Chapter URL guides
 
-`tutorials/01_*.qmd` through `tutorials/16_*.qmd`, their same-named zero-output
-IPYNBs, and `tutorials/figures/` remain intact migration inputs. They are not a
-second current course. The
+`tutorials/01_*.qmd` through `tutorials/16_*.qmd` are short no-code migration
+guides into the current Engineer course. They preserve public URLs without
+forming a second syllabus. Their superseded executable bodies, zero-output
+Notebooks, checkpoint figures, and diagram generator remain available in Git
+history. The
 [migration map](../docs/implementation/engineer-course-migration-map.qmd)
-records their future destinations. Existing source/figure bindings remain
-valid until a later authorized batch migrates that exact content.
-
-The legacy diagram generator remains separate:
-
-```bash
-python scripts/generate_tutorial_diagrams.py
-python scripts/generate_tutorial_diagrams.py --check
-```
-
-It retains 21 checkpoint outcomes: 18 successful SVG checkpoints, one
-truthfully unavailable fixed Default layout, and two successful audit-only
-checkpoints. Chapter 12's tapped-feedline Default and full explicit tap-order
-figures are current. Chapter 13's complete raw-loaded Default reports the typed
-`schematic_layout` failure `fixed connector intersects occupied geometry`; its
-successful explicit composition and probe-tee SVGs remain distinct evidence,
-not fallbacks for that failure.
+records every current destination.
 
 Historical Python fixtures in `tutorials/fixtures/` are **KEEP** implementation
-baseline evidence. Neither current Chapter nor its generator imports them.
+baseline evidence. The current course generators do not import them; CI keeps
+the existing dedicated fixture consumer separate from the Engineer Chapters.
 Source-bound figures, generated Notebooks, and passing static checks do not by
 themselves establish Human acceptance, whole-course execution, release, or
 scientific validity.
