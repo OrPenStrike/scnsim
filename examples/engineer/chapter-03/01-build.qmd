@@ -1,0 +1,19 @@
+---
+title: "Chapter 3 · Lesson 1 — Build"
+subtitle: "CPW feedline and readout S21 engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+This web Lesson is for reading. Begin with the [course setup](../setup.qmd).
+For runnable state, open the [complete zero-output Chapter Notebook](chapter.ipynb),
+restart the kernel, and run all three Lessons in order.
+:::
+
+{{< include _01-build.qmd >}}
+
+[Next: Lesson 2 — Diagram evidence and limitation](02-diagram.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

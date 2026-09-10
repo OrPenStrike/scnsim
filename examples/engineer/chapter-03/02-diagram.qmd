@@ -1,0 +1,19 @@
+---
+title: "Chapter 3 · Lesson 2 — Diagram evidence and limitation"
+subtitle: "CPW feedline and readout S21 engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite" appearance="simple"}
+Read [Lesson 1](01-build.qmd) first. This web page does not rebuild its state;
+execute the [complete Chapter Notebook](chapter.ipynb) from a clean kernel.
+:::
+
+{{< include _02-diagram.qmd >}}
+
+[Previous: Lesson 1 — Build](01-build.qmd) ·
+[Next: Lesson 3 — Direct S21](03-s21.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

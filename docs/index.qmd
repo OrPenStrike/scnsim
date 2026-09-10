@@ -5,7 +5,7 @@ anchor-sections: false
 ---
 
 The engineer course is organized as eight complete, clean-kernel Chapters.
-Chapters 1–2 are implemented now. Chapters 3–8 are the migration roadmap, not
+Chapters 1–4 are implemented now. Chapters 5–8 are the migration roadmap, not
 fake runnable pages. The former sixteen-Chapter course remains available under
 one **Migration legacy** heading while its reviewed content moves into this
 order.
@@ -113,14 +113,95 @@ the ordered QMD aggregate. Download its
 in a fresh kernel; it does not continue Chapter 1 state. See the
 [shared setup](../examples/engineer/setup.qmd) before either Chapter.
 
+## Chapter 3 — CPW feedline and readout S21
+
+Build an ordered two-section scalar-RLGC feedline, couple a grounded readout,
+and inspect the named two-Port S21 response at three explicitly declared
+frequencies.
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 1 — Build](../examples/engineer/chapter-03/01-build.qmd) {.course-card-title .unlisted}
+Declare the two physical feedline sections, their public boundaries, the
+readout, the coupling capacitor, and two terminated Ports.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 2 — Diagram evidence and limitation](../examples/engineer/chapter-03/02-diagram.qmd) {.course-card-title .unlisted}
+Read the complete Plan's typed Default-layout failure honestly, then inspect
+two separately declared subcircuit illustrations without treating them as a
+projection of that failed Plan.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 3 — Named S21](../examples/engineer/chapter-03/03-s21.qmd) {.course-card-title .unlisted}
+Run one Direct request and read the `transmission` trace on its exact
+5.5/6.0/6.5 GHz sample grid; no interpolation or resonance estimate is made.
+:::
+::::
+
+The [complete Chapter 3 source](../examples/engineer/chapter-03/chapter.qmd) is
+the ordered aggregate. Its [zero-output Notebook](../examples/engineer/chapter-03/chapter.ipynb)
+is the independent clean-kernel execution unit.
+
+## Chapter 4 — Four-Port capstone
+
+Rebuild the original physical four-Port probe circuit and inspect its
+certified explicit composition. The required core reads the raw four-Port
+feedline response, then applies PTC and retains the two feedline Ports for a
+separately labeled response. Transform, one scalar response element, and
+independent Direct and pump-off HB grids are optional continuations.
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 1 — Physical Plan](../examples/engineer/chapter-04/01-physical-plan.qmd) {.course-card-title .unlisted}
+Declare the feedline, readout, floating branches, three couplers, and four
+logical Ports without analysis-time rewiring.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 2 — Explicit capstone](../examples/engineer/chapter-04/02-explicit-capstone.qmd) {.course-card-title .unlisted}
+Apply the established explicit probe-tee composition and inspect its certified
+authoring projection.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lesson 3 — PTC core](../examples/engineer/chapter-04/03-ptc-core.qmd) {.course-card-title .unlisted}
+Read the raw four-Port feedline trace, compensate both probe Ports, retain the
+feedline pair, and read the separately labeled three-sample PTC Direct S21
+Result. This is the Chapter's core stopping point.
+:::
+::::
+
+:::: {.card .course-card}
+::: {.card-body}
+### [Lessons 4–6 — Optional analysis](../examples/engineer/chapter-04/04-optional-transform.qmd) {.course-card-title .unlisted}
+Continue with the same Plan through paired-coordinate transformation, a direct
+6.2 GHz response-element lookup, and separate Direct and pump-off HB Results.
+:::
+::::
+
+The [complete Chapter 4 source](../examples/engineer/chapter-04/chapter.qmd) is
+the ordered aggregate. Download its
+[zero-output Notebook](../examples/engineer/chapter-04/chapter.ipynb) and run
+all six Lessons in a fresh kernel.
+
 ## Eight-Chapter roadmap
 
 | Chapter | Outcome | Availability |
 |---|---|---|
 | 1. Coupled grounded LC | Build, diagram, S11, loaded root, selected C | Current five-Lesson Chapter |
 | 2. Sweep and Optimization | Inputs, bindings, points, spaces, and established Optimization workflow | Current four-Lesson Chapter |
-| 3. CPW feedline/readout S21 | Ordered two-section CPW, coupled readout, two-Port response | Future; bounded Default diagram currently reports a fixed-layout collision |
-| 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, and pump-off HB | Future; existing explicit capstone diagram is viable |
+| 3. CPW feedline/readout S21 | Ordered two-section CPW, coupled readout, two-Port response | Current three-Lesson Chapter; complete Default diagram reports a typed fixed-layout collision |
+| 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, and pump-off HB | Current six-Lesson Chapter |
 | 5. Library | Create, publish, instantiate, and reuse a Composite | Future |
 | 6. Diagram customization | Default completion, bounded hints, composition, and A/B review | Future |
 | 7. MTL | Ordered multi-conductor RLGC and finite-pi compiled evidence | Future |
@@ -136,7 +217,7 @@ The sixteen prior QMD/IPYNB pairs and their source-bound figures remain intact
 under [`examples/tutorials/`](../examples/tutorials/01_author_primitive.qmd).
 They are readable migration inputs, not a second current syllabus. Their
 historical fixtures remain implementation-baseline evidence and are not
-imported by either current Chapter.
+imported by the current Chapters.
 
 For rationale, read [Concept](concepts/physical-authority-and-reusable-composition.qmd).
 For exact signatures, equations, invariants, identities, and failure behavior,

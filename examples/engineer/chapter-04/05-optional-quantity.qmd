@@ -1,0 +1,19 @@
+---
+title: "Chapter 4 · Lesson 5 — Optional response scalar"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Optional continuation" appearance="simple"}
+Complete the transform in [Lesson 4](04-optional-transform.qmd) first. Execute
+the [complete Chapter Notebook](chapter.ipynb), not this page independently.
+:::
+
+{{< include _05-optional-quantity.qmd >}}
+
+[Previous: Lesson 4 — Transform](04-optional-transform.qmd) ·
+[Next: Lesson 6 — Pump-off HB](06-optional-hb.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

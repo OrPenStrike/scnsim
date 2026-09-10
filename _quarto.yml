@@ -20,6 +20,17 @@ project:
     - examples/engineer/chapter-02/03-optimize.qmd
     - examples/engineer/chapter-02/04-optional-spaces.qmd
     - examples/engineer/chapter-02/chapter.qmd
+    - examples/engineer/chapter-03/01-build.qmd
+    - examples/engineer/chapter-03/02-diagram.qmd
+    - examples/engineer/chapter-03/03-s21.qmd
+    - examples/engineer/chapter-03/chapter.qmd
+    - examples/engineer/chapter-04/01-physical-plan.qmd
+    - examples/engineer/chapter-04/02-explicit-capstone.qmd
+    - examples/engineer/chapter-04/03-ptc-core.qmd
+    - examples/engineer/chapter-04/04-optional-transform.qmd
+    - examples/engineer/chapter-04/05-optional-quantity.qmd
+    - examples/engineer/chapter-04/06-optional-hb.qmd
+    - examples/engineer/chapter-04/chapter.qmd
     - examples/tutorials/01_author_primitive.qmd
     - examples/tutorials/02_solve_direct.qmd
     - examples/tutorials/03_evaluate_quantity.qmd
@@ -127,6 +138,32 @@ website:
               href: examples/engineer/chapter-02/04-optional-spaces.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-02/chapter.qmd
+        - section: "Chapter 3 — CPW feedline/readout S21"
+          contents:
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-03/01-build.qmd
+            - text: "Lesson 2 — Diagram"
+              href: examples/engineer/chapter-03/02-diagram.qmd
+            - text: "Lesson 3 — S21"
+              href: examples/engineer/chapter-03/03-s21.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-03/chapter.qmd
+        - section: "Chapter 4 — Four-Port capstone"
+          contents:
+            - text: "Lesson 1 — Physical Plan"
+              href: examples/engineer/chapter-04/01-physical-plan.qmd
+            - text: "Lesson 2 — Explicit capstone"
+              href: examples/engineer/chapter-04/02-explicit-capstone.qmd
+            - text: "Lesson 3 — PTC core"
+              href: examples/engineer/chapter-04/03-ptc-core.qmd
+            - text: "Lesson 4 — Optional transform"
+              href: examples/engineer/chapter-04/04-optional-transform.qmd
+            - text: "Lesson 5 — Optional quantity"
+              href: examples/engineer/chapter-04/05-optional-quantity.qmd
+            - text: "Lesson 6 — Optional HB"
+              href: examples/engineer/chapter-04/06-optional-hb.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-04/chapter.qmd
         - section: "Migration legacy"
           contents:
             - text: "01 — Author primitive"

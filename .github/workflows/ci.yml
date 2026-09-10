@@ -277,6 +277,26 @@ jobs:
                   ),
                   17,
               ),
+              (
+                  Path("examples/engineer/chapter-03/chapter.qmd"),
+                  ("_01-build.qmd", "_02-diagram.qmd", "_03-s21.qmd"),
+                  ("01-build.qmd", "02-diagram.qmd", "03-s21.qmd"),
+                  9,
+              ),
+              (
+                  Path("examples/engineer/chapter-04/chapter.qmd"),
+                  (
+                      "_01-physical-plan.qmd", "_02-explicit-capstone.qmd",
+                      "_03-ptc-core.qmd", "_04-optional-transform.qmd",
+                      "_05-optional-quantity.qmd", "_06-optional-hb.qmd",
+                  ),
+                  (
+                      "01-physical-plan.qmd", "02-explicit-capstone.qmd",
+                      "03-ptc-core.qmd", "04-optional-transform.qmd",
+                      "05-optional-quantity.qmd", "06-optional-hb.qmd",
+                  ),
+                  12,
+              ),
           )
           aggregates = [item[0] for item in chapter_specs]
           sources = [*legacy_sources, *aggregates]
@@ -351,6 +371,8 @@ jobs:
           uv run --locked python scripts/generate_tutorial_diagrams.py --check
           uv run --locked python scripts/generate_engineer_chapter1.py --check
           uv run --locked python scripts/generate_engineer_chapter2.py --check
+          uv run --locked python scripts/generate_engineer_chapter3.py --check
+          uv run --locked python scripts/generate_engineer_chapter4.py --check
 
       - name: Render and inspect documentation
         run: |

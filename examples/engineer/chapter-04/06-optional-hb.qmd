@@ -1,0 +1,19 @@
+---
+title: "Chapter 4 · Lesson 6 — Optional pump-off HB"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Optional continuation" appearance="simple"}
+This page requires Lessons 1–4 and keeps Direct and HB as independent Results.
+Use the [complete Chapter Notebook](chapter.ipynb) for executable state.
+:::
+
+{{< include _06-optional-hb.qmd >}}
+
+[Previous: Lesson 5 — Response scalar](05-optional-quantity.qmd) ·
+[Course map](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

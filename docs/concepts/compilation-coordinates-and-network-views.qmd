@@ -63,6 +63,14 @@ reduction. A later pipeline can derive another immutable Ref:
 The order matters and remains visible in the Ref lineage. Direct and HB must
 either realize that same final View faithfully or fail closed.
 
+Engineer [Chapter 3](../../examples/engineer/chapter-03/01-build.qmd) first
+keeps a two-Port feedline/readout request on `run.original`. Engineer
+[Chapter 4](../../examples/engineer/chapter-04/03-ptc-core.qmd) then preserves
+one four-Port physical Plan while deriving a probe-compensated, retained
+feedline View; its optional continuation transforms the same retained lineage.
+These are applications of the existing View contract, not reduced replacement
+Plans.
+
 ## Values are bound before a View is realized
 
 A `ParameterSet` selects values only for refs already consumed by the Plan. A

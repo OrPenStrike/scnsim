@@ -1,0 +1,19 @@
+---
+title: "Chapter 4 · Lesson 2 — Explicit capstone"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite" appearance="simple"}
+Read [Lesson 1](01-physical-plan.qmd) first. Execute the
+[complete Chapter Notebook](chapter.ipynb); this page does not rebuild state.
+:::
+
+{{< include _02-explicit-capstone.qmd >}}
+
+[Previous: Lesson 1 — Physical Plan](01-physical-plan.qmd) ·
+[Next: Lesson 3 — PTC core](03-ptc-core.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

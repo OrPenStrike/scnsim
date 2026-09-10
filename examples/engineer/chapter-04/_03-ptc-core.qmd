@@ -1,0 +1,74 @@
+## Lesson 3 — Select the probe-compensated two-Port View {#lesson-ch4-ptc}
+
+### Compare the original loaded View with its PTC derivation
+
+The raw View includes all four declared loads. PTC removes only the two named
+probe load stamps, and `retain()` selects the two feedline coordinates for the
+requested scattering boundary.
+
+```{python}
+#| id: ch4-derive-ptc-view
+run = CircuitRun(plan=plan, workspace="workspaces/engineer-chapter-04")
+raw_loaded_view = run.original
+raw_transmission_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(),
+    output_port="feedline_out",
+    output_mode=(),
+)
+raw_direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    traces=(raw_transmission_trace,),
+)
+
+ptc_view = raw_loaded_view.reduce(
+    ReductionPipeline()
+    .ptc(probe_plus, probe_minus)
+    .retain("feedline_in", "feedline_out")
+)
+
+ptc_transmission_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(),
+    output_port="feedline_out",
+    output_mode=(),
+)
+ptc_direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    traces=(ptc_transmission_trace,),
+)
+run.explain(raw_loaded_view, raw_direct_spec).show()
+run.explain(ptc_view, ptc_direct_spec).show()
+```
+
+These three frequencies are exact declared samples, not a continuous scan or
+a resonance locator.
+
+```{python}
+#| id: ch4-solve-ptc-direct
+raw_direct = run.solve(raw_loaded_view, raw_direct_spec)
+raw_transmission = raw_direct.traces["transmission"]
+ptc_direct = run.solve(ptc_view, ptc_direct_spec)
+ptc_transmission = ptc_direct.traces["transmission"]
+display(raw_direct.s.view)
+raw_transmission.show(magnitude="db", theme=Theme.AUTO)
+display(ptc_direct.s.view)
+ptc_transmission.show(magnitude="db", theme=Theme.AUTO)
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/04-raw-direct-s21.md >}}
+
+{{< include ../figures/04-ptc-direct-s21.md >}}
+
+:::
+
+::: {.callout-important title="Core stopping point"}
+Stop here for the Chapter 4 core: one original four-Port physical Plan, its
+certified explicit diagram, the raw four-Port View's feedline Direct Result,
+and the separately labeled PTC-selected two-Port Direct Result. The remaining
+Lessons are optional analytical continuations on this same Plan.
+:::

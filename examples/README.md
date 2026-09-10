@@ -1,7 +1,7 @@
 # SCNSim engineer course sources
 
 `engineer/setup.qmd` is the shared environment entry. `engineer/chapter-01/`
-and `engineer/chapter-02/` are the current course Chapters. YAML-free QMD
+through `engineer/chapter-04/` are the current course Chapters. YAML-free QMD
 fragments hold each Chapter's canonical Lesson prose and code. Thin QMD
 wrappers make those Lessons readable as separate HTML pages, while each
 `chapter.qmd` includes its fragments in order and generates one complete
@@ -97,6 +97,49 @@ identities, winner certificate, and these public artifacts:
 The numerical figures are typed Result presentations, while only the winner
 schematic carries an ASCDLS diagram certificate. Neither the optimizer's small
 cost nor a generated artifact creates scientific or Human acceptance.
+
+## Generate Chapter 3 evidence explicitly
+
+Chapter 3's typed full-Plan layout outcome, two standalone subcircuit
+illustrations, and named two-Port response come from its exact fragment cells:
+
+```bash
+uv run --locked python scripts/generate_engineer_chapter3.py \
+  --workspace /tmp/scnsim-engineer-chapter3-run
+uv run --locked python scripts/generate_engineer_chapter3.py --check
+```
+
+`engineer/figures/chapter-03-artifacts.json` binds the Chapter source, package
+source, environment, request, Result, and public artifact identities. The
+complete Plan's Default diagram truthfully reports the typed
+`schematic_layout` failure `fixed connector intersects occupied geometry` and
+therefore has no SVG or certificate. `03-feedline-illustration.svg` and
+`03-readout-illustration.svg` are certified projections of two separately
+declared illustrative Plans, not fragments extracted from or substitutes for
+the failed complete Plan. `03-direct-s21.svg`, `.csv`, and `.md` present the
+named `transmission` trace at exactly 5.5, 6.0, and 6.5 GHz. Three samples do
+not define an interpolated curve or a resolved resonance.
+
+## Generate Chapter 4 evidence explicitly
+
+Chapter 4's explicit diagram and numerical Results are generated independently
+of the website:
+
+```bash
+uv run --locked python scripts/generate_engineer_chapter4.py \
+  --workspace /tmp/scnsim-engineer-chapter4-run
+uv run --locked python scripts/generate_engineer_chapter4.py --check
+```
+
+`engineer/figures/chapter-04-artifacts.json` binds its six fragments, six
+wrappers, aggregate source, package source, environment, diagram certificate,
+View lineage, requests, Results, and public artifacts. The required core owns
+`04-explicit-capstone.svg`, the raw four-Port `04-raw-direct-s21.*` Result, and
+the separately labeled `04-ptc-direct-s21.*` table and figure.
+Optional evidence includes the exact 6.2 GHz `04-response-element.*` lookup,
+the separate `04-optional-direct-s21.*` Result, and the
+`04-pump-off-hb.*` Result. Direct and HB keep their separately declared grids;
+the generated summary does not overlay or interpolate them.
 
 ## Migration legacy
 

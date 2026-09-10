@@ -36,9 +36,18 @@ complex response data, and a quantity table. Chapter 2 has source-bound
 three-point sweep evidence, a genuine fixed-request
 Optimization winner with independent root readback and selected diagram, and
 optional grid/listed-point evidence. The course web build launches no solver,
-and those assets do not establish execution of every migration-legacy Chapter
-or every compiled projection. The [figure inventory](../../examples/README.md)
-records both current and legacy evidence.
+Chapter 3 adds a named three-sample two-Port Direct Result plus certified
+standalone feedline and readout illustrations. Its complete Plan's Default
+diagram remains a typed `schematic_layout` failure, so those distinct
+illustration Plans are not represented as a successful projection of it.
+Chapter 4 adds the certified explicit four-Port capstone, separately labeled
+raw and PTC Direct core Results, and optional transformed-view scalar-response,
+Direct, and pump-off HB
+evidence. Direct and HB preserve their separately declared grids without
+interpolation. These assets do not establish execution of every
+migration-legacy Chapter or every compiled projection. The
+[figure inventory](../../examples/README.md) records current and legacy
+evidence.
 
 Migration-legacy Chapter 12's tapped-feedline Default and complete explicit
 tap-order checkpoints are successful source-bound exports. One fixed-layout

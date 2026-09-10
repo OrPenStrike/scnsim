@@ -27,8 +27,12 @@ coupled grounded LC. [Chapter 2](examples/engineer/chapter-02/01-build.qmd)
 rebuilds that circuit with independent C and L inputs, completes a three-point
 capacitance sweep, and then teaches the established Optimization workflow and
 optional C/L spaces. Each complete zero-output Chapter Notebook is its own
-clean-kernel execution unit. The remaining six Chapters are a published
-roadmap, not placeholder pages. The former sixteen-Chapter sources remain in a
+clean-kernel execution unit. [Chapter 3](examples/engineer/chapter-03/01-build.qmd)
+adds a two-section CPW feedline, grounded readout, and named two-Port S21.
+[Chapter 4](examples/engineer/chapter-04/01-physical-plan.qmd) rebuilds the
+four-Port capstone, completes its original/PTC core, then offers transform,
+quantity, and pump-off HB continuations. The remaining four Chapters are a
+published roadmap, not placeholder pages. The former sixteen-Chapter sources remain in a
 single Migration legacy group while later batches move their reviewed content.
 
 ## Start with the circuit, then choose the question
@@ -119,8 +123,8 @@ acceptance.
 
 - [Overview](README.md) — the model-first workflow, product boundary, status,
   and installation.
-- [Engineer course](docs/index.qmd) — current Chapters 1–2 and the
-  eight-Chapter roadmap, with the remaining six Chapters marked future.
+- [Engineer course](docs/index.qmd) — current Chapters 1–4 and the
+  eight-Chapter roadmap, with the remaining four Chapters marked future.
 - [Concept](docs/concepts/physical-authority-and-reusable-composition.qmd) —
   why SCNSim separates authored circuit facts, diagram geometry, and analysis
   Views while keeping one Plan authority.

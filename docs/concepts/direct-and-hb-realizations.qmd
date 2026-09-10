@@ -59,6 +59,12 @@ their curves together, but it performs no interpolation and does not imply
 pointwise numerical comparison where frequency points differ. Magnitude-only
 similarity is not full complex-network agreement.
 
+Engineer [Chapter 4](../../examples/engineer/chapter-04/06-optional-hb.qmd)
+applies this distinction to one transformed View: its named Direct Result uses
+the declared 5.5/6.0/6.5 GHz grid, while pump-off HB uses the separate
+5.4/5.9/6.4 GHz grid. The page presents both Results independently and makes
+no overlay, interpolation, or new agreement claim.
+
 ## A diagram does not choose either realization
 
 The Automatic Semantic Circuit Diagram Layout System (ASCDLS) projects the
