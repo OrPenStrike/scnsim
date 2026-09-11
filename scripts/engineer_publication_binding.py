@@ -23,12 +23,16 @@ from typing import Mapping
 
 PUBLICATION_SOURCE_DIFF = (
     "src/scnsim/__init__.py",
+    "src/scnsim/_analysis.py",
     "src/scnsim/_canonical.py",
+    "src/scnsim/_evidence.py",
+    "src/scnsim/_execution.py",
     "src/scnsim/_immutable_values.py",
     "src/scnsim/_julia/runtime.json",
     "src/scnsim/_julia/src/SCNSimBackend.jl",
     "src/scnsim/_numeric_presentation.py",
     "src/scnsim/_physical_values.py",
+    "src/scnsim/_result_decode.py",
     "src/scnsim/_schemas/identity-common.schema.json",
     "src/scnsim/_schemas/identity-v2.schema.json",
     "src/scnsim/_workspace.py",

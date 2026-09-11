@@ -495,6 +495,29 @@ runtime, and operation. Execution history is not part of that identity. If the
 request already has one complete verified success receipt, the operation
 reuses that Result without recomputing or overwriting it.
 
+The Run validates and normalizes those declarations once into a private
+immutable prepared analysis before canonical encoding. Prepared data is
+declarative: it carries no executable Run, workspace, process callback,
+candidate realization, or mutable live-read path. For optimization, each bound
+leaf retains objective ID plus authored objective/term order, while dependency
+sharing remains keyed by the complete View and root/quantity Spec rather than
+by the leaf's objective identity. The canonical request encoder formats only
+this prepared data; it does not choose a View, resolve parameters, or read a
+later baseline value again.
+
+Execution coordination may consume the canonical request and workspace owner,
+but it does not decode an unchecked producer payload. Workspace verification
+first establishes the sealed request/attempt/receipt/result chain. Typed Result
+decoding consumes that verified-success record independently and cannot turn a
+producer assertion into authorization. Immediate path-backed decoding remains
+inside that ownership-checked reader or writer interval. Deferred sweep reads
+reacquire the original binding's reader and revalidate the exact request,
+attempt, receipt, and Result seals before validating and reading only the
+requested chunk or point payload. They do not rescan every sweep payload; a
+replacement leaf raises `WorkspacePlanReplacedError`. Detached materialized
+values may outlive the interval. These private ownership boundaries do not add
+a public Job, prepared-request, or decoder API.
+
 The workspace path is an evidence location, not part of computational request
 identity. A leaf workspace binds one Plan; each request binds its semantic
 runtime. `CircuitRun` resolves the request only inside that Plan workspace. A

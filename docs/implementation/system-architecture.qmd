@@ -35,12 +35,35 @@ CMA-ES, and HB.
 
 ```text
 Notebook
-  -> Python validation and canonical request
+  -> Python validation and immutable prepared analysis
+  -> canonical request encoding
   -> one external Julia process
-  -> staged outcome and artifacts
-  -> Python verification and receipt seal
-  -> typed Python Result
+  -> independently validated staged outcome and artifacts
+  -> receipt seal and verified-success evidence
+  -> verified typed Python Result decoding
 ```
+
+`CircuitRun` is the façade for these owners, not their shared mutable context.
+It validates that public Refs and selector Views belong to the captured Run,
+resolves parameter declarations once, and produces a private immutable
+`PreparedAnalysis`. That record contains only finalized declarations,
+normalization, source-unit evidence, and runtime identity. It contains no Run,
+workspace, process callback, or executable context. The canonical encoder
+formats that prepared record and never selects a View or resolves parameters a
+second time.
+
+Execution coordination owns attempt allocation, the one terminal process,
+closed outcome validation, and receipt promotion. It returns only verified
+workspace success evidence. A separate decoder reconstructs typed Results from
+that evidence and the captured identity lookup; it cannot authorize a payload
+that the workspace verifier did not accept. Immediate path-backed decoding
+stays inside the same ownership-checked reader or writer interval. A lazy sweep
+reacquires the original binding's read lock and revalidates the exact request,
+attempt, receipt, and Result seals before validating and reading only the
+requested chunk or point payload; it neither rescans the whole batch nor
+attaches to a replacement leaf. Already materialized detached values may
+outlive that interval. This responsibility split does not change request bytes,
+algorithms, process count, or public methods.
 
 `run.explain()` and a compiled schematic may use the same Julia compile
 preflight, but neither launches a solver nor writes the evidence workspace.

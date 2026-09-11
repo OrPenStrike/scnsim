@@ -88,6 +88,22 @@ the same root reuse one anchor, while the same Spec on different Views cannot
 share an anchor accidentally. Every candidate continues from that baseline
 anchor; candidates do not select branches from one another.
 
+Before canonical request encoding, Python normalizes every optimization leaf
+into an immutable `BoundOptimization` declaration. A leaf keeps its authored
+objective ID, objective ordinal, and term ordinal in exact order. That leaf
+identity is not its dependency identity: dependency sharing continues to use
+the complete bound View declaration plus root/quantity Spec, excluding only
+the selected projection exactly as the execution contract already requires.
+Consequently two objective leaves may remain independently auditable while
+sharing one compiled/root dependency.
+
+The bound record contains finalized declarative View and quantity records,
+resolved bounds/scales, and canonical units only. It never holds a `CircuitRun`,
+workspace, callback, candidate realization, or baseline numerical result. One
+candidate still compiles its raw Plan once and realizes all of that candidate's
+distinct Views; continuation-only intermediate compiles remain part of the
+unchanged numerical procedure.
+
 The `dev3` restriction to an original one-Port Direct view with no named traces
 belongs only to `solve_direct`. It is neither a general View law nor an
 `optimize_direct` restriction: `dev3` optimization may evaluate
