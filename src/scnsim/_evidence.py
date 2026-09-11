@@ -132,7 +132,14 @@ def _verified_evidence_lease(
     )
 
 
-def _validated_failure_record(value: object, operation: object) -> dict[str, object]:
+def _validated_failure_record(
+    value: object,
+    operation: object,
+    *,
+    request: Mapping[str, object] | None = None,
+    require_optimization_context: bool = False,
+    completed_generations: int = 0,
+) -> dict[str, object]:
     """Validate a producer failure against the closed public failure taxonomy."""
 
     if not isinstance(value, Mapping) or set(value) != {
@@ -164,6 +171,42 @@ def _validated_failure_record(value: object, operation: object) -> dict[str, obj
         raise BackendProtocolError(
             "failure outcome discriminator or evidence is invalid", stage="outcome"
         )
+    try:
+        from ._workspace import (
+            _optimization_failure_requires_context,
+            _verify_failure_document,
+            _verify_terminal_optimization_failure,
+        )
+
+        _verify_failure_document(value, operation)
+        optimization_context = evidence.get("optimization_context")
+        if (
+            require_optimization_context
+            and _optimization_failure_requires_context(value, operation)
+            and not isinstance(optimization_context, Mapping)
+        ):
+            raise BackendProtocolError(
+                "optimization execution failure lacks its phase context",
+                stage="outcome",
+            )
+        if (
+            operation == "optimize_direct"
+            and isinstance(optimization_context, Mapping)
+        ):
+            if request is None:
+                raise BackendProtocolError(
+                    "optimization failure context lacks its sealed request",
+                    stage="outcome",
+                )
+            _verify_terminal_optimization_failure(
+                value, request.get("spec"),
+                completed_generations=completed_generations,
+            )
+    except EvidenceIntegrityError as error:
+        raise BackendProtocolError(
+            "failure outcome evidence is inconsistent with its sealed request",
+            stage="outcome",
+        ) from error
     return dict(value)
 
 

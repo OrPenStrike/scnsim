@@ -1574,7 +1574,7 @@ class CircuitRun:
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
             )
         else:
             raise CompilerInvariantError(
@@ -1973,7 +1973,9 @@ def _run_preflight(
         )
     if compiled.get("schema") == "scnsim.preflight_failure":
         raise _error_from_record(
-            _validated_failure_record(compiled.get("failure"), request["operation"])
+            _validated_failure_record(
+                compiled.get("failure"), request["operation"], request=request,
+            )
         )
     return compiled
 

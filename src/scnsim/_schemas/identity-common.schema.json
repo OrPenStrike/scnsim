@@ -640,7 +640,7 @@
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -2209,6 +2209,69 @@
         }
       ]
     },
+    "optimizationLeafLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objective_id", "term_ordinal"],
+      "properties": {
+        "objective_id": { "$ref": "#/$defs/identifier" },
+        "term_ordinal": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "optimizationFailureContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "schema_version", "phase", "candidate", "owner", "affected_leaves"],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_failure_context" },
+        "schema_version": { "const": 1 },
+        "phase": {
+          "enum": [
+            "candidate_prepare", "candidate_compile", "view_realization",
+            "baseline_root_anchor", "quantity_evaluation",
+            "objective_aggregation", "total_aggregation"
+          ]
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["evaluation_ordinal", "origin", "generation", "population_column"],
+          "properties": {
+            "evaluation_ordinal": { "type": "integer", "minimum": 0 },
+            "origin": { "enum": ["baseline", "population"] },
+            "generation": { "type": "integer", "minimum": 0 },
+            "population_column": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "integer", "minimum": 1 }
+              ]
+            }
+          }
+        },
+        "owner": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "candidate" } } },
+            { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "dependency" } } },
+            { "type": "object", "additionalProperties": false, "required": ["kind", "leaf"], "properties": { "kind": { "const": "leaf" }, "leaf": { "$ref": "#/$defs/optimizationLeafLocator" } } },
+            { "type": "object", "additionalProperties": false, "required": ["kind", "objective_id"], "properties": { "kind": { "const": "objective" }, "objective_id": { "$ref": "#/$defs/identifier" } } }
+          ]
+        },
+        "dependency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "view_sha256", "dependency_sha256"],
+          "properties": {
+            "kind": { "enum": ["view", "quantity"] },
+            "view_sha256": { "$ref": "#/$defs/sha256" },
+            "dependency_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "affected_leaves": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optimizationLeafLocator" }
+        }
+      }
+    },
     "failureEvidence": {
       "type": "object",
       "additionalProperties": false,
@@ -2253,7 +2316,8 @@
         "actual_sha256": { "$ref": "#/$defs/sha256" },
         "backend_exit_code": { "type": "integer" },
         "residual_f64": { "$ref": "#/$defs/f64" },
-        "evidence_sha256": { "$ref": "#/$defs/sha256" }
+        "evidence_sha256": { "$ref": "#/$defs/sha256" },
+        "optimization_context": { "$ref": "#/$defs/optimizationFailureContext" }
       }
     },
     "optimizationTermEvidence": {

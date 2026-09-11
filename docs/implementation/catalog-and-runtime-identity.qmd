@@ -96,10 +96,12 @@ semantic runtime.
 
 An operation-level algorithm ID is transitive, not a label for only the outer
 driver. In particular,
-`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3` binds the exact CMA,
+`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4` binds the exact CMA,
 unit-box transform, Direct operator, selected quantity, continuation, and
-replay-certificate algorithms it invokes. Changing any dependency requires a
-new outer ID even when the `OptimizationSpec` bytes are unchanged. The request
+replay-certificate algorithms it invokes. Version 4 also binds
+generation-ledger v3 and its closed optimization failure context. Changing any
+dependency requires a new outer ID even when the `OptimizationSpec` bytes are
+unchanged. The request
 continues to carry one operation ID rather than an unordered set whose
 composition would be ambiguous.
 

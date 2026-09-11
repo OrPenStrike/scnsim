@@ -326,12 +326,19 @@ function write_hb_success(staging::String, request, request_sha::String, attempt
     write_bytes(joinpath(staging, "outcome.json"), canonical_bytes(outcome))
 end
 
-function write_failure(staging::String, request, request_sha::String, attempt_sha::String, failure::BackendFailure)
+function failure_evidence(request, failure::BackendFailure)
     evidence = Dict{String,Any}(
         "type" => "failure_evidence",
         "operation" => request["operation"],
         "context_kind" => failure.context_kind,
     )
+    failure.optimization_context === nothing ||
+        (evidence["optimization_context"] = failure.optimization_context)
+    return evidence
+end
+
+function write_failure(staging::String, request, request_sha::String, attempt_sha::String, failure::BackendFailure)
+    evidence = failure_evidence(request, failure)
     typed = Dict{String,Any}(
         "category" => failure.category,
         "kind" => failure.kind,

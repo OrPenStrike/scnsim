@@ -855,6 +855,7 @@ class WorkspaceBinding:
         ):
             raise _integrity("Receipt evidence hashes do not match their exact sources.", attempt=str(directory))
         result: dict[str, Any] | None = None
+        completed_generation_count = 0
         outcome_document: dict[str, Any] | None = None
         outcome_path = directory / "outcome.json"
         outcome_sha = receipt.get("outcome_sha256")
@@ -920,21 +921,23 @@ class WorkspaceBinding:
             _verify_result_document(result, request_document, request_sha256, attempt_sha256, plan_document)
             _verify_artifact_inventory(directory, result, receipt)
             if result.get("result_kind") == "optimization":
-                _verify_generation_artifacts(
+                verified_generations = _verify_generation_artifacts(
                     directory,
                     receipt["artifacts"],
                     request_sha256=request_sha256,
                     attempt_sha256=attempt_sha256,
                 )
+                completed_generation_count = len(verified_generations)
         elif receipt.get("result_sha256") is not None or (directory / "result.json").exists():
             raise _integrity("Non-success evidence must not retain a Result.", attempt=str(directory))
         else:
-            _verify_generation_artifacts(
+            verified_generations = _verify_generation_artifacts(
                 directory,
                 receipt["artifacts"],
                 request_sha256=request_sha256,
                 attempt_sha256=attempt_sha256,
             )
+            completed_generation_count = len(verified_generations)
             if outcome_sha is not None:
                 linked = "failure" if outcome == "failure" else "interruption"
                 if receipt.get(linked) != outcome_document.get(linked):
@@ -944,6 +947,12 @@ class WorkspaceBinding:
                     )
         if outcome == "failure":
             _verify_failure_document(receipt.get("failure"), request_document.get("operation"))
+            failure_evidence = receipt.get("failure", {}).get("evidence") if isinstance(receipt.get("failure"), Mapping) else None
+            if request_document.get("operation") == "optimize_direct" and isinstance(failure_evidence, Mapping) and failure_evidence.get("optimization_context") is not None:
+                _verify_terminal_optimization_failure(
+                    receipt["failure"], request_document.get("spec"),
+                    completed_generations=completed_generation_count,
+                )
         elif outcome == "interrupted":
             interruption = receipt.get("interruption")
             if (
@@ -1606,7 +1615,7 @@ def _verify_request_document(
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -2359,6 +2368,133 @@ def _lineage_matrix(label: str, values: list[list[float]], applicability: str) -
     return {"rows": rows, "columns": columns, "sha256": digest}
 
 
+def _optimization_leaf_catalog(objectives: object) -> list[tuple[dict[str, object], Mapping[str, object]]]:
+    if not isinstance(objectives, list):
+        raise _integrity("Optimization objectives are malformed.")
+    leaves: list[tuple[dict[str, object], Mapping[str, object]]] = []
+    for objective in objectives:
+        if not isinstance(objective, Mapping) or not isinstance(objective.get("id"), str):
+            raise _integrity("Optimization objective identity is malformed.")
+        for ordinal, selector in enumerate(_selector_terms(objective.get("quantity")), 1):
+            leaves.append(({"objective_id": objective["id"], "term_ordinal": ordinal}, selector))
+    return leaves
+
+
+def _optimization_dependency(selector: Mapping[str, object], *, kind: str = "quantity") -> dict[str, object]:
+    view = selector.get("view")
+    if not isinstance(view, Mapping):
+        raise _integrity("Optimization selector View is malformed.")
+    view_sha = _sha256(_canonical_bytes(view))
+    dependency_sha = view_sha if kind == "view" else _sha256(_canonical_bytes({
+        "type": selector.get("type"), "spec": selector.get("spec"), "view": view,
+    }))
+    return {"kind": kind, "view_sha256": view_sha, "dependency_sha256": dependency_sha}
+
+
+def _verify_optimization_context_shape(value: object) -> Mapping[str, object]:
+    required = {"schema", "schema_version", "phase", "candidate", "owner", "affected_leaves"}
+    if not isinstance(value, Mapping) or not required.issubset(value) or not set(value).issubset(required | {"dependency"}):
+        raise _integrity("Optimization failure context is open or malformed.")
+    if value.get("schema") != "scnsim.optimization_failure_context" or value.get("schema_version") != 1 or value.get("phase") not in {
+        "candidate_prepare", "candidate_compile", "view_realization", "baseline_root_anchor",
+        "quantity_evaluation", "objective_aggregation", "total_aggregation",
+    }:
+        raise _integrity("Optimization failure phase is malformed.")
+    candidate = value.get("candidate")
+    if not isinstance(candidate, Mapping) or set(candidate) != {"evaluation_ordinal", "origin", "generation", "population_column"}:
+        raise _integrity("Optimization failure candidate position is malformed.")
+    ordinal, origin, generation, column = (candidate.get(key) for key in ("evaluation_ordinal", "origin", "generation", "population_column"))
+    integer = lambda item: isinstance(item, int) and not isinstance(item, bool)
+    if not integer(ordinal) or not integer(generation) or ordinal < 0 or generation < 0:
+        raise _integrity("Optimization failure candidate ordinals are malformed.")
+    if origin == "baseline":
+        if (ordinal, generation, column) != (0, 0, None):
+            raise _integrity("Optimization baseline failure position is inconsistent.")
+    elif origin == "population":
+        if ordinal < 1 or generation < 1 or not integer(column) or column < 1:
+            raise _integrity("Optimization population failure position is inconsistent.")
+    else:
+        raise _integrity("Optimization failure candidate origin is unknown.")
+    owner = value.get("owner")
+    valid_owner = (
+        isinstance(owner, Mapping)
+        and (
+            set(owner) == {"kind"} and owner.get("kind") in {"candidate", "dependency"}
+            or set(owner) == {"kind", "leaf"} and owner.get("kind") == "leaf"
+            or set(owner) == {"kind", "objective_id"} and owner.get("kind") == "objective" and isinstance(owner.get("objective_id"), str)
+        )
+    )
+    if not valid_owner:
+        raise _integrity("Optimization failure owner is malformed.")
+    affected = value.get("affected_leaves")
+    locators = [owner.get("leaf")] if owner.get("kind") == "leaf" else []
+    if not isinstance(affected, list) or any(not isinstance(item, Mapping) for item in [*affected, *locators]):
+        raise _integrity("Optimization failure leaf locators are malformed.")
+    for locator in [*affected, *locators]:
+        if set(locator) != {"objective_id", "term_ordinal"} or not isinstance(locator.get("objective_id"), str) or not integer(locator.get("term_ordinal")) or locator["term_ordinal"] < 1:
+            raise _integrity("Optimization failure leaf locator is malformed.")
+    if len({_canonical_bytes(item) for item in affected}) != len(affected):
+        raise _integrity("Optimization affected leaves repeat a locator.")
+    dependency = value.get("dependency")
+    if dependency is not None and (
+        not isinstance(dependency, Mapping)
+        or set(dependency) != {"kind", "view_sha256", "dependency_sha256"}
+        or dependency.get("kind") not in {"view", "quantity"}
+        or _SHA256.fullmatch(str(dependency.get("view_sha256", ""))) is None
+        or _SHA256.fullmatch(str(dependency.get("dependency_sha256", ""))) is None
+    ):
+        raise _integrity("Optimization failure dependency is malformed.")
+    if owner.get("kind") == "dependency" and dependency is None:
+        raise _integrity("Optimization dependency failure has no dependency identity.")
+    return value
+
+
+def _is_projection_only_optimization_failure(value: object) -> bool:
+    """Classify the closed selector failures that own no shared dependency."""
+
+    if not isinstance(value, Mapping):
+        return False
+    evidence = value.get("evidence")
+    return (
+        value.get("kind") == "invalid_optimization_spec"
+        and value.get("stage") in {"selector", "quantity_sum"}
+        and isinstance(evidence, Mapping)
+        and evidence.get("operation") == "optimize_direct"
+        and evidence.get("context_kind") == "optimization_candidate"
+    )
+
+
+def _optimization_failure_requires_context(value: object, operation: object) -> bool:
+    """Return whether a sealed optimization failure is execution-owned."""
+
+    if operation != "optimize_direct" or not isinstance(value, Mapping):
+        return False
+    evidence = value.get("evidence")
+    if (
+        not isinstance(evidence, Mapping)
+        or evidence.get("operation") != "optimize_direct"
+        or evidence.get("context_kind")
+        not in {"optimization_candidate", "direct_quantity", "direct_response"}
+    ):
+        return False
+    kind = value.get("kind")
+    return (
+        kind
+        in {
+            "direct_response_formation",
+            "invalid_candidate_physical_parameter",
+            "eliminated_block_solve_failure",
+            "root_slope_unresolved",
+            "numerical_resolution_unresolved",
+            "unsupported_singular_capacitance_for_diagonal_root_v1",
+            "port_realizability",
+        }
+        or kind == "compiler_invariant"
+        and value.get("stage") not in {"optimization", "optimization_replay"}
+        or _is_projection_only_optimization_failure(value)
+    )
+
+
 def _verify_failure_document(value: object, operation: object) -> None:
     if not isinstance(value, dict) or set(value) != {"category", "kind", "stage", "message", "evidence"}:
         raise _integrity("Failure envelope is open or malformed.")
@@ -2368,7 +2504,7 @@ def _verify_failure_document(value: object, operation: object) -> None:
         "attempt_sha256", "workspace_instance_id", "component_path", "parameter",
         "coordinate_id", "port_id", "case_id", "candidate_ordinal", "artifact_id",
         "artifact_path", "expected_sha256", "actual_sha256", "backend_exit_code",
-        "evidence_sha256",
+        "evidence_sha256", "optimization_context",
     }
     categories = {
         "plan_sealed": "state",
@@ -2413,6 +2549,13 @@ def _verify_failure_document(value: object, operation: object) -> None:
         or not value["message"]
     ):
         raise _integrity("Failure discriminator or evidence is malformed.")
+    context = evidence.get("optimization_context")
+    if _optimization_failure_requires_context(value, operation) and context is None:
+        raise _integrity("Optimization execution failure lacks its phase context.")
+    if context is not None:
+        if operation != "optimize_direct" or evidence.get("operation") != "optimize_direct":
+            raise _integrity("Non-optimization failure carries optimization context.")
+        _verify_optimization_context_shape(context)
 
 
 def _verify_result_document(
@@ -4498,7 +4641,7 @@ def _verify_generation_artifacts(
         ledger = _decode_bytes(raw, "optimization ledger")
         if (
             ledger.get("schema") != "scnsim.optimization_ledger"
-            or ledger.get("schema_version") != 2
+            or ledger.get("schema_version") != 3
             or ledger.get("request_sha256") != request_sha256
             or ledger.get("generation") != generation
         ):
@@ -4584,7 +4727,7 @@ def _verify_generation_ledger(
     candidates = ledger.get("candidates")
     if (
         set(ledger) != expected
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
         or not isinstance(population_size, int)
         or isinstance(population_size, bool)
         or population_size < 2
@@ -4717,6 +4860,195 @@ def _convert_selector_value(value: float, source_unit: object, target_unit: obje
     raise _integrity("Optimization term unit conversion is unsupported.")
 
 
+def _optimization_failure_context(failure: object) -> Mapping[str, object]:
+    if not isinstance(failure, Mapping) or not isinstance(failure.get("evidence"), Mapping):
+        raise _integrity("Optimization failure lacks evidence.")
+    context = failure["evidence"].get("optimization_context")
+    return _verify_optimization_context_shape(context)
+
+
+def _verify_candidate_failure_context(
+    failure: object,
+    *,
+    objectives: list[object],
+    candidate: Mapping[str, object],
+    phase: str,
+    owner: Mapping[str, object],
+    affected: list[Mapping[str, object]],
+    dependency: Mapping[str, object] | None = None,
+) -> None:
+    context = _optimization_failure_context(failure)
+    expected_candidate = {
+        "evaluation_ordinal": candidate["evaluation_ordinal"],
+        "origin": candidate["origin"],
+        "generation": candidate["generation"],
+        "population_column": candidate["population_column"],
+    }
+    catalog = _optimization_leaf_catalog(objectives)
+    known = [locator for locator, _ in catalog]
+    if any(locator not in known for locator in affected):
+        raise _integrity("Optimization failure names a leaf absent from its request.")
+    expected = {
+        "schema": "scnsim.optimization_failure_context",
+        "schema_version": 1,
+        "phase": phase,
+        "candidate": expected_candidate,
+        "owner": dict(owner),
+        "affected_leaves": [dict(item) for item in affected],
+    }
+    if dependency is not None:
+        expected["dependency"] = dict(dependency)
+    if context != expected:
+        raise _integrity("Optimization failure context disagrees with evaluated request order and dependencies.")
+
+
+def _optimization_root_selectors(selector: Mapping[str, object]) -> list[Mapping[str, object]]:
+    kind = selector.get("type")
+    if kind in {"diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
+        return [selector]
+    if kind == "residue_coupling_projection":
+        spec = selector.get("spec")
+        view = selector.get("view")
+        if not isinstance(spec, Mapping) or not isinstance(view, Mapping):
+            raise _integrity("Residue selector root dependencies are malformed.")
+        roots: list[Mapping[str, object]] = []
+        for name in ("branch_a", "branch_b"):
+            branch = spec.get(name)
+            if not isinstance(branch, Mapping):
+                raise _integrity("Residue selector branch is malformed.")
+            branch_type = branch.get("type")
+            selector_type = (
+                "residue_diagonal_root_projection" if branch_type == "diagonal_root"
+                else "hybridized_pole_projection" if branch_type == "hybridized_pole"
+                else None
+            )
+            if selector_type is None:
+                raise _integrity("Residue selector branch type is unsupported.")
+            roots.append({"type": selector_type, "spec": branch, "projection": "frequency", "view": view})
+        return roots
+    return []
+
+
+def _optimization_quantity_failure_consumers(
+    catalog: list[tuple[dict[str, object], Mapping[str, object]]],
+    start: int,
+    selector: Mapping[str, object],
+    dependency: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """Derive later public consumers of the selector or its failed private root."""
+
+    selector_dependency = _optimization_dependency(selector)
+    root_dependencies = [
+        _optimization_dependency(root)
+        for root in _optimization_root_selectors(selector)
+    ]
+    if dependency == selector_dependency:
+        return [
+            locator for locator, item in catalog[start:]
+            if _optimization_dependency(item) == dependency
+        ]
+    if dependency in root_dependencies:
+        return [
+            locator for locator, item in catalog[start:]
+            if any(
+                _optimization_dependency(root) == dependency
+                for root in _optimization_root_selectors(item)
+            )
+        ]
+    raise _integrity("Quantity failure dependency disagrees with its failed selector.")
+
+
+def _verify_terminal_optimization_failure(
+    failure: object,
+    spec: object,
+    *,
+    completed_generations: int = 0,
+) -> None:
+    if not isinstance(spec, Mapping) or spec.get("type") != "optimization":
+        raise _integrity("Optimization terminal failure lacks its request spec.")
+    context = _optimization_failure_context(failure)
+    candidate = context.get("candidate")
+    if not isinstance(candidate, Mapping):
+        raise _integrity("Terminal optimization failure has no candidate position.")
+    if (
+        not isinstance(completed_generations, int)
+        or isinstance(completed_generations, bool)
+        or completed_generations < 0
+    ):
+        raise _integrity("Terminal optimization ledger prefix is malformed.")
+    if candidate.get("origin") == "population":
+        optimizer = spec.get("optimizer")
+        population = optimizer.get("resolved_population_size") if isinstance(optimizer, Mapping) else None
+        complete = optimizer.get("complete_generations") if isinstance(optimizer, Mapping) else None
+        generation = candidate.get("generation")
+        column = candidate.get("population_column")
+        if (
+            not isinstance(population, int) or isinstance(population, bool) or population < 2
+            or not isinstance(complete, int) or isinstance(complete, bool) or complete < 1
+            or not isinstance(generation, int) or isinstance(generation, bool)
+            or not isinstance(column, int) or isinstance(column, bool)
+            or generation < 1 or generation > complete
+            or column < 1 or column > population
+            or generation != completed_generations + 1
+            or candidate.get("evaluation_ordinal") != 1 + (generation - 1) * population + (column - 1)
+        ):
+            raise _integrity("Terminal optimization population position is inconsistent with its request.")
+    elif completed_generations != 0:
+        raise _integrity("Baseline failure follows completed population ledgers.")
+    objectives = spec.get("objectives")
+    catalog = _optimization_leaf_catalog(objectives)
+    all_leaves = [locator for locator, _ in catalog]
+    phase = context.get("phase")
+    dependency = context.get("dependency")
+    owner = context.get("owner")
+    affected = context.get("affected_leaves")
+    if phase in {"candidate_prepare", "candidate_compile"}:
+        expected = ({"kind": "candidate"}, all_leaves, None)
+    elif phase == "view_realization":
+        matches = [(locator, selector) for locator, selector in catalog if _optimization_dependency(selector, kind="view") == dependency]
+        if not matches:
+            raise _integrity("Terminal View failure dependency is absent from the request.")
+        expected = ({"kind": "dependency"}, [locator for locator, _ in matches], dependency)
+    elif phase == "baseline_root_anchor":
+        if candidate.get("origin") != "baseline":
+            raise _integrity("Population failure claims baseline root-anchor ownership.")
+        matches: list[Mapping[str, object]] = []
+        for locator, selector in catalog:
+            if any(_optimization_dependency(root) == dependency for root in _optimization_root_selectors(selector)):
+                matches.append(locator)
+        if not matches:
+            raise _integrity("Baseline root-anchor dependency is absent from the request.")
+        expected = ({"kind": "dependency"}, matches, dependency)
+    elif phase == "quantity_evaluation":
+        leaf = owner.get("leaf") if isinstance(owner, Mapping) else None
+        if leaf not in all_leaves:
+            raise _integrity("Baseline quantity failure owner is absent from the request.")
+        index = all_leaves.index(leaf)
+        selector = catalog[index][1]
+        if dependency is None:
+            if not _is_projection_only_optimization_failure(failure):
+                raise _integrity("Shared quantity failure omits its dependency identity.")
+            expected_affected = [leaf]
+        else:
+            if _is_projection_only_optimization_failure(failure):
+                raise _integrity("Projection-only failure claims a shared dependency.")
+            expected_affected = _optimization_quantity_failure_consumers(
+                catalog, index, selector, dependency,
+            )
+        expected = ({"kind": "leaf", "leaf": leaf}, expected_affected, dependency)
+    elif phase == "objective_aggregation":
+        objective_id = owner.get("objective_id") if isinstance(owner, Mapping) else None
+        if objective_id not in [item.get("id") for item in objectives if isinstance(item, Mapping)]:
+            raise _integrity("Baseline objective aggregation owner is absent from the request.")
+        expected = ({"kind": "objective", "objective_id": objective_id}, [], None)
+    elif phase == "total_aggregation":
+        expected = ({"kind": "candidate"}, [], None)
+    else:
+        raise _integrity("Terminal optimization failure uses an invalid baseline phase.")
+    if owner != expected[0] or affected != expected[1] or dependency != expected[2]:
+        raise _integrity("Terminal optimization failure context disagrees with its sealed request.")
+
+
 def _verify_objective_component(
     component: object,
     objective: object,
@@ -4799,7 +5131,17 @@ def _verify_objective_component(
         ):
             raise _integrity("Optimization term failure disagrees with its objective failure.")
         if expected_status == "failure":
-            if "failure" not in term_statuses or term_statuses[term_statuses.index("failure") + 1:] != ["not_evaluated"] * (len(term_statuses) - term_statuses.index("failure") - 1):
+            failure_indexes = [
+                index for index, status in enumerate(term_statuses)
+                if status == "failure"
+            ]
+            ordinary_failure = (
+                len(failure_indexes) == 1
+                and term_statuses[:failure_indexes[0]] == ["success"] * failure_indexes[0]
+                and term_statuses[failure_indexes[0] + 1:]
+                == ["not_evaluated"] * (len(term_statuses) - failure_indexes[0] - 1)
+            )
+            if not ordinary_failure and any(status != "success" for status in term_statuses):
                 raise _integrity("Failed objective term status order is inconsistent.")
         elif any(status != "not_evaluated" for status in term_statuses):
             raise _integrity("Unevaluated objective contains evaluated terms.")
@@ -4886,25 +5228,115 @@ def _verify_candidate_outcome(
             "root_slope_unresolved", "numerical_resolution_unresolved",
         }:
             raise _integrity("Optimization candidate uses a request-level failure kind.")
-        saw_failure = False
+        context = _optimization_failure_context(outcome["failure"])
+        phase = context["phase"]
+        statuses: list[str] = []
         for objective, component in zip(objectives, components):
             status = component.get("status") if isinstance(component, Mapping) else None
-            if status == "success" and not saw_failure:
+            statuses.append(str(status))
+            if status == "success":
                 _verify_objective_component(component, objective, plan, expected_status="success")
-            elif status == "failure" and not saw_failure:
+            elif status == "failure":
                 _verify_objective_component(component, objective, plan, expected_status="failure")
                 if component.get("failure") != outcome["failure"]:
                     raise _integrity("Failed objective does not bind the candidate failure.")
-                saw_failure = True
             elif status == "not_evaluated":
                 _verify_objective_component(component, objective, plan, expected_status="not_evaluated")
                 if component.get("failure") != outcome["failure"]:
                     raise _integrity("Unevaluated objective does not bind the candidate failure.")
-                saw_failure = True
             else:
                 raise _integrity("Failed candidate objective status order is inconsistent.")
-        if not saw_failure:
-            raise _integrity("Failed candidate has no failed or unevaluated objective.")
+        catalog = _optimization_leaf_catalog(objectives)
+        all_leaves = [locator for locator, _ in catalog]
+        if phase in {"candidate_prepare", "candidate_compile"}:
+            if any(status != "not_evaluated" for status in statuses):
+                raise _integrity("Candidate preparation failure contains evaluated objectives.")
+            _verify_candidate_failure_context(
+                outcome["failure"], objectives=objectives, candidate=value,
+                phase=phase, owner={"kind": "candidate"}, affected=all_leaves,
+            )
+        elif phase == "view_realization":
+            if any(status != "not_evaluated" for status in statuses):
+                raise _integrity("View-realization failure contains evaluated objectives.")
+            dependency = context.get("dependency")
+            matches = [
+                (locator, selector) for locator, selector in catalog
+                if _optimization_dependency(selector, kind="view") == dependency
+            ]
+            if not matches:
+                raise _integrity("View-realization failure dependency is absent from the request.")
+            _verify_candidate_failure_context(
+                outcome["failure"], objectives=objectives, candidate=value,
+                phase=phase, owner={"kind": "dependency"},
+                affected=[locator for locator, _ in matches], dependency=dependency,
+            )
+        elif phase == "quantity_evaluation":
+            failed_objectives = [index for index, status in enumerate(statuses) if status == "failure"]
+            if len(failed_objectives) != 1:
+                raise _integrity("Quantity failure has no unique failed objective.")
+            failed_objective = failed_objectives[0]
+            if statuses[:failed_objective] != ["success"] * failed_objective or statuses[failed_objective + 1:] != ["not_evaluated"] * (len(statuses) - failed_objective - 1):
+                raise _integrity("Quantity failure objective status order is inconsistent.")
+            failed_terms = [
+                ({"objective_id": objective["id"], "term_ordinal": term["term_ordinal"]}, selector)
+                for objective, component in zip(objectives, components)
+                if isinstance(objective, Mapping) and isinstance(component, Mapping)
+                for term, selector in zip(component.get("terms", []), _selector_terms(objective.get("quantity")))
+                if isinstance(term, Mapping) and term.get("status") == "failure"
+            ]
+            if len(failed_terms) != 1:
+                raise _integrity("Quantity failure does not identify exactly one failed leaf.")
+            locator, selector = failed_terms[0]
+            start = all_leaves.index(locator)
+            dependency = context.get("dependency")
+            if dependency is None:
+                if not _is_projection_only_optimization_failure(outcome["failure"]):
+                    raise _integrity("Shared quantity failure omits its dependency identity.")
+                affected = [locator]
+            else:
+                if _is_projection_only_optimization_failure(outcome["failure"]):
+                    raise _integrity("Projection-only failure claims a shared dependency.")
+                affected = _optimization_quantity_failure_consumers(
+                    catalog, start, selector, dependency,
+                )
+            _verify_candidate_failure_context(
+                outcome["failure"], objectives=objectives, candidate=value,
+                phase=phase, owner={"kind": "leaf", "leaf": locator},
+                affected=affected, dependency=dependency,
+            )
+        elif phase == "objective_aggregation":
+            failed_indexes = [index for index, status in enumerate(statuses) if status == "failure"]
+            if len(failed_indexes) != 1:
+                raise _integrity("Objective aggregation failure has no unique owner.")
+            failed_index = failed_indexes[0]
+            if statuses[:failed_index] != ["success"] * failed_index or statuses[failed_index + 1:] != ["not_evaluated"] * (len(statuses) - failed_index - 1):
+                raise _integrity("Objective aggregation failure status order is inconsistent.")
+            objective = objectives[failed_index]
+            if not isinstance(objective, Mapping):
+                raise _integrity("Objective aggregation owner is malformed.")
+            terms = components[failed_index].get("terms") if isinstance(components[failed_index], Mapping) else None
+            if (
+                not isinstance(terms, list)
+                or any(
+                    not isinstance(term, Mapping) or term.get("status") != "success"
+                    for term in terms
+                )
+            ):
+                raise _integrity("Objective aggregation failure does not preserve successful terms.")
+            _verify_candidate_failure_context(
+                outcome["failure"], objectives=objectives, candidate=value,
+                phase=phase, owner={"kind": "objective", "objective_id": objective["id"]},
+                affected=[],
+            )
+        elif phase == "total_aggregation":
+            if any(status != "success" for status in statuses):
+                raise _integrity("Total aggregation failure does not preserve successful objectives.")
+            _verify_candidate_failure_context(
+                outcome["failure"], objectives=objectives, candidate=value,
+                phase=phase, owner={"kind": "candidate"}, affected=[],
+            )
+        else:
+            raise _integrity("Population candidate uses a baseline-only or unknown failure phase.")
     else:
         raise _integrity("Optimization candidate outcome discriminator is unknown.")
 
@@ -4946,11 +5378,12 @@ def _verify_optimization_winner(
     for record in records:
         parameters = _canonical_bytes(record["parameters"])
         cached = record.get("cache_hit")
-        if cached is True and (parameters not in seen or seen[parameters] != record.get("outcome")):
+        comparable_outcome = _optimization_outcome_without_candidate_position(record.get("outcome"))
+        if cached is True and (parameters not in seen or seen[parameters] != comparable_outcome):
             raise _integrity("Optimization cache hit does not match its earlier candidate.")
         if cached is False and parameters in seen:
             raise _integrity("Repeated optimization parameters were not marked as a cache hit.")
-        seen.setdefault(parameters, record.get("outcome"))
+        seen.setdefault(parameters, comparable_outcome)
         outcome = record["outcome"]
         if outcome.get("status") == "success":
             winners.append((_f64_value(outcome["cost_f64"]), record["evaluation_ordinal"], record))
@@ -4963,6 +5396,16 @@ def _verify_optimization_winner(
         or best.get("parameters") != winner.get("parameters")
     ):
         raise _integrity("Optimization winner does not match the earliest lowest finite candidate.")
+
+
+def _optimization_outcome_without_candidate_position(value: object) -> object:
+    if isinstance(value, Mapping):
+        if value.get("schema") == "scnsim.optimization_failure_context":
+            return {key: ("<candidate-position>" if key == "candidate" else _optimization_outcome_without_candidate_position(item)) for key, item in value.items()}
+        return {key: _optimization_outcome_without_candidate_position(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_optimization_outcome_without_candidate_position(item) for item in value]
+    return value
 
 
 def _f64_value(value: object) -> float:

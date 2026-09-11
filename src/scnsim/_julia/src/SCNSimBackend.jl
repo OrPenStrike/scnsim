@@ -17,7 +17,11 @@ struct BackendFailure <: Exception
     stage::String
     context_kind::String
     message::String
+    optimization_context::Union{Nothing,Dict{String,Any}}
 end
+
+BackendFailure(category::String, kind::String, stage::String, context_kind::String, message::String) =
+    BackendFailure(category, kind, stage, context_kind, message, nothing)
 
 Base.showerror(io::IO, failure::BackendFailure) = print(io, failure.message)
 

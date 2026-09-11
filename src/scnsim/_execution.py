@@ -273,9 +273,6 @@ def execute_prepared(
                 )
                 failure = None
             else:
-                failure = _validated_failure_record(
-                    outcome.get("failure"), request["operation"]
-                )
                 result_path = allocation.staging_directory / "result.json"
                 if result_path.exists() or result_path.is_symlink():
                     raise BackendProtocolError(
@@ -292,6 +289,11 @@ def execute_prepared(
                         "failure outcome does not exactly bind completed generation ledgers",
                         stage="outcome",
                     )
+                failure = _validated_failure_record(
+                    outcome.get("failure"), request["operation"], request=request,
+                    require_optimization_context=True,
+                    completed_generations=len(verified_links),
+                )
                 receipt = _receipt(
                     request=request,
                     plan_document=plan_document,

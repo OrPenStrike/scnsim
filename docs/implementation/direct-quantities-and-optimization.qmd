@@ -186,6 +186,38 @@ failure during the mandatory baseline fails the whole request. Runtime or
 transport failures remain request-level `RuntimePreparationError` or
 `BackendProtocolError` rather than candidate outcomes.
 
+An optimization-owned execution failure additionally carries one closed
+`optimization_context`. It binds the logical candidate position, the exact
+execution phase, the owning objective/term or request-derived dependency, and
+the authored-order set of leaves actually affected. Public term locators use
+`objective_id` plus a one-based `term_ordinal`; internal zero-based prepared
+ordinals never enter evidence. A failed dependency names its triggering leaf
+and blocked consumers of that same dependency, while unrelated leaves remain
+only unevaluated. For residue-normalized coupling, either private branch root
+is the dependency: its public consumers are derived from authored selectors
+rather than assigning the whole coupling selector as the failed dependency.
+Projection-only failures own one leaf. View preparation owns
+exactly that View's consumers; candidate preparation or compilation owns every
+leaf. Objective or total aggregation preserves already completed
+terms/components and invents no failed leaf.
+
+A terminal population failure is bound to the next generation after the
+verified completed-ledger prefix. Its generation and column remain within the
+requested complete-generation and population bounds, and its public ordinal
+must reproduce from those two values. This establishes position consistency;
+it does not claim an independent observation of the child's last live column.
+Only the closed `invalid_optimization_spec` selector/quantity-sum stages are
+projection-only. Other quantity failures must retain their derived dependency
+and cannot omit it to narrow the affected-leaf set.
+
+The mandatory baseline uses `evaluation_ordinal=0`, `origin="baseline"`,
+`generation=0`, and `population_column=null`, including failures before a
+ledger record exists. Baseline compilation, View realization, quantity
+evaluation, aggregation, and root-anchor preparation retain those phases in
+the terminal failure envelope. They abort the request and never become a
+candidate penalty. Ordinary malformed pre-request or transport failures do not
+fabricate optimization context.
+
 ## Make the optimizer replayable
 
 `CMAESSpec` defaults to `seed=0`, `max_evaluations=200`,
@@ -223,7 +255,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -232,9 +264,11 @@ stop configuration, box transform, candidate compile/Direct/objective
 algorithm IDs, raw/transformed hash encoding, continuation-certificate
 projection and boundary timing, replay checks, and winner/tie rule. A change to
 any of those dependencies requires another outer ID rather than silently
-preserving the old ID. Version 3 binds complete per-leaf View declarations,
-multi-View dependency realization, View-qualified continuation keys, and the
-closed per-term evidence ledger. It does not rename or change the pinned CMA
+preserving the old ID. Version 4 additionally binds the closed optimization
+failure context and generation-ledger version 3; it retains version 3's
+complete per-leaf View declarations, multi-View dependency realization,
+View-qualified continuation keys, and per-term evidence. It does not rename or
+change the pinned CMA
 sampling, update, box transform, stop, seed, or winner rule.
 
 Only complete generations count:

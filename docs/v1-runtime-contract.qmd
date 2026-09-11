@@ -1996,7 +1996,7 @@ mirror, or apply another physical box transform. The signed Int64 seed is
 reinterpreted as UInt64 with the same bits.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -2043,12 +2043,33 @@ callback before update or evidence publication. These hashes are
 continuation-integrity evidence, not independently reconstructable state
 artifacts, and are never restored as optimizer state.
 
-For every candidate, generation-ledger version 2 stores each objective's bound
+For every candidate, generation-ledger version 3 stores each objective's bound
 quantity plus one record for every leaf selector and View in request order.
 Successful leaves carry their actual realized lineage and evaluated Quantity;
 failures preserve already evaluated terms and mark the exact failed or
 not-evaluated remainder. Successful objectives additionally store their
 evaluated Quantity, signed normalized residual, and weighted component cost.
+Optimization-owned failures carry a closed context that binds the logical
+candidate position, execution phase, public `objective_id` plus one-based
+`term_ordinal` where applicable, request-derived View/quantity dependency keys,
+and the authored-order affected leaves. View realization affects only that
+View's consumers; a dependency failure affects its triggering leaf and blocked
+same-dependency consumers. A residue selector's two private branch roots retain
+distinct dependency identities, and a failed branch names only public
+selectors that consume that root. Projection-only failure affects its owner leaf; and
+candidate preparation/compilation affects every leaf. Objective and total
+aggregation retain completed term/component evidence without inventing a
+failed leaf. The baseline uses ordinal/generation zero and null population
+column, including `baseline_root_anchor` failures before a candidate record,
+and every such baseline failure aborts the request.
+For a terminal population failure, the generation is the next unsealed
+generation after the verified ledger prefix and remains inside the requested
+generation bound; its column is bounded by the requested population size and
+must reproduce the public evaluation ordinal. This is position consistency,
+not independent observation of the last live child column. Within a failed
+objective, terms before the one failure are successful and later terms are
+not evaluated; an objective-aggregation failure instead retains all of that
+objective's terms as successful.
 The request-owned target, resolved scale/source, and weight must reproduce each
 successful component and total. A candidate-dependent invalid
 primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,

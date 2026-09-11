@@ -118,7 +118,7 @@ Runtime algorithms are likewise closed for full V1:
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
@@ -128,14 +128,13 @@ exact CMAEvolutionStrategy.jl release and registry tree, Julia patch,
 population hash encoding, candidate compile/Direct/objective algorithm IDs,
 continuation projection and boundaries, replay order, and winner/tie rule.
 Changing any bound dependency requires a new outer ID even when the public
-`CMAESSpec` fields do not change. Version 3 retains the version-2 CMA
-sampling/update mathematics and controls while newly binding normalized
-per-selector View declarations, View-qualified dependency/continuation keys,
-and generation-ledger version 2 term evidence.
-Version-2 optimization requests and ledgers remain historical evidence under
-their original runtime identity. They are not decoded or relabeled as
-version-3 Results; resolving them with the current runtime therefore requires
-their original source-bound leaf rather than a compatibility fallback.
+`CMAESSpec` fields do not change. Version 4 retains the version-3 CMA
+sampling/update mathematics and controls while additionally binding the closed
+optimization failure context and generation-ledger version 3. Earlier
+optimization requests and ledgers remain historical evidence under their
+original runtime identity. They are not decoded or relabeled as version-4
+Results; resolving them with the current runtime therefore requires their
+original source-bound leaf rather than a compatibility fallback.
 
 Source values and units from the executed attempt remain receipt evidence, but
 only the coherent-SI bits, canonical SI unit, and dimensionality enter Plan or
@@ -154,7 +153,7 @@ to log the later caller's equivalent spelling.
 | `outcome.json` | Julia-staged request/attempt/runtime binding, terminal status, typed result/failure, and artifact inventory | immutable staging authority |
 | `result.json` | typed Direct, quantity, optimization, or HB-batch result | immutable |
 | `receipt.json` | request, attempt, Result/artifact hashes, source-unit/provenance evidence, and terminal outcome | written last; immutable |
-| generation ledger | one complete CMA-ES generation, package-visible coordinates and hashes, candidate outcomes, continuation certificate, and previous-ledger hash | immutable artifact |
+| generation ledger v3 | one complete CMA-ES generation, package-visible coordinates and hashes, candidate outcomes with closed failure context, continuation certificate, and previous-ledger hash | immutable artifact |
 | artifact manifest | one Zarr artifact ID plus its complete ordered regular-file inventory | immutable artifact |
 | bootstrap-ready record | request/ordinal binding plus actual Julia and BLAS evidence | exactly one transient stdout JSONL record before launch authorization |
 | launch authorization | request hash plus finalized attempt hash | exactly one transient stdin JSONL record |
@@ -403,7 +402,7 @@ outcome, a winner, completed-generation count, unused budget, and the complete
 hash-linked ledger inventory. Each selector leaf in an optimization request
 carries its complete View declaration. The top-level View is deterministically
 copied from the first normalized leaf only for the existing Result envelope;
-it is not authority for other leaves. Generation-ledger version 2 records
+it is not authority for other leaves. Generation-ledger version 3 records
 every objective's bound quantity and each leaf term in declaration order.
 Successful terms carry their actual realized View lineage and Quantity; failed
 or skipped terms use closed status/failure records and cannot supply a
@@ -418,7 +417,10 @@ Failure receipts require a closed typed failure; interruption receipts require
 explicit interruption evidence. Neither may advertise a Result.
 Every failure evidence envelope also names the owning operation and carries its
 stage-specific canonical context; category/kind/operation mismatches fail
-semantic validation.
+semantic validation. For optimization failures, semantic validation derives
+the expected candidate, public leaf locators, View/quantity dependency hashes,
+and affected authored-order leaves independently from the sealed request; the
+producer's context is evidence to verify, not an answer source.
 
 The current runtime identifies `ParameterRef` by definitions-collection ID plus
 local parameter ID. A current request carries the complete
