@@ -24,6 +24,7 @@ from typing import Mapping
 PUBLICATION_SOURCE_DIFF = (
     "src/scnsim/__init__.py",
     "src/scnsim/_analysis.py",
+    "src/scnsim/_backend.py",
     "src/scnsim/_canonical.py",
     "src/scnsim/_evidence.py",
     "src/scnsim/_execution.py",

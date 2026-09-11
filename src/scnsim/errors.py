@@ -117,6 +117,12 @@ class UnsupportedRuntimePlatformError(SCNSimCapabilityError):
     kind = "unsupported_runtime_platform"
 
 
+class UnsupportedEvidenceVersionError(SCNSimCapabilityError):
+    """Recognizable durable evidence requires an older source-bound runtime."""
+
+    kind = "unsupported_evidence_version"
+
+
 class PortRealizabilityError(SCNSimValidationError):
     """The selected response View cannot be realized as the required Port network."""
 

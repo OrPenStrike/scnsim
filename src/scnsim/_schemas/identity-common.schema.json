@@ -29,6 +29,18 @@
       "$ref": "#/$defs/launchAuthorization"
     },
     {
+      "$ref": "#/$defs/optimizationCheckpointReady"
+    },
+    {
+      "$ref": "#/$defs/optimizationCheckpointCommitted"
+    },
+    {
+      "$ref": "#/$defs/optimizationBaselineCheckpoint"
+    },
+    {
+      "$ref": "#/$defs/optimizationCheckpointSeal"
+    },
+    {
       "$ref": "#/$defs/inventoryResult"
     }
   ],
@@ -49,7 +61,7 @@
     "utcTimestamp": {
       "type": "string",
       "format": "date-time",
-      "pattern": "Z$"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?Z$"
     },
     "f64": {
       "description": "Finite IEEE-754 binary64 encoded as 16 lowercase big-endian hexadecimal digits.",
@@ -640,7 +652,7 @@
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -1408,7 +1420,7 @@
       "additionalProperties": false,
       "required": [
         "type", "seed", "max_evaluations", "population_size",
-        "resolved_population_size", "initial_sigma_f64", "box_transform_id",
+        "resolved_population_size", "initial_sigma_f64", "baseline_optimizer_coordinates_f64", "box_transform_id",
         "complete_generations", "unused_evaluations", "hidden_stops"
       ],
       "properties": {
@@ -1427,6 +1439,9 @@
         },
         "resolved_population_size": { "type": "integer", "minimum": 2, "maximum": 9223372036854775807 },
         "initial_sigma_f64": { "$ref": "#/$defs/f64" },
+        "baseline_optimizer_coordinates_f64": {
+          "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/f64" }
+        },
         "box_transform_id": { "const": "cmaes-jl-0.2.6-linquad-unit-box.v1" },
         "complete_generations": { "type": "integer", "minimum": 1 },
         "unused_evaluations": { "type": "integer", "minimum": 0 },
@@ -1507,7 +1522,7 @@
       ],
       "properties": {
         "schema": { "const": "scnsim.attempt" },
-        "schema_version": { "const": 1 },
+        "schema_version": { "enum": [1, 2] },
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "ordinal": { "type": "integer", "minimum": 1 },
         "ordinal_text": { "$ref": "#/$defs/attemptOrdinalText" },
@@ -1523,9 +1538,30 @@
         "blas_threads": { "type": "integer", "minimum": 1 },
         "blas_vendor": { "type": "string", "minLength": 1 },
         "fftw_threads": { "type": "integer", "minimum": 1 },
-        "resume_ledger_sha256": { "$ref": "#/$defs/sha256" }
+        "resume_ledger_sha256": { "$ref": "#/$defs/sha256" },
+        "baseline_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "baseline_checkpoint_seal_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "dependentRequired": {
+        "baseline_checkpoint_sha256": ["baseline_checkpoint_seal_sha256"],
+        "baseline_checkpoint_seal_sha256": ["baseline_checkpoint_sha256"]
       },
       "allOf": [
+        {
+          "if": {
+            "properties": { "schema_version": { "const": 1 } },
+            "required": ["schema_version"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["resume_ledger_sha256"] },
+                { "required": ["baseline_checkpoint_sha256"] },
+                { "required": ["baseline_checkpoint_seal_sha256"] }
+              ]
+            }
+          }
+        },
         {
           "if": {
             "properties": { "attempt_state": { "const": "launched" } },
@@ -1577,6 +1613,78 @@
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
         "attempt_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "optimizationCheckpointReady": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "event", "request_sha256", "attempt_sha256", "checkpoint_sha256", "byte_length"],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_checkpoint_ready" },
+        "schema_version": { "const": 1 },
+        "event": { "const": "baseline_checkpoint_ready" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "byte_length": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "optimizationCheckpointCommitted": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "event", "request_sha256", "attempt_sha256", "checkpoint_sha256", "seal_sha256", "disposition"],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_checkpoint_committed" },
+        "schema_version": { "const": 1 },
+        "event": { "const": "baseline_checkpoint_committed" },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "seal_sha256": { "$ref": "#/$defs/sha256" },
+        "disposition": { "enum": ["published", "reused"] }
+      }
+    },
+    "optimizationBaselineCheckpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "request_sha256", "algorithm_id", "baseline", "baseline_roots"],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_baseline_checkpoint" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" },
+        "baseline": { "$ref": "identity-v2.schema.json#/$defs/optimizationBaseline" },
+        "baseline_roots": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["dependency", "value"],
+            "properties": {
+              "dependency": { "$ref": "#/$defs/optimizationDependency" },
+              "value": {
+                "type": "object", "additionalProperties": false,
+                "required": ["real_f64", "imag_f64", "si_unit", "dimensionality"],
+                "properties": {
+                  "real_f64": { "$ref": "#/$defs/f64" },
+                  "imag_f64": { "$ref": "#/$defs/f64" },
+                  "si_unit": { "const": "radian / second" },
+                  "dimensionality": { "const": "inverse_time" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "optimizationCheckpointSeal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "request_sha256", "checkpoint_sha256", "checkpoint_byte_length", "source_attempt_sha256", "source_attempt_byte_length", "published_at_utc"],
+      "properties": {
+        "schema": { "const": "scnsim.optimization_checkpoint_seal" },
+        "schema_version": { "const": 1 },
+        "request_sha256": { "$ref": "#/$defs/sha256" },
+        "checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+        "checkpoint_byte_length": { "type": "integer", "minimum": 1 },
+        "source_attempt_sha256": { "$ref": "#/$defs/sha256" },
+        "source_attempt_byte_length": { "type": "integer", "minimum": 1 },
+        "published_at_utc": { "$ref": "#/$defs/utcTimestamp" }
       }
     },
     "nullVectorArtifact": {
@@ -2129,7 +2237,7 @@
       "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests", "maintenance"],
       "properties": {
         "schema": { "const": "scnsim.inventory" },
-        "schema_version": { "const": 2 },
+        "schema_version": { "const": 3 },
         "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
         "plan_sha256": { "$ref": "#/$defs/sha256" },
         "requests": {
@@ -2140,9 +2248,44 @@
             "properties": {
               "request_sha256": { "$ref": "#/$defs/sha256" },
               "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] },
-              "status": { "enum": ["succeeded", "failed", "interrupted"] },
-              "attempts": { "type": "array", "items": { "$ref": "#/$defs/attemptOrdinalText" } }
-            }
+              "status": { "enum": ["succeeded", "failed", "interrupted", "partial_baseline"] },
+              "attempts": { "type": "array", "items": { "$ref": "#/$defs/attemptOrdinalText" } },
+              "baseline_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
+              "baseline_checkpoint_seal_sha256": { "$ref": "#/$defs/sha256" }
+            },
+            "dependentRequired": {
+              "baseline_checkpoint_sha256": ["baseline_checkpoint_seal_sha256"],
+              "baseline_checkpoint_seal_sha256": ["baseline_checkpoint_sha256"]
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "partial_baseline" } }, "required": ["status"] },
+                "then": {
+                  "required": ["baseline_checkpoint_sha256", "baseline_checkpoint_seal_sha256"],
+                  "properties": {
+                    "operation": { "const": "optimize_direct" },
+                    "attempts": { "maxItems": 0 }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "not": {
+                    "properties": { "operation": { "const": "optimize_direct" } },
+                    "required": ["operation"]
+                  }
+                },
+                "then": {
+                  "not": {
+                    "anyOf": [
+                      { "properties": { "status": { "const": "partial_baseline" } }, "required": ["status"] },
+                      { "required": ["baseline_checkpoint_sha256"] },
+                      { "required": ["baseline_checkpoint_seal_sha256"] }
+                    ]
+                  }
+                }
+              }
+            ]
           }
         },
         "maintenance": {
@@ -2216,6 +2359,16 @@
       "properties": {
         "objective_id": { "$ref": "#/$defs/identifier" },
         "term_ordinal": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "optimizationDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "view_sha256", "dependency_sha256"],
+      "properties": {
+        "kind": { "enum": ["view", "quantity"] },
+        "view_sha256": { "$ref": "#/$defs/sha256" },
+        "dependency_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "optimizationFailureContext": {

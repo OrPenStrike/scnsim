@@ -218,6 +218,35 @@ the terminal failure envelope. They abort the request and never become a
 candidate penalty. Ordinary malformed pre-request or transport failures do not
 fabricate optimization context.
 
+After a baseline succeeds, but before CMA-ES requests a population, the
+runtime publishes a versioned request-owned baseline checkpoint. Its content is
+the verified baseline candidate plus source-ordered continuation roots named by
+the same complete View-and-Spec dependency keys as the request. Publication
+provenance is a separate seal bound to the original attempt. Generation ledgers
+bind both identities. The checkpoint contains no CMA private state, consumes no
+additional logical evaluation, and cannot be resolved as a Result.
+Independent verification reconstructs the baseline ParameterSet and unit-box
+coordinates from the sealed request, requires a fresh complete-success outcome,
+and algebraically binds every directly reproducible public root projection to
+its successful term. Private residue-branch anchors remain sealed producer
+values with exact request dependency membership; this boundary does not claim
+an independent residue solve.
+The Result envelope's primary View lineage is derived from the successful
+baseline term whose sealed selector View equals the request's primary View;
+multiple such terms must carry the same lineage. Per-candidate term lineages
+remain their own realized evidence. A successful Result must reproduce that
+verified primary lineage and the exact checkpoint baseline.
+
+On a later identical request, a valid checkpoint may replace baseline
+compilation, root finding, and objective evaluation. It does not alter the
+baseline candidate, continuation anchors, CMA seed, population, call order,
+budget, or winner ordering. Missing or corrupt referenced evidence and
+recognized older checkpoint formats fail closed; identifiable incomplete
+publisher staging may be removed by the next exclusive operation, while
+unknown data is preserved. Any later attempt that observably consumes the
+checkpoint binds its exact content/seal pair; a pre-baseline terminal failure
+that consumed neither checkpoint nor generation evidence need not invent one.
+
 ## Make the optimizer replayable
 
 `CMAESSpec` defaults to `seed=0`, `max_evaluations=200`,
@@ -242,7 +271,12 @@ SCNSim first maps physical values to $z\in[0,1]$, calls
 `minimize(objective, baseline_z, initial_sigma, ...)`, passes
 `lower=zeros(n)` and `upper=ones(n)`, and lets the package apply its one
 lin-quad unit-box transform in $z$ space. SCNSim does not clip, mirror, or apply
-a second physical-bound transform. The exact call additionally uses
+a second physical-bound transform. Request preparation computes the baseline
+coordinates once, records their canonical IEEE-754 bits as
+`baseline_optimizer_coordinates_f64`, and Julia consumes those sealed bits.
+It does not independently repeat the logarithmic map with a different system
+math library. Candidate coordinates still use the pinned Julia transform in
+the ordinary CMA path. The exact call additionally uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, `verbosity=0`, and sets
 `ftol`, `xtol`, `stagnation`, `ftarget`, `maxtime`, and `noise_handling` to
@@ -255,7 +289,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -264,8 +298,10 @@ stop configuration, box transform, candidate compile/Direct/objective
 algorithm IDs, raw/transformed hash encoding, continuation-certificate
 projection and boundary timing, replay checks, and winner/tie rule. A change to
 any of those dependencies requires another outer ID rather than silently
-preserving the old ID. Version 4 additionally binds the closed optimization
-failure context and generation-ledger version 3; it retains version 3's
+preserving the old ID. Version 6 additionally binds Python-owned baseline-
+coordinate normalization; version 5 added the baseline-checkpoint protocol
+and generation-ledger version 4, while version 4 added the closed optimization
+failure context. It retains version 3's
 complete per-leaf View declarations, multi-View dependency realization,
 View-qualified continuation keys, and per-term evidence. It does not rename or
 change the pinned CMA

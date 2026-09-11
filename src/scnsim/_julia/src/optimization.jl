@@ -133,18 +133,19 @@ function parameter_values_for_z(request, base::Dict{String,Any}, z::AbstractVect
 end
 
 function baseline_z(request, values::Dict{String,Any})
-    coordinates = Float64[]
-    for variable in request["spec"]["variables"]
-        key = ref_key(variable["parameter"])
-        haskey(values, key) || fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "active variable lacks a baseline binding")
-        baseline = values[key]
-        lower = quantity_value(variable["lower"])
-        upper = quantity_value(variable["upper"])
-        coordinate = variable["transform"] == "linear" ? (baseline - lower) / (upper - lower) : log(baseline / lower) / log(upper / lower)
-        isfinite(coordinate) && 0.0 <= coordinate <= 1.0 ||
-            fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline lies outside resolved variable bounds")
-        push!(coordinates, coordinate)
+    variables = request["spec"]["variables"]
+    for variable in variables
+        haskey(values, ref_key(variable["parameter"])) ||
+            fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "active variable lacks a baseline binding")
     end
+    encoded = get(request["spec"]["optimizer"], "baseline_optimizer_coordinates_f64", nothing)
+    encoded isa AbstractVector ||
+        fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline optimizer coordinates are absent")
+    coordinates = Float64[f64_from_hex(value) for value in encoded]
+    length(coordinates) == length(variables) ||
+        fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline optimizer coordinate count mismatches variables")
+    all(value -> isfinite(value) && 0.0 <= value <= 1.0, coordinates) ||
+        fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline optimizer coordinates leave the unit box")
     return coordinates
 end
 
@@ -831,13 +832,17 @@ function candidate_record(request, ordinal::Int, generation::Int, column, z::Vec
     return record
 end
 
-function write_generation_ledger(staging, request, request_sha, attempt_sha, generation::Int, previous_sha, raw::Matrix{Float64}, transformed::Matrix{Float64}, candidates, certificate)
+function write_generation_ledger(staging, request, request_sha, attempt_sha,
+        checkpoint_sha, checkpoint_seal_sha, generation::Int, previous_sha,
+        raw::Matrix{Float64}, transformed::Matrix{Float64}, candidates, certificate)
     ledger = Dict{String,Any}(
         "schema" => "scnsim.optimization_ledger",
-        "schema_version" => 3,
+        "schema_version" => 4,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
+        "baseline_checkpoint_sha256" => checkpoint_sha,
+        "baseline_checkpoint_seal_sha256" => checkpoint_seal_sha,
         "generation" => generation,
         "previous_ledger_sha256" => previous_sha,
         "population_size" => size(transformed, 2),
@@ -879,7 +884,7 @@ function staged_generation_links(staging::String, request_sha::String, attempt_s
         ledger = canonical_document(file)
         digest = file_sha256(file)
         get(ledger, "schema", nothing) == "scnsim.optimization_ledger" &&
-            get(ledger, "schema_version", nothing) == 3 &&
+            get(ledger, "schema_version", nothing) == 4 &&
             get(ledger, "request_sha256", nothing) == request_sha &&
             get(ledger, "attempt_sha256", nothing) isa AbstractString &&
             get(ledger, "generation", nothing) == expected &&
@@ -941,7 +946,7 @@ function finalized_attempt_ledgers(entry::String, request_sha::String, current_a
             fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "sibling ledger digest disagrees with its receipt")
         ledger = canonical_document(file)
         get(ledger, "schema", nothing) == "scnsim.optimization_ledger" &&
-            get(ledger, "schema_version", nothing) == 3 &&
+            get(ledger, "schema_version", nothing) == 4 &&
             get(ledger, "request_sha256", nothing) == request_sha &&
             get(ledger, "attempt_sha256", nothing) == attempt_sha ||
             fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "sibling ledger has incompatible identity")
@@ -952,7 +957,8 @@ function finalized_attempt_ledgers(entry::String, request_sha::String, current_a
     return result
 end
 
-function sibling_ledgers(staging::String, request_sha::String, attempt_sha::String, resume_sha::String)
+function sibling_ledgers(staging::String, request_sha::String, attempt_sha::String,
+        resume_sha::String, checkpoint_sha::String, checkpoint_seal_sha::String)
     attempt_root = dirname(staging)
     isdir(attempt_root) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "attempt directory is absent")
     discovered = Dict{String,Dict{String,Any}}()
@@ -961,7 +967,9 @@ function sibling_ledgers(staging::String, request_sha::String, attempt_sha::Stri
         occursin(r"^(?!000000$)(?:[0-9]{6}|[1-9][0-9]{6,})$", name) || continue
         isdir(entry) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "final attempt is not a directory")
         for (digest, ledger) in finalized_attempt_ledgers(entry, request_sha, attempt_sha)
-            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4" ||
+            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" &&
+                get(ledger, "baseline_checkpoint_sha256", nothing) == checkpoint_sha &&
+                get(ledger, "baseline_checkpoint_seal_sha256", nothing) == checkpoint_seal_sha ||
                 fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "prior generation ledger has incompatible algorithm identity")
             if haskey(discovered, digest)
                 canonical_json(discovered[digest]) == canonical_json(ledger) ||
@@ -1236,8 +1244,185 @@ function emit_progress(request_sha::String, attempt_sha::String, generation::Int
     flush(stdout)
 end
 
+function optimization_root_specs_ordered(request)
+    rows = Tuple{String,Any}[]
+    seen = Set{String}()
+    function visit!(selector)
+        kind = get(selector, "type", nothing)
+        if kind in ("diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
+            key = root_selector_key(selector)
+            if !(key in seen)
+                push!(seen, key); push!(rows, (key, selector))
+            end
+        elseif kind == "residue_coupling_projection"
+            for branch in (selector["spec"]["branch_a"], selector["spec"]["branch_b"])
+                root = residue_branch_selector(branch, selector["view"])
+                key = root_selector_key(root)
+                if !(key in seen)
+                    push!(seen, key); push!(rows, (key, root))
+                end
+            end
+        elseif kind == "quantity_sum"
+            for term in selector["terms"]
+                visit!(term)
+            end
+        elseif kind == "response_element_projection"
+            nothing
+        else
+            fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "optimization selector is unsupported")
+        end
+    end
+    for objective in request["spec"]["objectives"]
+        visit!(objective["quantity"])
+    end
+    return rows
+end
+
+function optimization_checkpoint_document(request, request_sha::String, baseline, roots)
+    root_rows = Any[]
+    for (key, selector) in optimization_root_specs_ordered(request)
+        root = roots[key]
+        push!(root_rows, Dict{String,Any}(
+            "dependency" => optimization_dependency(selector),
+            "value" => Dict{String,Any}(
+                "real_f64" => f64_hex(real(root)),
+                "imag_f64" => f64_hex(imag(root)),
+                "si_unit" => "radian / second",
+                "dimensionality" => "inverse_time",
+            ),
+        ))
+    end
+    return Dict{String,Any}(
+        "schema" => "scnsim.optimization_baseline_checkpoint",
+        "schema_version" => 1,
+        "request_sha256" => request_sha,
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
+        "baseline" => baseline,
+        "baseline_roots" => root_rows,
+    )
+end
+
+function roots_from_checkpoint(request, checkpoint)
+    exact_keys(checkpoint, ("schema", "schema_version", "request_sha256", "algorithm_id", "baseline", "baseline_roots")) ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint fields are invalid")
+    get(checkpoint, "schema", nothing) == "scnsim.optimization_baseline_checkpoint" &&
+        get(checkpoint, "schema_version", nothing) == 1 &&
+        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint version is unsupported")
+    declared = checkpoint["baseline_roots"]
+    specs = optimization_root_specs_ordered(request)
+    declared isa AbstractVector && length(declared) == length(specs) ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint root inventory is incomplete")
+    roots = Dict{String,ComplexF64}()
+    for ((key, selector), row) in zip(specs, declared)
+        exact_keys(row, ("dependency", "value")) && row["dependency"] == optimization_dependency(selector) ||
+            fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint root dependency is out of order")
+        value = row["value"]
+        exact_keys(value, ("real_f64", "imag_f64", "si_unit", "dimensionality")) &&
+            value["si_unit"] == "radian / second" && value["dimensionality"] == "inverse_time" ||
+            fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint root value is malformed")
+        roots[key] = ComplexF64(f64_from_hex(value["real_f64"]), f64_from_hex(value["imag_f64"]))
+    end
+    return roots
+end
+
+function baseline_primary_lineage(request, baseline)
+    primary_key = canonical_json(request["view"])
+    selected = nothing
+    outcome = get(baseline, "outcome", nothing)
+    components = outcome isa AbstractDict ? get(outcome, "objective_components", nothing) : nothing
+    components isa AbstractVector ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint lacks objective components")
+    for component in components
+        terms = component isa AbstractDict ? get(component, "terms", nothing) : nothing
+        terms isa AbstractVector ||
+            fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint objective terms are malformed")
+        for term in terms
+            term isa AbstractDict && get(term, "status", nothing) == "success" ||
+                fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint contains an unsuccessful objective term")
+            selector = get(term, "selector", nothing)
+            selector isa AbstractDict ||
+                fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint objective selector is malformed")
+            if canonical_json(get(selector, "view", nothing)) == primary_key
+                lineage = get(term, "ref_lineage", nothing)
+                lineage isa AbstractDict ||
+                    fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint primary View lineage is absent")
+                if selected === nothing
+                    selected = lineage
+                else
+                    canonical_json(selected) == canonical_json(lineage) ||
+                        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint primary View lineages disagree")
+                end
+            end
+        end
+    end
+    selected === nothing &&
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint does not realize the primary View")
+    return selected
+end
+
+function publish_baseline_checkpoint(request, request_sha::String, attempt_sha::String,
+        staging::String, baseline, roots)
+    checkpoint = optimization_checkpoint_document(request, request_sha, baseline, roots)
+    bytes = canonical_bytes(checkpoint)
+    path = joinpath(staging, "baseline-checkpoint.json")
+    write_bytes(path, bytes)
+    checkpoint_sha = sha256_hex(bytes)
+    println(canonical_json(Dict{String,Any}(
+        "schema" => "scnsim.optimization_checkpoint_ready",
+        "schema_version" => 1,
+        "event" => "baseline_checkpoint_ready",
+        "request_sha256" => request_sha,
+        "attempt_sha256" => attempt_sha,
+        "checkpoint_sha256" => checkpoint_sha,
+        "byte_length" => length(bytes),
+    )))
+    flush(stdout)
+    seal_sha = read_checkpoint_committed(request_sha, attempt_sha, checkpoint_sha, nothing, "published")
+    return checkpoint_sha, seal_sha
+end
+
+function load_baseline_checkpoint(request, request_sha::String, attempt_sha::String,
+        request_directory::String, attempt)
+    checkpoint_sha = get(attempt, "baseline_checkpoint_sha256", nothing)
+    seal_sha = get(attempt, "baseline_checkpoint_seal_sha256", nothing)
+    checkpoint_sha isa AbstractString && seal_sha isa AbstractString ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "attempt", "reused optimization attempt lacks checkpoint identities")
+    directory = joinpath(request_directory, "baseline-checkpoint")
+    isdir(directory) && !islink(directory) ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint directory is absent")
+    sort(readdir(directory)) == ["checkpoint.json", "seal.json", "source-attempt.json"] ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint inventory is invalid")
+    checkpoint_path = joinpath(directory, "checkpoint.json")
+    seal_path = joinpath(directory, "seal.json")
+    source_path = joinpath(directory, "source-attempt.json")
+    any(islink, (checkpoint_path, seal_path, source_path)) &&
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint traverses a symlink")
+    checkpoint_bytes = read(checkpoint_path); seal_bytes = read(seal_path); source_bytes = read(source_path)
+    sha256_hex(checkpoint_bytes) == checkpoint_sha && sha256_hex(seal_bytes) == seal_sha ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint identity is corrupt")
+    checkpoint = plain(JSON3.read(String(copy(checkpoint_bytes))))
+    canonical_bytes(checkpoint) == checkpoint_bytes ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint is noncanonical")
+    get(checkpoint, "request_sha256", nothing) == request_sha ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint belongs to another request")
+    seal = plain(JSON3.read(String(copy(seal_bytes))))
+    canonical_bytes(seal) == seal_bytes &&
+        get(seal, "schema", nothing) == "scnsim.optimization_checkpoint_seal" &&
+        get(seal, "schema_version", nothing) == 1 &&
+        get(seal, "request_sha256", nothing) == request_sha &&
+        get(seal, "checkpoint_sha256", nothing) == checkpoint_sha &&
+        get(seal, "checkpoint_byte_length", nothing) == length(checkpoint_bytes) &&
+        get(seal, "source_attempt_sha256", nothing) == sha256_hex(source_bytes) &&
+        get(seal, "source_attempt_byte_length", nothing) == length(source_bytes) ||
+        fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "published baseline checkpoint seal is corrupt")
+    read_checkpoint_committed(request_sha, attempt_sha, String(checkpoint_sha), String(seal_sha), "reused")
+    return checkpoint, String(checkpoint_sha), String(seal_sha)
+end
+
 function optimize_direct(request, plan, request_sha::String, attempt_sha::String, staging::String;
-        resume_ledger_sha::Union{Nothing,AbstractString} = nothing)
+        resume_ledger_sha::Union{Nothing,AbstractString} = nothing,
+        request_directory::String, attempt)
     spec = request["spec"]
     controls = spec["optimizer"]
     variables = spec["variables"]
@@ -1260,32 +1445,56 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
     seed = Int64(controls["seed"])
     base_values = parameter_values(request)
     z0 = baseline_z(request, base_values)
-    baseline_evidence = Any[]
-    baseline_roots, baseline_raw, baseline_views = optimization_baseline_roots(
-        plan, request, base_values; extrapolation_evidence = baseline_evidence,
-    )
     cache = Dict{String,Any}()
-    baseline_parameters = candidate_parameter_set(request, base_values)
-    baseline_cost, baseline_components, baseline_evidence, baseline_failure = try
-        objective_outcome(plan, request, base_values, base_values, baseline_roots;
+    checkpoint_sha, checkpoint_seal_sha, baseline, baseline_roots, baseline_cost = if get(
+            attempt, "baseline_checkpoint_sha256", nothing) !== nothing
+        checkpoint, content_sha, seal_sha = load_baseline_checkpoint(
+            request, request_sha, attempt_sha, request_directory, attempt,
+        )
+        stored = checkpoint["baseline"]
+        stored["optimizer_coordinates_f64"] == f64_hex.(z0) ||
+            fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "checkpoint baseline coordinates disagree with request")
+        cost = f64_from_hex(stored["outcome"]["cost_f64"])
+        roots = roots_from_checkpoint(request, checkpoint)
+        (content_sha, seal_sha, stored, roots, cost)
+    else
+        baseline_evidence = Any[]
+        roots, baseline_raw, baseline_views = optimization_baseline_roots(
+            plan, request, base_values; extrapolation_evidence = baseline_evidence,
+        )
+        baseline_parameters = candidate_parameter_set(request, base_values)
+        cost, components, baseline_evidence, baseline_failure = objective_outcome(
+            plan, request, base_values, base_values, roots;
             extrapolation_evidence = baseline_evidence,
             prepared_raw = baseline_raw, prepared_views = baseline_views,
-            candidate = optimization_candidate_position(0, 0, nothing))
-    catch error
-        error isa BackendFailure || rethrow()
-        rethrow()
+            candidate = optimization_candidate_position(0, 0, nothing),
+        )
+        baseline_failure === nothing || throw(baseline_failure)
+        outcome = Dict{String,Any}(
+            "status" => "success",
+            "cost_f64" => f64_hex(cost),
+            "objective_components" => components,
+        )
+        record = candidate_record(
+            request, 0, 0, nothing, z0, nothing, baseline_parameters, false, outcome;
+            extrapolation_evidence = baseline_evidence,
+        )
+        content_sha, seal_sha = publish_baseline_checkpoint(
+            request, request_sha, attempt_sha, staging, record, roots,
+        )
+        (content_sha, seal_sha, record, roots, cost)
     end
-    baseline_failure === nothing || throw(baseline_failure)
-    baseline_outcome = Dict{String,Any}(
-        "status" => "success",
-        "cost_f64" => f64_hex(baseline_cost),
-        "objective_components" => baseline_components,
+    baseline_outcome = baseline["outcome"]
+    baseline_parameters = baseline["parameters"]
+    request["ref_lineage"] = baseline_primary_lineage(request, baseline)
+    cache[canonical_json(baseline_parameters)] = Dict(
+        "outcome" => baseline_outcome,
+        "cost" => baseline_cost,
+        "extrapolation_evidence" => baseline["extrapolation_evidence"],
     )
-    baseline = candidate_record(request, 0, 0, nothing, z0, nothing, baseline_parameters, false, baseline_outcome;
-        extrapolation_evidence = baseline_evidence)
-    cache[canonical_json(baseline_parameters)] = Dict("outcome" => baseline_outcome, "cost" => baseline_cost, "extrapolation_evidence" => baseline_evidence)
     replay_chain = resume_ledger_sha === nothing ? Dict{String,Any}[] :
-        sibling_ledgers(staging, request_sha, attempt_sha, String(resume_ledger_sha))
+        sibling_ledgers(staging, request_sha, attempt_sha, String(resume_ledger_sha),
+            checkpoint_sha, checkpoint_seal_sha)
     length(replay_chain) <= generations ||
         fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "resume ledger chain exceeds this request's complete generation count")
     seed_replay_cache!(cache, replay_chain)
@@ -1390,6 +1599,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
                 "next_transformed_optimizer_population_sha256" => f64_matrix_hash(transformed),
             )
             artifact = write_generation_ledger(staging, request, request_sha, attempt_sha,
+                checkpoint_sha, checkpoint_seal_sha,
                 previous["generation"], prior_ledger[], previous["raw"], previous["transformed"], previous["records"], certificate)
             push!(ledger_artifacts, artifact)
             prior_ledger[] = artifact["sha256"]
@@ -1425,6 +1635,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
             "state_sha256" => continuation_state_sha(optimizer),
         )
         artifact = write_generation_ledger(staging, request, request_sha, attempt_sha,
+            checkpoint_sha, checkpoint_seal_sha,
             terminal["generation"], prior_ledger[], terminal["raw"], terminal["transformed"], terminal["records"], terminal_certificate)
         push!(ledger_artifacts, artifact)
         emit_progress(request_sha, attempt_sha, terminal["generation"], 1 + terminal["generation"] * lambda, budget)

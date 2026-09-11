@@ -50,10 +50,8 @@ function bootstrap_record(request, request_sha::String, ordinal::Int)
 end
 
 function read_authorization(request, request_sha::String, staging::String, ordinal::Int)
-    bytes = read(stdin)
-    text = String(bytes)
-    count(==('\n'), text) == 1 && endswith(text, "\n") || error("launch authorization must be one JSONL line followed by EOF")
-    payload = text[1:end-1]
+    eof(stdin) && error("launch authorization is absent")
+    payload = readline(stdin; keep = false)
     authorization = plain(JSON3.read(payload))
     canonical_json(authorization) == payload || error("launch authorization is not canonical JSON")
     get(authorization, "schema", nothing) == "scnsim.launch_authorization" || error("launch authorization schema is invalid")
@@ -72,7 +70,33 @@ function read_authorization(request, request_sha::String, staging::String, ordin
     if get(request, "operation", nothing) == "solve_hb"
         get(attempt, "fftw_threads", nothing) == 1 || error("attempt FFTW thread evidence violates HB policy")
     end
-    return attempt_sha
+    get(request, "operation", nothing) == "optimize_direct" || eof(stdin) ||
+        error("non-optimization authorization must be followed by EOF")
+    return attempt_sha, attempt
+end
+
+function read_checkpoint_committed(request_sha::String, attempt_sha::String,
+        checkpoint_sha::String, seal_sha::Union{Nothing,String}, disposition::String)
+    eof(stdin) && error("optimization checkpoint acknowledgement is absent")
+    payload = readline(stdin; keep = false)
+    frame = plain(JSON3.read(payload))
+    canonical_json(frame) == payload || error("optimization checkpoint acknowledgement is not canonical JSON")
+    exact_keys(frame, ("schema", "schema_version", "event", "request_sha256",
+        "attempt_sha256", "checkpoint_sha256", "seal_sha256", "disposition")) ||
+        error("optimization checkpoint acknowledgement fields are invalid")
+    get(frame, "schema", nothing) == "scnsim.optimization_checkpoint_committed" &&
+        get(frame, "schema_version", nothing) == 1 &&
+        get(frame, "event", nothing) == "baseline_checkpoint_committed" &&
+        get(frame, "request_sha256", nothing) == request_sha &&
+        get(frame, "attempt_sha256", nothing) == attempt_sha &&
+        get(frame, "checkpoint_sha256", nothing) == checkpoint_sha &&
+        get(frame, "seal_sha256", nothing) isa AbstractString &&
+        occursin(r"^[0-9a-f]{64}$", String(frame["seal_sha256"])) &&
+        (seal_sha === nothing || get(frame, "seal_sha256", nothing) == seal_sha) &&
+        get(frame, "disposition", nothing) == disposition ||
+        error("optimization checkpoint acknowledgement is inconsistent")
+    eof(stdin) || error("optimization checkpoint acknowledgement must be final input")
+    return String(frame["seal_sha256"])
 end
 
 function run_terminal(request_path::String, staging::String)
@@ -80,10 +104,10 @@ function run_terminal(request_path::String, staging::String)
     ordinal = staging_ordinal(staging)
     println(canonical_json(bootstrap_record(request, request_sha, ordinal)))
     flush(stdout)
-    attempt_sha = read_authorization(request, request_sha, staging, ordinal)
-    # Python owns this envelope and its canonical encoder. The staged attempt
-    # was already bound by the authorization hash, so only parse it here.
-    attempt = canonical_document(joinpath(staging, "attempt.json"); require_backend_canonical = false)
+    attempt_sha, attempt = read_authorization(request, request_sha, staging, ordinal)
+    # Python owns this envelope and its canonical encoder. Use the exact bytes
+    # already hashed and validated by read_authorization; a second path read
+    # would not remain bound to the authorization digest.
     resume_ledger_sha = get(attempt, "resume_ledger_sha256", nothing)
     (resume_ledger_sha === nothing || resume_ledger_sha isa AbstractString) ||
         fail("evidence", "evidence_integrity", "optimization_replay", "attempt", "resume ledger hash is malformed")
@@ -94,6 +118,12 @@ function run_terminal(request_path::String, staging::String)
         if source_kind != "point"
             operation == "optimize_direct" && fail("execution", "compiler_invariant", "parameter_source", "compile", "optimization requires one fixed point parameter source")
             run_parameter_batch(request, plan, request_sha, attempt_sha, staging)
+            return nothing
+        end
+        if operation == "optimize_direct"
+            optimize_direct(request, plan, request_sha, attempt_sha, staging;
+                resume_ledger_sha = resume_ledger_sha,
+                request_directory = dirname(request_path), attempt = attempt)
             return nothing
         end
         compile_context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
@@ -126,9 +156,6 @@ function run_terminal(request_path::String, staging::String)
             else
                 fail("capability", "scaffold_unavailable", "evaluate_direct", "direct_quantity", "Direct quantity is not implemented by this backend revision")
             end
-        elseif operation == "optimize_direct"
-            optimize_direct(request, plan, request_sha, attempt_sha, staging;
-                resume_ledger_sha = resume_ledger_sha)
         else
             fail("capability", "scaffold_unavailable", operation, "scaffold", "operation is not supported by this backend revision")
         end

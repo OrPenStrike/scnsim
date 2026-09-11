@@ -6,7 +6,7 @@ import json
 import platform
 import shutil
 import signal
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -30,8 +30,10 @@ from ._evidence import (
 )
 from ._workspace import (
     AttemptAllocation,
+    BaselineCheckpoint,
     VerifiedSuccess,
     WorkspaceBinding,
+    _IncomingCheckpointEvidenceError,
     _inside,
     _required_extrapolation_rows,
     _verify_artifact_inventory,
@@ -82,6 +84,7 @@ def execute_prepared(
             yield success
             return
         request_directory = binding.ensure_request(request_sha, request_bytes)
+        checkpoint = binding.baseline_checkpoint(request_sha)
         resume_ledger_sha = binding.resume_ledger_sha256(request_sha)
         allocation = binding.allocate_attempt(request_sha)
         attempt_sha: str | None = None
@@ -109,6 +112,8 @@ def execute_prepared(
                         executable_sha=executable_sha,
                         state="allocated",
                         resume_ledger_sha=resume_ledger_sha,
+                        optimization=request.get("operation") == "optimize_direct",
+                        checkpoint=checkpoint,
                     ),
                 )
             _write_logs(allocation.staging_directory, stdout, (*stderr, str(error)))
@@ -141,6 +146,8 @@ def execute_prepared(
                         executable_sha=executable_sha,
                         state="allocated",
                         resume_ledger_sha=resume_ledger_sha,
+                        optimization=request.get("operation") == "optimize_direct",
+                        checkpoint=checkpoint,
                     ),
                 )
             _write_logs(allocation.staging_directory, (), ())
@@ -179,11 +186,32 @@ def execute_prepared(
                     state="launched",
                     ready=ready,
                     resume_ledger_sha=resume_ledger_sha,
+                    optimization=request.get("operation") == "optimize_direct",
+                    checkpoint=checkpoint,
                 ),
             )
             return attempt_sha
 
+        def publish_checkpoint(ready: Mapping[str, object]) -> Mapping[str, object]:
+            nonlocal checkpoint
+            assert attempt_sha is not None
+            published = binding.publish_baseline_checkpoint(
+                request_sha,
+                attempt_sha,
+                allocation.staging_directory / "baseline-checkpoint.json",
+                expected_sha256=str(ready["checkpoint_sha256"]),
+                expected_byte_length=int(ready["byte_length"]),
+            )
+            checkpoint = published
+            return {
+                "checkpoint_sha256": published.checkpoint_sha256,
+                "seal_sha256": published.seal_sha256,
+            }
+
         try:
+            checkpoint_control, publisher_control = _optimization_checkpoint_controls(
+                request.get("operation"), checkpoint, publish_checkpoint
+            )
             terminal = run_terminal(
                 prepared_runtime,
                 request_path=(request_directory / "request.json").resolve(),
@@ -191,10 +219,19 @@ def execute_prepared(
                 request_sha256=request_sha,
                 attempt_ordinal=allocation.ordinal,
                 authorize=authorize,
+                checkpoint=checkpoint_control,
+                publish_checkpoint=publisher_control,
             )
         except KeyboardInterrupt as error:
             seal_interruption(error)
             raise
+        except _IncomingCheckpointEvidenceError as error:
+            protocol = BackendProtocolError(
+                "child baseline checkpoint failed independent validation",
+                stage="optimization_checkpoint",
+            )
+            seal_protocol_failure(protocol)
+            raise protocol from error
         except BackendProtocolError as error:
             seal_protocol_failure(error)
             raise
@@ -259,6 +296,7 @@ def execute_prepared(
                     outcome,
                     request,
                     plan_document,
+                    optimization_checkpoint=checkpoint,
                 )
                 receipt = _receipt(
                     request=request,
@@ -334,6 +372,29 @@ def execute_prepared(
         raise _error_from_record(failure)
 
 
+def _optimization_checkpoint_controls(
+    operation: object,
+    checkpoint: BaselineCheckpoint | None,
+    publisher: Callable[[Mapping[str, object]], Mapping[str, object]],
+) -> tuple[
+    Mapping[str, object] | None,
+    Callable[[Mapping[str, object]], Mapping[str, object]] | None,
+]:
+    """Expose checkpoint controls only to the optimization terminal protocol."""
+
+    if operation != "optimize_direct":
+        return None, None
+    return (
+        None
+        if checkpoint is None
+        else {
+            "checkpoint_sha256": checkpoint.checkpoint_sha256,
+            "seal_sha256": checkpoint.seal_sha256,
+        },
+        publisher,
+    )
+
+
 def _attempt_document(
     allocation: AttemptAllocation,
     *,
@@ -342,10 +403,12 @@ def _attempt_document(
     state: str,
     ready: BootstrapReady | None = None,
     resume_ledger_sha: str | None = None,
+    optimization: bool = False,
+    checkpoint: BaselineCheckpoint | None = None,
 ) -> dict[str, object]:
     document: dict[str, object] = {
         "schema": "scnsim.attempt",
-        "schema_version": 1,
+        "schema_version": 2 if optimization else 1,
         "request_sha256": allocation.request_sha256,
         "ordinal": allocation.ordinal,
         "ordinal_text": allocation.ordinal_text,
@@ -371,6 +434,9 @@ def _attempt_document(
             document["fftw_threads"] = fftw_threads
     if resume_ledger_sha is not None:
         document["resume_ledger_sha256"] = resume_ledger_sha
+    if checkpoint is not None:
+        document["baseline_checkpoint_sha256"] = checkpoint.checkpoint_sha256
+        document["baseline_checkpoint_seal_sha256"] = checkpoint.seal_sha256
     return document
 
 
@@ -568,6 +634,8 @@ def _validate_success_staging(
     outcome: Mapping[str, object],
     request: Mapping[str, object],
     plan: Mapping[str, object],
+    *,
+    optimization_checkpoint: BaselineCheckpoint | None = None,
 ) -> None:
     if outcome.get("runtime_semantic") != request.get("runtime_semantic"):
         raise BackendProtocolError(
@@ -690,6 +758,7 @@ def _validate_success_staging(
         str(outcome.get("request_sha256")),
         str(outcome.get("attempt_sha256")),
         plan,
+        optimization_checkpoint=optimization_checkpoint,
     )
     catalogs: list[Mapping[str, object]] = []
     if expected_kind == "parameter_sweep":

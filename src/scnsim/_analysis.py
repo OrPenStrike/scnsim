@@ -492,6 +492,7 @@ def _encode_spec(
             stage="request_encode",
         )
     variables: list[dict[str, object]] = []
+    baseline_optimizer_coordinates: list[str] = []
     for variable in spec.variables:
         parameter = variable.parameter
         if isinstance(parameter.spec, RLGCParameterSpec):
@@ -523,6 +524,18 @@ def _encode_spec(
                 "log optimization bounds must be strictly positive",
                 stage="spec_validation",
             )
+        coordinate = (
+            (baseline_value - low_value) / (high_value - low_value)
+            if variable.transform == "linear"
+            else math.log(baseline_value / low_value)
+            / math.log(high_value / low_value)
+        )
+        if not math.isfinite(coordinate) or not 0.0 <= coordinate <= 1.0:
+            raise InvalidOptimizationSpec(
+                "sealed baseline has no finite unit-box coordinate",
+                stage="spec_validation",
+            )
+        baseline_optimizer_coordinates.append(float64_hex(coordinate))
         default = [
             quantity_envelope(item, si_unit=parameter_unit, registry=units.registry)
             for item in variable.model_default_bounds
@@ -620,6 +633,7 @@ def _encode_spec(
             "population_size": spec.optimizer.population_size,
             "resolved_population_size": population,
             "initial_sigma_f64": float64_hex(spec.optimizer.initial_sigma),
+            "baseline_optimizer_coordinates_f64": baseline_optimizer_coordinates,
             "box_transform_id": "cmaes-jl-0.2.6-linquad-unit-box.v1",
             "complete_generations": generations,
             "unused_evaluations": unused,

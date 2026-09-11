@@ -968,7 +968,7 @@ class CircuitRun:
         maintenance = inventory.get("maintenance")
         if (
             inventory.get("schema") != "scnsim.inventory"
-            or inventory.get("schema_version") != 2
+            or inventory.get("schema_version") != 3
             or inventory.get("plan_sha256") != self._plan_sha256
             or not isinstance(requests, list)
             or any(not isinstance(row, Mapping) for row in requests)
@@ -1574,7 +1574,7 @@ class CircuitRun:
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
             )
         else:
             raise CompilerInvariantError(

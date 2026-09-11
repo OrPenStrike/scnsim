@@ -78,17 +78,19 @@ the prepared executable hash and Python-observed host evidence, but omits all
 child-observed Julia/BLAS fields; `started_at_utc` is the allocation timestamp
 in both states. If the bootstrap succeeds, Python instead
 seals one immutable `attempt_state="launched"` record with those observed
-fields. Python then writes exactly one canonical UTF-8 JSONL line, with no
-fields beyond this template, to the child's stdin and closes the pipe:
+fields. Python then writes exactly one canonical UTF-8 JSONL launch-
+authorization line. For operations other than optimization it closes stdin
+immediately. For optimization it flushes the line and keeps the same pipe open
+for the bounded baseline-checkpoint handshake below:
 
 ```text
 {"attempt_sha256":<canonical SHA-256 string>,"request_sha256":<canonical SHA-256 string>,"schema":"scnsim.launch_authorization","schema_version":1}\n
 ```
 
-Julia requires that one complete line followed by EOF, recomputes the request
-hash, and compares both hashes with the launch and the finalized attempt.
-Premature EOF, trailing bytes or a second line, invalid framing, or any hash,
-ordinal, Julia-version, thread, or BLAS-evidence mismatch is
+Julia requires one complete canonical line, recomputes the request hash, and
+compares both hashes with the launch and the finalized attempt.
+Non-optimization operations additionally require immediate EOF. Invalid
+framing or any hash, ordinal, Julia-version, thread, or BLAS-evidence mismatch is
 `BackendProtocolError`; execution begins only after every comparison passes.
 Failure before a valid ready record seals the allocated attempt path. Failure
 after the launched attempt has been sealed, including invalid authorization,
@@ -99,16 +101,59 @@ failure path.
 
 ## Use files for authority and JSONL for progress
 
+### Publish the optimization baseline before generations
+
+An optimization attempt uses `scnsim.attempt` v2. After a new attempt fully
+evaluates its mandatory baseline, Julia freezes one canonical
+`scnsim.optimization_baseline_checkpoint` v1 file in attempt staging, emits one
+digest-bound `scnsim.optimization_checkpoint_ready` v1 frame, and blocks. The
+frame contains no path. Python reads those producer bytes once into
+publisher-owned staging, validates the baseline candidate and exact
+request-derived point, coordinates, successful terms, and root-dependency
+inventory, then writes the exact source-attempt bytes and a
+`scnsim.optimization_checkpoint_seal` v1. Content, source-attempt, and seal
+digests are each computed from the same single-read bytes that were decoded and
+validated. It fsyncs and atomically publishes the three files under
+request-owned `baseline-checkpoint/`.
+
+Only after verifying that published pair under the workspace writer lock does
+Python send and flush `scnsim.optimization_checkpoint_committed` v1. Julia
+validates the committed content and seal identities before generation one. A
+later attempt may name that content and seal in its v2 attempt record; Python
+verifies the final files before sending a `disposition="reused"` committed
+frame, and Julia loads them without evaluating the baseline again. Equal-
+content duplicate publication retains the original source attempt and seal;
+different content is an integrity conflict.
+All baseline-checkpoint pipe controls are absent for Direct solve, Direct
+evaluate, HB, and their ParameterSpace batches; those operations retain the
+ordinary authorization-then-EOF protocol.
+
+Checkpoint content identity excludes publication time and producer path. The
+seal separately binds it to the exact original source-attempt bytes. A
+checkpoint is partial recovery evidence, never an `OptimizationResult` and
+never a success for `resolve()`. EOF, progress, success, duplicate control
+frames, malformed reserved frames, or wrong identities before commit fail
+without starting a generation. A legitimate typed baseline failure instead
+terminates normally with no checkpoint and no generation.
+
+The checkpoint does not duplicate a top-level View lineage. Its verified
+baseline terms already bind each declared View; the Result envelope uses the
+matching successful term for the sealed request's primary View, while later
+candidate terms keep their independently realized lineages.
+
 The request file is the only command authority. The single pre-authorization
 `scnsim.bootstrap_ready` line is control framing, not progress. After launch
 authorization, a stdout line is progress only when it validates as
 `schema="scnsim.progress"`, `schema_version=1`, binds the exact request/attempt
 hashes, and declares one completed optimization generation plus
-evaluation-budget counts. Every other post-authorization stdout line and all
-stderr are logs. Python may consume valid progress for internal presentation or
-diagnostics, but V1 exposes no public progress toggle or callback. Malformed
-progress cannot alter the request or final outcome. A second
-`scnsim.bootstrap_ready` record is always a protocol failure rather than a log.
+evaluation-budget counts. Checkpoint frames and other reserved control-family
+records always take the strict control/state validator path: malformed,
+mis-versioned, wrong-order, or duplicate controls are protocol failures, never
+logs. Only non-reserved, non-control stdout and stderr are logs. Python may
+consume valid progress for internal presentation or diagnostics, but V1 exposes
+no public progress toggle or callback. Malformed progress cannot alter the
+request or final outcome. A second `scnsim.bootstrap_ready` record is always a
+protocol failure rather than a log.
 
 Julia writes the schema-validated `outcome.json` envelope and referenced
 artifacts into staging. The envelope binds request, attempt, semantic runtime,

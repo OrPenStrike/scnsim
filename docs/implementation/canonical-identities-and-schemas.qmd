@@ -118,7 +118,7 @@ Runtime algorithms are likewise closed for full V1:
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
@@ -128,11 +128,14 @@ exact CMAEvolutionStrategy.jl release and registry tree, Julia patch,
 population hash encoding, candidate compile/Direct/objective algorithm IDs,
 continuation projection and boundaries, replay order, and winner/tie rule.
 Changing any bound dependency requires a new outer ID even when the public
-`CMAESSpec` fields do not change. Version 4 retains the version-3 CMA
-sampling/update mathematics and controls while additionally binding the closed
-optimization failure context and generation-ledger version 3. Earlier
+`CMAESSpec` fields do not change. Version 6 binds the sealed, Python-normalized
+baseline optimizer-coordinate bits so Julia does not repeat a logarithmic
+normalization with a different system math library. Candidate mapping and CMA
+sampling/update mathematics are unchanged. Version 5 binds the baseline-
+checkpoint protocol and generation-ledger version 4; version 4 binds the
+closed optimization failure context. Earlier
 optimization requests and ledgers remain historical evidence under their
-original runtime identity. They are not decoded or relabeled as version-4
+original runtime identity. They are not decoded or relabeled as current
 Results; resolving them with the current runtime therefore requires their
 original source-bound leaf rather than a compatibility fallback.
 
@@ -149,14 +152,18 @@ to log the later caller's equivalent spelling.
 | `workspace.json` | one leaf binding, a replaceable root's active-leaf pointer, or a versioned Plan-to-iteration index, all with evidence-only instance IDs | mutable only at a root under the workspace lock; immutable in a leaf |
 | `plan.json` | complete authored topology, recursive component snapshots, ordered identities, baselines, and catalog sources | immutable |
 | `request.json` | Plan hash, operation, Ref lineage, Spec, ParameterSet, and semantic runtime | immutable |
-| `attempt.json` | request hash, ordinal, allocation time, allocated/launched state, executable, resume-ledger, and state-appropriate machine evidence | finalized once after the launch bootstrap; immutable |
+| `attempt.json` | request hash, ordinal, allocation time, allocated/launched state, executable, resume-ledger, paired published baseline-checkpoint content/seal identities, and state-appropriate machine evidence | closed v1 for non-optimization and closed v2 for optimization; a later attempt that consumes recovery evidence binds the exact pair; finalized once after launch bootstrap; immutable |
+| request `baseline-checkpoint/checkpoint.json` | fresh complete-success baseline candidate and source-ordered request-derived continuation-root values | immutable partial recovery evidence; never a Result |
+| request `baseline-checkpoint/source-attempt.json` | exact original producing attempt bytes | immutable publication provenance |
+| request `baseline-checkpoint/seal.json` | request/content/source-attempt hashes, byte lengths, and original publication time | written last in publisher staging, then atomically published |
 | `outcome.json` | Julia-staged request/attempt/runtime binding, terminal status, typed result/failure, and artifact inventory | immutable staging authority |
 | `result.json` | typed Direct, quantity, optimization, or HB-batch result | immutable |
 | `receipt.json` | request, attempt, Result/artifact hashes, source-unit/provenance evidence, and terminal outcome | written last; immutable |
-| generation ledger v3 | one complete CMA-ES generation, package-visible coordinates and hashes, candidate outcomes with closed failure context, continuation certificate, and previous-ledger hash | immutable artifact |
+| generation ledger v4 | one complete CMA-ES generation, baseline-checkpoint content/seal identities, package-visible coordinates and hashes, candidate outcomes with closed failure context, continuation certificate, and previous-ledger hash | immutable artifact |
 | artifact manifest | one Zarr artifact ID plus its complete ordered regular-file inventory | immutable artifact |
 | bootstrap-ready record | request/ordinal binding plus actual Julia and BLAS evidence | exactly one transient stdout JSONL record before launch authorization |
 | launch authorization | request hash plus finalized attempt hash | exactly one transient stdin JSONL record |
+| checkpoint-ready / checkpoint-committed | digest-bound optimization baseline publication and acknowledgement; no supplied filesystem path | one transient frame in each direction before any generation |
 | progress record | non-authoritative completed-generation status bound to one request and attempt | transient JSONL only |
 
 The V1 bundle defined the closed Full V1 implementation baseline for every

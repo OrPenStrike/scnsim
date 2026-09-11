@@ -1993,10 +1993,15 @@ $z\in[0,1]$, calls `minimize(objective, baseline_z, initial_sigma, ...)`,
 supplies `lower=zeros(n)`, `upper=ones(n)`, and
 lets the package apply its lin-quad unit-box transform. SCNSim does not clip,
 mirror, or apply another physical box transform. The signed Int64 seed is
-reinterpreted as UInt64 with the same bits.
+reinterpreted as UInt64 with the same bits. The canonical request carries the
+Python-prepared baseline coordinates as
+`baseline_optimizer_coordinates_f64` in variable order. Julia consumes these
+exact IEEE-754 bits instead of recomputing the logarithmic normalization with
+its system math library; candidate mapping and CMA sampling/update remain the
+pinned Julia path.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -2012,6 +2017,13 @@ the baseline and completed candidates; an exact cost tie selects the earliest
 evaluation ordinal in baseline, generation, then population-column order.
 These execution controls bound reproducibility but do not decide whether the
 result meets a Design Target.
+
+A closed request envelope bound to the exact known v3, v4, or v5 outer optimization
+identity raises `UnsupportedEvidenceVersionError` with the operation and exact
+expected/observed algorithm IDs. This identifies the need for its original
+source-bound runtime; it does not claim the historical request's remaining
+contents were verified. Malformed envelopes, wrong Plan/request bindings, and
+current-version evidence corruption remain `EvidenceIntegrityError`.
 
 Every population outcome records both the callback-visible raw CMA sample
 column `optimizer_latent_coordinates_f64` and its transformed unit-box
@@ -2098,6 +2110,23 @@ Optimization resume requires identical Plan, Ref, variables, quantity specs,
 objectives, expanded normalization, algorithm, controls, seed, runtime, and
 completed-generation ledger. An interrupted generation is discarded and
 replayed deterministically rather than published as complete evidence.
+
+The mandatory successful optimization baseline is durably checkpointed before
+the first generation. The request-owned checkpoint preserves the exact
+baseline candidate and continuation roots; a separate immutable publisher seal
+binds its original launched attempt. Reuse avoids repeating baseline work but
+consumes no logical evaluation and changes neither CMA-ES state nor ordering.
+The verifier reconstructs the baseline point and normalized coordinates from
+the sealed request, rejects every incomplete or failed baseline, and binds
+directly reproducible public root projections back to their successful terms.
+The final Result must exactly reproduce the verified baseline and primary View
+lineage. A later attempt that consumes recovery evidence binds the exact
+checkpoint content/seal pair.
+It is partial recovery evidence only: inventory may report it without a final
+attempt, but `resolve()` still requires a verified success. Referenced missing,
+corrupt, symlinked, or unsupported-version checkpoint evidence fails closed. A
+typed baseline failure remains a terminal request failure and publishes no
+checkpoint.
 
 ### Engineer course realization {#ipf-optimization-example}
 
@@ -2596,7 +2625,7 @@ execution begins.
 The current public scaffold machine-maps `PlanSealedError`,
 `WorkspacePlanReplacedError`,
 `WorkspaceVersioningDowngradeForbidden`,
-`WorkspaceCommitIndeterminateError`,
+`WorkspaceCommitIndeterminateError`, `UnsupportedEvidenceVersionError`,
 `UnsupportedRuntimePlatformError`, `PortRealizabilityError`,
 `InvalidDiagonalRootHint`, `InvalidOptimizationSpec`,
 `DirectResponseFormationError`, `InvalidCandidatePhysicalParameter`,

@@ -43,6 +43,14 @@ owners. This file split assigns maintenance responsibility only. It introduces
 no Julia namespace, alternate dispatch path, protocol version, numerical
 formula, failure rule, or execution boundary.
 
+Optimization alone has one bounded mid-process publication boundary. The Julia
+optimization owner freezes completed baseline content and waits; the Python
+execution/workspace owner independently verifies and atomically publishes the
+request-owned checkpoint before acknowledging it. Julia cannot start a CMA
+generation before that acknowledgement. The checkpoint owns recovery content,
+the publisher seal owns provenance, and neither becomes a Result or a second
+execution engine.
+
 ```text
 Notebook
   -> Python validation and immutable prepared analysis

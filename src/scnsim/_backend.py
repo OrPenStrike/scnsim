@@ -11,6 +11,7 @@ import json
 import os
 import platform
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -505,6 +506,92 @@ def _validate_progress(
     return frame
 
 
+def _validate_checkpoint_ready(
+    raw: str, *, request_sha256: str, attempt_sha256: str
+) -> Mapping[str, object]:
+    frame = _decode_canonical_line(raw, stage="optimization_checkpoint")
+    expected = {
+        "schema": "scnsim.optimization_checkpoint_ready",
+        "schema_version": 1,
+        "event": "baseline_checkpoint_ready",
+        "request_sha256": request_sha256,
+        "attempt_sha256": attempt_sha256,
+    }
+    if (
+        set(frame) != {*expected, "checkpoint_sha256", "byte_length"}
+        or any(frame.get(key) != value for key, value in expected.items())
+        or not _is_sha256(frame.get("checkpoint_sha256"))
+        or not isinstance(frame.get("byte_length"), int)
+        or isinstance(frame.get("byte_length"), bool)
+        or frame["byte_length"] < 1
+    ):
+        raise BackendProtocolError(
+            "optimization checkpoint-ready frame is open or mismatched",
+            stage="optimization_checkpoint",
+            evidence={"frame": frame},
+        )
+    return frame
+
+
+@dataclass(frozen=True)
+class _JSONObjectPairs:
+    """Decoded JSON object retaining every key before canonical validation."""
+
+    pairs: tuple[tuple[str, object], ...]
+
+
+class _DuplicateJSONKey(ValueError):
+    """One control-looking JSON object repeated a decoded key."""
+
+
+def _decoded_json(raw: str) -> object:
+    return json.loads(
+        raw,
+        object_pairs_hook=lambda pairs: _JSONObjectPairs(tuple(pairs)),
+    )
+
+
+def _materialize_closed_json(value: object) -> object:
+    if isinstance(value, _JSONObjectPairs):
+        result: dict[str, object] = {}
+        for key, item in value.pairs:
+            if key in result:
+                raise _DuplicateJSONKey(key)
+            result[key] = _materialize_closed_json(item)
+        return result
+    if isinstance(value, list):
+        return [_materialize_closed_json(item) for item in value]
+    return value
+
+
+def _closed_json_object(raw: str) -> object:
+    return _materialize_closed_json(_decoded_json(raw))
+
+
+def _reserved_optimization_frame(raw: str) -> bool:
+    reserved_events = {
+        "baseline_checkpoint_ready",
+        "baseline_checkpoint_committed",
+    }
+    try:
+        decoded = _decoded_json(raw)
+    except json.JSONDecodeError:
+        return re.search(
+            r'"schema"\s*:\s*"scnsim\.optimization_checkpoint', raw
+        ) is not None or any(
+            re.search(rf'"event"\s*:\s*"{event}"', raw) is not None
+            for event in reserved_events
+        )
+    if not isinstance(decoded, _JSONObjectPairs):
+        return False
+    return any(
+        (key == "schema" and isinstance(value, str)
+         and value.startswith("scnsim.optimization_checkpoint"))
+        or (key == "event" and value in reserved_events)
+        for key, value in decoded.pairs
+    )
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> str:
     if process.poll() is not None:
         return "terminated"
@@ -569,6 +656,8 @@ def run_terminal(
     request_sha256: str,
     attempt_ordinal: int,
     authorize: Callable[[BootstrapReady], str],
+    checkpoint: Mapping[str, object] | None = None,
+    publish_checkpoint: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
 ) -> TerminalOutcome:
     """Run exactly one authorized Julia request and return transport evidence.
 
@@ -599,6 +688,17 @@ def run_terminal(
             evidence={"request": str(request)},
         )
     hb_operation = request_document.get("operation") == "solve_hb"
+    optimization_operation = request_document.get("operation") == "optimize_direct"
+    if (checkpoint is not None or publish_checkpoint is not None) and not optimization_operation:
+        raise BackendProtocolError(
+            "baseline checkpoint controls are valid only for optimization",
+            stage="launch_arguments",
+        )
+    if optimization_operation and publish_checkpoint is None:
+        raise BackendProtocolError(
+            "optimization launch lacks its checkpoint publisher",
+            stage="launch_arguments",
+        )
     stdout_lines: queue.Queue[str | None] = queue.Queue()
     stdout_log: list[str] = []
     stderr_log: list[str] = []
@@ -680,7 +780,34 @@ def run_terminal(
                 "attempt_sha256": attempt_sha256,
             }
             process.stdin.write(_canonical_json_line(authorization))
-            process.stdin.close()
+            process.stdin.flush()
+            checkpoint_committed = False
+            if optimization_operation and checkpoint is not None:
+                if (
+                    set(checkpoint) != {"checkpoint_sha256", "seal_sha256"}
+                    or not _is_sha256(checkpoint.get("checkpoint_sha256"))
+                    or not _is_sha256(checkpoint.get("seal_sha256"))
+                ):
+                    raise BackendProtocolError(
+                        "reused checkpoint identity is malformed",
+                        stage="optimization_checkpoint",
+                    )
+                committed = {
+                    "schema": "scnsim.optimization_checkpoint_committed",
+                    "schema_version": 1,
+                    "event": "baseline_checkpoint_committed",
+                    "request_sha256": request_sha256,
+                    "attempt_sha256": attempt_sha256,
+                    "checkpoint_sha256": checkpoint["checkpoint_sha256"],
+                    "seal_sha256": checkpoint["seal_sha256"],
+                    "disposition": "reused",
+                }
+                process.stdin.write(_canonical_json_line(committed))
+                process.stdin.flush()
+                process.stdin.close()
+                checkpoint_committed = True
+            elif not optimization_operation:
+                process.stdin.close()
             progress: list[Mapping[str, object]] = []
             while True:
                 line = stdout_lines.get()
@@ -693,6 +820,45 @@ def run_terminal(
                         stdout_log=stdout_log,
                         stderr_log=stderr_log,
                     )
+                if _reserved_optimization_frame(line):
+                    if not optimization_operation or checkpoint_committed:
+                        raise _protocol_error(
+                            "child emitted an unexpected optimization checkpoint frame",
+                            stage="optimization_checkpoint",
+                            stdout_log=stdout_log,
+                            stderr_log=stderr_log,
+                        )
+                    ready = _validate_checkpoint_ready(
+                        line,
+                        request_sha256=request_sha256,
+                        attempt_sha256=attempt_sha256,
+                    )
+                    assert publish_checkpoint is not None
+                    published = publish_checkpoint(ready)
+                    if (
+                        set(published) != {"checkpoint_sha256", "seal_sha256"}
+                        or published.get("checkpoint_sha256") != ready["checkpoint_sha256"]
+                        or not _is_sha256(published.get("seal_sha256"))
+                    ):
+                        raise BackendProtocolError(
+                            "published checkpoint identity disagrees with ready frame",
+                            stage="optimization_checkpoint",
+                        )
+                    committed = {
+                        "schema": "scnsim.optimization_checkpoint_committed",
+                        "schema_version": 1,
+                        "event": "baseline_checkpoint_committed",
+                        "request_sha256": request_sha256,
+                        "attempt_sha256": attempt_sha256,
+                        "checkpoint_sha256": published["checkpoint_sha256"],
+                        "seal_sha256": published["seal_sha256"],
+                        "disposition": "published",
+                    }
+                    process.stdin.write(_canonical_json_line(committed))
+                    process.stdin.flush()
+                    process.stdin.close()
+                    checkpoint_committed = True
+                    continue
                 event = _validate_progress(
                     line,
                     request_sha256=request_sha256,
@@ -701,6 +867,13 @@ def run_terminal(
                 if event is None:
                     stdout_log.append(line)
                 else:
+                    if optimization_operation and not checkpoint_committed:
+                        raise _protocol_error(
+                            "optimization progress preceded baseline checkpoint commit",
+                            stage="optimization_checkpoint",
+                            stdout_log=stdout_log,
+                            stderr_log=stderr_log,
+                        )
                     progress.append(event)
             returncode = process.wait()
             stderr_reader.join()
@@ -725,6 +898,13 @@ def run_terminal(
                 request_sha256=request_sha256,
                 attempt_sha256=attempt_sha256,
             )
+            if optimization_operation and not checkpoint_committed and outcome.get("status") == "success":
+                raise _protocol_error(
+                    "optimization succeeded without a committed baseline checkpoint",
+                    stage="optimization_checkpoint",
+                    stdout_log=stdout_log,
+                    stderr_log=stderr_log,
+                )
             return TerminalOutcome(
                 outcome=outcome,
                 progress=tuple(progress),

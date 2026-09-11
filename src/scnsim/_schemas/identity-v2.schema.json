@@ -508,15 +508,20 @@
       }
     },
     "optimizationBaseline": {
-      "type": "object", "additionalProperties": false,
-      "required": ["evaluation_ordinal", "origin", "generation", "population_column", "optimizer_coordinates_f64", "parameters", "cache_hit", "extrapolation_evidence", "outcome"],
-      "properties": {
-        "evaluation_ordinal": { "const": 0 }, "origin": { "const": "baseline" }, "generation": { "const": 0 }, "population_column": { "type": "null" },
-        "optimizer_coordinates_f64": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" } },
-        "parameters": { "$ref": "#/$defs/parameterSet" }, "cache_hit": { "const": false },
-        "extrapolation_evidence": { "type": "array", "items": { "$ref": "#/$defs/optimizationExtrapolationEvidence" } },
-        "outcome": { "type": "object", "additionalProperties": false, "required": ["status", "cost_f64", "objective_components"], "properties": { "status": { "const": "success" }, "cost_f64": { "type": "string", "pattern": "^(?!(?:7ff|fff))[0-9a-f]{16}$" }, "objective_components": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/optimizationObjectiveComponent" } } } }
-      }
+      "allOf": [
+        { "$ref": "#/$defs/candidateOutcome" },
+        {
+          "not": { "required": ["optimizer_latent_coordinates_f64"] },
+          "properties": {
+            "evaluation_ordinal": { "const": 0 },
+            "origin": { "const": "baseline" },
+            "generation": { "const": 0 },
+            "population_column": { "type": "null" },
+            "cache_hit": { "const": false },
+            "outcome": { "$ref": "identity-common.schema.json#/$defs/candidateSuccess" }
+          }
+        }
+      ]
     },
     "metadataValue": {
       "oneOf": [
@@ -821,6 +826,8 @@
         "raw_optimizer_population_sha256",
         "transformed_optimizer_population_sha256",
         "continuation_certificate",
+        "baseline_checkpoint_sha256",
+        "baseline_checkpoint_seal_sha256",
         "candidates"
       ],
       "properties": {
@@ -828,7 +835,7 @@
           "const": "scnsim.optimization_ledger"
         },
         "schema_version": {
-          "const": 3
+          "const": 4
         },
         "request_sha256": {
           "$ref": "identity-common.schema.json#/$defs/sha256"
@@ -837,7 +844,13 @@
           "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "algorithm_id": {
-          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
+          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+        },
+        "baseline_checkpoint_sha256": {
+          "$ref": "identity-common.schema.json#/$defs/sha256"
+        },
+        "baseline_checkpoint_seal_sha256": {
+          "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "generation": {
           "type": "integer",

@@ -18,6 +18,7 @@ import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from itertools import product
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from typing import Any
 from .errors import (
     EvidenceIntegrityError,
     ResultUnavailableError,
+    UnsupportedEvidenceVersionError,
     UnsupportedRuntimePlatformError,
     WorkspacePlanReplacedError,
     WorkspaceCommitIndeterminateError,
@@ -47,8 +49,15 @@ _STAGING = re.compile(
 _LEAF_STAGING = re.compile(
     r"^\.staging-leaf-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
 )
+_CHECKPOINT_STAGING = re.compile(
+    r"^\.staging-baseline-checkpoint-"
+    r"([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
+)
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _IDENTIFIER = re.compile(r"^[^/\\\x00-\x1f\x7f]+$")
+_UTC_TIMESTAMP = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z$"
+)
 
 
 def _canonical_bytes(value: Mapping[str, object]) -> bytes:
@@ -62,6 +71,22 @@ def _sha256(data: bytes) -> str:
     from ._canonical import sha256_hex
 
     return sha256_hex(data)
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _valid_utc_timestamp(value: object) -> bool:
+    """Recognize an ISO-8601 date-time with the schema's exact UTC spelling."""
+
+    if not isinstance(value, str) or _UTC_TIMESTAMP.fullmatch(value) is None:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return parsed.tzinfo == timezone.utc
 
 
 def _require_platform() -> None:
@@ -231,6 +256,21 @@ class VerifiedSuccess:
 
 
 @dataclass(frozen=True)
+class BaselineCheckpoint:
+    """Verified request-owned optimization baseline recovery evidence."""
+
+    checkpoint_sha256: str
+    seal_sha256: str
+    checkpoint: Mapping[str, object]
+    source_attempt: Mapping[str, object]
+    directory: Path
+
+
+class _IncomingCheckpointEvidenceError(EvidenceIntegrityError):
+    """Untrusted child checkpoint bytes failed before publication ownership."""
+
+
+@dataclass(frozen=True)
 class WorkspaceBinding:
     """One Run's concrete, Plan-bound leaf beneath a stable workspace root."""
 
@@ -390,6 +430,115 @@ class WorkspaceBinding:
         _fsync_directory(directory)
         return directory
 
+    def baseline_checkpoint(self, request_sha256: str) -> BaselineCheckpoint | None:
+        """Verify and return one request-owned baseline checkpoint, if present."""
+
+        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
+        checkpoint_directory = request_directory / "baseline-checkpoint"
+        if not _path_entry_exists(checkpoint_directory):
+            return None
+        request = _load_canonical(request_directory / "request.json")
+        plan = _load_canonical(self.leaf / "plan.json")
+        return _verify_baseline_checkpoint_directory(
+            checkpoint_directory, request_sha256=request_sha256,
+            request=request, plan=plan,
+        )
+
+    def publish_baseline_checkpoint(
+        self,
+        request_sha256: str,
+        attempt_sha256: str,
+        producer_path: Path,
+        *,
+        expected_sha256: str,
+        expected_byte_length: int,
+    ) -> BaselineCheckpoint:
+        """Own, validate, seal, and atomically publish exact producer bytes."""
+
+        request_sha256 = _valid_sha(request_sha256)
+        attempt_sha256 = _valid_sha(attempt_sha256)
+        request_directory = self.leaf / "requests" / request_sha256
+        request = _load_canonical(request_directory / "request.json")
+        plan = _load_canonical(self.leaf / "plan.json")
+        if request.get("operation") != "optimize_direct":
+            raise _integrity("Only optimization may publish a baseline checkpoint.")
+        try:
+            if (
+                producer_path.is_symlink() or not producer_path.is_file()
+                or producer_path.parent.is_symlink()
+            ):
+                raise _integrity("Producer checkpoint is not a regular staged file.")
+            # One read creates the bytes that are both validated and published.
+            checkpoint_bytes = producer_path.read_bytes()
+            if len(checkpoint_bytes) != expected_byte_length or _sha256(checkpoint_bytes) != expected_sha256:
+                raise _integrity("Producer checkpoint bytes disagree with the ready frame.")
+            checkpoint = _decode_bytes(checkpoint_bytes, "baseline checkpoint")
+            _verify_baseline_checkpoint_document(
+                checkpoint, request_sha256=request_sha256, request=request, plan=plan,
+            )
+            attempt_path = producer_path.parent / "attempt.json"
+            if attempt_path.is_symlink() or not attempt_path.is_file():
+                raise _integrity("Baseline checkpoint source attempt is not a regular file.")
+            source_attempt_bytes = attempt_path.read_bytes()
+            if _sha256(source_attempt_bytes) != attempt_sha256:
+                raise _integrity("Baseline checkpoint source attempt identity is invalid.")
+            source_attempt = _decode_bytes(source_attempt_bytes, "source attempt")
+            if source_attempt.get("request_sha256") != request_sha256 or source_attempt.get("schema_version") != 2:
+                raise _integrity("Baseline checkpoint source attempt is not optimization attempt v2.")
+        except (EvidenceIntegrityError, OSError) as error:
+            raise _IncomingCheckpointEvidenceError(
+                "Incoming baseline checkpoint evidence is invalid.",
+                stage="optimization_checkpoint",
+                evidence={"source": "child_staging"},
+            ) from error
+
+        final = request_directory / "baseline-checkpoint"
+        if _path_entry_exists(final):
+            existing = _verify_baseline_checkpoint_directory(
+                final, request_sha256=request_sha256, request=request, plan=plan,
+            )
+            if existing.checkpoint_sha256 != expected_sha256:
+                raise _integrity("A different baseline checkpoint is already published.")
+            producer_path.unlink()
+            _fsync_directory(producer_path.parent)
+            return existing
+
+        staging = request_directory / f".staging-baseline-checkpoint-{uuid.uuid4()}"
+        staging.mkdir()
+        try:
+            _atomic_write(staging / "checkpoint.json", checkpoint_bytes)
+            _atomic_write(staging / "source-attempt.json", source_attempt_bytes)
+            seal = {
+                "schema": "scnsim.optimization_checkpoint_seal",
+                "schema_version": 1,
+                "request_sha256": request_sha256,
+                "checkpoint_sha256": expected_sha256,
+                "checkpoint_byte_length": len(checkpoint_bytes),
+                "source_attempt_sha256": attempt_sha256,
+                "source_attempt_byte_length": len(source_attempt_bytes),
+                "published_at_utc": _utc_now(),
+            }
+            _atomic_write(staging / "seal.json", _canonical_bytes(seal))
+            _fsync_tree(staging)
+            verified = _verify_baseline_checkpoint_directory(
+                staging, request_sha256=request_sha256, request=request, plan=plan,
+            )
+            if _path_entry_exists(final):
+                raise _integrity(
+                    "Baseline checkpoint publication target appeared during publication."
+                )
+            os.replace(staging, final)
+            _fsync_directory(request_directory)
+            published = _verify_baseline_checkpoint_directory(
+                final, request_sha256=request_sha256, request=request, plan=plan,
+            )
+            producer_path.unlink()
+            _fsync_directory(producer_path.parent)
+            return published
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+
     def allocate_attempt(self, request_sha256: str) -> AttemptAllocation:
         """Reserve the next append-only attempt staging directory.
 
@@ -419,9 +568,12 @@ class WorkspaceBinding:
         """Seal the one allocated/launched attempt envelope before authorization."""
 
         self._require_allocation(allocation)
+        request = _load_canonical(
+            self.leaf / "requests" / allocation.request_sha256 / "request.json"
+        )
         expected = {
             "schema": "scnsim.attempt",
-            "schema_version": 1,
+            "schema_version": 2 if request.get("operation") == "optimize_direct" else 1,
             "request_sha256": allocation.request_sha256,
             "ordinal": allocation.ordinal,
             "ordinal_text": allocation.ordinal_text,
@@ -550,12 +702,35 @@ class WorkspaceBinding:
                     raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
                 request = _load_canonical(request_path)
                 _verify_request_document(request, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
+                checkpoint = self.baseline_checkpoint(request_sha256)
                 attempts = request_directory / "attempts"
-                if attempts.is_symlink() or not attempts.is_dir():
-                    raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                if attempts.is_symlink() or (attempts.exists() and not attempts.is_dir()):
+                    raise _integrity("Inventory request attempts path is unsafe.", request_sha256=request_sha256)
+                if not attempts.exists():
+                    if checkpoint is None:
+                        raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                    rows.append({
+                        "request_sha256": request_sha256,
+                        "operation": request["operation"],
+                        "status": "partial_baseline",
+                        "attempts": [],
+                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
+                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
+                    })
+                    continue
                 finals = self._final_attempt_directories(attempts)
                 if not finals:
-                    raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                    if checkpoint is None:
+                        raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
+                    rows.append({
+                        "request_sha256": request_sha256,
+                        "operation": request["operation"],
+                        "status": "partial_baseline",
+                        "attempts": [],
+                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
+                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
+                    })
+                    continue
                 outcomes: list[str] = []
                 for final in finals:
                     _attempt, receipt, _result = self._verify_attempt(
@@ -568,18 +743,24 @@ class WorkspaceBinding:
                 status = "succeeded" if "success" in outcomes else "failed" if outcomes[-1] == "failure" else "interrupted"
                 if status not in {"succeeded", "failed", "interrupted"}:
                     raise _integrity("Inventory status cannot be determined.", request_sha256=request_sha256)
-                rows.append({
+                row: dict[str, object] = {
                     "request_sha256": request_sha256,
                     "operation": request["operation"],
                     "status": status,
                     "attempts": [final.name for final in finals],
-                })
+                }
+                if checkpoint is not None:
+                    row.update({
+                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
+                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
+                    })
+                rows.append(row)
         root_state = _load_canonical(self.root / "workspace.json")
         _assert_root_envelope(root_state)
         maintenance = root_state.get("maintenance")
         return {
             "schema": "scnsim.inventory",
-            "schema_version": 2,
+            "schema_version": 3,
             "workspace_instance_id": self.workspace_instance_id,
             "plan_sha256": self.plan_sha256,
             "requests": rows,
@@ -635,6 +816,13 @@ class WorkspaceBinding:
             if request.is_symlink() or not request.is_dir() or _SHA256.fullmatch(request.name) is None:
                 raise _integrity("Workspace contains a malformed request directory.", path=str(request))
             attempts = request / "attempts"
+            for child in request.iterdir():
+                if not child.name.startswith(".staging-baseline-checkpoint-"):
+                    continue
+                if child.is_symlink() or not child.is_dir() or _CHECKPOINT_STAGING.fullmatch(child.name) is None:
+                    raise _integrity("Workspace contains malformed checkpoint staging evidence.", path=str(child))
+                shutil.rmtree(child)
+                _fsync_directory(request)
             if attempts.is_symlink():
                 raise _integrity("Workspace contains an unsafe attempts path.", path=str(attempts))
             if not attempts.exists():
@@ -717,9 +905,10 @@ class WorkspaceBinding:
         receipt = _load_canonical(receipt_path)
         expected_directory = f"requests/{request_sha256}/attempts/{ordinal_text}"
         staging_directory = attempt.get("staging_directory")
+        expected_attempt_version = 2 if request_document.get("operation") == "optimize_direct" else 1
         if (
             attempt.get("schema") != "scnsim.attempt"
-            or attempt.get("schema_version") != 1
+            or attempt.get("schema_version") != expected_attempt_version
             or attempt.get("request_sha256") != request_sha256
             or attempt.get("ordinal_text") != ordinal_text
             or attempt.get("ordinal") != int(ordinal_text)
@@ -741,6 +930,10 @@ class WorkspaceBinding:
                 attempt_fields.add("fftw_threads")
         if attempt.get("resume_ledger_sha256") is not None:
             attempt_fields.add("resume_ledger_sha256")
+        checkpoint_sha = attempt.get("baseline_checkpoint_sha256")
+        checkpoint_seal_sha = attempt.get("baseline_checkpoint_seal_sha256")
+        if checkpoint_sha is not None or checkpoint_seal_sha is not None:
+            attempt_fields.update({"baseline_checkpoint_sha256", "baseline_checkpoint_seal_sha256"})
         if set(attempt) != attempt_fields:
             raise _integrity("Attempt envelope is open or has state-incompatible fields.", attempt=str(directory))
         if (
@@ -761,6 +954,15 @@ class WorkspaceBinding:
         elif any(key in attempt for key in ("julia_threads", "blas_threads", "blas_vendor", "fftw_threads")):
             raise _integrity("Allocated attempt must not claim child runtime evidence.", attempt=str(directory))
         attempt_sha256 = _sha256(_canonical_bytes(attempt))
+        checkpoint: BaselineCheckpoint | None = None
+        if checkpoint_sha is not None or checkpoint_seal_sha is not None:
+            checkpoint = self.baseline_checkpoint(request_sha256)
+            if (
+                checkpoint is None
+                or _valid_sha(checkpoint_sha) != checkpoint.checkpoint_sha256
+                or _valid_sha(checkpoint_seal_sha) != checkpoint.seal_sha256
+            ):
+                raise _integrity("Attempt baseline checkpoint reference is absent or corrupt.")
         resume = attempt.get("resume_ledger_sha256")
         if resume is not None:
             resume = _valid_sha(resume)
@@ -813,6 +1015,15 @@ class WorkspaceBinding:
                 receipt_fields.add("outcome_sha256")
         if set(receipt) != receipt_fields:
             raise _integrity("Receipt envelope is open or has outcome-incompatible fields.", attempt=str(directory))
+        if request_document.get("operation") == "optimize_direct":
+            if checkpoint is None:
+                checkpoint = self.baseline_checkpoint(request_sha256)
+            _verify_attempt_checkpoint_consumption(
+                attempt,
+                receipt,
+                attempt_sha256=attempt_sha256,
+                checkpoint=checkpoint,
+            )
         evidence = receipt["evidence"]
         if set(evidence) != {"runtime_semantic_sha256", "source_units", "extrapolation_evidence", "provenance_sha256", "evidence_sha256"}:
             raise _integrity("Receipt evidence envelope is open.", attempt=str(directory))
@@ -918,7 +1129,14 @@ class WorkspaceBinding:
                 raise _integrity("Result envelope does not match its success receipt.", attempt=str(directory))
             if outcome_document.get("result_sha256") != result_sha:
                 raise _integrity("Outcome and receipt bind different Result identities.", attempt=str(directory))
-            _verify_result_document(result, request_document, request_sha256, attempt_sha256, plan_document)
+            _verify_result_document(
+                result,
+                request_document,
+                request_sha256,
+                attempt_sha256,
+                plan_document,
+                optimization_checkpoint=checkpoint,
+            )
             _verify_artifact_inventory(directory, result, receipt)
             if result.get("result_kind") == "optimization":
                 verified_generations = _verify_generation_artifacts(
@@ -1615,7 +1833,7 @@ def _verify_request_document(
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -1625,7 +1843,6 @@ def _verify_request_document(
         or request.get("plan_sha256") != plan_sha256
         or expected_algorithm is None
         or any(not isinstance(request.get(field), dict) for field in ("view", "spec", "parameter_source", "runtime_semantic"))
-        or runtime.get("algorithm_id") != expected_algorithm
     ):
         raise _integrity("Stored request envelope is open or inconsistent.")
     runtime_fields = {
@@ -1636,6 +1853,24 @@ def _verify_request_document(
         raise _integrity("Stored runtime semantic identity is open or malformed.")
     for field in ("python_source_sha256", "julia_source_sha256", "project_sha256", "manifest_sha256"):
         _valid_sha(runtime.get(field))
+    algorithm_id = runtime.get("algorithm_id")
+    historical_optimization_algorithms = {
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3",
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4",
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v5",
+    }
+    if operation == "optimize_direct" and algorithm_id in historical_optimization_algorithms:
+        raise UnsupportedEvidenceVersionError(
+            "Stored optimization evidence requires its original source-bound runtime.",
+            stage="workspace",
+            evidence={
+                "operation": "optimize_direct",
+                "expected_algorithm_id": expected_algorithm,
+                "observed_algorithm_id": algorithm_id,
+            },
+        )
+    if algorithm_id != expected_algorithm:
+        raise _integrity("Stored request runtime identity is inconsistent.")
     _verify_parameter_source(request["parameter_source"], plan)
     terminal, port_realizable = _verify_view_declaration(request["view"], plan)
     if operation == "solve_direct":
@@ -2231,9 +2466,19 @@ def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object]) -> No
         _verify_quantity_role(objective.get("resolved_scale"), complex_value=False, unit=role[0], dimensionality=role[1])
         if not _finite_f64(objective.get("weight_f64")) or objective.get("scale_source") not in {"relative_target", "dimensionless_unity", "explicit"}:
             raise _integrity("Optimization objective scale is malformed.")
-    required_optimizer = {"type", "seed", "max_evaluations", "population_size", "resolved_population_size", "initial_sigma_f64", "box_transform_id", "complete_generations", "unused_evaluations", "hidden_stops"}
+    required_optimizer = {"type", "seed", "max_evaluations", "population_size", "resolved_population_size", "initial_sigma_f64", "baseline_optimizer_coordinates_f64", "box_transform_id", "complete_generations", "unused_evaluations", "hidden_stops"}
     if set(optimizer) != required_optimizer or optimizer.get("type") != "cma_es" or optimizer.get("box_transform_id") != "cmaes-jl-0.2.6-linquad-unit-box.v1" or optimizer.get("hidden_stops") != "disabled":
         raise _integrity("Optimization controls are malformed.")
+    baseline_coordinates = optimizer.get("baseline_optimizer_coordinates_f64")
+    if (
+        not isinstance(baseline_coordinates, list)
+        or len(baseline_coordinates) != len(variables)
+        or any(
+            not _finite_f64(value) or not 0.0 <= _f64_value(value) <= 1.0
+            for value in baseline_coordinates
+        )
+    ):
+        raise _integrity("Optimization baseline coordinates are malformed.")
 
 
 def _parameter_key_integrity(value: object) -> tuple[str, str]:
@@ -2564,6 +2809,8 @@ def _verify_result_document(
     request_sha256: str,
     attempt_sha256: str,
     plan: Mapping[str, object],
+    *,
+    optimization_checkpoint: BaselineCheckpoint | None = None,
 ) -> None:
     """Close one schema-version 2 single or batch result."""
 
@@ -2592,6 +2839,20 @@ def _verify_result_document(
     if not isinstance(source, Mapping) or source.get("kind") != "point" or parameters != source.get("parameters"):
         raise _integrity("Single-point Result does not bind its requested point.")
     _verify_v1_lineage(result.get("ref_lineage"), plan)
+    if result.get("result_kind") == "optimization":
+        if optimization_checkpoint is None:
+            raise _integrity("Optimization Result lacks its verified baseline checkpoint.")
+        if result.get("baseline") != optimization_checkpoint.checkpoint.get("baseline"):
+            raise _integrity("Optimization Result baseline differs from its verified checkpoint.")
+        primary_lineage = _verify_checkpoint_primary_lineage(
+            optimization_checkpoint.checkpoint.get("baseline"),
+            request_view=request.get("view"),
+            plan=plan,
+        )
+        if result.get("ref_lineage") != primary_lineage:
+            raise _integrity(
+                "Optimization Result primary lineage differs from its verified checkpoint."
+            )
     scientific_result = dict(result)
     for field in ("parameters", "parameters_sha256", "ref_lineage"):
         scientific_result.pop(field)
@@ -4615,6 +4876,13 @@ def _verify_generation_artifacts(
         raise _integrity("Only optimization attempts may retain generation ledgers.")
     if artifacts and (not isinstance(spec, dict) or spec.get("type") != "optimization"):
         raise _integrity("Optimization ledger request spec is malformed.")
+    checkpoint = (
+        _verify_baseline_checkpoint_directory(
+            request_path.parent / "baseline-checkpoint",
+            request_sha256=request_sha256, request=request, plan=plan,
+        )
+        if artifacts else None
+    )
     ledgers: list[tuple[int, str, Mapping[str, object]]] = []
     identifiers: set[str] = set()
     for artifact in artifacts:
@@ -4641,11 +4909,17 @@ def _verify_generation_artifacts(
         ledger = _decode_bytes(raw, "optimization ledger")
         if (
             ledger.get("schema") != "scnsim.optimization_ledger"
-            or ledger.get("schema_version") != 3
+            or ledger.get("schema_version") != 4
             or ledger.get("request_sha256") != request_sha256
             or ledger.get("generation") != generation
         ):
             raise _integrity("Optimization ledger identity is inconsistent.", path=path)
+        if (
+            checkpoint is None
+            or ledger.get("baseline_checkpoint_sha256") != checkpoint.checkpoint_sha256
+            or ledger.get("baseline_checkpoint_seal_sha256") != checkpoint.seal_sha256
+        ):
+            raise _integrity("Optimization ledger does not bind the verified baseline checkpoint.")
         _verify_generation_ledger(ledger, spec, plan, generation)
         producer = ledger.get("attempt_sha256")
         if producer != attempt_sha256 and not _prior_ledger_is_receipt_backed(
@@ -4716,7 +4990,8 @@ def _verify_generation_ledger(
         "schema", "schema_version", "request_sha256", "attempt_sha256",
         "algorithm_id", "generation", "previous_ledger_sha256", "population_size",
         "raw_optimizer_population_sha256", "transformed_optimizer_population_sha256",
-        "continuation_certificate", "candidates",
+        "continuation_certificate", "candidates", "baseline_checkpoint_sha256",
+        "baseline_checkpoint_seal_sha256",
     }
     optimizer = spec.get("optimizer")
     variables = spec.get("variables")
@@ -4727,7 +5002,10 @@ def _verify_generation_ledger(
     candidates = ledger.get("candidates")
     if (
         set(ledger) != expected
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4"
+        or ledger.get("schema_version") != 4
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+        or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_sha256", ""))) is None
+        or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_seal_sha256", ""))) is None
         or not isinstance(population_size, int)
         or isinstance(population_size, bool)
         or population_size < 2
@@ -4927,6 +5205,357 @@ def _optimization_root_selectors(selector: Mapping[str, object]) -> list[Mapping
             roots.append({"type": selector_type, "spec": branch, "projection": "frequency", "view": view})
         return roots
     return []
+
+
+def _optimization_checkpoint_roots(objectives: object) -> list[dict[str, object]]:
+    """Return source-ordered unique root dependencies from the sealed request."""
+
+    result: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for _locator, selector in _optimization_leaf_catalog(objectives):
+        for root in _optimization_root_selectors(selector):
+            dependency = _optimization_dependency(root)
+            key = str(dependency["dependency_sha256"])
+            if key not in seen:
+                seen.add(key)
+                result.append(dependency)
+    return result
+
+
+def _verify_baseline_checkpoint_document(
+    checkpoint: Mapping[str, object],
+    *,
+    request_sha256: str,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+) -> None:
+    spec = request.get("spec")
+    if (
+        request.get("operation") != "optimize_direct"
+        or not isinstance(spec, Mapping)
+        or spec.get("type") != "optimization"
+    ):
+        raise _integrity("Baseline checkpoint request is not optimization.")
+    expected_fields = {
+        "schema", "schema_version", "request_sha256", "algorithm_id",
+        "baseline", "baseline_roots",
+    }
+    if (
+        set(checkpoint) != expected_fields
+        or checkpoint.get("schema") != "scnsim.optimization_baseline_checkpoint"
+        or checkpoint.get("schema_version") != 1
+        or checkpoint.get("request_sha256") != request_sha256
+        or checkpoint.get("algorithm_id")
+        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+    ):
+        raise _integrity("Optimization baseline checkpoint envelope is open or inconsistent.")
+    variables = spec.get("variables")
+    objectives = spec.get("objectives")
+    if not isinstance(variables, list) or not isinstance(objectives, list):
+        raise _integrity("Optimization checkpoint request declarations are malformed.")
+    baseline = checkpoint.get("baseline")
+    _verify_candidate_outcome(
+        baseline,
+        variables=len(variables), objectives=objectives, plan=plan,
+        optimization_authorizations=spec.get("allow_extrapolation", []),
+        generation=0, column=None, evaluation_ordinal=0, baseline=True,
+    )
+    _verify_checkpoint_baseline_point(checkpoint["baseline"], request)
+    if (
+        not isinstance(baseline, Mapping)
+        or baseline.get("cache_hit") is not False
+        or not isinstance(baseline.get("outcome"), Mapping)
+        or baseline["outcome"].get("status") != "success"
+    ):
+        raise _integrity(
+            "Published optimization baseline must be a fresh, complete success."
+        )
+    _verify_checkpoint_primary_lineage(
+        baseline, request_view=request.get("view"), plan=plan,
+    )
+    roots = checkpoint.get("baseline_roots")
+    expected_dependencies = _optimization_checkpoint_roots(objectives)
+    if not isinstance(roots, list) or len(roots) != len(expected_dependencies):
+        raise _integrity("Optimization baseline root inventory is incomplete.")
+    for row, dependency in zip(roots, expected_dependencies):
+        value = row.get("value") if isinstance(row, Mapping) else None
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"dependency", "value"}
+            or row.get("dependency") != dependency
+            or not isinstance(value, Mapping)
+            or set(value) != {"real_f64", "imag_f64", "si_unit", "dimensionality"}
+            or value.get("si_unit") != "radian / second"
+            or value.get("dimensionality") != "inverse_time"
+            or not _finite_f64(value.get("real_f64"))
+            or not _finite_f64(value.get("imag_f64"))
+        ):
+            raise _integrity("Optimization baseline root evidence is malformed or out of order.")
+    _verify_checkpoint_root_projections(checkpoint, objectives)
+
+
+def _verify_checkpoint_primary_lineage(
+    baseline: object,
+    *,
+    request_view: object,
+    plan: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Require baseline term evidence to determine one primary Result lineage."""
+
+    outcome = baseline.get("outcome") if isinstance(baseline, Mapping) else None
+    components = outcome.get("objective_components") if isinstance(outcome, Mapping) else None
+    if not isinstance(request_view, Mapping) or not isinstance(components, list):
+        raise _integrity("Optimization checkpoint cannot determine its primary View lineage.")
+    primary_key = _canonical_bytes(request_view)
+    selected: Mapping[str, object] | None = None
+    for component in components:
+        terms = component.get("terms") if isinstance(component, Mapping) else None
+        if not isinstance(terms, list):
+            raise _integrity("Optimization checkpoint objective terms are malformed.")
+        for term in terms:
+            selector = term.get("selector") if isinstance(term, Mapping) else None
+            if (
+                not isinstance(selector, Mapping)
+                or not isinstance(selector.get("view"), Mapping)
+                or _canonical_bytes(selector["view"]) != primary_key
+            ):
+                continue
+            if term.get("status") != "success" or not isinstance(term.get("ref_lineage"), Mapping):
+                raise _integrity("Optimization checkpoint primary View term is not successful.")
+            lineage = term["ref_lineage"]
+            _verify_selector_lineage({"view": request_view}, lineage, plan)
+            if selected is None:
+                selected = lineage
+            elif _canonical_bytes(selected) != _canonical_bytes(lineage):
+                raise _integrity("Optimization checkpoint primary View lineages disagree.")
+    if selected is None:
+        raise _integrity("Optimization checkpoint does not realize its primary View.")
+    return selected
+
+
+def _verify_checkpoint_baseline_point(
+    baseline: Mapping[str, object], request: Mapping[str, object]
+) -> None:
+    """Reconstruct the sealed baseline point and its unit-box coordinates."""
+
+    source = request.get("parameter_source")
+    spec = request.get("spec")
+    if (
+        not isinstance(source, Mapping)
+        or source.get("kind") != "point"
+        or not isinstance(source.get("parameters"), Mapping)
+        or not isinstance(spec, Mapping)
+        or not isinstance(spec.get("variables"), list)
+    ):
+        raise _integrity("Optimization checkpoint lacks one sealed baseline point.")
+    expected_parameters = source["parameters"]
+    parameters = baseline.get("parameters")
+    if parameters != expected_parameters or not isinstance(parameters, Mapping):
+        raise _integrity("Optimization checkpoint baseline differs from the sealed request point.")
+    expected_coordinates = spec.get("optimizer", {}).get(
+        "baseline_optimizer_coordinates_f64"
+    )
+    if baseline.get("optimizer_coordinates_f64") != expected_coordinates:
+        raise _integrity("Optimization checkpoint baseline coordinates disagree with its request point.")
+
+
+def _verify_checkpoint_root_projections(
+    checkpoint: Mapping[str, object], objectives: list[object]
+) -> None:
+    """Bind directly reproducible public root projections to sealed anchors."""
+
+    roots = checkpoint.get("baseline_roots")
+    baseline = checkpoint.get("baseline")
+    outcome = baseline.get("outcome") if isinstance(baseline, Mapping) else None
+    components = outcome.get("objective_components") if isinstance(outcome, Mapping) else None
+    if not isinstance(roots, list) or not isinstance(components, list):
+        raise _integrity("Optimization checkpoint root projection evidence is malformed.")
+    by_dependency = {
+        row["dependency"]["dependency_sha256"]: row["value"]
+        for row in roots
+        if isinstance(row, Mapping)
+        and isinstance(row.get("dependency"), Mapping)
+        and isinstance(row.get("value"), Mapping)
+    }
+    for objective, component in zip(objectives, components):
+        selectors = _selector_terms(objective.get("quantity")) if isinstance(objective, Mapping) else []
+        terms = component.get("terms") if isinstance(component, Mapping) else None
+        if not isinstance(terms, list) or len(terms) != len(selectors):
+            raise _integrity("Optimization checkpoint objective terms are malformed.")
+        for selector, term in zip(selectors, terms):
+            kind = selector.get("type")
+            projection = selector.get("projection")
+            if kind not in {
+                "diagonal_root_projection", "hybridized_pole_projection",
+                "transfer_zero_projection",
+            }:
+                # Residue-coupling branch anchors have no public projection
+                # reproducible without the retained operator and residues.
+                continue
+            dependency = _optimization_dependency(selector)
+            value = by_dependency.get(dependency["dependency_sha256"])
+            term_value = term.get("value") if isinstance(term, Mapping) else None
+            if not isinstance(value, Mapping) or not isinstance(term_value, Mapping):
+                raise _integrity("Optimization checkpoint root has no successful public projection.")
+            root = complex(
+                _f64_value(value.get("real_f64")),
+                _f64_value(value.get("imag_f64")),
+            )
+            projected = (
+                -2.0 * root.imag / (2.0 * math.pi)
+                if projection == "linewidth"
+                else root.real / (2.0 * math.pi)
+            )
+            if term_value.get("si_unit") != "hertz" or term_value.get("si_value_f64") != struct.pack(">d", projected).hex():
+                raise _integrity("Optimization checkpoint root anchor disagrees with its public term value.")
+
+
+def _verify_baseline_checkpoint_directory(
+    directory: Path,
+    *,
+    request_sha256: str,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+) -> BaselineCheckpoint:
+    if directory.is_symlink() or not directory.is_dir() or directory.parent.is_symlink():
+        raise _integrity("Baseline checkpoint directory is missing or symlinked.")
+    expected_names = {"checkpoint.json", "source-attempt.json", "seal.json"}
+    if {item.name for item in directory.iterdir()} != expected_names:
+        raise _integrity("Baseline checkpoint directory has an unknown inventory.")
+    checkpoint_path = directory / "checkpoint.json"
+    source_path = directory / "source-attempt.json"
+    seal_path = directory / "seal.json"
+    if any(path.is_symlink() or not path.is_file() for path in (checkpoint_path, source_path, seal_path)):
+        raise _integrity("Baseline checkpoint files must be regular and unsymlinked.")
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    source_bytes = source_path.read_bytes()
+    checkpoint = _decode_bytes(checkpoint_bytes, "baseline checkpoint")
+    source_attempt = _decode_bytes(source_bytes, "source attempt")
+    seal_bytes = seal_path.read_bytes()
+    seal = _decode_bytes(seal_bytes, "baseline checkpoint seal")
+    checkpoint_sha = _sha256(checkpoint_bytes)
+    source_sha = _sha256(source_bytes)
+    expected_seal = {
+        "schema", "schema_version", "request_sha256", "checkpoint_sha256",
+        "checkpoint_byte_length", "source_attempt_sha256",
+        "source_attempt_byte_length", "published_at_utc",
+    }
+    if (
+        set(seal) != expected_seal
+        or seal.get("schema") != "scnsim.optimization_checkpoint_seal"
+        or seal.get("schema_version") != 1
+        or seal.get("request_sha256") != request_sha256
+        or seal.get("checkpoint_sha256") != checkpoint_sha
+        or seal.get("checkpoint_byte_length") != len(checkpoint_bytes)
+        or seal.get("source_attempt_sha256") != source_sha
+        or seal.get("source_attempt_byte_length") != len(source_bytes)
+        or not _valid_utc_timestamp(seal.get("published_at_utc"))
+    ):
+        raise _integrity("Baseline checkpoint seal does not bind its exact files.")
+    _verify_checkpoint_source_attempt(source_attempt, request_sha256)
+    _verify_baseline_checkpoint_document(
+        checkpoint, request_sha256=request_sha256, request=request, plan=plan,
+    )
+    return BaselineCheckpoint(
+        checkpoint_sha, _sha256(seal_bytes), checkpoint,
+        source_attempt, directory,
+    )
+
+
+def _path_entry_exists(path: Path) -> bool:
+    """Return lexical directory-entry presence, including dangling symlinks."""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _verify_checkpoint_source_attempt(
+    attempt: Mapping[str, object], request_sha256: str
+) -> None:
+    fields = {
+        "schema", "schema_version", "request_sha256", "ordinal", "ordinal_text",
+        "directory", "staging_directory", "attempt_state", "started_at_utc",
+        "julia_executable_sha256", "os", "architecture", "cpu", "julia_threads",
+        "blas_threads", "blas_vendor",
+    }
+    ordinal = attempt.get("ordinal")
+    ordinal_text = attempt.get("ordinal_text")
+    staging = attempt.get("staging_directory")
+    if (
+        set(attempt) != fields
+        or attempt.get("schema") != "scnsim.attempt"
+        or attempt.get("schema_version") != 2
+        or attempt.get("request_sha256") != request_sha256
+        or attempt.get("attempt_state") != "launched"
+        or not isinstance(ordinal, int) or isinstance(ordinal, bool) or ordinal < 1
+        or ordinal_text != str(ordinal).zfill(6)
+        or attempt.get("directory") != f"requests/{request_sha256}/attempts/{ordinal_text}"
+        or not isinstance(staging, str)
+        or not staging.startswith(f"requests/{request_sha256}/attempts/.staging-{ordinal_text}-")
+        or _STAGING.fullmatch(Path(staging).name) is None
+        or not isinstance(attempt.get("started_at_utc"), str)
+        or not str(attempt["started_at_utc"]).endswith("Z")
+        or _SHA256.fullmatch(str(attempt.get("julia_executable_sha256", ""))) is None
+        or any(not isinstance(attempt.get(key), str) or not attempt[key] for key in ("os", "architecture", "cpu", "blas_vendor"))
+        or attempt.get("julia_threads") != 1
+        or attempt.get("blas_threads") != 1
+    ):
+        raise _integrity("Baseline checkpoint source attempt is not a closed producing optimization attempt.")
+
+
+def _verify_attempt_checkpoint_consumption(
+    attempt: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    attempt_sha256: str,
+    checkpoint: BaselineCheckpoint | None,
+) -> None:
+    """Require recovery evidence exactly when a later attempt consumed it."""
+
+    checkpoint_sha = attempt.get("baseline_checkpoint_sha256")
+    seal_sha = attempt.get("baseline_checkpoint_seal_sha256")
+    has_pair = checkpoint_sha is not None or seal_sha is not None
+    if checkpoint is None:
+        if has_pair:
+            raise _integrity("Attempt references an absent baseline checkpoint.")
+        return
+    if has_pair and (
+        checkpoint_sha != checkpoint.checkpoint_sha256
+        or seal_sha != checkpoint.seal_sha256
+    ):
+        raise _integrity("Attempt baseline checkpoint reference is absent or corrupt.")
+
+    source_attempt_sha = _sha256(_canonical_bytes(checkpoint.source_attempt))
+    if attempt_sha256 == source_attempt_sha:
+        return
+    artifacts = receipt.get("artifacts")
+    failure = receipt.get("failure")
+    evidence = failure.get("evidence") if isinstance(failure, Mapping) else None
+    context = evidence.get("optimization_context") if isinstance(evidence, Mapping) else None
+    candidate = context.get("candidate") if isinstance(context, Mapping) else None
+    consumed = (
+        attempt.get("resume_ledger_sha256") is not None
+        or receipt.get("outcome") == "success"
+        or (
+            isinstance(artifacts, list)
+            and any(
+                isinstance(row, Mapping)
+                and str(row.get("id", "")).startswith("generation_")
+                for row in artifacts
+            )
+        )
+        or (
+            isinstance(candidate, Mapping)
+            and candidate.get("origin") == "population"
+        )
+    )
+    if consumed and not has_pair:
+        raise _integrity(
+            "A later optimization attempt consumed baseline evidence without binding its checkpoint pair."
+        )
 
 
 def _optimization_quantity_failure_consumers(

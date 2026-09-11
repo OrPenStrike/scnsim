@@ -61,7 +61,7 @@ _UNITS: dict[str, str] = {
 _DIRECT_ALGORITHMS = {
     "solve_direct": "scnsim.direct_response.v1",
     "solve_hb": "scnsim.hb_response.josephsoncircuits.v1",
-    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4",
+    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
 }
 _EVALUATION_ALGORITHMS = {
     "diagonal_root": "scnsim.diagonal_root.newton32.v1",
@@ -813,6 +813,9 @@ def canonical_attempt_document(
     blas_threads: int | None = None,
     blas_vendor: str | None = None,
     resume_ledger_sha256: str | None = None,
+    operation: str | None = None,
+    baseline_checkpoint_sha256: str | None = None,
+    baseline_checkpoint_seal_sha256: str | None = None,
 ) -> dict[str, object]:
     """Build an allocated or launched attempt envelope with exact paths."""
 
@@ -826,7 +829,7 @@ def canonical_attempt_document(
     text, directory, staging = attempt_paths(request_sha256, ordinal, staging_uuid)
     document: dict[str, object] = {
         "schema": "scnsim.attempt",
-        "schema_version": 1,
+        "schema_version": 2 if operation == "optimize_direct" else 1,
         "request_sha256": _sha256(request_sha256, field="request_sha256"),
         "ordinal": ordinal,
         "ordinal_text": text,
@@ -845,6 +848,17 @@ def canonical_attempt_document(
         document.update({"julia_threads": julia_threads, "blas_threads": blas_threads, "blas_vendor": _nonempty(blas_vendor, "blas_vendor")})
     if resume_ledger_sha256 is not None:
         document["resume_ledger_sha256"] = _sha256(resume_ledger_sha256, field="resume_ledger_sha256")
+    if (baseline_checkpoint_sha256 is None) != (baseline_checkpoint_seal_sha256 is None):
+        raise _validation("baseline checkpoint content and seal identities are a pair")
+    if baseline_checkpoint_sha256 is not None:
+        if operation != "optimize_direct":
+            raise _validation("only optimization attempts may bind a baseline checkpoint")
+        document["baseline_checkpoint_sha256"] = _sha256(
+            baseline_checkpoint_sha256, field="baseline_checkpoint_sha256"
+        )
+        document["baseline_checkpoint_seal_sha256"] = _sha256(
+            baseline_checkpoint_seal_sha256, field="baseline_checkpoint_seal_sha256"
+        )
     return canonical_value(document)  # type: ignore[return-value]
 
 
