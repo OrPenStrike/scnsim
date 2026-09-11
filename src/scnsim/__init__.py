@@ -70,6 +70,7 @@ from .errors import (
     UnsupportedRuntimePlatformError,
     UnsupportedSingularCapacitanceForDiagonalRootV1,
     WorkspacePlanReplacedError,
+    WorkspaceCommitIndeterminateError,
     WorkspaceVersioningDowngradeForbidden,
 )
 from .io import load_q2d_rlgc
@@ -277,6 +278,7 @@ __all__ = [
     "UnsupportedRuntimePlatformError",
     "UnsupportedSingularCapacitanceForDiagonalRootV1",
     "WorkspacePlanReplacedError",
+    "WorkspaceCommitIndeterminateError",
     "WorkspaceVersioningDowngradeForbidden",
     "components",
     "load_q2d_rlgc",

@@ -15,7 +15,7 @@ import shutil
 import struct
 import sys
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import product
@@ -27,6 +27,7 @@ from .errors import (
     ResultUnavailableError,
     UnsupportedRuntimePlatformError,
     WorkspacePlanReplacedError,
+    WorkspaceCommitIndeterminateError,
     WorkspaceVersioningDowngradeForbidden,
 )
 
@@ -142,6 +143,38 @@ def _atomic_write(path: Path, data: bytes) -> None:
             temporary.unlink()
 
 
+class _WorkspacePublishIndeterminate(Exception):
+    """The active-pointer replace succeeded but its directory fsync did not."""
+
+
+def _publish_workspace_state(path: Path, data: bytes) -> None:
+    """Publish the logical workspace commit with a distinct uncertain tail."""
+
+    if path.is_symlink() or path.parent.is_symlink():
+        raise _integrity("Evidence write target must not traverse a symlink.", path=str(path))
+    temporary = path.with_name(f".{path.name}.tmp-{uuid.uuid4()}")
+    replaced = False
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        replaced = True
+        try:
+            _fsync_directory(path.parent)
+            if path.is_symlink() or not path.is_file() or path.read_bytes() != data:
+                raise _integrity(
+                    "Published workspace pointer failed exact state confirmation.",
+                    path=str(path),
+                )
+        except BaseException as exc:
+            raise _WorkspacePublishIndeterminate from exc
+    finally:
+        if not replaced and temporary.exists():
+            temporary.unlink()
+
+
 def _fsync_directory(path: Path) -> None:
     if path.is_symlink():
         raise _integrity("Evidence directory must not be a symlink.", path=str(path))
@@ -211,6 +244,11 @@ class WorkspaceBinding:
         """Hold the root's exclusive lock for a complete durable operation."""
 
         with _workspace_lock(self.root, exclusive=True):
+            state = _load_canonical(self.root / "workspace.json")
+            _assert_root_envelope(state)
+            self.assert_current()
+            _validate_active_evidence(self.root, state)
+            _finish_root_maintenance(self.root, state)
             self.assert_current()
             self._cleanup_staging()
             yield self
@@ -536,12 +574,16 @@ class WorkspaceBinding:
                     "status": status,
                     "attempts": [final.name for final in finals],
                 })
+        root_state = _load_canonical(self.root / "workspace.json")
+        _assert_root_envelope(root_state)
+        maintenance = root_state.get("maintenance")
         return {
             "schema": "scnsim.inventory",
-            "schema_version": 1,
+            "schema_version": 2,
             "workspace_instance_id": self.workspace_instance_id,
             "plan_sha256": self.plan_sha256,
             "requests": rows,
+            "maintenance": [] if maintenance is None else [dict(maintenance)],
         }
 
     def resume_ledger_sha256(self, request_sha256: str) -> str | None:
@@ -948,12 +990,9 @@ def bind_workspace(
     plan_sha256: str,
     plan_bytes: bytes,
     versioned: bool,
+    commit: Callable[[], None],
 ) -> WorkspaceBinding:
-    """Bind one sealed Plan to replacement or history-preserving evidence.
-
-    The caller must have sealed the Plan before calling this function.  This is
-    the only operation that creates/replaces a workspace leaf.
-    """
+    """Bind prepared Plan evidence, then invoke its non-failing seal commit."""
 
     _require_platform()
     _valid_sha(plan_sha256)
@@ -962,42 +1001,120 @@ def bind_workspace(
     plan = _decode_bytes(plan_bytes, "plan")
     if plan.get("schema") != "scnsim.plan" or plan.get("schema_version") != 2:
         raise _integrity("Plan bytes are not a schema-version 2 Plan envelope.")
+    if not callable(commit):
+        raise TypeError("workspace commit must be callable")
     root = Path(workspace).expanduser().resolve(strict=False)
     root.mkdir(parents=True, exist_ok=True)
     with _workspace_lock(root, exclusive=True):
-        state_path = root / "workspace.json"
-        if not state_path.exists():
-            return _recover_or_create_root(root, plan_sha256, plan_bytes, versioned)
-        root_state = _load_canonical(state_path)
-        _assert_root_envelope(root_state)
-        kind = root_state.get("kind")
-        if kind == "replaceable_workspace":
-            current = _binding_from_replaceable(root, root_state)
-            current._verify_leaf()
-            if not versioned and current.plan_sha256 != plan_sha256:
-                recovered = _adopt_replaceable_orphan(root, root_state, current, plan_sha256)
-                if recovered is not None:
-                    return recovered
-            _cleanup_replaceable_staging(root, current)
-            if versioned:
-                return _upgrade_to_versioned(root, root_state, current)
-            if current.plan_sha256 == plan_sha256:
-                current.assert_current()
-                return current
-            new = _create_leaf(root / "leaves", plan_sha256, plan_bytes, excluding=str(root_state["workspace_instance_id"]))
-            root_state["active_leaf"] = _leaf_pointer(new, root)
-            _atomic_write(state_path, _canonical_bytes(root_state))
-            _remove_leaf(current.leaf)
-            return new
-        if kind == "versioned_workspace":
-            if not versioned:
-                raise WorkspaceVersioningDowngradeForbidden(
-                    "This workspace preserves topology history; choose another workspace for replacement mode.",
-                    stage="workspace",
-                    evidence={"workspace": str(root)},
-                )
-            return _bind_versioned(root, root_state, plan_sha256, plan_bytes)
-        raise _integrity("Workspace root has an unknown kind.", kind=kind)
+        try:
+            state_path = root / "workspace.json"
+            if not state_path.exists():
+                binding = _recover_or_create_root(root, plan_sha256, plan_bytes, versioned)
+            else:
+                root_state = _load_canonical(state_path)
+                _assert_root_envelope(root_state)
+                _validate_active_evidence(root, root_state)
+                _finish_root_maintenance(root, root_state)
+                root_state = _load_canonical(state_path)
+                _assert_root_envelope(root_state)
+                kind = root_state.get("kind")
+                if kind == "replaceable_workspace":
+                    current = _binding_from_replaceable(root, root_state)
+                    current._verify_leaf()
+                    if not versioned and current.plan_sha256 != plan_sha256:
+                        recovered = _adopt_replaceable_orphan(root, root_state, current, plan_sha256)
+                        if recovered is not None:
+                            binding = recovered
+                        else:
+                            _cleanup_replaceable_staging(root, current)
+                            new = _create_leaf(
+                                root / "leaves",
+                                plan_sha256,
+                                plan_bytes,
+                                excluding=str(root_state["workspace_instance_id"]),
+                            )
+                            updated = dict(root_state)
+                            updated["active_leaf"] = _leaf_pointer(new, root)
+                            updated["maintenance"] = _retired_leaf_maintenance(current, root)
+                            _publish_workspace_state(state_path, _canonical_bytes(updated))
+                            binding = new
+                    elif versioned:
+                        _cleanup_replaceable_staging(root, current)
+                        binding = _upgrade_to_versioned(root, root_state, current)
+                    else:
+                        _cleanup_replaceable_staging(root, current)
+                        current.assert_current()
+                        binding = current
+                elif kind == "versioned_workspace":
+                    if not versioned:
+                        raise WorkspaceVersioningDowngradeForbidden(
+                            "This workspace preserves topology history; choose another workspace for replacement mode.",
+                            stage="workspace",
+                            evidence={"workspace": str(root)},
+                        )
+                    binding = _bind_versioned(root, root_state, plan_sha256, plan_bytes)
+                else:
+                    raise _integrity("Workspace root has an unknown kind.", kind=kind)
+        except _WorkspacePublishIndeterminate as exc:
+            commit()
+            raise WorkspaceCommitIndeterminateError(
+                "The workspace pointer may be committed, but durable confirmation failed.",
+                stage="workspace_commit",
+                evidence={
+                    "workspace": str(root),
+                    "plan_sha256": plan_sha256,
+                    "plan_sealed": True,
+                    "workspace_may_have_changed": True,
+                },
+            ) from exc
+        commit()
+        try:
+            state = _load_canonical(root / "workspace.json")
+            _assert_root_envelope(state)
+            _finish_root_maintenance(root, state)
+        except BaseException:
+            # Publication and Plan sealing are already committed. Exact pending
+            # cleanup remains visible in the root inventory for the next lock.
+            pass
+        return binding
+
+
+def _retired_leaf_maintenance(binding: WorkspaceBinding, root: Path) -> dict[str, object]:
+    pointer = _leaf_pointer(binding, root)
+    if binding.leaf.parent != root / "leaves":
+        raise _integrity("Only a replaceable leaf may become cleanup-pending.")
+    return {"kind": "retired_leaf_cleanup", **pointer}
+
+
+def _finish_root_maintenance(root: Path, state: Mapping[str, object]) -> None:
+    maintenance = state.get("maintenance")
+    if maintenance is None:
+        return
+    if not isinstance(maintenance, dict) or set(maintenance) != {
+        "kind", "directory", "workspace_instance_id", "plan_sha256"
+    } or maintenance.get("kind") != "retired_leaf_cleanup":
+        raise _integrity("Workspace maintenance record is open or malformed.")
+    identity = _valid_uuid(maintenance.get("workspace_instance_id"))
+    plan_sha256 = _valid_sha(maintenance.get("plan_sha256"))
+    directory = maintenance.get("directory")
+    if directory != f"leaves/{identity}":
+        raise _integrity("Workspace maintenance target is not a replaceable leaf.")
+    active = state.get("active_leaf")
+    if isinstance(active, dict) and active.get("workspace_instance_id") == identity:
+        raise _integrity("Workspace maintenance cannot retire the active leaf.")
+    leaves = root / "leaves"
+    if leaves.exists() and (leaves.is_symlink() or not leaves.is_dir()):
+        raise _integrity("Workspace maintenance leaf parent is unsafe.", path=str(leaves))
+    target = root / _relative_path(directory)
+    if target.exists():
+        retired = _recover_leaf(root, target, plan_sha256, expected_directory=str(directory))
+        _remove_leaf(retired.leaf)
+    if leaves.exists() and not any(leaves.iterdir()):
+        leaves.rmdir()
+        _fsync_directory(root)
+    cleared = dict(state)
+    cleared.pop("maintenance", None)
+    _atomic_write(root / "workspace.json", _canonical_bytes(cleared))
 
 
 def _create_root(root: Path, plan_sha256: str, plan_bytes: bytes, versioned: bool) -> WorkspaceBinding:
@@ -1020,7 +1137,7 @@ def _create_root(root: Path, plan_sha256: str, plan_bytes: bytes, versioned: boo
             "workspace_instance_id": _new_uuid(excluding=leaf.workspace_instance_id),
             "active_leaf": _leaf_pointer(leaf, root),
         }
-    _atomic_write(root / "workspace.json", _canonical_bytes(state))
+    _publish_workspace_state(root / "workspace.json", _canonical_bytes(state))
     return leaf
 
 
@@ -1051,7 +1168,7 @@ def _recover_or_create_root(
             "next_iteration": 2,
             "iterations": [{"ordinal": 1, **_leaf_pointer(leaf, root)}],
         }
-        _atomic_write(root / "workspace.json", _canonical_bytes(state))
+        _publish_workspace_state(root / "workspace.json", _canonical_bytes(state))
         return leaf
     if not versioned and set(entries) == {"leaves"}:
         leaves = entries["leaves"]
@@ -1067,7 +1184,7 @@ def _recover_or_create_root(
                 "workspace_instance_id": _new_uuid(excluding=leaf.workspace_instance_id),
                 "active_leaf": _leaf_pointer(leaf, root),
             }
-            _atomic_write(root / "workspace.json", _canonical_bytes(state))
+            _publish_workspace_state(root / "workspace.json", _canonical_bytes(state))
             return leaf
     raise _integrity("Workspace has unbound initial-creation evidence; refusing to delete it.", workspace=str(root))
 
@@ -1164,6 +1281,15 @@ def _binding_from_replaceable(root: Path, state: Mapping[str, object]) -> Worksp
     return WorkspaceBinding(root, root / _relative_path(directory), plan_sha256, leaf_id)
 
 
+def _validate_active_evidence(root: Path, state: Mapping[str, object]) -> None:
+    """Verify indexed active evidence before any retired-leaf maintenance."""
+
+    if state.get("kind") == "replaceable_workspace":
+        _binding_from_replaceable(root, state)._verify_leaf()
+        return
+    _validated_versioned_index(root, state)
+
+
 def _cleanup_replaceable_staging(root: Path, current: WorkspaceBinding) -> None:
     leaves = root / "leaves"
     if leaves.is_symlink() or not leaves.is_dir():
@@ -1179,10 +1305,11 @@ def _cleanup_replaceable_staging(root: Path, current: WorkspaceBinding) -> None:
             continue
         if _UUID4.fullmatch(name) is None:
             raise _integrity("Replaceable workspace has a malformed leaf name.", path=str(child))
-        orphan = _verified_unbound_leaf(root, child, f"leaves/{name}")
-        # A valid unbound leaf is the old side of a pointer-switch crash.  The
-        # active leaf has already been verified, so completing replacement is safe.
-        _remove_leaf(orphan.leaf)
+        _verified_unbound_leaf(root, child, f"leaves/{name}")
+        raise _integrity(
+            "Replaceable workspace contains preserved unbound leaf evidence.",
+            path=str(child),
+        )
     _fsync_directory(leaves)
 
 
@@ -1194,12 +1321,14 @@ def _adopt_replaceable_orphan(
 ) -> WorkspaceBinding | None:
     leaves = root / "leaves"
     matches: list[WorkspaceBinding] = []
+    unbound: list[WorkspaceBinding] = []
     for child in leaves.iterdir():
         if child == current.leaf or _LEAF_STAGING.fullmatch(child.name) is not None:
             continue
         if child.is_symlink() or not child.is_dir() or _UUID4.fullmatch(child.name) is None:
             raise _integrity("Replaceable workspace contains malformed orphan evidence.", path=str(child))
         orphan = _verified_unbound_leaf(root, child, f"leaves/{child.name}")
+        unbound.append(orphan)
         requests = child / "requests"
         if requests.exists() and (requests.is_symlink() or not requests.is_dir() or any(requests.iterdir())):
             continue
@@ -1207,14 +1336,13 @@ def _adopt_replaceable_orphan(
             matches.append(orphan)
     if not matches:
         return None
-    if len(matches) != 1:
-        raise _integrity("Replaceable workspace has competing replacement leaves.")
+    if len(matches) != 1 or len(unbound) != 1:
+        raise _integrity("Replaceable workspace has competing unbound leaf evidence.")
     recovered = matches[0]
     updated = dict(state)
     updated["active_leaf"] = _leaf_pointer(recovered, root)
-    _atomic_write(root / "workspace.json", _canonical_bytes(updated))
-    _remove_leaf(current.leaf)
-    _cleanup_replaceable_staging(root, recovered)
+    updated["maintenance"] = _retired_leaf_maintenance(current, root)
+    _publish_workspace_state(root / "workspace.json", _canonical_bytes(updated))
     return recovered
 
 
@@ -1241,15 +1369,39 @@ def _assert_root_envelope(state: Mapping[str, object]) -> None:
         raise _integrity("Workspace root is not a valid V1 workspace envelope.")
     if kind == "replaceable_workspace":
         active = state.get("active_leaf")
-        if set(state) != {"schema", "schema_version", "kind", "workspace_instance_id", "active_leaf"} or not isinstance(active, dict) or set(active) != {"directory", "workspace_instance_id", "plan_sha256"}:
+        if set(state) not in (
+            {"schema", "schema_version", "kind", "workspace_instance_id", "active_leaf"},
+            {"schema", "schema_version", "kind", "workspace_instance_id", "active_leaf", "maintenance"},
+        ) or not isinstance(active, dict) or set(active) != {"directory", "workspace_instance_id", "plan_sha256"}:
             raise _integrity("Replaceable workspace envelope is open or malformed.")
         leaf_id = _valid_uuid(active.get("workspace_instance_id"))
         if leaf_id == root_id or active.get("directory") != f"leaves/{leaf_id}":
             raise _integrity("Replaceable workspace active pointer is not canonical.")
         _valid_sha(active.get("plan_sha256"))
     else:
-        if set(state) != {"schema", "schema_version", "kind", "workspace_instance_id", "next_iteration", "iterations"}:
+        if set(state) not in (
+            {"schema", "schema_version", "kind", "workspace_instance_id", "next_iteration", "iterations"},
+            {"schema", "schema_version", "kind", "workspace_instance_id", "next_iteration", "iterations", "maintenance"},
+        ):
             raise _integrity("Versioned workspace envelope is open or malformed.")
+    maintenance = state.get("maintenance")
+    if maintenance is not None and (
+        not isinstance(maintenance, dict)
+        or set(maintenance) != {"kind", "directory", "workspace_instance_id", "plan_sha256"}
+        or maintenance.get("kind") != "retired_leaf_cleanup"
+        or maintenance.get("directory") != f"leaves/{_valid_uuid(maintenance.get('workspace_instance_id'))}"
+    ):
+        raise _integrity("Workspace maintenance record is open or malformed.")
+    if isinstance(maintenance, dict):
+        _valid_sha(maintenance.get("plan_sha256"))
+        active_pointer = state.get("active_leaf")
+        if (
+            kind == "replaceable_workspace"
+            and isinstance(active_pointer, dict)
+            and active_pointer.get("workspace_instance_id")
+            == maintenance.get("workspace_instance_id")
+        ):
+            raise _integrity("Workspace maintenance cannot retire the active leaf.")
 
 
 def _upgrade_to_versioned(root: Path, state: Mapping[str, object], current: WorkspaceBinding) -> WorkspaceBinding:
@@ -1260,15 +1412,19 @@ def _upgrade_to_versioned(root: Path, state: Mapping[str, object], current: Work
     if destination.exists():
         if destination.is_symlink() or not destination.is_dir() or any(path.is_symlink() for path in destination.rglob("*")):
             raise _integrity("Interrupted workspace upgrade left unsafe iteration01 evidence.")
-        # The replaceable active leaf remains authoritative until the root
-        # index switch.  An unindexed iteration01 is therefore a disposable,
-        # possibly partial copy from that interrupted conversion.
-        shutil.rmtree(destination)
-        _fsync_directory(root)
-    shutil.copytree(current.leaf, destination)
-    _fsync_tree(destination)
-    upgraded = WorkspaceBinding(root, destination, current.plan_sha256, current.workspace_instance_id)
-    upgraded._verify_leaf()
+        upgraded = _recover_leaf(
+            root,
+            destination,
+            current.plan_sha256,
+            expected_directory="iteration01",
+        )
+        if upgraded.workspace_instance_id != current.workspace_instance_id:
+            raise _integrity("Interrupted workspace upgrade copy has the wrong identity.")
+    else:
+        shutil.copytree(current.leaf, destination)
+        _fsync_tree(destination)
+        upgraded = WorkspaceBinding(root, destination, current.plan_sha256, current.workspace_instance_id)
+        upgraded._verify_leaf()
     index: dict[str, object] = {
         "schema": "scnsim.workspace",
         "schema_version": 1,
@@ -1276,26 +1432,33 @@ def _upgrade_to_versioned(root: Path, state: Mapping[str, object], current: Work
         "workspace_instance_id": _new_uuid(excluding=upgraded.workspace_instance_id),
         "next_iteration": 2,
         "iterations": [{"ordinal": 1, **_leaf_pointer(upgraded, root)}],
+        "maintenance": _retired_leaf_maintenance(current, root),
     }
-    _atomic_write(root / "workspace.json", _canonical_bytes(index))
-    _remove_leaf(current.leaf)
-    leaves = root / "leaves"
-    if leaves.exists() and not any(leaves.iterdir()):
-        leaves.rmdir()
-        _fsync_directory(root)
+    _publish_workspace_state(root / "workspace.json", _canonical_bytes(index))
     return upgraded
 
 
-def _bind_versioned(root: Path, state: Mapping[str, object], plan_sha256: str, plan_bytes: bytes) -> WorkspaceBinding:
+def _validated_versioned_index(
+    root: Path,
+    state: Mapping[str, object],
+) -> tuple[
+    list[Mapping[str, object]],
+    int,
+    str,
+    tuple[tuple[str, WorkspaceBinding], ...],
+]:
+    """Validate a complete versioned index and each indexed leaf."""
+
     iterations = state.get("iterations")
     next_iteration = state.get("next_iteration")
     if not isinstance(iterations, list) or not isinstance(next_iteration, int) or next_iteration < 1:
         raise _integrity("Versioned workspace index is malformed.")
+    checked_iterations: list[Mapping[str, object]] = []
+    bindings: list[tuple[str, WorkspaceBinding]] = []
     seen_plans: set[str] = set()
     seen_ordinals: set[int] = set()
     seen_leaf_ids: set[str] = set()
     root_id = _valid_uuid(state.get("workspace_instance_id"))
-    existing: WorkspaceBinding | None = None
     for expected_ordinal, entry in enumerate(iterations, 1):
         if not isinstance(entry, dict) or set(entry) != {"ordinal", "directory", "workspace_instance_id", "plan_sha256"}:
             raise _integrity("Versioned workspace contains a malformed iteration entry.")
@@ -1312,11 +1475,20 @@ def _bind_versioned(root: Path, state: Mapping[str, object], plan_sha256: str, p
         seen_leaf_ids.add(identity)
         binding = WorkspaceBinding(root, root / directory, plan, identity)
         binding._verify_leaf()
-        if plan == plan_sha256:
-            existing = binding
+        checked_iterations.append(entry)
+        bindings.append((plan, binding))
     if sorted(seen_ordinals) != list(range(1, len(seen_ordinals) + 1)) or next_iteration != len(seen_ordinals) + 1:
         raise _integrity("Versioned workspace next_iteration is not canonical.")
-    indexed = {f"iteration{ordinal:02d}" for ordinal in seen_ordinals}
+    return checked_iterations, next_iteration, root_id, tuple(bindings)
+
+
+def _bind_versioned(root: Path, state: Mapping[str, object], plan_sha256: str, plan_bytes: bytes) -> WorkspaceBinding:
+    iterations, next_iteration, root_id, bindings = _validated_versioned_index(root, state)
+    existing = next(
+        (binding for plan, binding in bindings if plan == plan_sha256),
+        None,
+    )
+    indexed = {binding.leaf.name for _, binding in bindings}
     _cleanup_upgrade_duplicate(root, indexed)
     recovered = _adopt_versioned_orphan(root, state, plan_sha256, next_iteration, indexed)
     if recovered is not None:
@@ -1329,7 +1501,7 @@ def _bind_versioned(root: Path, state: Mapping[str, object], plan_sha256: str, p
     state = dict(state)
     state["iterations"] = [*iterations, {"ordinal": next_iteration, **_leaf_pointer(leaf, root)}]
     state["next_iteration"] = next_iteration + 1
-    _atomic_write(root / "workspace.json", _canonical_bytes(state))
+    _publish_workspace_state(root / "workspace.json", _canonical_bytes(state))
     return leaf
 
 
@@ -1371,16 +1543,14 @@ def _adopt_versioned_orphan(
     if leaf.plan_sha256 != requested_plan_sha256:
         if requests.exists() and (requests.is_symlink() or not requests.is_dir() or any(requests.iterdir())):
             raise _integrity("Unindexed iteration contains request evidence and cannot be discarded.")
-        shutil.rmtree(candidate)
-        _fsync_directory(root)
-        return None
+        raise _integrity("Unindexed iteration belongs to another Plan and is preserved.")
     updated = dict(state)
     iterations = updated.get("iterations")
     if not isinstance(iterations, list):
         raise _integrity("Versioned workspace index is malformed.")
     updated["iterations"] = [*iterations, {"ordinal": next_iteration, **_leaf_pointer(leaf, root)}]
     updated["next_iteration"] = next_iteration + 1
-    _atomic_write(root / "workspace.json", _canonical_bytes(updated))
+    _publish_workspace_state(root / "workspace.json", _canonical_bytes(updated))
     return leaf
 
 
@@ -2203,6 +2373,7 @@ def _verify_failure_document(value: object, operation: object) -> None:
     categories = {
         "plan_sealed": "state",
         "workspace_plan_replaced": "state",
+        "workspace_commit_indeterminate": "state",
         "workspace_versioning_downgrade_forbidden": "state",
         "unsupported_runtime_platform": "capability",
         "unsupported_singular_capacitance_for_diagonal_root_v1": "capability",

@@ -4,8 +4,11 @@ subtitle: "Which layer owns each Runtime responsibility?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation. The
-[public contracts](../contracts/index.qmd#public-contracts) remain authoritative.
+**Status:** accepted numerical algorithms remain unchanged. Run publication,
+public value ownership, and maintenance diagnostics are a `CONVERGING`
+candidate. The [public contracts](../contracts/index.qmd#public-contracts)
+remain authoritative; this page does not assign one lifecycle state to the
+whole package.
 
 ## Keep the Notebook boundary in Python
 
@@ -18,6 +21,12 @@ from ordinary Python discovery:
   exact `resolve()`;
 - AEDT Q2D parsing; and
 - Plotly numerical presentation and Matplotlib/Schemdraw diagram presentation.
+
+Run construction is also a Python ownership boundary. Python prepares and
+validates one captured Plan snapshot and the original View before it publishes
+a workspace pointer. The pointer update is the logical commit; the supplied
+Plan is sealed from that already-validated state only after commit. A bounded
+maintenance record, not a background task, owns cleanup of a replaced leaf.
 
 Julia never imports Notebook objects or calls a Python objective callback. It
 receives one sealed request and owns the numerical work inside that request:

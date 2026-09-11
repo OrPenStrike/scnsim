@@ -269,6 +269,35 @@ requests. The reverse transition is forbidden before mutation because it would
 delete evidence the user explicitly chose to preserve. The error directs the
 user to supply a different workspace path for replacement mode.
 
+Construction first captures and completely validates one authoring snapshot,
+resolves its baseline, derives its canonical identity and original View, and
+prepares the prospective workspace binding. It does not recapture the Plan or
+rerun `complete()` after commit. Under the existing exclusive workspace lock,
+an unchanged pointer is verified in place; a changed active pointer is
+atomically published with any exact old-leaf cleanup intent. That logical
+commit is durably confirmed with directory `fsync`, then the supplied Plan is
+sealed from the already-validated state and the Run is returned.
+
+Ordinary failure before pointer publication returns no Run, leaves an initially
+editable Plan editable, and preserves the previously active workspace leaf.
+Only exact hidden staging owned by the workspace grammar may be removed or
+recovered. If the pointer may have published but durability or state
+confirmation fails, SCNSim cannot safely infer rollback: it seals the prepared
+Plan, returns no Run, and raises `WorkspaceCommitIndeterminateError` at
+`workspace_commit` with Plan/workspace identity evidence and an explicit
+`plan_sealed=True`, `workspace_may_have_changed=True` state.
+
+Old-leaf deletion is postcommit maintenance and cannot turn a successfully
+committed Run into constructor failure. The active root retains one bounded,
+typed cleanup-pending record until the exact retired leaf is absent and that
+state is durably republished. `run.inventory()` reports these maintenance
+records independently of request rows. A later normal exclusive operation may
+finish only the classified leaf, but first validates the active pointer and its
+complete active evidence. Active corruption, absence, or stale binding
+ownership preserves the retired leaf and maintenance record for diagnosis;
+SCNSim neither adopts nor deletes unknown orphans and runs no background
+cleaner.
+
 Sealing is permanent for both that Run and the supplied Python Plan. The same
 `CircuitRun` may execute any number of immutable Refs, Specs, and ParameterSets
 derived from its sealed Plan; none
@@ -556,6 +585,9 @@ an attempt; an empty request, broken hash chain, or invalid finalized attempt
 is `EvidenceIntegrityError` rather than an omitted row. Inventory never writes
 evidence and does not establish a hidden current/latest selection for
 `resolve()`, reports, or any other API.
+Its separate immutable `maintenance` tuple is empty or contains the exact
+classified retired-leaf cleanup still pending for that root; inventory never
+performs the cleanup.
 
 ## Units, identity, and parameter variants
 
@@ -2174,6 +2206,15 @@ the empty mode tuple; HB uses coordinate-major/mode-minor channel order.
 Passing typed Results is the normal downstream UX; raw receipt paths remain an
 audit surface.
 
+Result decoding detaches mutable mappings and numeric buffers once. Array
+backing is immutable rather than merely marked `writeable=False`, so a normal
+public attempt to re-enable writes cannot mutate verified evidence. Quantity
+getters return inexpensive wrappers/views over that backing (or detached small
+values), not a full matrix copy per read. Public Pint in-place conversion either
+fails against immutable backing or changes only a returned wrapper. Lazy
+parameter-point payload loading and artifact chunk reads remain lazy; this
+ownership rule does not eagerly load a sweep.
+
 ### Display is explicit
 
 Numeric `result.show()` displays one native Plotly Figure and returns `None`, so
@@ -2511,6 +2552,7 @@ execution begins.
 The current public scaffold machine-maps `PlanSealedError`,
 `WorkspacePlanReplacedError`,
 `WorkspaceVersioningDowngradeForbidden`,
+`WorkspaceCommitIndeterminateError`,
 `UnsupportedRuntimePlatformError`, `PortRealizabilityError`,
 `InvalidDiagonalRootHint`, `InvalidOptimizationSpec`,
 `DirectResponseFormationError`, `InvalidCandidatePhysicalParameter`,

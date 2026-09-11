@@ -12,15 +12,19 @@ from functools import wraps
 import inspect
 import json
 import numpy as np
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 from ._authoring_snapshot import AuthoringSnapshot, ResolvedPlanPoint, freeze
+from ._immutable_values import immutable_quantity
 from ._physical_values import (
     AffineMap,
     ParameterSpec,
     RLGC,
     RLGCParameterSpec,
     _checked_field_baseline,
+    _retained_literal_field,
     identifier,
     quantity_record,
 )
@@ -227,7 +231,9 @@ class PortRef(_H):
         object.__setattr__(self, "id", id)
         object.__setattr__(self, "net", net)
         object.__setattr__(self, "role", role)
-        object.__setattr__(self, "reference_impedance", impedance)
+        object.__setattr__(
+            self, "reference_impedance", immutable_quantity(impedance)
+        )
 
     @property
     def node(self) -> ElectricNodeRef:
@@ -339,7 +345,7 @@ def _binding(v, u, name, positive=False, nonnegative=False):
         if u != "rlgc":
             raise TypeError(f"{name} is not an RLGC field")
         return v, {"kind": "constant", "value": v._record()}, None
-    x = _checked_field_baseline(v, u, name, positive, nonnegative)
+    x = _retained_literal_field(v, u, name, positive, nonnegative)
     return x, {"kind": "constant", "value": quantity_record(x, u)}, None
 
 
@@ -681,6 +687,8 @@ class _Scope:
         return self.root._capture_net_ids[net.root()]
 
     def check(self) -> None:
+        if getattr(self.root, "_run_seal_token", None) is not None:
+            raise PlanSealedError("Plan is preparing a Run", stage="plan_mutation")
         if self.root.sealed or getattr(self, "built", False):
             raise PlanSealedError("Plan is sealed", stage="plan_mutation")
 
@@ -1537,6 +1545,45 @@ class CircuitPlan(_Scope):
         self.complete()
         self.sealed = True
         return self
+
+    @contextmanager
+    def _run_seal_preparation(self) -> Iterator[object | None]:
+        """Temporarily own editable state while one Run is prepared."""
+
+        if self.sealed:
+            yield None
+            return
+        if getattr(self, "_run_seal_token", None) is not None:
+            raise PlanSealedError(
+                "Plan already has an active Run preparation",
+                stage="plan_mutation",
+            )
+        token = object()
+        self._run_seal_token = token
+        try:
+            yield token
+        finally:
+            if getattr(self, "_run_seal_token", None) is token:
+                del self._run_seal_token
+
+    def _seal_validated(self, snapshot: AuthoringSnapshot, token: object | None) -> None:
+        """Commit a Plan after Runtime has validated this captured state.
+
+        The caller owns the exact snapshot and invokes this non-failing step
+        only at the workspace publication boundary.  Completion must not run
+        again after that logical commit.
+        """
+
+        if not isinstance(snapshot, AuthoringSnapshot):
+            raise TypeError("validated seal requires AuthoringSnapshot")
+        if self.sealed:
+            if token is not None:
+                raise RuntimeError("sealed Plan retained an editable preparation token")
+            return
+        if token is None or getattr(self, "_run_seal_token", None) is not token:
+            raise RuntimeError("validated seal lost its preparation ownership")
+        self.sealed = True
+        del self._run_seal_token
 
     def _walk(self):
         out = []

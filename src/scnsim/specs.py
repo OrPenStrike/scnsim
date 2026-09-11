@@ -21,6 +21,7 @@ from pint import Quantity
 
 from . import units
 from ._canonical import _identifier
+from ._immutable_values import immutable_quantity, quantity_view
 from ._scaffold import unavailable
 from .authoring import (
     CoordinateRef,
@@ -144,11 +145,7 @@ def _validate_frequency_anchor(value: Quantity, *, name: str) -> None:
 def _detached_quantity(value: Quantity) -> Quantity:
     """Detach authored Pint storage before an immutable Spec retains it."""
 
-    magnitude = value.magnitude
-    if isinstance(magnitude, np.ndarray):
-        magnitude = np.array(magnitude, copy=True)
-        magnitude.setflags(write=False)
-    return units.registry.Quantity(magnitude, value.units)
+    return immutable_quantity(value)
 
 
 def _mode_tuple(value: tuple[int, ...], *, name: str) -> tuple[int, ...]:
@@ -240,7 +237,7 @@ class DirectSolveSpec:
             raise TypeError("traces must contain SParameterTrace values")
         if len({trace.id for trace in checked}) != len(checked):
             raise ValueError("trace IDs must be unique")
-        object.__setattr__(self, "frequencies", frequencies)
+        object.__setattr__(self, "frequencies", _detached_quantity(frequencies))
         object.__setattr__(self, "traces", checked)
 
     def _canonical_record(self) -> Mapping[str, object]:
@@ -291,7 +288,7 @@ class DiagonalRootSpec:
                 stage="spec_validation",
             ) from exc
         object.__setattr__(self, "coordinate", coordinate)
-        object.__setattr__(self, "root_hint", root_hint)
+        object.__setattr__(self, "root_hint", _detached_quantity(root_hint))
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -326,7 +323,7 @@ class HybridizedPoleSpec:
 
     @property
     def anchor(self) -> Quantity:
-        return _detached_quantity(self._anchor)
+        return quantity_view(self._anchor)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -368,7 +365,7 @@ class TransferZeroSpec:
 
     @property
     def anchor(self) -> Quantity:
-        return _detached_quantity(self._anchor)
+        return quantity_view(self._anchor)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -399,7 +396,7 @@ class ResidueNormalizedCouplingSpec:
         units.require_positive_quantity(frequency, "hertz", name="frequency")
         object.__setattr__(self, "branch_a", branch_a)
         object.__setattr__(self, "branch_b", branch_b)
-        object.__setattr__(self, "frequency", frequency)
+        object.__setattr__(self, "frequency", _detached_quantity(frequency))
 
     @property
     def magnitude(self) -> QuantitySelector:
@@ -434,7 +431,7 @@ class ResponseElementSpec:
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "input_coordinate", input_coordinate)
         object.__setattr__(self, "output_coordinate", output_coordinate)
-        object.__setattr__(self, "frequency", frequency)
+        object.__setattr__(self, "frequency", _detached_quantity(frequency))
 
     @property
     def magnitude(self) -> QuantitySelector:
@@ -464,7 +461,7 @@ class OperatorSpec:
 
     def __init__(self, *, frequencies: Quantity) -> None:
         _validate_frequency_grid(frequencies)
-        object.__setattr__(self, "frequencies", frequencies)
+        object.__setattr__(self, "frequencies", _detached_quantity(frequencies))
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"type": "operator", "frequencies": self.frequencies}
@@ -487,7 +484,7 @@ class OptimizationVariable:
         for name, value in zip(("lower bound", "upper bound"), bounds):
             _require_quantity(value, name=name)
         object.__setattr__(self, "parameter", parameter)
-        object.__setattr__(self, "model_default_bounds", bounds)
+        object.__setattr__(self, "model_default_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(self, "consumer_override_bounds", None)
         object.__setattr__(self, "transform", transform)
 
@@ -505,7 +502,7 @@ class OptimizationVariable:
         instance = object.__new__(OptimizationVariable)
         object.__setattr__(instance, "parameter", self.parameter)
         object.__setattr__(instance, "model_default_bounds", self.model_default_bounds)
-        object.__setattr__(instance, "consumer_override_bounds", bounds)
+        object.__setattr__(instance, "consumer_override_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(instance, "transform", self.transform)
         return instance
 
@@ -556,9 +553,9 @@ class CostObjective:
     ) -> None:
         object.__setattr__(self, "id", id)
         object.__setattr__(self, "quantity", quantity)
-        object.__setattr__(self, "target", target)
-        object.__setattr__(self, "weight", weight)
-        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "target", _detached_quantity(target))
+        object.__setattr__(self, "weight", _detached_quantity(weight))
+        object.__setattr__(self, "scale", None if scale is None else _detached_quantity(scale))
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -766,7 +763,7 @@ class PumpAxis:
 
     @property
     def frequency(self) -> Quantity:
-        return _detached_quantity(self._frequency)
+        return quantity_view(self._frequency)
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"id": self.id, "frequency": self.frequency}
@@ -820,7 +817,7 @@ class HBCaseSpec:
 
     @property
     def currents(self) -> Mapping[CurrentDrive, Quantity]:
-        return MappingProxyType({drive: _detached_quantity(current) for drive, current in self._currents.items()})
+        return MappingProxyType({drive: quantity_view(current) for drive, current in self._currents.items()})
 
 @dataclass(frozen=True, slots=True)
 class HBTruncation:
@@ -1005,7 +1002,7 @@ class HBSolveSpec:
 
     @property
     def frequencies(self) -> Quantity:
-        return _detached_quantity(self._frequencies)
+        return quantity_view(self._frequencies)
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {

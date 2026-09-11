@@ -798,7 +798,8 @@
             "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
             "plan_sha256": { "$ref": "#/$defs/sha256" }
           }
-        }
+        },
+        "maintenance": { "$ref": "#/$defs/workspaceMaintenance" }
       }
     },
     "versionedWorkspace": {
@@ -831,7 +832,19 @@
               "plan_sha256": { "$ref": "#/$defs/sha256" }
             }
           }
-        }
+        },
+        "maintenance": { "$ref": "#/$defs/workspaceMaintenance" }
+      }
+    },
+    "workspaceMaintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "directory", "workspace_instance_id", "plan_sha256"],
+      "properties": {
+        "kind": { "const": "retired_leaf_cleanup" },
+        "directory": { "type": "string", "pattern": "^leaves/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+        "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
+        "plan_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "workspace": {
@@ -2113,10 +2126,10 @@
     },
     "inventoryResult": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests"],
+      "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests", "maintenance"],
       "properties": {
         "schema": { "const": "scnsim.inventory" },
-        "schema_version": { "const": 1 },
+        "schema_version": { "const": 2 },
         "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
         "plan_sha256": { "$ref": "#/$defs/sha256" },
         "requests": {
@@ -2131,6 +2144,11 @@
               "attempts": { "type": "array", "items": { "$ref": "#/$defs/attemptOrdinalText" } }
             }
           }
+        },
+        "maintenance": {
+          "type": "array",
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/workspaceMaintenance" }
         }
       }
     },
@@ -2144,6 +2162,7 @@
           "enum": [
             "plan_sealed",
             "workspace_plan_replaced",
+            "workspace_commit_indeterminate",
             "workspace_versioning_downgrade_forbidden",
             "unsupported_runtime_platform",
             "port_realizability",
@@ -2169,7 +2188,7 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "kind": { "enum": ["plan_sealed", "workspace_plan_replaced", "workspace_versioning_downgrade_forbidden"] } }, "required": ["kind"] },
+          "if": { "properties": { "kind": { "enum": ["plan_sealed", "workspace_plan_replaced", "workspace_commit_indeterminate", "workspace_versioning_downgrade_forbidden"] } }, "required": ["kind"] },
           "then": { "properties": { "category": { "const": "state" } } }
         },
         {

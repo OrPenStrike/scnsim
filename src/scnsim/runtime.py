@@ -462,9 +462,25 @@ class CircuitRun:
             raise TypeError("plan must be a CircuitPlan")
         if not isinstance(versioned, bool):
             raise TypeError("versioned must be bool")
+        with plan._run_seal_preparation() as seal_token:
+            self._prepare_run(
+                plan=plan,
+                workspace=workspace,
+                versioned=versioned,
+                seal_token=seal_token,
+            )
+
+    def _prepare_run(
+        self,
+        *,
+        plan: CircuitPlan,
+        workspace: str | PathLike[str],
+        versioned: bool,
+        seal_token: object | None,
+    ) -> None:
         snapshot = plan._capture_authoring_snapshot()
         baseline_point = resolve_parameter_point(snapshot)
-        self._plan = plan._seal()
+        self._plan = plan
         self._snapshot = snapshot
         self._baseline_point = baseline_point
         self._plan_document = canonical_plan_snapshot(snapshot)
@@ -501,12 +517,6 @@ class CircuitRun:
         self._coordinate_lookup = MappingProxyType(lookup)
         self._affine_plan = _plan_has_affine_binding(self._plan_document)
         original = self._original_lineage()
-        self._binding = bind_workspace(
-            workspace,
-            plan_sha256=self._plan_sha256,
-            plan_bytes=self._plan_bytes,
-            versioned=versioned,
-        )
         nodes_by_net = {
             str(node["final_net"]): str(node["compiler_node_id"])
             for node in self._plan_document["connectivity"]["node_coordinates"]
@@ -521,6 +531,13 @@ class CircuitRun:
             available_coordinates=tuple(sorted(self._public_coordinates)),
             port_coordinates=port_coordinates,
             coordinate_load_states={coordinate: "raw" for coordinate in port_coordinates},
+        )
+        self._binding = bind_workspace(
+            workspace,
+            plan_sha256=self._plan_sha256,
+            plan_bytes=self._plan_bytes,
+            versioned=versioned,
+            commit=lambda: plan._seal_validated(snapshot, seal_token),
         )
 
     @property
@@ -699,6 +716,15 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
     ) -> HBBatchResult: ...
 
+    @overload
+    def solve(
+        self,
+        ref: NetworkViewRef,
+        spec: DirectSolveSpec | HBSolveSpec,
+        *,
+        parameters: ParameterSpace,
+    ) -> ParameterSweepResult: ...
+
     def solve(
         self,
         ref: NetworkViewRef,
@@ -739,6 +765,15 @@ class CircuitRun:
         *,
         parameters: ParameterSet | None = None,
     ) -> DirectQuantityResult: ...
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
+        spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
+        *,
+        parameters: ParameterSpace,
+    ) -> ParameterSweepResult: ...
 
     def evaluate(
         self,
@@ -895,15 +930,23 @@ class CircuitRun:
         with self._binding.reader():
             inventory = self._binding.inventory_document()
         requests = inventory.get("requests")
+        maintenance = inventory.get("maintenance")
         if (
             inventory.get("schema") != "scnsim.inventory"
-            or inventory.get("schema_version") != 1
+            or inventory.get("schema_version") != 2
             or inventory.get("plan_sha256") != self._plan_sha256
             or not isinstance(requests, list)
             or any(not isinstance(row, Mapping) for row in requests)
+            or not isinstance(maintenance, list)
+            or len(maintenance) > 1
+            or any(not isinstance(row, Mapping) for row in maintenance)
         ):
             raise EvidenceIntegrityError("workspace inventory is malformed", stage="inventory")
-        return _verified_result(InventoryResult, requests=tuple(dict(row) for row in requests))
+        return _verified_result(
+            InventoryResult,
+            requests=tuple(dict(row) for row in requests),
+            maintenance=tuple(dict(row) for row in maintenance),
+        )
 
     def build_report(self, spec: ReportSpec) -> ReportResult:
         """Derive a self-contained report from explicit receipt-backed Results."""

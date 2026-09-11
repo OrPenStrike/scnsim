@@ -21,14 +21,19 @@ import sys
 from typing import Mapping
 
 
-PRESENTATION_SOURCE_DIFF = (
-    "src/scnsim/_numeric_presentation.py",
+PUBLICATION_SOURCE_DIFF = (
+    "src/scnsim/__init__.py",
     "src/scnsim/_canonical.py",
+    "src/scnsim/_immutable_values.py",
     "src/scnsim/_julia/runtime.json",
     "src/scnsim/_julia/src/SCNSimBackend.jl",
+    "src/scnsim/_numeric_presentation.py",
+    "src/scnsim/_physical_values.py",
     "src/scnsim/_schemas/identity-common.schema.json",
     "src/scnsim/_schemas/identity-v2.schema.json",
     "src/scnsim/_workspace.py",
+    "src/scnsim/authoring.py",
+    "src/scnsim/errors.py",
     "src/scnsim/presentation.py",
     "src/scnsim/results.py",
     "src/scnsim/runtime.py",
@@ -143,8 +148,8 @@ def _changed_sources(executed: object, publication: object) -> dict[str, dict[st
         for path in sorted(current)
         if old.get(path) != current[path]
     }
-    if tuple(changed) != tuple(sorted(PRESENTATION_SOURCE_DIFF)):
-        raise RuntimeError(f"engineer presentation source delta is outside the authorized set: {tuple(changed)!r}")
+    if tuple(changed) != PUBLICATION_SOURCE_DIFF:
+        raise RuntimeError(f"engineer publication source delta is outside the authorized set: {tuple(changed)!r}")
     return changed
 
 

@@ -80,6 +80,28 @@ matrices, extraction provenance, `n_sections`, or optimizer bounds.
 definition only. It cannot claim a global list of consuming Plans or private
 children.
 
+For the Spec and Result owners enumerated below, retained Quantity, array, and
+mapping values are detached from the caller at construction or verified decode.
+Their public getters return a safe immutable view or a detached small value:
+normal calls such as in-place Pint conversion or re-enabling an ndarray write
+flag cannot mutate those Specs or Results. `ParameterRef`, Coordinate, and View
+identities remain the exact original handles; value protection does not
+deep-copy identity refs. This checkpoint does not extend that guarantee to
+unenumerated live authoring values.
+
+| Public owner | Detached values | Identity values retained exactly |
+|---|---|---|
+| `DirectSolveSpec`, `OperatorSpec`, and Direct quantity Specs | frequency grids, root hints, anchors, and evaluation frequencies | Coordinate handles |
+| `PumpAxis`, `HBCaseSpec`, and `HBSolveSpec` | pump frequencies, drive currents, and the shared response grid | drive, Port, and Coordinate handles |
+| `OptimizationVariable` and `CostObjective` | default/override bounds, target, weight, and optional scale | `ParameterRef`, selector, and bound View lineage |
+| catalog-created `ComponentInstance` literal fields | validated literal physical quantities | existing `ParameterRef` bindings and component/Pin identity |
+| `PortRef` | reference impedance | owning Plan and node identity |
+| verified scalar, matrix, operator, HB, optimization, and sweep Results | decoded Quantities, arrays, mappings, and lazy point payloads when loaded | Result, point, parameter, and View identities |
+
+Small declaration values are detached once. Large decoded Result arrays use
+immutable backing and inexpensive read-only views, so reading a matrix does not
+copy it and reading a lazy sweep does not load its point payloads.
+
 ## Physical fields bind refs to a Plan {#physical-parameter-binding}
 
 Creating a definition does not assign it to a Plan. A Plan adopts a ref only

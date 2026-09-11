@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 import unicodedata
 import numpy as np
+from ._immutable_values import immutable_quantity
 from .errors import SCNSimValidationError
 from .units import Quantity, registry, require_positive_quantity, require_quantity
 
@@ -357,6 +358,14 @@ def _checked_field_baseline(value, unit, name, positive=False, nonnegative=False
     if nonnegative and magnitude < 0:
         raise ValueError(f"{name} must be nonnegative")
     return quantity
+
+
+def _retained_literal_field(value, unit, name, positive=False, nonnegative=False):
+    """Validate and detach one literal retained by a component body."""
+
+    return immutable_quantity(
+        _checked_field_baseline(value, unit, name, positive, nonnegative)
+    )
 
 
 def _validate_captured_field(value, unit, name, positive=False, nonnegative=False):

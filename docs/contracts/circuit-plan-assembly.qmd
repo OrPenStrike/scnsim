@@ -322,9 +322,15 @@ grounded by `ground_pins()` or a structured ground endpoint without being
 retroactively reclassified as an invalid historical link.
 
 Incomplete authoring remains legal while the graph is editable.
-`CompositePlan.build()`, immutable render capture, and `CircuitRun` sealing
+`CompositePlan.build()`, immutable render capture, and `CircuitRun` preparation
 perform complete validation over their ownership boundary. A failed authoring
 check leaves that state editable and unsealed; rendering does not seal it.
+Run construction seals the already-validated Plan only when its workspace
+publication logically commits. Ordinary precommit failure therefore leaves an
+initially editable Plan editable. The sole exception is an indeterminate
+post-publication durability failure: no Run is returned, the prepared Plan is
+conservatively sealed, and the typed failure reports that the workspace may
+have changed.
 Atomicity covers SCNSim's authoring state, not arbitrary side effects inside a
 user's Python factory. A well-typed ownership, cardinality, stale-ref, or
 connectivity violation reports `SCNSimValidationError(stage="authoring")` with

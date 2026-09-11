@@ -22,6 +22,7 @@ import numpy as np
 from pint import Quantity
 
 from . import units
+from ._immutable_values import immutable_array, immutable_quantity, quantity_view
 from ._scaffold import unavailable
 from .authoring import ParameterRef, ParameterSet
 from .errors import HBCaseFailure, SCNSimError
@@ -29,6 +30,7 @@ from .presentation import Theme
 
 if TYPE_CHECKING:
     import schemdraw
+    from plotly.graph_objects import Figure
 
     from .composition import SchematicCompositionSnapshot
 
@@ -40,16 +42,11 @@ def _freeze(value: object) -> object:
     """Detach mutable decoder payloads before exposing a Result surface."""
 
     if isinstance(value, np.ndarray):
-        copy = np.array(value, copy=True)
-        copy.setflags(write=False)
-        return copy
+        return immutable_array(value)
     if isinstance(value, Quantity):
         if value._REGISTRY is not units.registry:
             raise TypeError("result quantities must use scnsim.units")
-        magnitude = value.magnitude
-        if isinstance(magnitude, np.ndarray):
-            magnitude = _freeze(magnitude)
-        return units.registry.Quantity(magnitude, value.units)
+        return immutable_quantity(value)
     if isinstance(value, Mapping):
         return MappingProxyType({key: _freeze(item) for key, item in value.items()})
     if isinstance(value, (tuple, list)):
@@ -309,7 +306,7 @@ class MatrixFamilyResult(Result):
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         """Build a detached native Plotly Figure from this stored matrix."""
 
         from ._numeric_presentation import matrix_plot
@@ -334,7 +331,7 @@ class MatrixFamilyResult(Result):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
@@ -344,7 +341,7 @@ class MatrixFamilyResult(Result):
         frequency: Quantity | None = None,
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
-    ) -> object:
+    ) -> Figure:
         """Insert one explicit matrix presentation into a caller subplot."""
 
         from ._numeric_presentation import matrix_add_to
@@ -414,7 +411,7 @@ class DirectSolveResult(AnalysisResult):
             return self.z
         raise ValueError("family must be 'S', 'Y', or 'Z'")
 
-    def plot(self, *, family: Literal["S", "Y", "Z"] = "S", **presentation: object) -> object:
+    def plot(self, *, family: Literal["S", "Y", "Z"] = "S", **presentation: object) -> Figure:
         return self._family(family).plot(**presentation)
 
     def show(self, *, family: Literal["S", "Y", "Z"] = "S", **presentation: object) -> None:
@@ -424,11 +421,11 @@ class DirectSolveResult(AnalysisResult):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         family: Literal["S", "Y", "Z"] = "S",
         **presentation: object,
-    ) -> object:
+    ) -> Figure:
         return self._family(family).add_to(fig, **presentation)
 
 
@@ -456,7 +453,7 @@ class DirectQuantityResult(AnalysisResult):
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
 
-    def plot(self, *, theme: Theme = Theme.AUTO) -> object:
+    def plot(self, *, theme: Theme = Theme.AUTO) -> Figure:
         from ._numeric_presentation import scalar_plot
 
         return scalar_plot(self, theme=theme)
@@ -466,7 +463,7 @@ class DirectQuantityResult(AnalysisResult):
 
         return show_figure(self.plot(theme=theme))
 
-    def add_to(self, fig: object, *, row: int, col: int) -> object:
+    def add_to(self, fig: Figure, *, row: int, col: int) -> Figure:
         from ._numeric_presentation import scalar_add_to
 
         return scalar_add_to(self, fig, row=row, col=col)
@@ -521,7 +518,7 @@ class OperatorResult(AnalysisResult):
         kind: Literal["table", "heatmap"] = "table",
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import operator_plot
 
         return operator_plot(self, frequency=frequency, kind=kind, component=component, theme=theme)
@@ -533,14 +530,14 @@ class OperatorResult(AnalysisResult):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         frequency: Quantity,
         kind: Literal["table", "heatmap"],
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import operator_add_to
 
         return operator_add_to(
@@ -576,7 +573,7 @@ class OptimizationResult(AnalysisResult):
         objective: str | None = None,
         parameter: ParameterRef | None = None,
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import optimization_plot
 
         return optimization_plot(
@@ -590,14 +587,14 @@ class OptimizationResult(AnalysisResult):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         kind: Literal["history", "objective", "residual", "parameter", "table"],
         objective: str | None = None,
         parameter: ParameterRef | None = None,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import optimization_add_to
 
         return optimization_add_to(
@@ -693,7 +690,7 @@ class HBCaseOutcome(Result):
     def state_node_map(self) -> tuple[Mapping[str, object], ...]:
         return self._success(self._state_node_map)  # type: ignore[return-value]
 
-    def plot(self, **presentation: object) -> object:
+    def plot(self, **presentation: object) -> Figure:
         from ._numeric_presentation import hb_case_plot
 
         return hb_case_plot(self, **presentation)
@@ -703,7 +700,7 @@ class HBCaseOutcome(Result):
 
         return show_figure(self.plot(**presentation))
 
-    def add_to(self, fig: object, *, row: int, col: int, **presentation: object) -> object:
+    def add_to(self, fig: Figure, *, row: int, col: int, **presentation: object) -> Figure:
         from ._numeric_presentation import hb_case_add_to
 
         return hb_case_add_to(self, fig, row=row, col=col, **presentation)
@@ -726,7 +723,7 @@ class HBBatchResult(AnalysisResult):
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import hb_batch_plot
 
         return hb_batch_plot(
@@ -746,7 +743,7 @@ class HBBatchResult(AnalysisResult):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
@@ -756,7 +753,7 @@ class HBBatchResult(AnalysisResult):
         output_channel: str | tuple[str, tuple[int, ...]] | None = None,
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import hb_batch_add_to
 
         return hb_batch_add_to(
@@ -880,8 +877,8 @@ class ParameterField(Result):
 
     @property
     def samples(self) -> tuple[Mapping[str, object], ...]:
-        # Pint quantities are mutable (for example through ``ito``).  Keep the
-        # verified samples private and return a detached view on every access.
+        # Return fresh Pint wrappers over immutable retained backing; a large
+        # field is not copied on every read.
         return tuple(
             MappingProxyType(
                 {**sample, "value": _detached_quantity(sample["value"])}
@@ -895,7 +892,7 @@ class ParameterField(Result):
         x: ParameterRef,
         y: ParameterRef | None = None,
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import parameter_field_plot
 
         return parameter_field_plot(self, x=x, y=y, theme=theme)
@@ -907,13 +904,13 @@ class ParameterField(Result):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         x: ParameterRef,
         y: ParameterRef | None = None,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import parameter_field_add_to
 
         return parameter_field_add_to(self, fig, row=row, col=col, x=x, y=y)
@@ -941,7 +938,7 @@ class ParameterSweepSelection(Result):
         x: ParameterRef | None = None,
         y: ParameterRef | None = None,
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import points_plot
 
         if quantity is None:
@@ -959,14 +956,14 @@ class ParameterSweepSelection(Result):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         quantity: object | None = None,
         x: ParameterRef | None = None,
         y: ParameterRef | None = None,
-    ) -> object:
+    ) -> Figure:
         if quantity is None:
             if x is not None or y is not None:
                 raise ValueError("x and y require an explicitly collected quantity")
@@ -1065,7 +1062,7 @@ class ParameterSweepResult(AnalysisResult):
         x: ParameterRef | None = None,
         y: ParameterRef | None = None,
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import points_plot
 
         if quantity is None:
@@ -1083,14 +1080,14 @@ class ParameterSweepResult(AnalysisResult):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         quantity: object | None = None,
         x: ParameterRef | None = None,
         y: ParameterRef | None = None,
-    ) -> object:
+    ) -> Figure:
         if quantity is None:
             if x is not None or y is not None:
                 raise ValueError("x and y require an explicitly collected quantity")
@@ -1110,14 +1107,11 @@ def _parameter_value_bytes(value: object, parameter: ParameterRef) -> bytes:
 
 
 def _detached_quantity(value: object) -> object:
-    """Return a caller-owned copy of a stored scalar/array Quantity."""
+    """Return a cheap safe wrapper around an immutable stored Quantity."""
 
     if not isinstance(value, Quantity):
         return value
-    magnitude = value.magnitude
-    if isinstance(magnitude, np.ndarray):
-        magnitude = np.array(magnitude, copy=True)
-    return units.registry.Quantity(magnitude, value.units)
+    return quantity_view(value)
 
 
 def _point_accessor(
@@ -1201,7 +1195,7 @@ class TraceResult(Result):
         component: Literal["magnitude", "phase", "real", "imag"] | None = None,
         magnitude: Literal["linear", "db"] = "linear",
         theme: Theme = Theme.AUTO,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import trace_plot
 
         return trace_plot(self, component=component, magnitude=magnitude, theme=theme)
@@ -1213,14 +1207,14 @@ class TraceResult(Result):
 
     def add_to(
         self,
-        fig: object,
+        fig: Figure,
         *,
         row: int,
         col: int,
         component: Literal["magnitude", "phase", "real", "imag"],
         magnitude: Literal["linear", "db"] = "linear",
         name: str | None = None,
-    ) -> object:
+    ) -> Figure:
         from ._numeric_presentation import trace_add_to
 
         return trace_add_to(
@@ -1321,6 +1315,7 @@ class InventoryResult(Result):
     """Pure read-only evidence inventory; it never selects a result for resolve."""
 
     requests: tuple[Mapping[str, object], ...]
+    maintenance: tuple[Mapping[str, object], ...]
 
     def __init__(self) -> None:
         unavailable("InventoryResult construction")

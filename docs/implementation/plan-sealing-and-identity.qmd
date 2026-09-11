@@ -13,8 +13,10 @@ the [central evidence status](../contracts/index.qmd#implementation-evidence-sta
 `CircuitPlan` and `CompositePlan` remain editable only during their respective
 authoring phases. `CompositePlan.build()` validates and permanently seals its
 private graph before returning an immutable `ComponentInstance`.
-`CircuitRun(plan=..., workspace=..., versioned=False)` similarly validates and
-permanently seals the outer Python Plan and canonical snapshot. Calling
+`CircuitRun(plan=..., workspace=..., versioned=False)` prepares the complete
+validated snapshot, canonical identity, original View, and workspace leaf,
+then permanently seals the outer Python Plan at the workspace publication
+commit. Calling
 `add()`, `bus()`, `ground_pins()`, `expose_pin()`, `add_port()`, or another mutator
 on either sealed authoring graph raises `PlanSealedError`; SCNSim does not keep
 a hidden mutable copy.
@@ -29,6 +31,14 @@ preflight preserves every previously committed ID, zero-wire equivalence,
 diagnostic source path, and provenance fact; it adds no history for the
 rejected attempt, leaves the proposed ID reusable, and keeps the graph editable.
 Immutable render capture validates that editable graph but never seals it.
+
+An ordinary failure before workspace-pointer publication leaves an initially
+editable `CircuitPlan` editable and preserves the previously active leaf. The
+constructor removes or recovers only staging that its exact workspace grammar
+identifies as its own. If publication may have happened but durability cannot
+be confirmed, the constructor returns no Run, conservatively seals the Plan
+from the prepared snapshot, and raises `WorkspaceCommitIndeterminateError`.
+It does not guess which pointer won or roll either leaf back.
 
 The private `_Net` union-find remains the current connectivity mechanism behind
 these structured declarations. It is not the removed public `plan.net()` API
@@ -62,7 +72,10 @@ same `plan` and `run` variable names without restarting the kernel. This is a
 new pair of objects, never mutation of the earlier Run.
 
 By default, binding a different Plan to the same workspace replaces the prior
-workspace evidence after the new Plan has sealed. `versioned=True` instead
+workspace evidence when the new active pointer commits. Retirement of the old
+leaf is postcommit maintenance: failure leaves the new Run usable and exposes
+one exact cleanup-pending record through `run.inventory()`. A later exclusive
+workspace operation may finish only that classified cleanup. `versioned=True` instead
 selects a Plan-specific iteration subworkspace. The exact replacement,
 one-way-upgrade, and stale-handle behavior is defined in
 [Workspace, Attempts, Receipts, and Artifacts](workspace-attempts-and-artifacts.qmd#iterate-topology-in-one-workspace).

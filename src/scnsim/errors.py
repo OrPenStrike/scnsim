@@ -105,6 +105,12 @@ class WorkspaceVersioningDowngradeForbidden(SCNSimStateError):
     kind = "workspace_versioning_downgrade_forbidden"
 
 
+class WorkspaceCommitIndeterminateError(SCNSimStateError):
+    """A workspace pointer may be committed but durable confirmation failed."""
+
+    kind = "workspace_commit_indeterminate"
+
+
 class UnsupportedRuntimePlatformError(SCNSimCapabilityError):
     """The requested backend operation is unsupported on this platform."""
 

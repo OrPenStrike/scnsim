@@ -60,9 +60,11 @@ hash chain; it never holds an execution slot.
 contains an atomically replaced JSON active-leaf pointer. Its canonical target
 is `leaves/<leaf-instance-id>`; no filesystem symlink is used. Reopening
 the same path with the same Plan identity reuses its evidence. A different Plan
-is validated and sealed first. Under the exclusive lock, Python completes a
+is completely prepared and validated first. Under the exclusive lock, Python completes a
 sibling staged leaf, atomically renames it to `leaves/<new-leaf-instance-id>`,
-atomically replaces the root pointer, and only then removes the prior leaf. No
+atomically replaces the root pointer, seals the prepared Plan, and only then
+attempts to remove the prior leaf. Cleanup failure is retained as one exact
+root maintenance record and does not invalidate the committed Run. No
 prompt, recycle area, or implicit topology history is added. A prior Run or lazy Result
 whose bound leaf `workspace_instance_id` or Plan no longer matches that path
 raises
@@ -176,6 +178,10 @@ selector. `resolve()`, `build_report()`, and every other public API refuse to
 consume it as a latest or current request; resolution still requires the exact
 Ref, Spec, and ParameterSet contract, and reports still require explicit
 receipt-backed analysis Results.
+
+Its separate `maintenance` tuple reports zero or one exact cleanup-pending
+retired leaf. Shared-lock inventory never performs that cleanup; the next
+exclusive workspace operation may finish only the recorded target.
 
 Optimization adds one immutable, hash-linked ledger per completed generation.
 The ledger records package-visible optimizer coordinates, population ordinals,
