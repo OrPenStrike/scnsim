@@ -256,9 +256,9 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "977411bca3ddb41364bca2de73b5e2e4738ddbeb819cef8632131ba2d48dbde3",
+    "binding_sha256": "f16ee263763dfe5ddad13daa25642e80286378460b016d92aa530a1b99d857b9",
     "generator_sha256": "f18c91c8a3ead5ffa2a85bfb9d54a43d63807bfc25f3be4730eae7fe528e0553",
-    "source_tree_sha256": "51b034eaeb57195f92acdf3a55643f8c68fffe431d0cd81cef58e025ade9e6f8"
+    "source_tree_sha256": "69419ea9096971fbf10e88930b8262e281be4040c5c2fa6dabf126fd3923e068"
   },
   "publication_rebind": {
     "changed_cells": {
@@ -306,7 +306,39 @@
       },
       "src/scnsim/_julia/src/SCNSimBackend.jl": {
         "executed_sha256": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
-        "publication_sha256": "6c3e5d105d21f99420da98043efa64cb186a54b315318b95466dd9af72e6615a"
+        "publication_sha256": "f8153688480d6c269e06d8db2b95d3e92783dd95b292bbdd8b4d74038fd08b0f"
+      },
+      "src/scnsim/_julia/src/compile.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "f87595ec0a70a15bd46fd5e4732dab8e4693b060152c8d087646425230ff6ee2"
+      },
+      "src/scnsim/_julia/src/direct_quantities.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "c91040af0168081fa5f1b0188adfb8aa026ebf40a8a0a27aa59de8b17dee0984"
+      },
+      "src/scnsim/_julia/src/optimization.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "3dd9937c014713319c2df5235f1a8d7c1031a000b856c122612425c0c3543086"
+      },
+      "src/scnsim/_julia/src/quantity_core.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "3e1c3da93664e40fd382c6c1a3d6ebd69b28c7bcf858a6063e124af4967cc775"
+      },
+      "src/scnsim/_julia/src/result_artifacts.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "5c50e0b4dac8c3913ca5df18e0793c11233d41c778a75d2ab029aaf1fd5d9a0e"
+      },
+      "src/scnsim/_julia/src/terminal.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "5ecc16a27c46650bd6823416205b60bfc9980141946d6008bef577982c927b96"
+      },
+      "src/scnsim/_julia/src/view.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "e5bf16412da31c9b8b12818c6ee30a0cb836a4c13fb897f1f274044f07231946"
+      },
+      "src/scnsim/_julia/src/wire.jl": {
+        "executed_sha256": "absent",
+        "publication_sha256": "ad7cb829d77e34171d28b3028087e190a324cfb8aa6204078453e27e854a66d0"
       },
       "src/scnsim/_numeric_presentation.py": {
         "executed_sha256": "absent",
@@ -419,9 +451,9 @@
       "04-response-element.csv": "2edbda6faf88b65032f86c9e1b4607def2a6ccf220bccc1edc7aeb0194ee7fbc",
       "04-response-element.md": "e08691ec17bebb337d3fac8f4b90e2c231daeaad6e562a49e7fa66a153a840bb"
     },
-    "publication_binding_sha256": "977411bca3ddb41364bca2de73b5e2e4738ddbeb819cef8632131ba2d48dbde3",
+    "publication_binding_sha256": "f16ee263763dfe5ddad13daa25642e80286378460b016d92aa530a1b99d857b9",
     "publication_generator_sha256": "f18c91c8a3ead5ffa2a85bfb9d54a43d63807bfc25f3be4730eae7fe528e0553",
-    "publication_source_tree_sha256": "51b034eaeb57195f92acdf3a55643f8c68fffe431d0cd81cef58e025ade9e6f8",
+    "publication_source_tree_sha256": "69419ea9096971fbf10e88930b8262e281be4040c5c2fa6dabf126fd3923e068",
     "redrawn_presentation_artifacts": [
       "04-optional-direct-s21.svg",
       "04-ptc-direct-s21.svg",

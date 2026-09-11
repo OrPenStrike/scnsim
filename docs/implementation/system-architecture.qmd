@@ -33,6 +33,16 @@ receives one sealed request and owns the numerical work inside that request:
 component realization, candidate compilation, reduction, Direct quantities,
 CMA-ES, and HB.
 
+The backend remains one `SCNSimBackend` module and one reachable engine. Its
+source is included in dependency order: wire encoding, physical compilation,
+View realization, shared Direct quantity kernels, Result artifact writing,
+Direct terminal quantities, terminal/process orchestration, and Optimization.
+The existing structured compiler is included inside the compilation owner;
+HB and batch execution remain downstream consumers after these eight shared
+owners. This file split assigns maintenance responsibility only. It introduces
+no Julia namespace, alternate dispatch path, protocol version, numerical
+formula, failure rule, or execution boundary.
+
 ```text
 Notebook
   -> Python validation and immutable prepared analysis
