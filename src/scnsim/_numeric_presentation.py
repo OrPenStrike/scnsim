@@ -1431,6 +1431,25 @@ def _optimization_series(
             raise TypeError("kind='parameter' requires parameter=ParameterRef")
         if objective is not None:
             raise ValueError("objective is valid only for objective or residual history")
+        retained = next(
+            (
+                item
+                for item in result.best.parameters.values
+                if item.definitions_id == parameter.definitions_id
+                and item.id == parameter.id
+            ),
+            None,
+        )
+        if retained is None:
+            raise ValueError(
+                "selected parameter history is absent from the Optimization Result: "
+                f"{parameter.definitions_id}.{parameter.id}"
+            )
+        if retained._definition_record() != parameter._definition_record():
+            raise ValueError(
+                "selected parameter definition disagrees with the Optimization Result"
+            )
+        parameter = retained
     elif objective is not None or parameter is not None:
         raise ValueError("objective and parameter are invalid for total-cost history")
 
@@ -1487,7 +1506,9 @@ def _optimization_series(
                     encoded = envelope.get("si_value_f64")
                     stored_unit = envelope.get("si_unit")
                     if isinstance(encoded, str) and isinstance(stored_unit, str):
-                        quantity = Quantity(float64_from_hex(encoded), stored_unit).to(parameter.spec.si_unit)
+                        quantity = Quantity(float64_from_hex(encoded), stored_unit).to(
+                            parameter.spec.si_unit
+                        )
                         value = float(quantity.magnitude)
                         unit = str(quantity.units)
             ordinals.append(ordinal)
@@ -1762,9 +1783,11 @@ def hb_batch_plot(
         if trace not in declared:
             raise ValueError(f"unknown HB trace: {trace}")
         panels: tuple[tuple[str, str | None], ...] = ((trace, trace),)
+    elif input_channel is not None or output_channel is not None:
+        if input_channel is None or output_channel is None:
+            raise ValueError("input_channel and output_channel must be supplied together")
+        panels = (("selected S channel", None),)
     elif declared:
-        if input_channel is not None or output_channel is not None:
-            raise ValueError("named-trace batch presentation does not accept matrix-channel selectors")
         panels = tuple((identifier, identifier) for identifier in declared)
     else:
         panels = (("selected S channel", None),)
@@ -1861,6 +1884,28 @@ def hb_batch_plot(
         "named_traces": list(declared),
     }})
     return _style(figure, theme, title="HB batch selected response")
+
+
+def hb_outcomes_plot(
+    result: Any,
+    *,
+    cases: Mapping[str, Any] | None = None,
+    theme: Theme = Theme.AUTO,
+) -> Any:
+    """Present every declared HB case without selecting scientific payloads."""
+
+    selected = result.cases if cases is None else cases
+    go, _, _ = _plotly()
+    figure = go.Figure(data=[_hb_status_table(selected)])
+    figure.update_layout(meta={"scnsim": {
+        "kind": "hb_batch_outcomes",
+        "cases": [
+            {"id": outcome.id, "status": "success" if outcome.succeeded else "failure"}
+            for outcome in selected.values()
+        ],
+        "source": _presentation_source(result),
+    }})
+    return _style(figure, theme, title="HB batch outcomes")
 
 
 def hb_batch_add_to(
@@ -1966,20 +2011,25 @@ def hb_batch_add_to(
 def figure_fragments(figures: Sequence[Any]) -> str:
     """Serialize Figures into one self-contained HTML fragment, bundling JS once."""
 
+    return "".join(
+        figure_fragment(title, figure, include_plotlyjs=index == 0)
+        for index, (title, figure) in enumerate(figures)
+    )
+
+
+def figure_fragment(title: str, figure: Any, *, include_plotlyjs: bool) -> str:
+    """Serialize one report Figure; the caller owns document-level JS deduplication."""
+
     from html import escape
 
     _, pio, _ = _plotly()
-    fragments: list[str] = []
-    for index, item in enumerate(figures):
-        title, figure = item
-        fragments.append(f"<h2>{escape(str(title))}</h2>")
-        fragments.append(
-            pio.to_html(
-                figure,
-                include_plotlyjs=True if index == 0 else False,
-                full_html=False,
-                auto_play=False,
-                config={"responsive": True},
-            )
+    return (
+        f"<h2>{escape(str(title))}</h2>"
+        + pio.to_html(
+            figure,
+            include_plotlyjs=include_plotlyjs,
+            full_html=False,
+            auto_play=False,
+            config={"responsive": True},
         )
-    return "".join(fragments)
+    )

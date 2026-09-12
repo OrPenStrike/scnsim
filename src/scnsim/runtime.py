@@ -11,7 +11,6 @@ import json
 import tempfile
 from collections.abc import Mapping, Sequence
 from hashlib import sha256
-from html import escape
 from os import PathLike
 from pathlib import Path
 from types import MappingProxyType
@@ -76,7 +75,6 @@ from .errors import (
     PortRealizabilityError,
     SCNSimValidationError,
 )
-from .presentation import _report_html
 from .results import (
     DiagonalRootResult,
     DirectQuantityResult,
@@ -992,45 +990,9 @@ class CircuitRun:
             or not all(_is_verified_analysis_result(result) for result in spec.inputs)
         ):
             raise TypeError("build_report() requires ReportSpec")
-        rows = "".join(
-            "<tr>" + "".join(f"<td>{escape(getattr(result.identity, field))}</td>" for field in ("plan_sha256", "request_sha256", "attempt_sha256", "result_sha256")) + "</tr>"
-            for result in spec.inputs
-        )
-        figures: list[tuple[str, object]] = []
-        for result in spec.inputs:
-            if isinstance(result, DirectSolveResult):
-                figures.append(("Direct response", result.s.plot(magnitude="db", theme=spec.theme)))
-            elif isinstance(result, HBBatchResult):
-                hb_presentation: dict[str, object] = {"theme": spec.theme}
-                if any(outcome.succeeded for outcome in result.cases.values()):
-                    hb_presentation["magnitude"] = "db"
-                figures.append(("HB batch", result.plot(**hb_presentation)))
-            elif isinstance(result, DirectQuantityResult):
-                figures.append(("Direct scalar quantity", result.plot(theme=spec.theme)))
-            elif isinstance(result, OptimizationResult):
-                figures.extend((
-                    ("Optimization history", result.plot(kind="history", theme=spec.theme)),
-                    ("Optimization term evidence", result.plot(kind="table", theme=spec.theme)),
-                ))
-            elif isinstance(result, OperatorResult):
-                figures.extend(
-                    (f"Operator at {point.frequency}", result.plot(frequency=point.frequency, theme=spec.theme))
-                    for point in result.points
-                )
-            elif isinstance(result, ParameterSweepResult):
-                figures.append(("Parameter sweep outcomes", result.plot(theme=spec.theme)))
-        from ._numeric_presentation import figure_fragments, report_palette
+        from ._report import build_report
 
-        embedded = figure_fragments(figures)
-        body = (
-            "<h1>SCNSim report</h1><table><thead><tr><th>Plan</th><th>Request</th><th>Attempt</th><th>Result</th></tr></thead>"
-            f"<tbody>{rows}</tbody></table>{embedded}"
-        )
-        palette, color_scheme = report_palette(spec.theme)
-        html = _report_html(
-            body, spec.theme, palette=palette, color_scheme=color_scheme
-        )
-        return _verified_result(ReportResult, html=html, inputs=spec.inputs)
+        return build_report(spec)
 
     def _require_ref(self, ref: NetworkViewRef) -> None:
         if not isinstance(ref, NetworkViewRef) or ref._run is not self:

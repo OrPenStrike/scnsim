@@ -90,6 +90,17 @@ cd scnsim
 uv sync --locked
 ```
 
+The Engineer-course generators use repository-local Jupyter tooling and the
+separate static-export extra. Install those only when generating course
+evidence:
+
+```bash
+uv sync --locked --group course-generation --extra static-export
+```
+
+The `course-generation` dependency group is development tooling; it is not a
+wheel extra or a numerical-runtime prerequisite.
+
 Another repository should pin one reviewed SCNSim commit in its own
 `pyproject.toml` and `uv.lock`:
 

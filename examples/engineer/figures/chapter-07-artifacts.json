@@ -247,9 +247,9 @@
     ]
   },
   "publication_binding": {
-    "binding_sha256": "601cf80995a0443f7ec1ccfe17c810aab61fef80dc51c2dc24b1683914c27689",
+    "binding_sha256": "a445ae09543c9ea5c6c68b638d00bd68890533a53f5bee8126cf628dce59a917",
     "generator_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8",
-    "source_tree_sha256": "886355f14768a5aa739383014f7e34d8cc3657b2a8b30256bb56dc8dbc03c4b5"
+    "source_tree_sha256": "443f41b701c7478f6825dfba59347a2075c5e02ea036a3b9b4b7b34f345dc2ac"
   },
   "publication_rebind": {
     "changed_cells": {
@@ -265,7 +265,7 @@
     "changed_source_files": {
       "src/scnsim/__init__.py": {
         "executed_sha256": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
-        "publication_sha256": "3e9171464c018df1de02d845d4658f42c951f04fcd0230e29b5c6b7c976c30f2"
+        "publication_sha256": "9f9e17f273abbba97445e7458569eb8d7b129342a5a8c4c1e3cf9acf02660ca7"
       },
       "src/scnsim/_analysis.py": {
         "executed_sha256": "absent",
@@ -333,15 +333,19 @@
       },
       "src/scnsim/_numeric_presentation.py": {
         "executed_sha256": "absent",
-        "publication_sha256": "36ab215e7f1bf23ac63a3b6893fea36dff4654e039cbcff8182ff1f0f04e6dbb"
+        "publication_sha256": "efddfcdbb67734bfcdef841c75968888e4c0caac8d0bab9cc9697b1eb84b4d72"
       },
       "src/scnsim/_physical_values.py": {
         "executed_sha256": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
         "publication_sha256": "0d6270c205c32f9b943746031bddca2507ebd759e3c6997bfa73f6bded86ea24"
       },
+      "src/scnsim/_report.py": {
+        "executed_sha256": "absent",
+        "publication_sha256": "c38b382db82cdf66b3d1d1d4d5e9744c1c4fbde70cec5362604b560996e4c63f"
+      },
       "src/scnsim/_result_decode.py": {
         "executed_sha256": "absent",
-        "publication_sha256": "eb963d7bbe2f9fb6232811441810b5363cabbb20afb64195a5f2e9a3396dfd30"
+        "publication_sha256": "42cb45daa3781db7ede387ab593bf18532f29e85525bd5e2dcb0a485fd547dfe"
       },
       "src/scnsim/_schemas/identity-common.schema.json": {
         "executed_sha256": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
@@ -369,15 +373,15 @@
       },
       "src/scnsim/results.py": {
         "executed_sha256": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
-        "publication_sha256": "0b7d4db83c36dd53639d97d248df3e062e2ee977303af4dd41864ef58c3ba3fe"
+        "publication_sha256": "c311a031f84c4b88f6b3a74b1c81e45eb9bda0032365de627c6cfa10b835d167"
       },
       "src/scnsim/runtime.py": {
         "executed_sha256": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
-        "publication_sha256": "36e6f4fd7950396bf74068240e14c81df392dbe6c799e9dd39da938649a0b28a"
+        "publication_sha256": "323e77f847a47c0d83f89f77d55ad8aeb31a64113d8e9b7af528efdde2af43bd"
       },
       "src/scnsim/specs.py": {
         "executed_sha256": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
-        "publication_sha256": "d4e5dbc6851a9498db24284851cd0a28893ec3a3871173bbdb3bddc6d151bffc"
+        "publication_sha256": "ea83f2d7b69cf4961f7be9c83a0a1e409e00b2aa1a79928bb3ff49f5f1308942"
       }
     },
     "changed_teaching_sources": {
@@ -418,9 +422,9 @@
       "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
       "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
     },
-    "publication_binding_sha256": "601cf80995a0443f7ec1ccfe17c810aab61fef80dc51c2dc24b1683914c27689",
+    "publication_binding_sha256": "a445ae09543c9ea5c6c68b638d00bd68890533a53f5bee8126cf628dce59a917",
     "publication_generator_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8",
-    "publication_source_tree_sha256": "886355f14768a5aa739383014f7e34d8cc3657b2a8b30256bb56dc8dbc03c4b5",
+    "publication_source_tree_sha256": "443f41b701c7478f6825dfba59347a2075c5e02ea036a3b9b4b7b34f345dc2ac",
     "redrawn_presentation_artifacts": [
       "07-baseline-reflection.svg",
       "07-capacitance-times-170-over-175-reflection.svg",

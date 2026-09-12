@@ -4,9 +4,11 @@ subtitle: "How does verified evidence become a Python-facing presentation?"
 toc-depth: 2
 ---
 
-**Status:** accepted numerical Result/report mechanics remain `STABILIZED`.
-Structured authoring, its identity integration, and certified diagrams are a
-`CONVERGING` scope with an integrated implementation baseline; see the
+**Status:** accepted numerical Result mechanics outside the new report surface
+remain `STABILIZED`. `ReportPanel`, automatic report selection, and the pure
+report composer are a `CONVERGING` candidate. Structured authoring, its
+identity integration, and certified diagrams are another `CONVERGING` scope
+with an integrated implementation baseline; see the
 [central evidence status](../contracts/index.qmd#implementation-evidence-status). Adaptive
 presentation-theme semantics remain a separate `CONVERGING` candidate.
 
@@ -576,13 +578,44 @@ remain separate lifecycle steps.
 
 `ReportSpec.inputs` contains exact `AnalysisResult` objects already held by the
 caller, and `ReportSpec.theme` selects the same strict presentation enum used
-by diagrams and figures. Report assembly verifies result identities, preserves
-each native grid, and records every failed outcome carried by an input HB
-batch. Its HTML and embedded native Plotly Figures use one theme; `AUTO`
-resolves when each Figure is constructed while explicit themes remain fixed.
+by diagrams and figures. `ReportPanel` binds one of those exact objects by
+object membership and normalizes once to a closed response, matrix, summary,
+outcomes, or history selection. Selector groups are mutually exclusive and
+unused fields are rejected. The same object may not occur twice in `inputs`;
+distinct independently verified objects remain distinct even when their
+canonical identities match. Supplying response selectors while omitting
+`kind` is an explicit response, not an automatic panel whose selectors can be
+discarded.
+
+Response channels normalize to exact `(coordinate, mode)` members of the
+selected Result. Matrix frequencies must be exact materialized points, and
+Optimization objective and parameter histories must name members retained in
+the completed ledger; a parameter selector must match the retained full
+definition, not only its definitions/parameter IDs. A failed HB case has no
+matrix payload: a response panel may select only its case or an exact
+trace/channel pair captured from the verified request, and the report displays
+that requested selection as unavailable alongside the typed failure, including
+both declared endpoint coordinates and modes for a named trace.
+
+The `CircuitRun.build_report()` facade retains Run ownership validation, then
+passes only verified Results and normalized selections into the pure report
+composer. The composer has no Run, workspace, process, or execution callback.
+It preserves each native grid and records every failed HB or sweep outcome.
+Its HTML and embedded native Plotly Figures use one theme; `AUTO` resolves when
+each Figure is constructed while explicit themes remain fixed.
 It does not search
 the workspace, infer a latest Result, run an analysis, interpolate curves, or
 decide whether a Design Target passed.
+
+Automatic presentation is a closed per-family choice. A 1x1 Direct matrix
+adds S magnitude only; multichannel Direct and Operator Results add inventory
+tables; scalar Evaluation adds its typed values; HB and Sweep add outcome
+tables; Optimization adds cost history and winner/outcome evidence. Sweep
+outcomes use only the public point metadata accessor and never access
+`ParameterPointOutcome.result` or `collect()`. Explicit panels replace the
+automatic figures for their source Result, not the report-wide identity table.
+All numeric plots come from the same Plotly presentation helpers used by
+standalone `plot()`/`add_to()`; report assembly is not a second plotting engine.
 
 `ReportResult` is pure derived data, not a terminal operation. Its `save(path)`
 accepts a new `.html` file beneath an existing parent, refuses overwrite,
@@ -590,6 +623,11 @@ writes atomically, and returns `Path`. The file is standalone and self-contained
 it embeds figures, summary tables, and complete source identities, but excludes
 complete large raw arrays, workspace links, timestamps, and inferred PASS/FAIL.
 Additional formats wait for a named consumer.
+
+The report presentation digest covers source Result identities, normalized
+panel records, input order, and theme. It is deliberately separate from every
+calculation identity and does not assert authenticity. A report never stores
+or returns executable Run capability.
 
 Suffix, missing-parent, and existing-target checks use `ValueError`,
 `FileNotFoundError`, and `FileExistsError`; other filesystem failures retain

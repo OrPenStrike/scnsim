@@ -98,7 +98,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
             object.__setattr__(instance, f"_{name}", _freeze(values[name]))
         return instance
     if cls is HBBatchResult:
-        if set(values) != {"identity", "cases", "topology_evidence"}:
+        if set(values) != {"identity", "cases", "topology_evidence", "_presentation"}:
             raise TypeError("verified HBBatchResult fields mismatch")
         identity, cases = values["identity"], values["cases"]
         if not _is_verified_result_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
@@ -116,6 +116,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
         object.__setattr__(instance, "identity", identity)
         object.__setattr__(instance, "cases", MappingProxyType(materialized))
         object.__setattr__(instance, "topology_evidence", _freeze(values["topology_evidence"]))
+        object.__setattr__(instance, "_presentation", _freeze(values["_presentation"]))
         object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
         return instance
     expected = {item.name: item for item in fields(cls) if item.init}
@@ -130,6 +131,21 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
     for name in missing:
         descriptor = expected[name]
         values[name] = descriptor.default_factory() if descriptor.default_factory is not MISSING else descriptor.default
+    if cls is ReportResult:
+        html = values.get("html")
+        inputs = values.get("inputs")
+        presentation_sha256 = values.get("presentation_sha256")
+        if not isinstance(html, str) or not html:
+            raise TypeError("verified ReportResult requires nonempty HTML")
+        if (
+            not isinstance(inputs, (tuple, list))
+            or not inputs
+            or not all(_is_verified_analysis_result(item) for item in inputs)
+        ):
+            raise TypeError("verified ReportResult requires nonempty verified inputs")
+        _sha256(presentation_sha256, name="presentation_sha256")
+        if presentation_sha256 not in html:
+            raise ValueError("ReportResult HTML must contain its presentation identity")
     if cls is ResultIdentity:
         for name, value in values.items():
             _sha256(value, name=name)
@@ -710,6 +726,9 @@ class HBCaseOutcome(Result):
 class HBBatchResult(AnalysisResult):
     cases: Mapping[str, HBCaseOutcome]
     topology_evidence: Mapping[str, object]
+    _presentation: Mapping[str, object] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def __init__(self) -> None:
         unavailable("HBBatchResult construction")
@@ -1325,6 +1344,7 @@ class InventoryResult(Result):
 class ReportResult(Result):
     html: str
     inputs: tuple[AnalysisResult, ...] = ()
+    presentation_sha256: str = ""
 
     def __init__(self) -> None:
         unavailable("ReportResult construction")

@@ -798,15 +798,62 @@ class VerifiedResultDecoder:
         declared = (
             request_spec.get("cases") if isinstance(request_spec, Mapping) else None
         )
+        trace_declarations = (
+            request_spec.get("traces") if isinstance(request_spec, Mapping) else None
+        )
         if (
             not isinstance(raw_cases, list)
             or not isinstance(declared, list)
             or len(raw_cases) != len(declared)
+            or not isinstance(trace_declarations, list)
             or not isinstance(topology_evidence, Mapping)
         ):
             raise EvidenceIntegrityError(
                 "HB batch cases disagree with the request", stage="result_decode"
             )
+        declared_traces: dict[str, dict[str, object]] = {}
+        for declaration in trace_declarations:
+            if not isinstance(declaration, Mapping):
+                raise EvidenceIntegrityError(
+                    "HB request trace declaration is malformed", stage="result_decode"
+                )
+            identifier = declaration.get("id")
+            input_port = declaration.get("input_port")
+            output_port = declaration.get("output_port")
+            input_mode = declaration.get("input_mode")
+            output_mode = declaration.get("output_mode")
+            if (
+                not isinstance(identifier, str)
+                or not identifier
+                or identifier in declared_traces
+                or not isinstance(input_port, str)
+                or not input_port
+                or not isinstance(output_port, str)
+                or not output_port
+                or not isinstance(input_mode, list)
+                or any(
+                    not isinstance(value, int) or isinstance(value, bool)
+                    for value in input_mode
+                )
+                or not isinstance(output_mode, list)
+                or any(
+                    not isinstance(value, int) or isinstance(value, bool)
+                    for value in output_mode
+                )
+            ):
+                raise EvidenceIntegrityError(
+                    "HB request trace declaration is malformed", stage="result_decode"
+                )
+            declared_traces[identifier] = {
+                "input_channel": {
+                    "coordinate": input_port,
+                    "mode": list(input_mode),
+                },
+                "output_channel": {
+                    "coordinate": output_port,
+                    "mode": list(output_mode),
+                },
+            }
         outcomes: dict[str, HBCaseOutcome] = {}
         for ordinal, (raw, declaration) in enumerate(zip(raw_cases, declared), 1):
             if not isinstance(raw, Mapping) or not isinstance(declaration, Mapping):
@@ -998,14 +1045,7 @@ class VerifiedResultDecoder:
                 native=np.asarray(native_s.matrix.magnitude),
             )
             traces: dict[str, TraceResult] = {}
-            trace_declarations = (
-                request_spec.get("traces")
-                if isinstance(request_spec, Mapping)
-                else None
-            )
-            if not isinstance(trace_declarations, list) or len(trace_artifacts) != len(
-                trace_declarations
-            ):
+            if len(trace_artifacts) != len(trace_declarations):
                 raise EvidenceIntegrityError(
                     "HB trace catalog disagrees with its request", stage="result_decode"
                 )
@@ -1156,6 +1196,7 @@ class VerifiedResultDecoder:
             identity=identity,
             cases=outcomes,
             topology_evidence=topology_evidence,
+            _presentation={"declared_traces": declared_traces},
         )
 
     def _decode_parameter_ref(self, record: object) -> ParameterRef:

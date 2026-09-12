@@ -28,13 +28,24 @@ or duplicate lesson code in its wrappers. The website uses `execute.enabled:
 false`; browsing or building documentation starts no kernel, solver, runtime
 preparation, or Optimization.
 
+Before generating numerical course evidence, select the repository-local
+Jupyter tooling group and the independent static-export extra:
+
+```bash
+uv sync --locked --group course-generation --extra static-export
+```
+
+Neither selection is a numerical-runtime dependency or a published wheel
+extra.
+
 ## Generate Chapter 1 evidence explicitly
 
 Chapter 1's diagram, numerical figures, complex data, and quantity table are
 generated from the exact fragment cells by one bounded tool:
 
 ```bash
-uv run --locked python scripts/generate_engineer_chapter1.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter1.py \
   --workspace /tmp/scnsim-engineer-chapter1-run
 ```
 
@@ -72,7 +83,8 @@ Chapter 2's point tables, parameter-field figures, and selected-winner diagram
 come from its exact fragment cells:
 
 ```bash
-uv run --locked python scripts/generate_engineer_chapter2.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter2.py \
   --workspace /tmp/scnsim-engineer-chapter2-run
 ```
 
@@ -105,7 +117,8 @@ Chapter 3's typed full-Plan layout outcome, two standalone subcircuit
 illustrations, and named two-Port response come from its exact fragment cells:
 
 ```bash
-uv run --locked python scripts/generate_engineer_chapter3.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter3.py \
   --workspace /tmp/scnsim-engineer-chapter3-run
 uv run --locked python scripts/generate_engineer_chapter3.py --check
 ```
@@ -127,7 +140,8 @@ Chapter 4's explicit diagram and numerical Results are generated independently
 of the website:
 
 ```bash
-uv run --locked python scripts/generate_engineer_chapter4.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter4.py \
   --workspace /tmp/scnsim-engineer-chapter4-run
 uv run --locked python scripts/generate_engineer_chapter4.py --check
 ```
@@ -147,13 +161,17 @@ the generated summary does not overlay or interpolate them.
 Each remaining Chapter has its own bounded generator and source-only checker:
 
 ```bash
-uv run --locked python scripts/generate_engineer_chapter5.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter5.py \
   --workspace /tmp/scnsim-engineer-chapter5-run
-uv run --locked python scripts/generate_engineer_chapter6.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter6.py \
   --workspace /tmp/scnsim-engineer-chapter6-run
-uv run --locked python scripts/generate_engineer_chapter7.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter7.py \
   --workspace /tmp/scnsim-engineer-chapter7-run
-uv run --locked python scripts/generate_engineer_chapter8.py \
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter8.py \
   --workspace /tmp/scnsim-engineer-chapter8-run
 
 uv run --locked python scripts/generate_engineer_chapter5.py --check
@@ -180,6 +198,33 @@ execution. Every source-only rebind preserves an immutable historical
 execution-payload seal and accepts only the exact reviewed teaching-cell
 transitions; changing a computation/result/identity payload cannot be
 reclassified as presentation-only by rerunning the checker.
+
+The Chapter 8 generator also has one receipt-bound continuation for a reviewed
+run that sealed both Results but stopped during presentation. Maintainers first
+run `--verify-resume-only`, then pass the same `--workspace` and exact
+`--resume-receipt`. This path reconstructs the same Plan, rejects any changed
+catalog/runtime/cell/request/Result identity before binding, and uses public
+`resolve()` in two new independent kernels; it never falls back to `solve()` or
+`evaluate()`. The published manifest keeps the failed kernel's unavailable
+process telemetry distinct from the continuation and restart kernel records.
+
+```bash
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter8.py \
+  --workspace /tmp/preserved-chapter8-run \
+  --resume-receipt /tmp/preserved-chapter8-run/pre-tooling-identity.json \
+  --resume-receipt-sha256 "$FAILED_RUN_CAPTURE_SHA256" \
+  --verify-resume-only
+uv run --locked --group course-generation --extra static-export \
+  python scripts/generate_engineer_chapter8.py \
+  --workspace /tmp/preserved-chapter8-run \
+  --resume-receipt /tmp/preserved-chapter8-run/pre-tooling-identity.json \
+  --resume-receipt-sha256 "$FAILED_RUN_CAPTURE_SHA256"
+```
+
+`FAILED_RUN_CAPTURE_SHA256` is the independently preserved SHA-256 recorded
+when the failed-run capture is handed off; the generator never derives or
+guesses that trust anchor from the receipt it is validating.
 
 ## Former Chapter URL guides
 

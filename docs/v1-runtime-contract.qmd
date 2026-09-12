@@ -34,6 +34,9 @@ current V2 envelopes and shared schema definitions do not expose a legacy
 Plan/request/Result compatibility path.
 
 Adaptive presentation-theme semantics remain a separate `CONVERGING` scope.
+`ReportPanel`, automatic report selection, and pure report composition are
+also `CONVERGING`; the accepted numerical Result meanings they present remain
+unchanged.
 
 For a Plan containing an `AffineMap`, dev5 applies the declared authorization
 and records each authorized out-of-support consumer as extrapolation evidence.
@@ -2257,6 +2260,31 @@ Results. They do not fabricate request or receipt identity. `ReportSpec.inputs`
 accepts explicit `AnalysisResult` objects, including inputs from different
 Plans, and preserves each source identity independently.
 
+`ReportPanel` selects presentation from one exact object in
+`ReportSpec.inputs`; an identity-equal replacement object is not that input.
+Repeating the same Result object in `inputs` is ambiguous and fails; distinct
+independently verified objects remain distinct even when their canonical
+identities match.
+The immutable panel is normalized once to one of `response`, `matrix`,
+`summary`, `outcomes`, or `history`. It has no arbitrary keyword, callback,
+layout, or execution surface. Omitting `kind` while supplying a family,
+channel, case, or trace selector deterministically means `response`; an exact
+frequency or matrix-style selector means `matrix`; and an objective,
+parameter, or history selector means `history`. Conflicting selector groups or
+fields that a normalized kind does not consume fail instead of being ignored.
+Response channels resolve to exact `(coordinate, mode)` members, matrix
+frequencies must be exact materialized points, and Optimization history
+selectors must name objective or parameter evidence present in the completed
+ledger. A parameter selector must also match the retained complete definition,
+not only its definitions and parameter IDs. A failed HB case exposes no matrix:
+report selection is limited to the case or to an exact declared trace/channel
+pair captured from its verified request, and the report labels the requested
+response unavailable alongside the typed outcome rather than manufacturing
+values; a named trace includes its declared input and output coordinates and
+modes.
+`ReportSpec.panels` is optional and does not change the existing `inputs` and
+`theme` meanings.
+
 ### Typed Quantity results
 
 Result scalar and array physical values use the SCNSim Pint registry. Consumers
@@ -2509,6 +2537,22 @@ direct_report = run.build_report(
 report = run.build_report(
     ReportSpec(inputs=(direct, hb), theme=Theme.DARK)
 )
+
+selected = run.build_report(
+    ReportSpec(
+        inputs=(direct,),
+        theme=Theme.LIGHT,
+        panels=(
+            ReportPanel(
+                result=direct,
+                family="S",
+                input_channel="feedline_in",
+                output_channel="feedline_out",
+                magnitude="db",
+            ),
+        ),
+    )
+)
 ```
 
 Report assembly records the exact chosen inputs and may combine a Direct
@@ -2519,6 +2563,31 @@ batch and is not a separate `AnalysisResult`; using the batch preserves the one
 terminal receipt. Report assembly never changes which candidate is best or
 turns a Design Target into a pass/fail Gate.
 
+When a Result has explicit panels, those panels replace its automatic figure
+selection while its source-identity summary remains. Automatic report content
+is deliberately conservative:
+
+- a one-input/one-output Direct Result shows its named S magnitude in dB and a
+  summary, without automatically adding phase;
+- a multichannel Direct Result, scalar Evaluation, or Operator Result shows an
+  inventory/summary rather than guessing a channel or expanding every matrix;
+- an HB batch shows every declared case outcome, including typed failures;
+- a parameter sweep reads only point metadata (`parameters`, `source_index`,
+  identity, status, and failure), never each point's lazy scientific Result;
+  and
+- an Optimization Result shows completed cost history plus its winner/outcome
+  summary.
+
+Standalone numeric `plot()` defaults remain unchanged. An explicit matrix
+panel requires an exactly materialized frequency; a table retains the whole
+complex, channel-ordered matrix, while a heatmap requires one explicit
+component. An explicit HB response may select a declared trace or typed input
+and output channels, never both. A named trace retains its declared input and
+output Port/mode labels. `case=None` means all declared cases in declaration
+order, with successful traces and typed failures visible; it never means the
+first case. A failed selected case produces its outcome evidence rather than
+reading an absent matrix.
+
 `ReportResult.save(path)` accepts only a new `.html` path whose parent already
 exists. It refuses overwrite, writes atomically, and returns a `Path`. The
 single self-contained HTML embeds Plotly plots, summary tables, and every
@@ -2526,6 +2595,11 @@ source identity, but not complete large raw arrays, workspace links,
 timestamps, or inferred PASS/FAIL claims. It bundles Plotly JavaScript once,
 uses no CDN, and does not open a browser. User-derived labels and failure text
 are escaped before entering the document.
+
+`ReportResult.presentation_sha256` identifies the normalized input order,
+panel selections, and resolved report theme. It is derived presentation
+identity, not a calculation request, receipt, or authenticity signature.
+Building a report cannot change any source Result identity or workspace state.
 
 `ReportSpec.theme` accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK`.
 The report body, tables, and embedded Direct/HB Figures share that one theme.

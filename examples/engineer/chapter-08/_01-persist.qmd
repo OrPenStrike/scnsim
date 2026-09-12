@@ -6,6 +6,12 @@ This lesson owns one fresh-kernel execution. It rebuilds a coupled grounded LC,
 then persists a Direct Result and a loaded diagonal-root Result in one shared
 workspace.
 
+Workspace evidence is bound to the exact Plan and package source that created
+it. Repeating visually similar declarations after a package update does not
+imply the same Plan identity. Use a new workspace for the new source, or first
+preserve the complete original workspace together with its pinned environment;
+an ignored workspace is neither a backup nor migration storage.
+
 ```{python}
 #| id: ch8-build-persisted-plan
 from IPython.display import display
@@ -98,8 +104,23 @@ The Direct request uses exactly four declared samples. The loaded root uses a
 
 ```{python}
 #| id: ch8-build-result-report
+from scnsim import ReportPanel
+
 report = run.build_report(
-    ReportSpec(inputs=(direct, root), theme=Theme.AUTO)
+    ReportSpec(
+        inputs=(direct, root),
+        theme=Theme.AUTO,
+        panels=(
+            ReportPanel(
+                result=direct,
+                family="S",
+                input_channel="signal_in",
+                output_channel="signal_in",
+                magnitude="db",
+            ),
+            ReportPanel(result=root, kind="summary"),
+        ),
+    )
 )
 report.show()
 ```
@@ -113,5 +134,9 @@ report.show()
 
 :::
 
-`ReportSpec` receives the two explicit immutable Results. Building presentation
-does not choose another request or create a numerical attempt.
+`ReportSpec` receives the two explicit immutable Results. The first panel uses
+the stored, named S channel and selects magnitude in dB; the second presents
+the loaded root summary. Because these panels name the exact Result objects in
+`inputs`, report assembly cannot silently substitute an identity-equal object.
+Building presentation does not choose another request or create a numerical
+attempt.

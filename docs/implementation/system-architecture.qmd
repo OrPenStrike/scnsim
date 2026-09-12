@@ -22,6 +22,12 @@ from ordinary Python discovery:
 - AEDT Q2D parsing; and
 - Plotly numerical presentation and Matplotlib/Schemdraw diagram presentation.
 
+`CircuitRun.build_report()` is the validation facade for already verified
+Results. It delegates closed `ReportPanel` selections to a pure report
+composer that owns no Run, workspace, process, or execution callback. The
+composer reuses the same Plotly presentation layer as standalone numeric
+Results; HTML assembly adds only derived presentation identity.
+
 Run construction is also a Python ownership boundary. Python prepares and
 validates one captured Plan snapshot and the original View before it publishes
 a workspace pointer. The pointer update is the logical commit; the supplied

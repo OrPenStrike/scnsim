@@ -31,6 +31,13 @@ static-export = [
     "kaleido>=1,<2",
 ]
 
+[dependency-groups]
+course-generation = [
+    "ipykernel>=7.3,<8",
+    "jupyter-client>=8.10,<9",
+    "nbformat>=5.10,<6",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

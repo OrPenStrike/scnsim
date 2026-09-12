@@ -41,6 +41,7 @@ PUBLICATION_SOURCE_DIFF = (
     "src/scnsim/_julia/src/wire.jl",
     "src/scnsim/_numeric_presentation.py",
     "src/scnsim/_physical_values.py",
+    "src/scnsim/_report.py",
     "src/scnsim/_result_decode.py",
     "src/scnsim/_schemas/identity-common.schema.json",
     "src/scnsim/_schemas/identity-v2.schema.json",

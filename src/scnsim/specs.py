@@ -31,7 +31,17 @@ from .authoring import (
 )
 from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec, SCNSimValidationError
 from .presentation import Theme, _require_theme
-from .results import AnalysisResult, HtmlPresentation, _is_verified_analysis_result
+from .results import (
+    AnalysisResult,
+    DirectQuantityResult,
+    DirectSolveResult,
+    HBBatchResult,
+    HtmlPresentation,
+    OperatorResult,
+    OptimizationResult,
+    ParameterSweepResult,
+    _is_verified_analysis_result,
+)
 
 if TYPE_CHECKING:
     from ._diagram_spec import CircuitDiagramSpec
@@ -1033,24 +1043,378 @@ class HBSolveSpec:
         return tuple((drive, case._currents[drive]) for drive in self.drives if drive in case._currents)
 
 
+ReportChannel = str | tuple[str, tuple[int, ...]]
+
+
+def _report_channel(value: ReportChannel | None, *, name: str) -> ReportChannel | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value:
+        return value
+    if (
+        isinstance(value, tuple)
+        and len(value) == 2
+        and isinstance(value[0], str)
+        and bool(value[0])
+        and isinstance(value[1], tuple)
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value[1])
+    ):
+        return value
+    raise TypeError(f"{name} must be a nonempty coordinate ID or (coordinate, mode) tuple")
+
+
+def _exact_report_channel(
+    channels: Sequence[tuple[str, tuple[int, ...]]],
+    selector: ReportChannel,
+    *,
+    role: str,
+) -> tuple[str, tuple[int, ...]]:
+    from ._numeric_presentation import _channel_index
+
+    return channels[_channel_index(channels, selector, role=role, default=False)]
+
+
+def _declared_hb_trace_channels(
+    result: HBBatchResult,
+) -> Mapping[str, tuple[tuple[str, tuple[int, ...]], tuple[str, tuple[int, ...]]]]:
+    presentation = getattr(result, "_presentation", {})
+    declarations = (
+        presentation.get("declared_traces")
+        if isinstance(presentation, Mapping)
+        else None
+    )
+    if not isinstance(declarations, Mapping):
+        raise ValueError("HB Result has no verified declared-trace presentation metadata")
+    normalized: dict[
+        str, tuple[tuple[str, tuple[int, ...]], tuple[str, tuple[int, ...]]]
+    ] = {}
+    for identifier, declaration in declarations.items():
+        if not isinstance(identifier, str) or not isinstance(declaration, Mapping):
+            raise ValueError("HB Result declared-trace presentation metadata is malformed")
+        channels: list[tuple[str, tuple[int, ...]]] = []
+        for name in ("input_channel", "output_channel"):
+            channel = declaration.get(name)
+            coordinate = channel.get("coordinate") if isinstance(channel, Mapping) else None
+            mode = channel.get("mode") if isinstance(channel, Mapping) else None
+            if (
+                not isinstance(coordinate, str)
+                or not coordinate
+                or not isinstance(mode, (tuple, list))
+                or any(not isinstance(value, int) or isinstance(value, bool) for value in mode)
+            ):
+                raise ValueError("HB Result declared-trace presentation metadata is malformed")
+            channels.append((coordinate, tuple(mode)))
+        normalized[identifier] = (channels[0], channels[1])
+    return MappingProxyType(normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class ReportPanel:
+    """One closed presentation selection for an exact verified Result."""
+
+    result: AnalysisResult
+    kind: Literal["response", "matrix", "summary", "outcomes", "history"]
+    family: Literal["S", "Y", "Z"] | None
+    case: str | None
+    trace: str | None
+    input_channel: ReportChannel | None
+    output_channel: ReportChannel | None
+    _frequency: Quantity | None = field(repr=False)
+    matrix_style: Literal["table", "heatmap"] | None
+    component: Literal["magnitude", "phase", "real", "imag"] | None
+    magnitude: Literal["linear", "db"] | None
+    history_metric: Literal["cost", "objective", "residual", "parameter"] | None
+    objective: str | None
+    parameter: ParameterRef | None
+
+    def __init__(
+        self,
+        *,
+        result: AnalysisResult,
+        kind: Literal["response", "matrix", "summary", "outcomes", "history"] | None = None,
+        family: Literal["S", "Y", "Z"] | None = None,
+        case: str | None = None,
+        trace: str | None = None,
+        input_channel: ReportChannel | None = None,
+        output_channel: ReportChannel | None = None,
+        frequency: Quantity | None = None,
+        matrix_style: Literal["table", "heatmap"] | None = None,
+        component: Literal["magnitude", "phase", "real", "imag"] | None = None,
+        magnitude: Literal["linear", "db"] | None = None,
+        history_metric: Literal["cost", "objective", "residual", "parameter"] | None = None,
+        objective: str | None = None,
+        parameter: ParameterRef | None = None,
+    ) -> None:
+        if not _is_verified_analysis_result(result):
+            raise TypeError("ReportPanel.result must be a verified AnalysisResult")
+        if family is not None:
+            _family(family)
+        if case is not None and (not isinstance(case, str) or not case):
+            raise TypeError("case must be a nonempty case ID or None")
+        if trace is not None and (not isinstance(trace, str) or not trace):
+            raise TypeError("trace must be a nonempty trace ID or None")
+        input_channel = _report_channel(input_channel, name="input_channel")
+        output_channel = _report_channel(output_channel, name="output_channel")
+        if frequency is not None:
+            units.require_positive_quantity(frequency, "hertz", name="frequency")
+        if matrix_style not in {None, "table", "heatmap"}:
+            raise ValueError("matrix_style must be 'table', 'heatmap', or None")
+        if component not in {None, "magnitude", "phase", "real", "imag"}:
+            raise ValueError("component is invalid")
+        if magnitude not in {None, "linear", "db"}:
+            raise ValueError("magnitude must be 'linear', 'db', or None")
+        if history_metric not in {None, "cost", "objective", "residual", "parameter"}:
+            raise ValueError("history_metric is invalid")
+        if objective is not None and (not isinstance(objective, str) or not objective):
+            raise TypeError("objective must be a nonempty objective ID or None")
+        if parameter is not None and not isinstance(parameter, ParameterRef):
+            raise TypeError("parameter must be a ParameterRef or None")
+
+        matrix_requested = frequency is not None or matrix_style is not None
+        history_requested = any(value is not None for value in (history_metric, objective, parameter))
+        response_requested = any(
+            value is not None
+            for value in (family, case, trace, input_channel, output_channel, component, magnitude)
+        )
+        if kind is None:
+            groups = sum((matrix_requested, history_requested, response_requested and not matrix_requested))
+            if groups > 1:
+                raise ValueError("ReportPanel selector groups are mutually exclusive")
+            if matrix_requested:
+                kind = "matrix"
+            elif history_requested:
+                kind = "history"
+            elif response_requested:
+                kind = "response"
+            elif isinstance(result, DirectSolveResult):
+                kind = "response" if len(result.s.view.input_channels) == len(result.s.view.output_channels) == 1 else "summary"
+            elif isinstance(result, (HBBatchResult, ParameterSweepResult)):
+                kind = "outcomes"
+            elif isinstance(result, OptimizationResult):
+                kind = "history"
+            else:
+                kind = "summary"
+        if kind not in {"response", "matrix", "summary", "outcomes", "history"}:
+            raise ValueError("kind must be 'response', 'matrix', 'summary', 'outcomes', or 'history'")
+
+        if kind == "response":
+            if not isinstance(result, (DirectSolveResult, HBBatchResult)):
+                raise TypeError("response panels require a Direct or HB Result")
+            if matrix_requested or history_requested:
+                raise ValueError("response panels do not accept matrix or history selectors")
+            if trace is not None and (input_channel is not None or output_channel is not None):
+                raise ValueError("trace and matrix-channel selection are mutually exclusive")
+            if (input_channel is None) != (output_channel is None):
+                raise ValueError("input_channel and output_channel must be supplied together")
+            if isinstance(result, DirectSolveResult) and (case is not None or trace is not None):
+                raise ValueError("Direct response panels do not accept HB case or trace selectors")
+            if isinstance(result, HBBatchResult) and family not in {None, "S"}:
+                raise ValueError("HB response panels support only the S family")
+            family = "S" if family is None else family
+            component = "magnitude" if component is None else component
+            magnitude = "linear" if magnitude is None else magnitude
+            if magnitude == "db" and (family != "S" or component != "magnitude"):
+                raise ValueError("dB is supported only for S magnitude")
+            if component != "magnitude" and magnitude != "linear":
+                raise ValueError("dB magnitude is incompatible with a non-magnitude component")
+            if isinstance(result, DirectSolveResult):
+                view = result._family(family).view
+                if (
+                    input_channel is None
+                    and (len(view.input_channels) != 1 or len(view.output_channels) != 1)
+                ):
+                    raise ValueError("multichannel Direct response panels require exact input/output channels")
+                input_channel = _exact_report_channel(
+                    view.input_channels,
+                    view.input_channels[0] if input_channel is None else input_channel,
+                    role="input",
+                )
+                output_channel = _exact_report_channel(
+                    view.output_channels,
+                    view.output_channels[0] if output_channel is None else output_channel,
+                    role="output",
+                )
+            else:
+                if case is not None and case not in result.cases:
+                    raise ValueError(f"unknown HB case: {case}")
+                selected_cases = (
+                    (result.cases[case],)
+                    if case is not None
+                    else tuple(result.cases.values())
+                )
+                successful = tuple(
+                    outcome for outcome in selected_cases if outcome.succeeded
+                )
+                declared_traces = _declared_hb_trace_channels(result)
+                if trace is not None:
+                    if trace not in declared_traces:
+                        raise ValueError(f"unknown HB trace: {trace}")
+                    if any(trace not in outcome.traces for outcome in successful):
+                        raise ValueError(f"unknown HB trace: {trace}")
+                if trace is None and input_channel is None and successful:
+                    if any(
+                        len(outcome.s.view.input_channels) != 1
+                        or len(outcome.s.view.output_channels) != 1
+                        for outcome in successful
+                    ):
+                        raise ValueError("multichannel HB response panels require a trace or exact channels")
+                if input_channel is not None:
+                    if successful:
+                        first = successful[0].s.view
+                        input_channel = _exact_report_channel(
+                            first.input_channels, input_channel, role="HB input"
+                        )
+                        output_channel = _exact_report_channel(
+                            first.output_channels, output_channel, role="HB output"
+                        )
+                        for outcome in successful[1:]:
+                            view = outcome.s.view
+                            if (
+                                input_channel not in view.input_channels
+                                or output_channel not in view.output_channels
+                            ):
+                                raise ValueError(
+                                    "selected HB channels are absent from a successful case"
+                                )
+                    else:
+                        declared_pairs = tuple(declared_traces.values())
+                        declared_inputs = tuple(dict.fromkeys(
+                            item[0] for item in declared_pairs
+                        ))
+                        declared_outputs = tuple(dict.fromkeys(
+                            item[1] for item in declared_pairs
+                        ))
+                        input_channel = _exact_report_channel(
+                            declared_inputs,
+                            input_channel,
+                            role="HB declared input",
+                        )
+                        output_channel = _exact_report_channel(
+                            declared_outputs,
+                            output_channel,
+                            role="HB declared output",
+                        )
+                        if (input_channel, output_channel) not in declared_pairs:
+                            raise ValueError(
+                                "failed HB response channels must match one declared trace"
+                            )
+            history_metric = None
+        elif kind == "matrix":
+            if not isinstance(result, (DirectSolveResult, OperatorResult)):
+                raise TypeError("matrix panels require a Direct or Operator Result")
+            if history_requested or any(value is not None for value in (case, trace, input_channel, output_channel)):
+                raise ValueError("matrix panels accept no response-channel, case, trace, or history selectors")
+            if frequency is None:
+                raise ValueError("matrix panels require an exact frequency")
+            matrix_style = "table" if matrix_style is None else matrix_style
+            if isinstance(result, OperatorResult) and family is not None:
+                raise ValueError("Operator matrix panels do not accept an S/Y/Z family")
+            if isinstance(result, DirectSolveResult):
+                family = "S" if family is None else family
+                view = result._family(family).view
+                from ._numeric_presentation import _frequency_index
+
+                frequency = view.frequencies[_frequency_index(view, frequency)]
+            else:
+                frequency = result.at(frequency).frequency
+            if matrix_style == "table":
+                if component is not None or magnitude not in {None, "linear"}:
+                    raise ValueError("matrix tables retain complex values and accept no component or dB")
+                magnitude = "linear"
+            else:
+                if component is None:
+                    raise ValueError("matrix heatmaps require an explicit component")
+                magnitude = "linear" if magnitude is None else magnitude
+                if isinstance(result, OperatorResult) and magnitude != "linear":
+                    raise ValueError("Operator heatmaps do not accept dB magnitude")
+                if isinstance(result, DirectSolveResult) and magnitude == "db" and (
+                    family != "S" or component != "magnitude"
+                ):
+                    raise ValueError("dB is supported only for S magnitude")
+            history_metric = None
+        elif kind == "history":
+            if not isinstance(result, OptimizationResult):
+                raise TypeError("history panels require an OptimizationResult")
+            if matrix_requested or response_requested:
+                raise ValueError("history panels accept no response or matrix selectors")
+            if history_metric is None:
+                if objective is not None and parameter is not None:
+                    raise ValueError("history panels cannot select objective and parameter together")
+                history_metric = "objective" if objective is not None else (
+                    "parameter" if parameter is not None else "cost"
+                )
+            if history_metric in {"objective", "residual"}:
+                if objective is None or parameter is not None:
+                    raise ValueError("objective/residual history requires only objective")
+            elif history_metric == "parameter":
+                if parameter is None or objective is not None:
+                    raise ValueError("parameter history requires only parameter")
+            elif objective is not None or parameter is not None:
+                raise ValueError("cost history accepts neither objective nor parameter")
+            from ._numeric_presentation import _optimization_series
+
+            _optimization_series(
+                result,
+                kind="history" if history_metric == "cost" else history_metric,
+                objective=objective,
+                parameter=parameter,
+            )
+        else:
+            if matrix_requested or history_requested or response_requested:
+                raise ValueError(f"{kind} panels accept no selection fields")
+            if kind == "outcomes" and not isinstance(result, (HBBatchResult, ParameterSweepResult)):
+                raise TypeError("outcomes panels require an HB batch or parameter sweep")
+            history_metric = None
+
+        object.__setattr__(self, "result", result)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "family", family)
+        object.__setattr__(self, "case", case)
+        object.__setattr__(self, "trace", trace)
+        object.__setattr__(self, "input_channel", input_channel)
+        object.__setattr__(self, "output_channel", output_channel)
+        object.__setattr__(self, "_frequency", None if frequency is None else immutable_quantity(frequency))
+        object.__setattr__(self, "matrix_style", matrix_style)
+        object.__setattr__(self, "component", component)
+        object.__setattr__(self, "magnitude", magnitude)
+        object.__setattr__(self, "history_metric", history_metric)
+        object.__setattr__(self, "objective", objective)
+        object.__setattr__(self, "parameter", parameter)
+
+    @property
+    def frequency(self) -> Quantity | None:
+        return None if self._frequency is None else quantity_view(self._frequency)
+
+
 @dataclass(frozen=True, slots=True)
 class ReportSpec:
     """Choose exact existing Analysis Results for a pure derived report."""
 
     inputs: tuple[AnalysisResult, ...]
     theme: Theme = Theme.AUTO
+    panels: tuple[ReportPanel, ...] = ()
 
     def __init__(
         self,
         *,
         inputs: Sequence[AnalysisResult],
         theme: Theme = Theme.AUTO,
+        panels: Sequence[ReportPanel] = (),
     ) -> None:
         checked = tuple(inputs)
         if not checked or not all(_is_verified_analysis_result(item) for item in checked):
             raise TypeError("ReportSpec.inputs must be nonempty AnalysisResult values")
+        if any(left is right for index, left in enumerate(checked) for right in checked[index + 1 :]):
+            raise ValueError("ReportSpec.inputs must not repeat the same Result object")
+        selected = tuple(panels)
+        if not all(isinstance(panel, ReportPanel) for panel in selected):
+            raise TypeError("ReportSpec.panels must contain ReportPanel values")
+        for panel in selected:
+            if not any(panel.result is item for item in checked):
+                raise ValueError("each ReportPanel.result must be the exact object in ReportSpec.inputs")
         object.__setattr__(self, "inputs", checked)
         object.__setattr__(self, "theme", _require_theme(theme))
+        object.__setattr__(self, "panels", selected)
 
 
 def _canonical_value(value: object) -> object:
