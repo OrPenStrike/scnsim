@@ -30,6 +30,19 @@ Ongoing public-contract corrections remain unaccepted candidate work; neither
 integration nor passing checks promotes these scopes to `ACCEPTED` or
 `STABILIZED`. The accepted numerical Full V1 meanings are retained.
 
+On source `9cd5d4e1a27adc4e9c8719370c8a38a86177f8c9`, one bounded Linux
+x86-64 exercise issued exactly two public multi-View Optimization requests and
+one 61-point two-Port Direct request. The first Optimization was interrupted
+only after its verified baseline checkpoint was published; the second reused
+that exact checkpoint and completed one generation of two candidates. A third
+independent Python process then resolved the exact Optimization and Direct
+Results with execution entries denied and zero Julia launches, and saved a
+self-contained Report plus named `signal_in` to `resonator_probe` S-magnitude
+and phase plots; its enclosing private diagnostic exited afterward while
+serializing a nested complex ledger value. This remains `CONVERGING` evidence,
+not a generalized replay, full-suite, macOS, performance, attainment, or
+acceptance claim.
+
 Current CI exercises portable-wheel identity, a small current-API
 Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
 source-bound figures, static publication, and unchanged standalone RLGC rejection
