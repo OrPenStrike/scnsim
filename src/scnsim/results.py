@@ -62,6 +62,16 @@ def _sha256(value: object, *, name: str) -> str:
     return value
 
 
+def _fresh_quantity_attribute(instance: object, name: str) -> object:
+    """Expose fresh Pint wrappers while retaining one immutable backing."""
+
+    value = object.__getattribute__(instance, name)
+    fields = object.__getattribute__(instance, "_quantity_fields")
+    if name in fields and isinstance(value, Quantity):
+        return quantity_view(value)
+    return value
+
+
 def _verified_result(cls: type[T], /, **values: object) -> T:
     """Private verified-decoder hook; never call this on unverified evidence.
 
@@ -292,9 +302,13 @@ class MatrixView:
     input_channels: tuple[tuple[str, tuple[int, ...]], ...] = ()
     output_channels: tuple[tuple[str, tuple[int, ...]], ...] = ()
     probe_loads: Mapping[str, Literal["raw", "compensated"]] = field(default_factory=dict)
+    _quantity_fields = frozenset({"matrix", "frequencies"})
 
     def __init__(self) -> None:
         unavailable("MatrixView construction")
+
+    def __getattribute__(self, name: str) -> object:
+        return _fresh_quantity_attribute(self, name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,9 +428,13 @@ class DirectSolveResult(AnalysisResult):
     y: MatrixFamilyResult
     z: MatrixFamilyResult
     traces: Mapping[str, TraceResult] = field(default_factory=dict)
+    _quantity_fields = frozenset({"frequencies"})
 
     def __init__(self) -> None:
         unavailable("DirectSolveResult construction")
+
+    def __getattribute__(self, name: str) -> object:
+        return _fresh_quantity_attribute(self, name)
 
     def _family(self, family: Literal["S", "Y", "Z"]) -> MatrixFamilyResult:
         if family == "S":
@@ -465,9 +483,17 @@ class DirectQuantityResult(AnalysisResult):
     branch_b_residue: Quantity | None = None
     family: Literal["S", "Y", "Z"] | None = None
     _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
+    _quantity_fields = frozenset({
+        "root", "frequency", "linewidth", "slope", "value", "magnitude",
+        "real", "imag", "zero", "numerator_slope", "denominator", "coupling",
+        "branch_a_residue", "branch_b_residue",
+    })
 
     def __init__(self) -> None:
         unavailable(f"{type(self).__name__} construction")
+
+    def __getattribute__(self, name: str) -> object:
+        return _fresh_quantity_attribute(self, name)
 
     def plot(self, *, theme: Theme = Theme.AUTO) -> Figure:
         from ._numeric_presentation import scalar_plot
@@ -505,9 +531,13 @@ class OperatorPointResult:
     frequency: Quantity
     matrix: Quantity
     coordinates: tuple[str, ...]
+    _quantity_fields = frozenset({"frequency", "matrix"})
 
     def __init__(self) -> None:
         unavailable("OperatorPointResult construction")
+
+    def __getattribute__(self, name: str) -> object:
+        return _fresh_quantity_attribute(self, name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,7 +730,8 @@ class HBCaseOutcome(Result):
 
     @property
     def states(self) -> Quantity:
-        return self._success(self._states)  # type: ignore[return-value]
+        states = self._success(self._states)
+        return quantity_view(states)  # type: ignore[arg-type, return-value]
 
     @property
     def state_node_map(self) -> tuple[Mapping[str, object], ...]:
@@ -1204,9 +1235,13 @@ class TraceResult(Result):
         default=None, repr=False, compare=False
     )
     _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
+    _quantity_fields = frozenset({"frequencies", "value"})
 
     def __init__(self) -> None:
         unavailable("TraceResult construction")
+
+    def __getattribute__(self, name: str) -> object:
+        return _fresh_quantity_attribute(self, name)
 
     def plot(
         self,

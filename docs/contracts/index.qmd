@@ -6,9 +6,11 @@ subtitle: "Public behavior and its implementation design"
 ::: {.callout-note appearance="simple"}
 ## Lifecycle authority
 
-The accepted numerical operations, physical component models, units, evidence
-workspace, and Result meanings remain `STABILIZED`. Acceptance and
-stabilization are not release claims.
+The accepted numerical operations, physical component models, units, and
+Result meanings remain `STABILIZED`. New preparation, Run commit and workspace
+maintenance, optimization checkpoint/resume evidence, and ReportPanel
+composition remain `CONVERGING`. Acceptance and stabilization are not release
+claims.
 
 The public authoring grammar, structured Plan identity, certified diagrams,
 and independent Parameter System are reopened in documentation-first targets.
@@ -22,10 +24,11 @@ spaces, sweep Results, and optimization binding. These scopes remain
 
 ## Implementation and evidence status {#implementation-evidence-status}
 
-The structured assembly, Parameter System, and diagram implementation baseline
-is integrated. Ongoing public-contract corrections remain unaccepted candidate
-work; neither integration nor passing checks promotes these scopes to
-`ACCEPTED` or `STABILIZED`. The accepted numerical Full V1 meanings are retained.
+The structured assembly, Parameter System, diagram, preparation/Run ownership,
+checkpoint/resume, and ReportPanel implementation baselines are integrated.
+Ongoing public-contract corrections remain unaccepted candidate work; neither
+integration nor passing checks promotes these scopes to `ACCEPTED` or
+`STABILIZED`. The accepted numerical Full V1 meanings are retained.
 
 Current CI exercises portable-wheel identity, a small current-API
 Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,

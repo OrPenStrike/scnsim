@@ -156,6 +156,11 @@ interval and retries from its certified left endpoint, to a maximum depth of
 endpoint. It never uses the preceding CMA-ES candidate, reapplies `root_hint`,
 or takes an automatic detour.
 
+The baseline anchor and every continuation point realize the same View named
+by the request before evaluating the diagonal root. Reduction, PTC, transform,
+and retain therefore remain part of the quantity's numerical lineage; neither
+the baseline nor an intermediate point falls back to the raw compiled Plan.
+
 A repeated/unresolved slope, eliminated-block singularity, mapped physical
 domain failure, or exhausted subdivision returns a typed non-continuable
 failure. All constants, formulas, branching rules, and failure mappings are

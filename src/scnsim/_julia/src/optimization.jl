@@ -625,46 +625,6 @@ function consumer_target_key(target)::String
     return ref_key(item)
 end
 
-function root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root::ComplexF64, selector; context_kind::String = "direct_quantity")
-    spec = selector["spec"]
-    coordinate = String(spec["coordinate"])
-    hint = quantity_value(spec["root_hint"])
-    function values_at(t::Float64)
-        t == 0.0 && return copy(baseline_values)
-        t == 1.0 && return copy(candidate_values)
-        result = Dict{String,Any}()
-        for key in keys(baseline_values)
-            left, right = baseline_values[key], candidate_values[key]
-            if left isa Float64 && right isa Float64
-                result[key] = left + t * (right - left)
-            else
-                canonical_json(left) == canonical_json(right) || fail("execution", "compiler_invariant", "root_continuation", context_kind, "root continuation cannot interpolate RLGC parameters")
-                result[key] = left
-            end
-        end
-        return result
-    end
-    function advance(left_t::Float64, left_root::ComplexF64, right_t::Float64, depth::Int)::ComplexF64
-        right_values = values_at(right_t)
-        try
-            return diagonal_root(compile_primitive(plan, right_values; context_kind = context_kind,
-                authorized = context_kind == "optimization_candidate" ? optimization_authorizations(request) : parameter_set_authorizations(request),
-                authorization_source = context_kind == "optimization_candidate" ? "optimization_spec" : "parameter_set"), coordinate, hint; start = left_root)[1]
-        catch error
-            error isa BackendFailure || rethrow()
-            # Continuation repairs only a Newton-resolution failure. Structural
-            # eliminated-block, slope, capacitance, or physical-domain errors
-            # are not alternate branches and must remain their typed failure.
-            error.kind == "numerical_resolution_unresolved" || rethrow()
-            depth < 32 || rethrow()
-            midpoint = (left_t + right_t) / 2.0
-            midpoint_root = advance(left_t, left_root, midpoint, depth + 1)
-            return advance(midpoint, midpoint_root, right_t, depth + 1)
-        end
-    end
-    return advance(0.0, baseline_root, 1.0, 0)
-end
-
 function objective_outcome(plan, request, baseline_values, values, baseline_roots;
         extrapolation_evidence::Vector{Any} = Any[], prepared_raw = nothing,
         prepared_views = nothing, candidate)

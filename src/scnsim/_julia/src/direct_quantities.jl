@@ -54,14 +54,22 @@ function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, requ
     hint = quantity_value(spec["root_hint"])
     baseline_values = plan_parameter_values(plan)
     candidate_values = parameter_values(request)
-    baseline_compiled = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
+    baseline_raw = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
         authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
-    baseline_root, baseline_slope = diagonal_root(baseline_compiled, String(spec["coordinate"]), hint)
+    _, baseline_view = realized_ref_lineage(baseline_raw, declarative_lineage(plan, request, baseline_raw))
+    baseline_root, baseline_slope = diagonal_root(baseline_view.compiled, String(spec["coordinate"]), hint)
     if same_parameter_values(baseline_values, candidate_values)
         omega, slope = baseline_root, baseline_slope
     else
-        selector = Dict{String,Any}("spec" => spec)
-        omega = root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root, selector; context_kind = "direct_quantity")
+        selector = Dict{String,Any}(
+            "type" => "diagonal_root_projection",
+            "spec" => spec,
+            "projection" => "frequency",
+        )
+        omega = selector_root_with_continuation(
+            plan, request, baseline_values, candidate_values, baseline_root, selector;
+            context_kind = "direct_quantity",
+        )
         slope = root_certificate(compiled, omega, String(spec["coordinate"])).fp
     end
     scalars = Dict{String,Any}(

@@ -319,190 +319,79 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "263d693449b4f846804bd616c4d7a0cb3994905c637dd7e57976ca1f96e9258e",
+    "binding_sha256": "da08c43ce7006b4bf41bdb2bef871f50533db662e0c65ec6770bb09653a23242",
     "generator_sha256": "eb8371f574d8ba4eaf23e64fb0f9f137cadd2ea802791ed47392d1bc19ecaf99",
-    "source_tree_sha256": "443f41b701c7478f6825dfba59347a2075c5e02ea036a3b9b4b7b34f345dc2ac"
+    "source_tree_sha256": "cb90947a33db77297113b05ff7fbd3d33b5887299ea9e4c3800b29756b32cb27"
   },
   "publication_rebind": {
-    "changed_cells": {
-      "ch2-evaluate-winner": {
-        "executed_sha256": "509d52dab87f08b001b85b2bd62ca85f4b584b74d1e894b3f6f1cb82ef1b11bc",
-        "publication_sha256": "c4fdcf94b27353d2e38b8e7144eb95f929cbccca59b7db34bdf1e87676adce0d"
+    "deltas": {
+      "cells": {},
+      "generator": {
+        "after_sha256": "eb8371f574d8ba4eaf23e64fb0f9f137cadd2ea802791ed47392d1bc19ecaf99",
+        "before_sha256": "eb8371f574d8ba4eaf23e64fb0f9f137cadd2ea802791ed47392d1bc19ecaf99"
       },
-      "ch2-run-and-show-listed-points": {
-        "executed_sha256": "2d41893956b59ede861b26d87f3748c017f0a87ee21fbb6b10095ed3f15b50b7",
-        "publication_sha256": "2ef8d8af15894aadc876cd1b0744c7e0f749ef1f62ce66c92eaf1fff72855e0c"
+      "source_files": {
+        "src/scnsim/_julia/src/direct_quantities.jl": {
+          "after_sha256": "954a025d8ceacadf38fba15f383c73ce590cb5d1d59b1b0a90a7f02b744f9576",
+          "before_sha256": "c91040af0168081fa5f1b0188adfb8aa026ebf40a8a0a27aa59de8b17dee0984"
+        },
+        "src/scnsim/_julia/src/optimization.jl": {
+          "after_sha256": "bcde6f7edfe7f03b67892c70ee46eb76fd36551df3b180496d9c54e62a224799",
+          "before_sha256": "c7f24445409a80bdca70b62406008f1007adf50665f64ae868e07657b8f04c19"
+        },
+        "src/scnsim/results.py": {
+          "after_sha256": "051b6ab1898810ffc852a4544583158a579fdc4d08910e7dcaa31860bdf3cd46",
+          "before_sha256": "c311a031f84c4b88f6b3a74b1c81e45eb9bda0032365de627c6cfa10b835d167"
+        }
       },
-      "ch2-show-capacitance-sweep": {
-        "executed_sha256": "c78015638340211210b761f2a864c8c322c07868dcb746cb48b71dd738551205",
-        "publication_sha256": "084fd3a70ad64ebf1270f1c4c3e25eeae318f8f9961da601bf9126e21e0854bc"
-      },
-      "ch2-show-optional-grid": {
-        "executed_sha256": "599baa5a2aefc846e166e8bf4f8dc5503aa2c5a9d1f0969432eaee5a76763ff1",
-        "publication_sha256": "3c5ea27e08b6e2d7f46a188f5f58f4bdf59b8795f2c0c123b902a99420918f87"
-      }
+      "teaching_sources": {}
     },
-    "changed_source_files": {
-      "src/scnsim/__init__.py": {
-        "executed_sha256": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
-        "publication_sha256": "9f9e17f273abbba97445e7458569eb8d7b129342a5a8c4c1e3cf9acf02660ca7"
-      },
-      "src/scnsim/_analysis.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "4307ff1458c3a740a3fddb7e5fb119e5ef39c641a29c092501f7cfc14b69a846"
-      },
-      "src/scnsim/_backend.py": {
-        "executed_sha256": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
-        "publication_sha256": "e2f42159cb445047f8f57e5025141a452837876fc23fac62137f1cf9057c5717"
-      },
-      "src/scnsim/_canonical.py": {
-        "executed_sha256": "ea8f70bb63c9d608e68404e7410c72228ee681c7cf6c7c3c5d6b39e59763ab3f",
-        "publication_sha256": "498bc1e8dbb880dfe6eeb6285627fc3053358e6dacf10c72b3bc0232e4136590"
-      },
-      "src/scnsim/_evidence.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "9198028d532b558d0134724356a1b2b50b123761417a7711f315807155bea4d3"
-      },
-      "src/scnsim/_execution.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "8eddcdc16e5d9d6e9b538ec1e386d6f7a9b04d233e5f34f9814648e0cf15e1c1"
-      },
-      "src/scnsim/_immutable_values.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "7ef514524d22acaf49caabf697fd3ab32b5d124c0349b560234666d6cfb7a8be"
-      },
-      "src/scnsim/_julia/runtime.json": {
-        "executed_sha256": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
-        "publication_sha256": "f401c19e7285b160950d8a2c1a8be0d7cc68817d5c5c742e75421084e6244899"
-      },
-      "src/scnsim/_julia/src/SCNSimBackend.jl": {
-        "executed_sha256": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
-        "publication_sha256": "f749333b5501ffdf20484192ccbc7dfc36101c7b52644fbd9b524ffcd8ed73bd"
-      },
-      "src/scnsim/_julia/src/compile.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "f87595ec0a70a15bd46fd5e4732dab8e4693b060152c8d087646425230ff6ee2"
-      },
-      "src/scnsim/_julia/src/direct_quantities.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "c91040af0168081fa5f1b0188adfb8aa026ebf40a8a0a27aa59de8b17dee0984"
-      },
-      "src/scnsim/_julia/src/optimization.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "c7f24445409a80bdca70b62406008f1007adf50665f64ae868e07657b8f04c19"
-      },
-      "src/scnsim/_julia/src/quantity_core.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "3e1c3da93664e40fd382c6c1a3d6ebd69b28c7bcf858a6063e124af4967cc775"
-      },
-      "src/scnsim/_julia/src/result_artifacts.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "251181035a8f59dff38ec209c27bcd08081457a09dc75aa3c641893817364b84"
-      },
-      "src/scnsim/_julia/src/terminal.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "db9c5f77b8a31c84786b856d842febc4a80fba95e46b9db0c1400e3055194b79"
-      },
-      "src/scnsim/_julia/src/view.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "e5bf16412da31c9b8b12818c6ee30a0cb836a4c13fb897f1f274044f07231946"
-      },
-      "src/scnsim/_julia/src/wire.jl": {
-        "executed_sha256": "absent",
-        "publication_sha256": "ad7cb829d77e34171d28b3028087e190a324cfb8aa6204078453e27e854a66d0"
-      },
-      "src/scnsim/_numeric_presentation.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "efddfcdbb67734bfcdef841c75968888e4c0caac8d0bab9cc9697b1eb84b4d72"
-      },
-      "src/scnsim/_physical_values.py": {
-        "executed_sha256": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
-        "publication_sha256": "0d6270c205c32f9b943746031bddca2507ebd759e3c6997bfa73f6bded86ea24"
-      },
-      "src/scnsim/_report.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "c38b382db82cdf66b3d1d1d4d5e9744c1c4fbde70cec5362604b560996e4c63f"
-      },
-      "src/scnsim/_result_decode.py": {
-        "executed_sha256": "absent",
-        "publication_sha256": "42cb45daa3781db7ede387ab593bf18532f29e85525bd5e2dcb0a485fd547dfe"
-      },
-      "src/scnsim/_schemas/identity-common.schema.json": {
-        "executed_sha256": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
-        "publication_sha256": "437eaccb8319df0d2491721a8f19c1ba35c9b6d23d6bab5262b99304ce50da12"
-      },
-      "src/scnsim/_schemas/identity-v2.schema.json": {
-        "executed_sha256": "9f5994e95931d3f89bf361fd6b8f217b4051927c1d48c4b61d8a68435a41ea32",
-        "publication_sha256": "e5a3865079ea6b96e954179191d2153492c87323053019c0d424b9dda3f86c7b"
-      },
-      "src/scnsim/_workspace.py": {
-        "executed_sha256": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
-        "publication_sha256": "c697aee6929d2c950772c8d11986254c8ec42dae997f06d6b186442ca5abbf30"
-      },
-      "src/scnsim/authoring.py": {
-        "executed_sha256": "5f37cc05d1982fd587877c1065f81ff3c88a2bae85ec968a9bb15a0d39428bca",
-        "publication_sha256": "4c9b3aeec1de24daf75c85c425cc0d05f4cb70285fb53f0597bd12d1b5e80145"
-      },
-      "src/scnsim/errors.py": {
-        "executed_sha256": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
-        "publication_sha256": "0f4ca9e70623dc3d4a55ed4a2f121d9bc0e1b601391974fef78b9555d48c94de"
-      },
-      "src/scnsim/presentation.py": {
-        "executed_sha256": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
-        "publication_sha256": "85f0280f588fe97652d2489e91e9a0535d468a09534a9d8aaa41c111ecbb2b0d"
-      },
-      "src/scnsim/results.py": {
-        "executed_sha256": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
-        "publication_sha256": "c311a031f84c4b88f6b3a74b1c81e45eb9bda0032365de627c6cfa10b835d167"
-      },
-      "src/scnsim/runtime.py": {
-        "executed_sha256": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
-        "publication_sha256": "323e77f847a47c0d83f89f77d55ad8aeb31a64113d8e9b7af528efdde2af43bd"
-      },
-      "src/scnsim/specs.py": {
-        "executed_sha256": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
-        "publication_sha256": "ea83f2d7b69cf4961f7be9c83a0a1e409e00b2aa1a79928bb3ff49f5f1308942"
-      }
-    },
-    "changed_teaching_sources": {
-      "examples/engineer/chapter-02/_02-sweep.qmd": {
-        "executed_sha256": "f85ebce62ab60d8a464a895bcdb2111e32a356062591862fecb00186d67d8ddf",
-        "publication_sha256": "0c2085d85ead63ed062ce27c566c1588f76e11092de9fd3b2e7fc8873f47feb6"
-      },
-      "examples/engineer/chapter-02/_03-optimize.qmd": {
-        "executed_sha256": "993d6308cc575cf0917eeb152adaf642f2765b8ce6a01237f988c7525ab15cb5",
-        "publication_sha256": "ee221421afda1bbbf7964ad051f2e62fbc9c2a31cad7eca4129e9b5675a577c5"
-      },
-      "examples/engineer/chapter-02/_04-optional-spaces.qmd": {
-        "executed_sha256": "2db849772c7880a6ec9802a467882eb663f117b4c5564c1e5c6764f09a65d760",
-        "publication_sha256": "988be9375e8eebb6baac1e1747ca75c1baa467562e5d888529932e6efe82cd37"
-      }
-    },
-    "execution_artifacts": {
-      "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
-      "02-capacitance-sweep.md": "1a55739d02da30c2b835aad998b928c31bdb186bc802e09ca6eb03299b4d8507",
-      "02-capacitance-sweep.svg": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
-      "02-optimized-winner.csv": "275d98e9e32c9c2ff38a3b6773b5dcecb4b7432c9edab13bc0f7ee38897f4a48",
-      "02-optimized-winner.md": "fe5cc45e87b79955bb4d790c504ff092681a1dc7518872618c51825e77084289",
-      "02-optimized-winner.svg": "3f1b3d84175aea3860b45d60fb687a79120fbd531e132f1c4b1cd0de57cd22e3",
-      "02-optional-grid.svg": "cb1ae57b56a39e23390ebf279cb10531f61847ccdeaa6588b604c7c18835126c",
-      "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
-      "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
-    },
-    "execution_binding_sha256": "47f4e6af0b0afccb329da15ee558e82073bdf96fae4279a2a228f4af3be7cc1c",
-    "execution_generator_sha256": "a014130beec40c52edff88b5a5a553150e00dfa0a23e907d339fc2ece09a4164",
     "execution_identity_retained": true,
-    "execution_payload_sha256": "01ed1ec17457c9b2a1246ddd157752c160696e5723528ec696fd49876d722f3a",
-    "execution_source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816",
-    "kind": "plotly_presentation_from_retained_evidence",
-    "numerical_evidence_reused": true,
-    "presentation_environment": {
-      "kaleido": "1.4.0",
-      "plotly": "6.9.0",
-      "python": "3.12.13"
+    "historical_execution": {
+      "artifacts": {
+        "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
+        "02-capacitance-sweep.md": "1a55739d02da30c2b835aad998b928c31bdb186bc802e09ca6eb03299b4d8507",
+        "02-capacitance-sweep.svg": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
+        "02-optimized-winner.csv": "275d98e9e32c9c2ff38a3b6773b5dcecb4b7432c9edab13bc0f7ee38897f4a48",
+        "02-optimized-winner.md": "fe5cc45e87b79955bb4d790c504ff092681a1dc7518872618c51825e77084289",
+        "02-optimized-winner.svg": "3f1b3d84175aea3860b45d60fb687a79120fbd531e132f1c4b1cd0de57cd22e3",
+        "02-optional-grid.svg": "cb1ae57b56a39e23390ebf279cb10531f61847ccdeaa6588b604c7c18835126c",
+        "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
+        "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
+      },
+      "binding_sha256": "47f4e6af0b0afccb329da15ee558e82073bdf96fae4279a2a228f4af3be7cc1c",
+      "generator_sha256": "a014130beec40c52edff88b5a5a553150e00dfa0a23e907d339fc2ece09a4164",
+      "payload_sha256": "01ed1ec17457c9b2a1246ddd157752c160696e5723528ec696fd49876d722f3a",
+      "prior_publication_artifacts": {
+        "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
+        "02-capacitance-sweep.md": "1a55739d02da30c2b835aad998b928c31bdb186bc802e09ca6eb03299b4d8507",
+        "02-capacitance-sweep.svg": "9ddb1c94cf55f8f474c05ff941e64bc65acf8cfef8d40dcff26574042394f521",
+        "02-optimized-winner.csv": "275d98e9e32c9c2ff38a3b6773b5dcecb4b7432c9edab13bc0f7ee38897f4a48",
+        "02-optimized-winner.md": "fe5cc45e87b79955bb4d790c504ff092681a1dc7518872618c51825e77084289",
+        "02-optimized-winner.svg": "3f1b3d84175aea3860b45d60fb687a79120fbd531e132f1c4b1cd0de57cd22e3",
+        "02-optional-grid.svg": "a311027fa65e316094acbaf060235c551df1693a611c4a7dd04c63dbad787783",
+        "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
+        "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
+      },
+      "prior_publication_binding_sha256": "263d693449b4f846804bd616c4d7a0cb3994905c637dd7e57976ca1f96e9258e",
+      "prior_redrawn_artifacts": {
+        "02-capacitance-sweep.svg": {
+          "execution_sha256": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
+          "prior_publication_sha256": "9ddb1c94cf55f8f474c05ff941e64bc65acf8cfef8d40dcff26574042394f521"
+        },
+        "02-optional-grid.svg": {
+          "execution_sha256": "cb1ae57b56a39e23390ebf279cb10531f61847ccdeaa6588b604c7c18835126c",
+          "prior_publication_sha256": "a311027fa65e316094acbaf060235c551df1693a611c4a7dd04c63dbad787783"
+        }
+      },
+      "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
     },
-    "presentation_redrawn_without_execution": true,
-    "prior_manifest_sha256": "a263b65511df1e4ad8afaab1fe2e4aedaa69f838b5c004affd5c1a87bbf823d4",
+    "kind": "reviewed_source_only_transition",
+    "numerical_evidence_reused": true,
+    "prior_manifest_sha256": "291410fc266b1f886a167ce2d55dc90d650c28b0a91b72549ce68fffa1a2dd68",
+    "prior_publication_binding_sha256": "263d693449b4f846804bd616c4d7a0cb3994905c637dd7e57976ca1f96e9258e",
+    "prior_publication_rebind_sha256": "945422f30a6218a97160f27e4e3eca787b0e694c20928c365d5e65dba06505af",
+    "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
       "02-capacitance-sweep.md": "1a55739d02da30c2b835aad998b928c31bdb186bc802e09ca6eb03299b4d8507",
@@ -514,14 +403,10 @@
       "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
       "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
     },
-    "publication_binding_sha256": "263d693449b4f846804bd616c4d7a0cb3994905c637dd7e57976ca1f96e9258e",
-    "publication_generator_sha256": "eb8371f574d8ba4eaf23e64fb0f9f137cadd2ea802791ed47392d1bc19ecaf99",
-    "publication_source_tree_sha256": "443f41b701c7478f6825dfba59347a2075c5e02ea036a3b9b4b7b34f345dc2ac",
-    "redrawn_presentation_artifacts": [
-      "02-capacitance-sweep.svg",
-      "02-optional-grid.svg"
-    ],
-    "schema": "scnsim.engineer_publication_rebind.v2"
+    "publication_binding_sha256": "da08c43ce7006b4bf41bdb2bef871f50533db662e0c65ec6770bb09653a23242",
+    "redrawn_artifacts": {},
+    "schema": "scnsim.engineer_publication_rebind.v3",
+    "transition_id": "scnsim.three_fix_checkpoint.20260915"
   },
   "results": {
     "capacitance_sweep": {

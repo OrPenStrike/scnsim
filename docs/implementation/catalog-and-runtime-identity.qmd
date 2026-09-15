@@ -4,7 +4,9 @@ subtitle: "How is source provenance portable across wheels, Git, modules, and No
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** Accepted catalog and semantic runtime identities remain
+`STABILIZED`; the newer prepared-request and publication-evidence ownership
+paths remain `CONVERGING`.
 
 ## Prove a factory when it creates a component
 

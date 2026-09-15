@@ -4,7 +4,9 @@ subtitle: "How are typed quantities evaluated without Python candidate callbacks
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** Accepted Direct quantity formulas and CMA mathematics remain
+`STABILIZED`; the newer preparation, multi-View binding, checkpoint/resume,
+and ReportPanel ownership paths remain `CONVERGING`.
 
 The numerical algorithms below remain accepted. The `CONVERGING`
 [Parameter System Contract](../contracts/parameter-system.qmd) separately
@@ -87,6 +89,10 @@ root-like quantity Spec. Projection is excluded, so frequency and linewidth of
 the same root reuse one anchor, while the same Spec on different Views cannot
 share an anchor accidentally. Every candidate continues from that baseline
 anchor; candidates do not select branches from one another.
+
+Standalone diagonal-root evaluation follows the same View-qualified rule: its
+baseline anchor and each continuation point realize the request's declared
+View before applying the unchanged root procedure.
 
 Before canonical request encoding, Python normalizes every optimization leaf
 into an immutable `BoundOptimization` declaration. A leaf keeps its authored

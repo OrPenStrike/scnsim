@@ -646,8 +646,15 @@ print("__SCNSIM_RESTART__" + _receipt_json.dumps(_receipt_payload, sort_keys=Tru
     print(public_receipt)
 
 
-def check() -> None:
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+def validate_published_manifest(
+    manifest: object,
+    *,
+    artifact_sha256: dict[str, str],
+) -> None:
+    """Validate Chapter 8's sealed execution and continuation without recursion."""
+
+    if not isinstance(manifest, dict):
+        raise RuntimeError("Chapter 8 artifact manifest is malformed")
     schema = manifest.get("schema")
     if schema not in {
         "scnsim.engineer_chapter8_artifacts.v1",
@@ -657,12 +664,19 @@ def check() -> None:
     execution = manifest.get("execution")
     if not isinstance(execution, dict):
         raise RuntimeError("Chapter 8 execution record is malformed")
+    binding = manifest.get("binding")
+    if not isinstance(binding, dict):
+        raise RuntimeError("Chapter 8 execution binding is malformed")
+    artifacts = manifest.get("artifacts")
+    if (
+        not isinstance(artifacts, dict)
+        or set(artifacts) != set(ARTIFACT_NAMES)
+        or artifacts != artifact_sha256
+        or any(not _is_lower_hex(value, 64) for value in artifacts.values())
+    ):
+        raise RuntimeError("Chapter 8 artifact inventory or bytes are stale")
     if schema == "scnsim.engineer_chapter8_artifacts.v2":
         _verify_original_failed_run(execution.get("original_failed_run"))
-    check_publication_binding(manifest, _binding())
-    if set(manifest.get("artifacts", {})) != set(ARTIFACT_NAMES): raise RuntimeError("Chapter 8 artifact inventory is malformed")
-    if _inventory(FIGURES) != set(ARTIFACT_NAMES): raise RuntimeError("Chapter 8 published artifact inventory is not exact")
-    if manifest["artifacts"] != {name: _hash(FIGURES / name) for name in ARTIFACT_NAMES}: raise RuntimeError("Chapter 8 artifacts are stale")
     if schema == "scnsim.engineer_chapter8_artifacts.v2":
         if execution.get("mode") != "receipt_bound_resume":
             raise RuntimeError("Chapter 8 continuation mode is malformed")
@@ -697,12 +711,55 @@ def check() -> None:
             or execution.get("shared_workspace_unchanged_during_resume") is not True
         ):
             raise RuntimeError("Chapter 8 receipt-bound continuation evidence is malformed")
+        if (
+            continuation.get("generator_sha256") != binding.get("generator_sha256")
+            or restart.get("generator_sha256") != binding.get("generator_sha256")
+        ):
+            raise RuntimeError("Chapter 8 continuation generator identity is malformed")
     else:
         kernels = execution.get("kernels", {})
         if kernels.get("first", {}).get("kernel_id") == kernels.get("second", {}).get("kernel_id"): raise RuntimeError("Chapter 8 kernel identities are not distinct")
         if execution.get("second_kernel_cell_ids") != list(SECOND_KERNEL_IDS) or execution.get("second_kernel_operations") != ["resolve"] or execution.get("shared_workspace_unchanged_during_resolve") is not True: raise RuntimeError("Chapter 8 restart evidence is malformed")
-    results = manifest.get("results", {})
-    if results.get("root_identity") != results.get("resolved_identity"): raise RuntimeError("Chapter 8 persisted and resolved root identities differ")
+    results = manifest.get("results")
+    if not isinstance(results, dict) or set(results) != {
+        "direct_identity", "matrix_coordinates", "resolved_identity",
+        "root_frequency_GHz", "root_identity", "root_linewidth_MHz",
+    }:
+        raise RuntimeError("Chapter 8 Result summary is malformed")
+    if results.get("root_identity") != results.get("resolved_identity"):
+        raise RuntimeError("Chapter 8 persisted and resolved root identities differ")
+    if schema == "scnsim.engineer_chapter8_artifacts.v2":
+        original = _verify_original_failed_run(execution.get("original_failed_run"))
+        original_plan = original["plan"]
+        original_results = {
+            row["operation"]: row for row in original["successful_results"]
+        }
+        for name, operation in (
+            ("direct_identity", "solve_direct"),
+            ("root_identity", "evaluate_direct"),
+            ("resolved_identity", "evaluate_direct"),
+        ):
+            identity = results.get(name)
+            row = original_results[operation]
+            expected = {
+                "plan_sha256": original_plan["plan_sha256"],
+                "request_sha256": row["request_sha256"],
+                "attempt_sha256": row["attempt_sha256"],
+                "result_sha256": row["result_sha256"],
+            }
+            if identity != expected:
+                raise RuntimeError(f"Chapter 8 {name} differs from the original verified Result")
+
+
+def check() -> None:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if _inventory(FIGURES) != set(ARTIFACT_NAMES):
+        raise RuntimeError("Chapter 8 published artifact inventory is not exact")
+    validate_published_manifest(
+        manifest,
+        artifact_sha256={name: _hash(FIGURES / name) for name in ARTIFACT_NAMES},
+    )
+    check_publication_binding(manifest, _binding())
     print("engineer Chapter 8 artifacts are current")
 
 

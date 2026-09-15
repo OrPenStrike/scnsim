@@ -194,10 +194,17 @@ persists Results and the standalone Report, while the second reconstructs and
 calls only `resolve()` against the unchanged shared workspace. Its manifest
 records both kernel identities, the exact matching Result identity, and the
 source-only checker rebind separately from the generator that performed the
-execution. Every source-only rebind preserves an immutable historical
-execution-payload seal and accepts only the exact reviewed teaching-cell
-transitions; changing a computation/result/identity payload cannot be
-reclassified as presentation-only by rerunning the checker.
+execution. A source-only rebind starts from one exact previously published
+manifest named by the reviewed transition artifact, preserves its historical
+execution and redraw identities, and requires every public artifact byte to
+equal that prior publication. The transition closes the exact old/new
+generator, package-source, teaching-source, and cell hashes, including explicit
+additions or removals; measuring new hashes does not authorize them. All eight
+candidate manifests are validated before any per-file atomic replacement, so a
+validation failure publishes none of them. The publisher does not claim one
+filesystem transaction across all eight files. A future redraw needs a separate
+reviewed output pair bound to its original verified input Result/data and
+producer identities; the current source-only transition authorizes no redraw.
 
 The Chapter 8 generator also has one receipt-bound continuation for a reviewed
 run that sealed both Results but stopped during presentation. Maintainers first

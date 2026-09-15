@@ -4,7 +4,9 @@ subtitle: "What crosses the process boundary for one terminal request?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** Accepted terminal framing and numerical request behavior remain
+`STABILIZED`; preparation ownership and optimization checkpoint/resume control
+frames remain `CONVERGING`.
 
 ## Launch one process for one request
 

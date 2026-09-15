@@ -3,13 +3,14 @@ title: "From an Analysis Question to a Result"
 ---
 
 ::: {.callout-warning}
-## Accepted single requests; CONVERGING sweep Results
+## Accepted numerical meanings; CONVERGING execution ownership
 
-The Run, single-point request, receipt, and typed Result meanings on this page
-remain accepted. Ordered `ParameterSpace` requests and
-`ParameterSweepResult` are a separate `CONVERGING` target. Exact signatures,
-receipt fields, workspace validation, and failure behavior belong to the linked
-contracts.
+The accepted single-point numerical meanings and typed Result contents on this
+page remain unchanged. Prepared analysis records, Run commit and maintenance,
+ordered `ParameterSpace` requests, `ParameterSweepResult`, optimization
+checkpoint/resume evidence, and ReportPanel composition remain
+`CONVERGING`. Exact signatures, receipt fields, workspace validation, and
+failure behavior belong to the linked contracts.
 :::
 
 ## Finish the model before asking for a number

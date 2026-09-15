@@ -5,7 +5,7 @@ toc-depth: 3
 ---
 
 ::: {.callout-note}
-## Stabilized numerical runtime with a CONVERGING authoring target
+## Stabilized numerical meanings with CONVERGING ownership paths
 
 This document is the current authority for stabilized SCNSim numerical runtime
 semantics.
@@ -14,6 +14,11 @@ N-port selected networks, PTC/transform/retain, typed quantities, workspace
 evidence, and case-oriented JosephsonCircuits HB semantics remain
 `STABILIZED`. This lifecycle state does not imply a release, main promotion,
 root pin, or consumer migration.
+
+Prepared analysis records, Run commit/maintenance boundaries, multi-View
+optimization evidence, checkpoint/resume, and ReportPanel composition remain
+`CONVERGING`; their integrated candidate implementation is not Human
+acceptance of those reopened ownership scopes.
 
 The public authoring grammar, recursive structured ownership, its Plan-identity
 integration, and certified authoring/compiled diagrams are reopened as one
@@ -2310,8 +2315,9 @@ audit surface.
 Result decoding detaches mutable mappings and numeric buffers once. Array
 backing is immutable rather than merely marked `writeable=False`, so a normal
 public attempt to re-enable writes cannot mutate verified evidence. Quantity
-getters return inexpensive wrappers/views over that backing (or detached small
-values), not a full matrix copy per read. Public Pint in-place conversion either
+getters for matrix data, frequencies, scalar quantities, traces, operator
+points, and HB states return fresh inexpensive wrappers/views over that private
+backing, not a full matrix copy per read. Public Pint in-place conversion either
 fails against immutable backing or changes only a returned wrapper. Lazy
 parameter-point payload loading and artifact chunk reads remain lazy; this
 ownership rule does not eagerly load a sweep.

@@ -4,7 +4,9 @@ subtitle: "How is durable evidence appended and resolved safely?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** Accepted append-only Result evidence remains `STABILIZED`; the
+newer Run preparation, replacement maintenance, read leases, and optimization
+checkpoint/resume ownership paths remain `CONVERGING`.
 
 ## Bind one leaf workspace to one Plan
 
