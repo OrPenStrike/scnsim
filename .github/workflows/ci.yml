@@ -273,7 +273,7 @@ jobs:
                       "01-build.qmd", "02-sweep.qmd", "03-optimize.qmd",
                       "04-optional-spaces.qmd",
                   ),
-                  17,
+                  18,
               ),
               (
                   Path("examples/engineer/chapter-03/chapter.qmd"),
