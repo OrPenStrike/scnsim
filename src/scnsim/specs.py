@@ -101,6 +101,20 @@ def _quantity_pair_text(value: tuple[Quantity, Quantity] | None) -> str:
 
 
 def _selector_text(value: object) -> str:
+    if isinstance(value, QuantitySum):
+        return "(" + " + ".join(_selector_text(term) for term in value.terms) + ")"
+    if isinstance(value, QuantityDifference):
+        return f"({_selector_text(value.left)} - {_selector_text(value.right)})"
+    if isinstance(value, QuantityAbsolute):
+        return f"abs({_selector_text(value.operand)})"
+    if isinstance(value, QuantitySelector):
+        lineage = getattr(value._view, "_lineage", None)
+        view = (
+            str(lineage.get("lineage_sha256", "unbound"))[:12]
+            if isinstance(lineage, Mapping)
+            else "unbound"
+        )
+        return f"{value.type}.{value.projection} [View {view}]"
     record = getattr(value, "_canonical_record", None)
     if callable(record):
         result = record()
@@ -233,6 +247,32 @@ def _validate_selector(value: object) -> str:
     return unit
 
 
+def _expression_unit(value: object) -> str:
+    if isinstance(value, QuantitySelector):
+        return _validate_selector(value)
+    if isinstance(value, QuantitySum):
+        return _expression_unit(value.terms[0])
+    if isinstance(value, QuantityDifference):
+        return _expression_unit(value.left)
+    if isinstance(value, QuantityAbsolute):
+        return _expression_unit(value.operand)
+    raise InvalidOptimizationSpec(
+        "objective quantity must be a closed scalar expression",
+        stage="spec_validation",
+    )
+
+
+def _require_compatible_expressions(*values: object) -> str:
+    units_by_value = tuple(_expression_unit(value) for value in values)
+    dimensions = tuple(units.registry.Unit(unit).dimensionality for unit in units_by_value)
+    if len(set(dimensions)) != 1:
+        raise InvalidOptimizationSpec(
+            "scalar expression operands must share one dimensionality",
+            stage="spec_validation",
+        )
+    return units_by_value[0]
+
+
 @dataclass(frozen=True, slots=True)
 class DirectSolveSpec:
     """Request a complete Direct S/Y/Z response on one selected view."""
@@ -262,6 +302,15 @@ class QuantitySelector:
     projection: str
     type: str
     _view: object | None = None
+
+    def __add__(self, other: object) -> QuantitySum:
+        return QuantitySum(self, other)
+
+    def __sub__(self, other: object) -> QuantityDifference:
+        return QuantityDifference(self, other)
+
+    def __abs__(self) -> QuantityAbsolute:
+        return QuantityAbsolute(self)
 
     def on(self, view: NetworkViewRef) -> QuantitySelector:
         """Return this selector immutably bound to one existing network View."""
@@ -526,20 +575,79 @@ class OptimizationVariable:
 
 @dataclass(frozen=True, slots=True)
 class QuantitySum:
-    """The V1 scalar composition: a sum of same-dimensionality selectors."""
+    """An ordered sum of same-dimensionality scalar expressions."""
 
     terms: tuple[object, ...]
 
     def __init__(self, *terms: object) -> None:
         if not terms:
             raise InvalidOptimizationSpec("QuantitySum requires one or more terms", stage="spec_validation")
-        dimensions = tuple(units.registry.Unit(_validate_selector(term)).dimensionality for term in terms)
-        if len(set(dimensions)) != 1:
-            raise InvalidOptimizationSpec("QuantitySum terms must share one dimensionality", stage="spec_validation")
+        _require_compatible_expressions(*terms)
         object.__setattr__(self, "terms", tuple(terms))
+
+    def __add__(self, other: object) -> QuantitySum:
+        return QuantitySum(self, other)
+
+    def __sub__(self, other: object) -> QuantityDifference:
+        return QuantityDifference(self, other)
+
+    def __abs__(self) -> QuantityAbsolute:
+        return QuantityAbsolute(self)
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"type": "quantity_sum", "terms": tuple(_canonical_value(item) for item in self.terms)}
+
+
+@dataclass(frozen=True, slots=True)
+class QuantityDifference:
+    """An ordered left-minus-right scalar expression."""
+
+    left: object
+    right: object
+
+    def __init__(self, left: object, right: object) -> None:
+        _require_compatible_expressions(left, right)
+        object.__setattr__(self, "left", left)
+        object.__setattr__(self, "right", right)
+
+    def __add__(self, other: object) -> QuantitySum:
+        return QuantitySum(self, other)
+
+    def __sub__(self, other: object) -> QuantityDifference:
+        return QuantityDifference(self, other)
+
+    def __abs__(self) -> QuantityAbsolute:
+        return QuantityAbsolute(self)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "quantity_difference",
+            "left": _canonical_value(self.left),
+            "right": _canonical_value(self.right),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class QuantityAbsolute:
+    """The absolute value of one scalar expression."""
+
+    operand: object
+
+    def __init__(self, operand: object) -> None:
+        _expression_unit(operand)
+        object.__setattr__(self, "operand", operand)
+
+    def __add__(self, other: object) -> QuantitySum:
+        return QuantitySum(self, other)
+
+    def __sub__(self, other: object) -> QuantityDifference:
+        return QuantityDifference(self, other)
+
+    def __abs__(self) -> QuantityAbsolute:
+        return QuantityAbsolute(self)
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {"type": "quantity_absolute", "operand": _canonical_value(self.operand)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -551,6 +659,7 @@ class CostObjective:
     target: Quantity
     weight: Quantity
     scale: Quantity | None = None
+    comparison: Literal["target", "at_least"] = "target"
 
     def __init__(
         self,
@@ -560,12 +669,14 @@ class CostObjective:
         target: Quantity,
         weight: Quantity,
         scale: Quantity | None = None,
+        comparison: Literal["target", "at_least"] = "target",
     ) -> None:
         object.__setattr__(self, "id", id)
         object.__setattr__(self, "quantity", quantity)
         object.__setattr__(self, "target", _detached_quantity(target))
         object.__setattr__(self, "weight", _detached_quantity(weight))
         object.__setattr__(self, "scale", None if scale is None else _detached_quantity(scale))
+        object.__setattr__(self, "comparison", comparison)
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -574,12 +685,9 @@ class CostObjective:
         except Exception as exc:
             raise InvalidOptimizationSpec("objective id must be a canonical identifier", stage="spec_validation") from exc
         object.__setattr__(self, "id", identifier)
-        if isinstance(self.quantity, QuantitySum):
-            quantity_unit = _selector_unit(self.quantity.terms[0])
-        else:
-            quantity_unit = _selector_unit(self.quantity)
-        if quantity_unit is None:
-            raise InvalidOptimizationSpec("objective quantity must be a scalar selector or QuantitySum", stage="spec_validation")
+        quantity_unit = _expression_unit(self.quantity)
+        if self.comparison not in {"target", "at_least"}:
+            raise InvalidOptimizationSpec("objective comparison must be target or at_least", stage="spec_validation")
         _require_quantity(self.target, name="target")
         try:
             self.target.to(quantity_unit)
@@ -594,7 +702,14 @@ class CostObjective:
                 raise InvalidOptimizationSpec("objective scale dimensionality disagrees with selector", stage="spec_validation") from exc
 
     def _canonical_record(self) -> Mapping[str, object]:
-        return {"id": self.id, "quantity": _canonical_value(self.quantity), "target": self.target, "weight": self.weight, "scale": self.scale}
+        return {
+            "id": self.id,
+            "quantity": _canonical_value(self.quantity),
+            "comparison": self.comparison,
+            "target": self.target,
+            "weight": self.weight,
+            "scale": self.scale,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -738,7 +853,12 @@ class OptimizationSpec:
             for variable in self.variables
         )
         objectives = "".join(
-            f"<li>{escape(objective.id)}: {escape(_selector_text(objective.quantity))}</li>"
+            "<li>"
+            f"{escape(objective.id)}: {escape(_selector_text(objective.quantity))}; "
+            f"comparison={escape(objective.comparison)}; target={escape(str(objective.target))}; "
+            f"scale={escape('auto (abs(target); dimensionless zero uses 1)' if objective.scale is None else str(objective.scale))}; "
+            f"weight={escape(str(objective.weight))}"
+            "</li>"
             for objective in self.objectives
         )
         controls = (

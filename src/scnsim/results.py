@@ -608,6 +608,9 @@ class OptimizationResult(AnalysisResult):
 
     best: OptimizationBest
     ledger: tuple[Mapping[str, object], ...] = ()
+    _presentation: Mapping[str, object] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def __init__(self) -> None:
         unavailable("OptimizationResult construction")
@@ -615,7 +618,7 @@ class OptimizationResult(AnalysisResult):
     def plot(
         self,
         *,
-        kind: Literal["history", "objective", "residual", "parameter", "table"] = "history",
+        kind: Literal["history", "objective", "residual", "parameter", "table", "comparison"] = "history",
         objective: str | None = None,
         parameter: ParameterRef | None = None,
         theme: Theme = Theme.AUTO,
@@ -637,7 +640,7 @@ class OptimizationResult(AnalysisResult):
         *,
         row: int,
         col: int,
-        kind: Literal["history", "objective", "residual", "parameter", "table"],
+        kind: Literal["history", "objective", "residual", "parameter", "table", "comparison"],
         objective: str | None = None,
         parameter: ParameterRef | None = None,
     ) -> Figure:
@@ -1294,9 +1297,16 @@ class ExplanationResult(Result):
 
         evidence = self.evidence
         compiled = evidence.get("compiled", {})
-        lineage = evidence.get("ref_lineage", {})
+        lineage = evidence.get("ref_lineage", evidence.get("view", {}))
         hierarchy = evidence.get("component_hierarchy", ())
-        parameters = evidence.get("parameters", {}).get("bindings", ()) if isinstance(evidence.get("parameters"), Mapping) else ()
+        parameter_source = evidence.get("parameter_source", {})
+        parameters_record = evidence.get("parameters", {})
+        if (
+            isinstance(parameter_source, Mapping)
+            and parameter_source.get("kind") == "point"
+        ):
+            parameters_record = parameter_source.get("parameters", {})
+        parameters = parameters_record.get("bindings", ()) if isinstance(parameters_record, Mapping) else ()
         html = table(
             "Identity",
             ("field", "value"),
@@ -1313,6 +1323,15 @@ class ExplanationResult(Result):
             tuple(("component", item.get("component_path"), item) for item in hierarchy)
             + tuple(("parameter", item.get("parameter"), item.get("value")) for item in parameters),
         )
+        spec = evidence.get("spec")
+        if isinstance(spec, Mapping) and spec.get("type") == "optimization":
+            html += table(
+                "Resolved optimization declaration",
+                ("kind", "identity", "declaration"),
+                tuple(("variable", item.get("parameter"), item) for item in spec.get("variables", ()))
+                + tuple(("objective", item.get("id"), item) for item in spec.get("objectives", ()))
+                + (("optimizer", "controls", spec.get("optimizer")),),
+            )
         if isinstance(compiled, Mapping):
             html += table(
                 "Compiler and capability",

@@ -1598,7 +1598,7 @@ def _optimization_term_rows(result: Any) -> tuple[list[object], ...]:
 def optimization_plot(
     result: Any,
     *,
-    kind: Literal["history", "objective", "residual", "parameter", "table"] = "history",
+    kind: Literal["history", "objective", "residual", "parameter", "table", "comparison"] = "history",
     objective: str | None = None,
     parameter: Any | None = None,
     theme: Theme = Theme.AUTO,
@@ -1648,8 +1648,17 @@ def optimization_plot(
             cells={"values": columns},
             meta={"scnsim": {"source": _presentation_source(result)}},
         )])
+    elif kind == "comparison":
+        if objective is not None or parameter is not None:
+            raise ValueError("objective and parameter are invalid for the comparison")
+        rows = optimization_comparison_rows(result)
+        figure = go.Figure(data=[go.Table(
+            header={"values": ["section", "field", "initial", "best found"]},
+            cells={"values": list(zip(*rows, strict=True))},
+            meta={"scnsim": {"source": _presentation_source(result)}},
+        )])
     else:
-        raise ValueError("kind must be 'history', 'objective', 'residual', 'parameter', or 'table'")
+        raise ValueError("kind must be 'history', 'objective', 'residual', 'parameter', 'table', or 'comparison'")
     winner_parameters = {
         f"{parameter.definitions_id}.{parameter.id}": str(value)
         for parameter, value in result.best.parameters.values.items()
@@ -1679,20 +1688,20 @@ def optimization_add_to(
     *,
     row: int,
     col: int,
-    kind: Literal["history", "objective", "residual", "parameter", "table"],
+    kind: Literal["history", "objective", "residual", "parameter", "table", "comparison"],
     objective: str | None = None,
     parameter: Any | None = None,
 ) -> Any:
     go, _, _ = _plotly()
     if not isinstance(figure, go.Figure):
         raise TypeError("fig must be a plotly.graph_objects.Figure")
-    expected = "domain" if kind == "table" else "xy"
+    expected = "domain" if kind in {"table", "comparison"} else "xy"
     if _subplot_type(figure, row, col) != expected:
         raise ValueError(f"optimization {kind} requires a compatible {expected} subplot")
     source = optimization_plot(
         result, kind=kind, objective=objective, parameter=parameter
     )
-    if kind != "table":
+    if kind not in {"table", "comparison"}:
         trace = source.data[0]
         _require_axis_semantics(
             figure,
@@ -1703,6 +1712,187 @@ def optimization_add_to(
         )
     figure.add_trace(source.data[0], row=row, col=col)
     return figure
+
+
+def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]:
+    """Return one verified initial/best presentation table without execution."""
+
+    from hashlib import sha256
+
+    from ._canonical import canonical_json_bytes, float64_from_hex
+
+    def expression_text(value: object) -> str:
+        if not isinstance(value, Mapping):
+            raise ValueError("Optimization expression presentation is malformed")
+        kind = value.get("type")
+        if kind == "quantity_sum":
+            return "(" + " + ".join(expression_text(item) for item in value["terms"]) + ")"
+        if kind == "quantity_difference":
+            return f"({expression_text(value['left'])} - {expression_text(value['right'])})"
+        if kind == "quantity_absolute":
+            return f"abs({expression_text(value['operand'])})"
+        view = value.get("view")
+        if not isinstance(view, Mapping):
+            raise ValueError("Optimization selector View presentation is malformed")
+        ptc = view.get("ptc")
+        transforms = view.get("transforms")
+        retain = view.get("retain")
+        if not isinstance(transforms, Sequence) or isinstance(transforms, (str, bytes)):
+            raise ValueError("Optimization selector View transforms are malformed")
+        if ptc is None:
+            ptc_text = "raw"
+        elif isinstance(ptc, Mapping):
+            ptc_text = f"PTC[{','.join(ptc.get('selected_ports', ())) }]"
+        else:
+            raise ValueError("Optimization selector View PTC is malformed")
+        transform_text = ",".join(str(item.get("id")) for item in transforms)
+        if retain is None:
+            retain_text = "all"
+        elif isinstance(retain, Mapping):
+            retain_text = ",".join(retain.get("retained_coordinates", ()))
+        else:
+            raise ValueError("Optimization selector View retain is malformed")
+        view_sha256 = sha256(canonical_json_bytes(dict(view))).hexdigest()
+        view_text = (
+            f"{ptc_text}; transform=[{transform_text}]; retain=[{retain_text}]; "
+            f"view_sha256={view_sha256}"
+        )
+        return f"{kind}.{value.get('projection')} @ {view_text}"
+
+    def bounds_text(value: object) -> str:
+        if (
+            not isinstance(value, Sequence)
+            or isinstance(value, (str, bytes))
+            or len(value) != 2
+        ):
+            raise ValueError("Optimization bounds presentation is malformed")
+        return f"[{_quantity_text(value[0])}, {_quantity_text(value[1])}]"
+
+    presentation = result._presentation
+    initial = presentation.get("initial_candidate")
+    ordinal = presentation.get("best_evaluation_ordinal")
+    objectives = presentation.get("objectives")
+    variables = presentation.get("variables")
+    if (
+        not isinstance(initial, Mapping)
+        or not isinstance(ordinal, int)
+        or not isinstance(objectives, Sequence)
+        or not isinstance(variables, Sequence)
+    ):
+        raise ValueError("Optimization comparison presentation is incomplete")
+    best = initial if ordinal == 0 else None
+    if best is None:
+        for ledger in result.ledger:
+            candidates = ledger.get("candidates") if isinstance(ledger, Mapping) else None
+            if isinstance(candidates, Sequence):
+                best = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if isinstance(candidate, Mapping)
+                        and candidate.get("evaluation_ordinal") == ordinal
+                    ),
+                    None,
+                )
+            if best is not None:
+                break
+    if not isinstance(best, Mapping):
+        raise ValueError("Saved best evaluation ordinal is absent from verified evidence")
+    initial_outcome, best_outcome = initial.get("outcome"), best.get("outcome")
+    if not isinstance(initial_outcome, Mapping) or not isinstance(best_outcome, Mapping):
+        raise ValueError("Optimization comparison candidates have no outcome")
+
+    rows: list[tuple[str, str, str, str]] = []
+    for variable in variables:
+        if not isinstance(variable, Mapping):
+            raise ValueError("Optimization variable presentation is malformed")
+        ref = variable.get("parameter")
+        if not isinstance(ref, Mapping):
+            raise ValueError("Optimization variable identity is malformed")
+        name = f"{ref.get('definitions_id')}.{ref.get('parameter_id')}"
+        defaults = variable.get("model_default_bounds")
+        override = variable.get("consumer_override_bounds")
+        rows.append((
+            "Settings — Model Default",
+            f"{name} bounds ({variable.get('transform')})",
+            "model default " + bounds_text(defaults),
+            "resolved " + bounds_text(override if override is not None else defaults),
+        ))
+    for objective in objectives:
+        if not isinstance(objective, Mapping):
+            raise ValueError("Optimization objective presentation is malformed")
+        rows.append((
+            "Settings — Objective",
+            f"objective {objective.get('id')}",
+            f"expression={expression_text(objective.get('quantity'))}; comparison={objective.get('comparison')}; target={_quantity_text(objective.get('target'))}",
+            f"scale={_quantity_text(objective.get('resolved_scale'))} ({objective.get('scale_source')}); weight={float64_from_hex(objective['weight_f64']):.12g}",
+        ))
+
+    initial_parameters = presentation.get("initial_parameters")
+    if initial_parameters is None:
+        raise ValueError("Optimization initial ParameterSet is absent")
+    parameter_keys = list(result.best.parameters.values)
+    initial_by_key = {
+        (item.definitions_id, item.id): value
+        for item, value in initial_parameters.values.items()
+    }
+    for parameter in parameter_keys:
+        key = (parameter.definitions_id, parameter.id)
+        if key not in initial_by_key:
+            raise ValueError("Optimization initial ParameterSet lacks a best-point parameter")
+        initial_parameter = initial_by_key[key]
+        best_parameter = result.best.parameters.values[parameter]
+        rows.append((
+            "Comparison — Initial Parameters / Best-found Parameters",
+            f"{parameter.definitions_id}.{parameter.id} ({'unchanged' if str(initial_parameter) == str(best_parameter) else 'physical value changed'})",
+            str(initial_parameter),
+            str(best_parameter),
+        ))
+    rows.append((
+        "Comparison — Initial Metrics / Best-found Metrics",
+        "evaluation ordinal",
+        str(initial.get("evaluation_ordinal")),
+        str(ordinal),
+    ))
+    rows.append((
+        "Comparison — Initial Metrics / Best-found Metrics",
+        "total cost",
+        f"{float64_from_hex(initial_outcome['cost_f64']):.12g}",
+        f"{result.best.cost:.12g}",
+    ))
+    rows.append((
+        "Comparison — Cost Improvement",
+        "total cost delta (best - initial)",
+        "—",
+        f"{result.best.cost - float64_from_hex(initial_outcome['cost_f64']):.12g}",
+    ))
+    initial_components = initial_outcome.get("objective_components")
+    best_components = best_outcome.get("objective_components")
+    if not isinstance(initial_components, Sequence) or not isinstance(best_components, Sequence):
+        raise ValueError("Optimization objective comparison evidence is absent")
+    for objective, left, right in zip(objectives, initial_components, best_components, strict=True):
+        if not isinstance(left, Mapping) or not isinstance(right, Mapping):
+            raise ValueError("Optimization objective comparison evidence is malformed")
+        name = str(objective.get("id"))
+        initial_value = float64_from_hex(left["value"]["si_value_f64"])
+        best_value = float64_from_hex(right["value"]["si_value_f64"])
+        target_value = float64_from_hex(objective["target"]["si_value_f64"])
+        initial_cost = float64_from_hex(left["weighted_cost_f64"])
+        best_cost = float64_from_hex(right["weighted_cost_f64"])
+        rows.extend((
+            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} value", _quantity_text(left.get("value")), _quantity_text(right.get("value"))),
+            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} normalized residual", f"{float64_from_hex(left['normalized_residual_f64']):.12g}", f"{float64_from_hex(right['normalized_residual_f64']):.12g}"),
+            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} weighted cost", f"{initial_cost:.12g}", f"{best_cost:.12g}"),
+            ("Comparison — Cost Improvement", f"{name} weighted-cost delta (best - initial)", "—", f"{best_cost - initial_cost:.12g}"),
+        ))
+        if objective.get("comparison") == "at_least":
+            rows.append((
+                "Comparison — Initial Metrics / Best-found Metrics",
+                f"{name} at-least condition",
+                "met" if initial_value >= target_value else "below target",
+                "met" if best_value >= target_value else "below target",
+            ))
+    return rows
 
 
 def _hb_status_table(cases: Mapping[str, Any]) -> Any:

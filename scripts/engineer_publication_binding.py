@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Mapping
 
 
-TRANSITION_ID = "scnsim.three_fix_checkpoint.20260915"
-PRIOR_PUBLISHED_GIT_COMMIT = "d4d4847303a8aaf422ccad24f1a397a046bf719f"
+TRANSITION_ID = "scnsim.quantity_expression.20260917"
+PRIOR_PUBLISHED_GIT_COMMIT = "dd3b745ad0bc0a159e4ce09c4ba788e9c88535d2"
 TRANSITION_FILE = Path(__file__).with_name("engineer_publication_transitions.json")
 _TRANSITION_NAMES = {
     f"chapter-{chapter:02d}-artifacts.json" for chapter in range(1, 9)
@@ -36,7 +36,13 @@ _TRANSITION_FIELDS = {
     "prior_publication_rebind_sha256",
     "publication_binding_sha256",
 }
-_DELTA_FIELDS = {"generator", "source_files", "teaching_sources", "cells"}
+_DELTA_FIELDS = {
+    "generator",
+    "source_files",
+    "teaching_sources",
+    "cell_ids",
+    "cells",
+}
 _HISTORICAL_FIELDS = {
     "artifacts",
     "binding_sha256",
@@ -46,6 +52,22 @@ _HISTORICAL_FIELDS = {
     "prior_publication_binding_sha256",
     "prior_redrawn_artifacts",
     "source_tree_sha256",
+}
+_REBIND_V3_FIELDS = {
+    "schema",
+    "kind",
+    "transition_id",
+    "prior_manifest_sha256",
+    "prior_publication_binding_sha256",
+    "publication_binding_sha256",
+    "deltas",
+    "historical_execution",
+    "prior_publication_rebind_sha256",
+    "publication_artifacts",
+    "redrawn_artifacts",
+    "numerical_evidence_reused",
+    "prior_published_artifacts_retained",
+    "execution_identity_retained",
 }
 
 
@@ -191,7 +213,11 @@ def _apply_v2_delta(values: dict[str, str], delta: object, *, role: str) -> None
         values[key] = str(row["publication_sha256"])
 
 
-def _prior_publication_binding(manifest: Mapping[str, object]) -> dict[str, object]:
+def _prior_publication_binding(
+    manifest: Mapping[str, object],
+    *,
+    reviewed_prior: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     executed = manifest.get("binding")
     if not isinstance(executed, Mapping):
         raise RuntimeError("engineer historical execution binding is malformed")
@@ -199,6 +225,33 @@ def _prior_publication_binding(manifest: Mapping[str, object]) -> dict[str, obje
     rebind = manifest.get("publication_rebind")
     if publication is None and rebind is None:
         return deepcopy(dict(executed))
+    if isinstance(rebind, Mapping) and rebind.get("schema") == "scnsim.engineer_publication_rebind.v3":
+        historical = rebind.get("historical_execution")
+        execution_artifacts = historical.get("artifacts") if isinstance(historical, Mapping) else None
+        if (
+            reviewed_prior is None
+            or set(rebind) != _REBIND_V3_FIELDS
+            or rebind.get("kind") != "reviewed_source_only_transition"
+            or not isinstance(historical, Mapping)
+            or set(historical) != _HISTORICAL_FIELDS
+            or not isinstance(execution_artifacts, Mapping)
+            or historical.get("payload_sha256")
+            != _canonical_sha256(_execution_payload(manifest, execution_artifacts))
+            or historical.get("binding_sha256") != _canonical_sha256(executed)
+            or historical.get("generator_sha256")
+            != _execution_generator(manifest.get("execution"), executed)
+            or historical.get("source_tree_sha256") != _source_tree_sha256(executed)
+            or publication != _publication_record(reviewed_prior)
+            or rebind.get("publication_binding_sha256")
+            != _canonical_sha256(reviewed_prior)
+            or manifest.get("artifacts") != rebind.get("publication_artifacts")
+            or rebind.get("redrawn_artifacts") != {}
+            or rebind.get("numerical_evidence_reused") is not True
+            or rebind.get("prior_published_artifacts_retained") is not True
+            or rebind.get("execution_identity_retained") is not True
+        ):
+            raise RuntimeError("engineer prior v3 publication binding is inconsistent")
+        return deepcopy(dict(reviewed_prior))
     if (
         not isinstance(publication, Mapping)
         or not isinstance(rebind, Mapping)
@@ -250,7 +303,14 @@ def _historical_execution(
     if not isinstance(executed, Mapping):
         raise RuntimeError("engineer execution binding is malformed")
     prior_rebind = manifest.get("publication_rebind")
-    if isinstance(prior_rebind, Mapping):
+    if (
+        isinstance(prior_rebind, Mapping)
+        and prior_rebind.get("schema") == "scnsim.engineer_publication_rebind.v3"
+    ):
+        prior_historical = prior_rebind.get("historical_execution")
+        artifacts = prior_historical.get("artifacts") if isinstance(prior_historical, Mapping) else None
+        payload_sha256 = prior_historical.get("payload_sha256") if isinstance(prior_historical, Mapping) else None
+    elif isinstance(prior_rebind, Mapping):
         artifacts = prior_rebind.get("execution_artifacts")
         payload_sha256 = prior_rebind.get("execution_payload_sha256")
     else:
@@ -317,8 +377,86 @@ def _transition_deltas(
         "teaching_sources": _mapping_delta(
             prior.get("sources"), current.get("sources"), role="teaching-source"
         ),
+        "cell_ids": {
+            "before": prior.get("cell_ids"),
+            "after": current.get("cell_ids"),
+        },
         "cells": _mapping_delta(prior.get("cells"), current.get("cells"), role="cell"),
     }
+
+
+def _prior_binding_from_transition(
+    current: Mapping[str, object], transition: Mapping[str, object]
+) -> dict[str, object]:
+    """Reverse one exact reviewed delta to recover its trusted prior binding."""
+
+    prior = deepcopy(dict(current))
+    deltas = transition.get("deltas")
+    if not isinstance(deltas, Mapping) or set(deltas) != _DELTA_FIELDS:
+        raise RuntimeError("engineer transition delta is malformed")
+
+    generator = deltas.get("generator")
+    if (
+        not isinstance(generator, Mapping)
+        or set(generator) != {"before_sha256", "after_sha256"}
+        or prior.get("generator_sha256") != generator.get("after_sha256")
+        or not isinstance(generator.get("before_sha256"), str)
+    ):
+        raise RuntimeError("engineer transition generator delta is inconsistent")
+    prior["generator_sha256"] = generator["before_sha256"]
+
+    def reverse(values: object, rows: object, *, role: str) -> dict[str, str]:
+        restored = _mapping(values, role=role)
+        if not isinstance(rows, Mapping):
+            raise RuntimeError(f"engineer transition {role} delta is malformed")
+        for key, row in rows.items():
+            if (
+                not isinstance(key, str)
+                or not isinstance(row, Mapping)
+                or set(row) != {"before_sha256", "after_sha256"}
+                or not isinstance(row.get("before_sha256"), str)
+                or not isinstance(row.get("after_sha256"), str)
+                or restored.get(key, "absent") != row["after_sha256"]
+            ):
+                raise RuntimeError(f"engineer transition {role} delta is inconsistent")
+            if row["before_sha256"] == "absent":
+                restored.pop(key, None)
+            else:
+                restored[key] = str(row["before_sha256"])
+        return restored
+
+    source_tree = prior.get("source_tree")
+    if not isinstance(source_tree, dict):
+        raise RuntimeError("engineer transition source tree is malformed")
+    files = reverse(
+        source_tree.get("files"), deltas.get("source_files"), role="source-tree"
+    )
+    source_tree["files"] = files
+    source_tree["sha256"] = _canonical_sha256(files)
+    prior["sources"] = reverse(
+        prior.get("sources"), deltas.get("teaching_sources"), role="teaching-source"
+    )
+    cell_ids = deltas.get("cell_ids")
+    if (
+        not isinstance(cell_ids, Mapping)
+        or set(cell_ids) != {"before", "after"}
+        or not isinstance(cell_ids.get("before"), list)
+        or not isinstance(cell_ids.get("after"), list)
+        or any(
+            not isinstance(identifier, str)
+            for identifiers in (cell_ids["before"], cell_ids["after"])
+            for identifier in identifiers
+        )
+        or prior.get("cell_ids") != cell_ids["after"]
+    ):
+        raise RuntimeError("engineer transition cell-ID order is inconsistent")
+    prior["cell_ids"] = list(cell_ids["before"])
+    prior["cells"] = reverse(
+        prior.get("cells"), deltas.get("cells"), role="cell"
+    )
+    if _canonical_sha256(prior) != transition.get("prior_publication_binding_sha256"):
+        raise RuntimeError("engineer transition does not recover its exact prior binding")
+    return prior
 
 
 def _rebind_record(
@@ -438,7 +576,10 @@ def _prepare_rebind(
         raise RuntimeError(f"{path} prior published artifact bytes changed")
     if validate_historical is not None:
         validate_historical(manifest, artifact_sha256=actual_artifacts)  # type: ignore[operator]
-    prior_binding = _prior_publication_binding(manifest)
+    prior_binding = _prior_publication_binding(
+        manifest,
+        reviewed_prior=_prior_binding_from_transition(current, transition),
+    )
     historical = _historical_execution(manifest, prior_binding)
     previous_rebind = manifest.get("publication_rebind")
     manifest["publication_binding"] = _publication_record(current)

@@ -34,12 +34,25 @@ The Parameter System keeps seven layers distinct:
 The output selected by an objective is a typed quantity, not a `ParameterRef`.
 `root_hint` remains a numerical branch locator, not a parameter value, target,
 bound, or Gate.
+The local complex Newton solve does not promise the lowest root, retaining one
+coordinate does not prove that only one root exists, and an analytic root or
+zero is not a sampled response dip. A future bounded-frequency initial locator
+could choose the first anchor more deliberately; continuation would still own
+that same selected branch afterward. No hidden search or fallback is implied.
 
 An optimization selector can be attached non-executingly to an existing View
 with `selector.on(view)`. This says which retained network supplies that scalar;
-it does not calculate a value. Different same-dimensionality terms in one
-`QuantitySum` may name different Views of the same captured Plan, while every
-candidate still supplies one shared parameter point to the whole objective.
+it does not calculate a value. Different same-dimensionality leaves in one
+ordered expression may name different Views of the same captured Plan.
+Expressions support sums, left-minus-right differences, and absolute value
+only. Every candidate still supplies one shared parameter point to the whole
+expression; repeated leaves remain repeated evidence positions even when their
+underlying root is reused.
+
+Objective settings are request declarations. Changing a target, comparison
+(`target` or `at_least`), scale, weight, or expression means constructing a
+new `OptimizationSpec`; it does not mutate a sealed Plan. At-least means a
+one-sided cost contribution, not maximization and not a hard feasibility Gate.
 
 ## Definitions are independent; physical fields assign them to a Plan
 

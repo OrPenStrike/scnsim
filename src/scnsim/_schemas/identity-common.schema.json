@@ -652,7 +652,7 @@
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -1232,11 +1232,33 @@
       "required": ["type", "terms"],
       "properties": {
         "type": { "const": "quantity_sum" },
-        "terms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/quantitySelector" } }
+        "terms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/scalarExpression" } }
+      }
+    },
+    "quantityDifference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "left", "right"],
+      "properties": {
+        "type": { "const": "quantity_difference" },
+        "left": { "$ref": "#/$defs/scalarExpression" },
+        "right": { "$ref": "#/$defs/scalarExpression" }
+      }
+    },
+    "quantityAbsolute": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "operand"],
+      "properties": {
+        "type": { "const": "quantity_absolute" },
+        "operand": { "$ref": "#/$defs/scalarExpression" }
       }
     },
     "scalarExpression": {
-      "oneOf": [{ "$ref": "#/$defs/quantitySelector" }, { "$ref": "#/$defs/quantitySum" }]
+      "oneOf": [
+        { "$ref": "#/$defs/quantitySelector" },
+        { "$ref": "#/$defs/quantitySum" },
+        { "$ref": "#/$defs/quantityDifference" },
+        { "$ref": "#/$defs/quantityAbsolute" }
+      ]
     },
     "pumpAxis": {
       "type": "object", "additionalProperties": false,
@@ -1403,10 +1425,11 @@
     "costObjective": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"],
+      "required": ["id", "quantity", "comparison", "target", "weight_f64", "resolved_scale", "scale_source"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "quantity": { "$ref": "#/$defs/scalarExpression" },
+        "comparison": { "enum": ["target", "at_least"] },
         "target": { "$ref": "#/$defs/quantity" },
         "weight_f64": { "$ref": "#/$defs/f64" },
         "resolved_scale": { "$ref": "#/$defs/quantity" },
@@ -1649,7 +1672,7 @@
         "schema": { "const": "scnsim.optimization_baseline_checkpoint" },
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
-        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" },
+        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" },
         "baseline": { "$ref": "identity-v2.schema.json#/$defs/optimizationBaseline" },
         "baseline_roots": {
           "type": "array",
@@ -2375,6 +2398,22 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["schema", "schema_version", "phase", "candidate", "owner", "affected_leaves"],
+      "allOf": [
+        {
+          "if": {
+            "required": ["phase", "candidate"],
+            "properties": {
+              "phase": { "enum": ["objective_aggregation", "total_aggregation"] },
+              "candidate": {
+                "required": ["origin"],
+                "properties": { "origin": { "const": "baseline" } }
+              }
+            }
+          },
+          "then": { "required": ["aggregation_witness"] },
+          "else": { "not": { "required": ["aggregation_witness"] } }
+        }
+      ],
       "properties": {
         "schema": { "const": "scnsim.optimization_failure_context" },
         "schema_version": { "const": 1 },
@@ -2418,6 +2457,37 @@
             "view_sha256": { "$ref": "#/$defs/sha256" },
             "dependency_sha256": { "$ref": "#/$defs/sha256" }
           }
+        },
+        "aggregation_witness": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "objective_id", "terms"],
+              "properties": {
+                "kind": { "const": "objective" },
+                "objective_id": { "$ref": "#/$defs/identifier" },
+                "terms": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "#/$defs/optimizationTermEvidence" }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "objective_components"],
+              "properties": {
+                "kind": { "const": "total" },
+                "objective_components": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "#/$defs/optimizationObjectiveComponent" }
+                }
+              }
+            }
+          ]
         },
         "affected_leaves": {
           "type": "array",

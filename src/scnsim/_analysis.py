@@ -34,12 +34,15 @@ from .specs import (
     HybridizedPoleSpec,
     OperatorSpec,
     OptimizationSpec,
+    QuantityAbsolute,
+    QuantityDifference,
     QuantitySelector,
     QuantitySum,
     ResidueNormalizedCouplingSpec,
     ResponseElementSpec,
     SParameterTrace,
     TransferZeroSpec,
+    _expression_unit,
     _selector_unit,
 )
 
@@ -316,6 +319,23 @@ def _encode_scalar_expression(
                 for term in value.terms
             ],
         }
+    if isinstance(value, QuantityDifference):
+        return {
+            "type": "quantity_difference",
+            "left": _encode_scalar_expression(
+                value.left, coordinate_bindings=coordinate_bindings
+            ),
+            "right": _encode_scalar_expression(
+                value.right, coordinate_bindings=coordinate_bindings
+            ),
+        }
+    if isinstance(value, QuantityAbsolute):
+        return {
+            "type": "quantity_absolute",
+            "operand": _encode_scalar_expression(
+                value.operand, coordinate_bindings=coordinate_bindings
+            ),
+        }
     raise InvalidOptimizationSpec(
         "objective quantity must be a supported scalar expression",
         stage="spec_validation",
@@ -568,17 +588,7 @@ def _encode_spec(
     unused = spec.optimizer.max_evaluations - (1 + generations * population)
     objectives: list[dict[str, object]] = []
     for objective, quantity in zip(spec.objectives, optimization_quantities):
-        selector = (
-            objective.quantity.terms[0]
-            if isinstance(objective.quantity, QuantitySum)
-            else objective.quantity
-        )
-        objective_unit = _selector_unit(selector)
-        if objective_unit is None:
-            raise InvalidOptimizationSpec(
-                "optimization objective has no scalar quantity unit",
-                stage="spec_validation",
-            )
+        objective_unit = _expression_unit(objective.quantity)
         target = quantity_envelope(
             objective.target, si_unit=objective_unit, registry=units.registry
         )
@@ -614,6 +624,7 @@ def _encode_spec(
             {
                 "id": objective.id,
                 "quantity": dict(quantity),
+                "comparison": objective.comparison,
                 "target": target,
                 "weight_f64": float64_hex(weight),
                 "resolved_scale": quantity_envelope(

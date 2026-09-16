@@ -163,11 +163,16 @@ function root_selector_key(selector)
 end
 
 function selector_leaves(selector)::Vector{Any}
-    if get(selector, "type", nothing) == "quantity_sum"
+    kind = get(selector, "type", nothing)
+    if kind == "quantity_sum"
         terms = get(selector, "terms", nothing)
         terms isa AbstractVector && !isempty(terms) ||
             fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum requires one or more terms")
-        return Any[term for term in terms]
+        return reduce(vcat, (selector_leaves(term) for term in terms); init = Any[])
+    elseif kind == "quantity_difference"
+        return vcat(selector_leaves(selector["left"]), selector_leaves(selector["right"]))
+    elseif kind == "quantity_absolute"
+        return selector_leaves(selector["operand"])
     end
     return Any[selector]
 end
@@ -212,7 +217,7 @@ function optimization_dependency(selector; kind::String = "quantity")
 end
 
 function optimization_context(phase::String, candidate, owner, affected;
-        dependency = nothing)
+        dependency = nothing, aggregation_witness = nothing)
     context = Dict{String,Any}(
         "schema" => "scnsim.optimization_failure_context",
         "schema_version" => 1,
@@ -222,6 +227,8 @@ function optimization_context(phase::String, candidate, owner, affected;
         "affected_leaves" => affected,
     )
     dependency === nothing || (context["dependency"] = dependency)
+    aggregation_witness === nothing ||
+        (context["aggregation_witness"] = aggregation_witness)
     return context
 end
 
@@ -320,6 +327,11 @@ function root_selector_specs(selector, found::Dict{String,Any} = Dict{String,Any
         for term in terms
             root_selector_specs(term, found)
         end
+    elseif selector_type == "quantity_difference"
+        root_selector_specs(selector["left"], found)
+        root_selector_specs(selector["right"], found)
+    elseif selector_type == "quantity_absolute"
+        root_selector_specs(selector["operand"], found)
     else
         fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "optimization selector is unsupported")
     end
@@ -441,8 +453,41 @@ function selector_public_unit(selector)::String
         terms isa AbstractVector && !isempty(terms) ||
             fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum requires one or more terms")
         return selector_public_unit(terms[1])
+    elseif kind == "quantity_difference"
+        return selector_public_unit(selector["left"])
+    elseif kind == "quantity_absolute"
+        return selector_public_unit(selector["operand"])
     end
     fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "optimization selector has no public scalar unit")
+end
+
+function scalar_expression_value(expression, leaf_values::Vector{Float64}, index::Base.RefValue{Int})::Float64
+    kind = get(expression, "type", nothing)
+    if kind == "quantity_sum"
+        terms = expression["terms"]
+        isempty(terms) && fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum requires one or more terms")
+        target_unit = selector_public_unit(terms[1])
+        total = scalar_expression_value(terms[1], leaf_values, index)
+        for term in terms[2:end]
+            value = scalar_expression_value(term, leaf_values, index)
+            total += selector_value_in_unit(value, selector_public_unit(term), target_unit)
+        end
+        return isfinite(total) ? total : NaN
+    elseif kind == "quantity_difference"
+        target_unit = selector_public_unit(expression["left"])
+        left = scalar_expression_value(expression["left"], leaf_values, index)
+        right = scalar_expression_value(expression["right"], leaf_values, index)
+        value = left - selector_value_in_unit(right, selector_public_unit(expression["right"]), target_unit)
+        return isfinite(value) ? value : NaN
+    elseif kind == "quantity_absolute"
+        value = abs(scalar_expression_value(expression["operand"], leaf_values, index))
+        return isfinite(value) ? value : NaN
+    end
+    index[] += 1
+    index[] <= length(leaf_values) ||
+        fail("execution", "compiler_invariant", "objective", "optimization_candidate", "scalar expression leaf evidence is incomplete")
+    value = leaf_values[index[]]
+    return isfinite(value) ? value : NaN
 end
 
 function selector_value_in_unit(value::Float64, source::String, target::String)::Float64
@@ -457,19 +502,6 @@ end
 
 function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator)::Float64
     selector_type = get(selector, "type", nothing)
-    if selector_type == "quantity_sum"
-        terms = selector["terms"]
-        isempty(terms) && fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum requires one or more terms")
-        # Declaration order is semantic authority.  Do not let a reduction
-        # implementation choose regrouping or summation order.
-        public_unit = selector_public_unit(terms[1])
-        total = root_selector_value(terms[1], plan, request, baseline_values, values, baseline_roots, roots, compiled, view, candidate, locator)
-        for term in terms[2:end]
-            value = root_selector_value(term, plan, request, baseline_values, values, baseline_roots, roots, compiled, view, candidate, locator)
-            total = total + selector_value_in_unit(value, selector_public_unit(term), public_unit)
-        end
-        return total
-    end
     projection = selector["projection"]
     if selector_type == "diagonal_root_projection"
         key = root_selector_key(selector)
@@ -653,9 +685,8 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
         selector = objective["quantity"]
         selector isa AbstractDict || fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "optimization quantity must be a selector record")
         terms = selector_leaves(selector)
-        public_unit = selector_public_unit(terms[1])
         term_records = Any[]
-        value = 0.0
+        leaf_values = Float64[]
         failed = nothing
         for (term_index, term) in enumerate(terms)
             selected = nothing
@@ -670,7 +701,11 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
                     term, plan, request, baseline_values, values, baseline_roots,
                     roots, view.compiled, view, candidate, locator,
                 )
-                value += selector_value_in_unit(term_value, selector_public_unit(term), public_unit)
+                isfinite(term_value) || fail(
+                    "execution", "numerical_resolution_unresolved", "selector",
+                    "optimization_candidate", "candidate selector value is non-finite",
+                )
+                push!(leaf_values, term_value)
                 push!(term_records, Dict{String,Any}(
                     "term_ordinal" => term_index,
                     "selector" => term,
@@ -719,17 +754,49 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
             sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
             return Inf, components, extrapolation_evidence, failure
         end
-        target = quantity_value(objective["target"])
-        scale = quantity_value(objective["resolved_scale"])
-        scale > 0.0 || fail("validation", "invalid_optimization_spec", "objective_scale", "optimization_candidate", "objective scale must be positive")
-        residual = (value - target) / scale
-        weighted = f64_from_hex(objective["weight_f64"]) * abs2(residual)
-        if !isfinite(residual) || !isfinite(weighted)
-            failure = BackendFailure("execution", "numerical_resolution_unresolved", "objective", "optimization_candidate", "candidate objective is non-finite")
+        index = Ref(0)
+        value = scalar_expression_value(selector, leaf_values, index)
+        index[] == length(leaf_values) ||
+            fail("execution", "compiler_invariant", "objective", "optimization_candidate", "scalar expression left unused leaf evidence")
+        if !isfinite(value)
+            failure = BackendFailure("execution", "numerical_resolution_unresolved", "objective", "optimization_candidate", "candidate objective expression is non-finite")
+            witness = candidate["origin"] == "baseline" ? Dict{String,Any}(
+                "kind" => "objective",
+                "objective_id" => objective["id"],
+                "terms" => term_records,
+            ) : nothing
             failure = with_optimization_context(failure, optimization_context(
                 "objective_aggregation", candidate,
                 Dict("kind" => "objective", "objective_id" => objective["id"]),
-                Any[],
+                Any[]; aggregation_witness = witness,
+            ))
+            push!(components, Dict{String,Any}(
+                "objective_id" => objective["id"],
+                "quantity" => selector,
+                "status" => "failure",
+                "terms" => term_records,
+                "failure" => failure_object(request, failure),
+            ))
+            append!(components, unevaluated_objective_components(request, failure; first_index = objective_index + 1))
+            sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
+            return Inf, components, extrapolation_evidence, failure
+        end
+        target = quantity_value(objective["target"])
+        scale = quantity_value(objective["resolved_scale"])
+        scale > 0.0 || fail("validation", "invalid_optimization_spec", "objective_scale", "optimization_candidate", "objective scale must be positive")
+        residual = objective["comparison"] == "at_least" ? max(0.0, (target - value) / scale) : (value - target) / scale
+        weighted = f64_from_hex(objective["weight_f64"]) * abs2(residual)
+        if !isfinite(residual) || !isfinite(weighted)
+            failure = BackendFailure("execution", "numerical_resolution_unresolved", "objective", "optimization_candidate", "candidate objective is non-finite")
+            witness = candidate["origin"] == "baseline" ? Dict{String,Any}(
+                "kind" => "objective",
+                "objective_id" => objective["id"],
+                "terms" => term_records,
+            ) : nothing
+            failure = with_optimization_context(failure, optimization_context(
+                "objective_aggregation", candidate,
+                Dict("kind" => "objective", "objective_id" => objective["id"]),
+                Any[]; aggregation_witness = witness,
             ))
             push!(components, Dict{String,Any}(
                 "objective_id" => objective["id"],
@@ -755,8 +822,13 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
     end
     if !isfinite(total)
         failure = BackendFailure("execution", "numerical_resolution_unresolved", "objective", "optimization_candidate", "candidate total cost is non-finite")
+        witness = candidate["origin"] == "baseline" ? Dict{String,Any}(
+            "kind" => "total",
+            "objective_components" => components,
+        ) : nothing
         failure = with_optimization_context(failure, optimization_context(
-            "total_aggregation", candidate, Dict("kind" => "candidate"), Any[],
+            "total_aggregation", candidate, Dict("kind" => "candidate"), Any[];
+            aggregation_witness = witness,
         ))
         sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
         return Inf, components, extrapolation_evidence, failure
@@ -800,7 +872,7 @@ function write_generation_ledger(staging, request, request_sha, attempt_sha,
         "schema_version" => 4,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
         "baseline_checkpoint_sha256" => checkpoint_sha,
         "baseline_checkpoint_seal_sha256" => checkpoint_seal_sha,
         "generation" => generation,
@@ -927,7 +999,7 @@ function sibling_ledgers(staging::String, request_sha::String, attempt_sha::Stri
         occursin(r"^(?!000000$)(?:[0-9]{6}|[1-9][0-9]{6,})$", name) || continue
         isdir(entry) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "final attempt is not a directory")
         for (digest, ledger) in finalized_attempt_ledgers(entry, request_sha, attempt_sha)
-            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" &&
+            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" &&
                 get(ledger, "baseline_checkpoint_sha256", nothing) == checkpoint_sha &&
                 get(ledger, "baseline_checkpoint_seal_sha256", nothing) == checkpoint_seal_sha ||
                 fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "prior generation ledger has incompatible algorithm identity")
@@ -1226,6 +1298,11 @@ function optimization_root_specs_ordered(request)
             for term in selector["terms"]
                 visit!(term)
             end
+        elseif kind == "quantity_difference"
+            visit!(selector["left"])
+            visit!(selector["right"])
+        elseif kind == "quantity_absolute"
+            visit!(selector["operand"])
         elseif kind == "response_element_projection"
             nothing
         else
@@ -1256,7 +1333,7 @@ function optimization_checkpoint_document(request, request_sha::String, baseline
         "schema" => "scnsim.optimization_baseline_checkpoint",
         "schema_version" => 1,
         "request_sha256" => request_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
         "baseline" => baseline,
         "baseline_roots" => root_rows,
     )
@@ -1267,7 +1344,7 @@ function roots_from_checkpoint(request, checkpoint)
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint fields are invalid")
     get(checkpoint, "schema", nothing) == "scnsim.optimization_baseline_checkpoint" &&
         get(checkpoint, "schema_version", nothing) == 1 &&
-        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6" ||
+        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" ||
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint version is unsupported")
     declared = checkpoint["baseline_roots"]
     specs = optimization_root_specs_ordered(request)

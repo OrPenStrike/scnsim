@@ -1690,11 +1690,13 @@ positive passive linewidth is `-2 * imag(Omega) / (2 * pi)`. The Result records
 the convention instead of inferring a sign from a plotted trace.
 
 `QuantitySelector.on(view)` immutably and non-executingly binds one scalar
-projection to an existing `NetworkViewRef`. `QuantitySum(a, b, ...)` is the only V1 scalar composition and is legal only
-inside a `CostObjective`; it is not a standalone `run.evaluate()` request.
-Every term must have the same dimensionality, but terms may bind different
-Views belonging to the same captured Plan. SCNSim exposes no general
-expression tree or Python callable objective. A consumer may still request `OperatorSpec` and use
+projection to an existing `NetworkViewRef`. A `CostObjective` accepts a closed
+ordered expression of selector leaves, `QuantitySum`, binary `-`, and Python
+`abs(...)`; it is not a standalone `run.evaluate()` request or a Python
+callback. Every operand must have the same dimensionality, but leaves may bind
+different Views belonging to the same captured Plan. No constants,
+multiplication, division, or other general expression nodes are accepted. A
+consumer may still request `OperatorSpec` and use
 its labeled Quantity matrix for ordinary Python/NumPy calculation; a full
 operator or matrix cannot itself become one scalar cost.
 
@@ -1745,7 +1747,7 @@ ledger, cache, retry, and winner contract while enabling
 `ResidueNormalizedCouplingSpec.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. Before its owning slice, each
 selector fails fast with `ScaffoldUnavailableError`; it is not excluded from
-full V1. `QuantitySum` remains legal only inside a `CostObjective`.
+full V1. Closed scalar expressions remain legal only inside a `CostObjective`.
 
 `ParameterSpec` never owns optimization bounds. A circuit-model package may
 instead expose one clearly named model default:
@@ -2009,7 +2011,7 @@ its system math library; candidate mapping and CMA sampling/update remain the
 pinned Julia path.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -2026,12 +2028,17 @@ evaluation ordinal in baseline, generation, then population-column order.
 These execution controls bound reproducibility but do not decide whether the
 result meets a Design Target.
 
-A closed request envelope bound to the exact known v3, v4, or v5 outer optimization
+A closed request envelope bound to the exact known v3, v4, v5, or v6 outer optimization
 identity raises `UnsupportedEvidenceVersionError` with the operation and exact
 expected/observed algorithm IDs. This identifies the need for its original
 source-bound runtime; it does not claim the historical request's remaining
 contents were verified. Malformed envelopes, wrong Plan/request bindings, and
 current-version evidence corruption remain `EvidenceIntegrityError`.
+
+Version 7 binds the closed scalar-expression tree, its exact per-node unit
+conversion order, and target/at-least comparison semantics. It retains version
+6's Python-owned baseline coordinate bits and the pinned CMA sampling/update
+mathematics.
 
 Every population outcome records both the callback-visible raw CMA sample
 column `optimizer_latent_coordinates_f64` and its transformed unit-box
@@ -2146,13 +2153,24 @@ separate native-API operations without becoming a second contract authority.
 
 ### Relative objective normalization
 
-Every objective uses
+For `comparison="target"` (the default), every objective uses
 
 $$
 r_i = \frac{q_i-t_i}{s_i},
 \qquad
 J = \sum_i w_i |r_i|^2.
 $$
+
+For `comparison="at_least"`, its residual instead uses
+
+$$
+r_i = \max\!\left(0, \frac{t_i-q_i}{s_i}\right).
+$$
+
+An exact finite value equal to or above the target therefore contributes zero.
+This is one-sided cost shaping, not maximization and not a hard feasibility
+Gate. Every selector and internal expression node must remain finite before
+comparison; failure or non-finite evidence cannot become a zero residual.
 
 Normalization occurs before weighting, so `weight` expresses relative
 importance rather than target magnitude or physical unit:
@@ -2516,6 +2534,10 @@ parameter histories require `kind="objective", objective=...`,
 status, and failure, together with each component's evaluated value,
 normalized residual, weighted cost, and status. None of these surfaces
 observes a live optimizer.
+`kind="comparison"` presents the verified objective settings and exact
+initial-versus-saved-best parameters and metrics. The saved evaluation ordinal
+remains the winner authority even when it names the baseline; report summaries
+reuse the same detached presentation record and perform no calculation.
 
 ### Independent Direct and HB grids {#independent-direct-and-hb-grids}
 

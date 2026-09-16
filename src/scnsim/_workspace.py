@@ -15,7 +15,7 @@ import shutil
 import struct
 import sys
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -1168,7 +1168,7 @@ class WorkspaceBinding:
             failure_evidence = receipt.get("failure", {}).get("evidence") if isinstance(receipt.get("failure"), Mapping) else None
             if request_document.get("operation") == "optimize_direct" and isinstance(failure_evidence, Mapping) and failure_evidence.get("optimization_context") is not None:
                 _verify_terminal_optimization_failure(
-                    receipt["failure"], request_document.get("spec"),
+                    receipt["failure"], request_document.get("spec"), plan_document,
                     completed_generations=completed_generation_count,
                 )
         elif outcome == "interrupted":
@@ -1833,7 +1833,7 @@ def _verify_request_document(
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -1858,6 +1858,7 @@ def _verify_request_document(
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v3",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v5",
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
     }
     if operation == "optimize_direct" and algorithm_id in historical_optimization_algorithms:
         raise UnsupportedEvidenceVersionError(
@@ -2458,13 +2459,21 @@ def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object]) -> No
         raise _integrity("Optimization extrapolation authorization is not sorted active variables.")
     objective_ids: set[str] = set()
     for objective in objectives:
-        if not isinstance(objective, dict) or set(objective) != {"id", "quantity", "target", "weight_f64", "resolved_scale", "scale_source"} or not isinstance(objective.get("id"), str) or _IDENTIFIER.fullmatch(objective["id"]) is None or objective["id"] in objective_ids:
+        if not isinstance(objective, dict) or set(objective) != {"id", "quantity", "comparison", "target", "weight_f64", "resolved_scale", "scale_source"} or not isinstance(objective.get("id"), str) or _IDENTIFIER.fullmatch(objective["id"]) is None or objective["id"] in objective_ids:
             raise _integrity("Optimization objective is malformed.")
         objective_ids.add(objective["id"])
         role = _verify_selector(objective.get("quantity"), plan)
         _verify_quantity_role(objective.get("target"), complex_value=False, unit=role[0], dimensionality=role[1])
         _verify_quantity_role(objective.get("resolved_scale"), complex_value=False, unit=role[0], dimensionality=role[1])
-        if not _finite_f64(objective.get("weight_f64")) or objective.get("scale_source") not in {"relative_target", "dimensionless_unity", "explicit"}:
+        resolved_scale = objective["resolved_scale"]
+        weight = objective.get("weight_f64")
+        if (
+            not _finite_f64(weight)
+            or _f64_value(weight) <= 0.0
+            or _f64_value(resolved_scale["si_value_f64"]) <= 0.0
+            or objective.get("comparison") not in {"target", "at_least"}
+            or objective.get("scale_source") not in {"relative_target", "dimensionless_unity", "explicit"}
+        ):
             raise _integrity("Optimization objective scale is malformed.")
     required_optimizer = {"type", "seed", "max_evaluations", "population_size", "resolved_population_size", "initial_sigma_f64", "baseline_optimizer_coordinates_f64", "box_transform_id", "complete_generations", "unused_evaluations", "hidden_stops"}
     if set(optimizer) != required_optimizer or optimizer.get("type") != "cma_es" or optimizer.get("box_transform_id") != "cmaes-jl-0.2.6-linquad-unit-box.v1" or optimizer.get("hidden_stops") != "disabled":
@@ -2527,25 +2536,33 @@ def _optimization_selector_leaves(spec: object) -> list[Mapping[str, object]]:
     leaves: list[Mapping[str, object]] = []
     for objective in spec["objectives"]:
         quantity = objective.get("quantity") if isinstance(objective, Mapping) else None
-        if isinstance(quantity, Mapping) and quantity.get("type") == "quantity_sum":
-            terms = quantity.get("terms")
-            if isinstance(terms, list):
-                leaves.extend(term for term in terms if isinstance(term, Mapping))
-        elif isinstance(quantity, Mapping):
-            leaves.append(quantity)
+        if isinstance(quantity, Mapping):
+            leaves.extend(_selector_terms(quantity))
     return leaves
 
 
 def _verify_selector(value: object, plan: Mapping[str, object]) -> tuple[str, str]:
     if not isinstance(value, dict):
         raise _integrity("Optimization selector is malformed.")
-    if value.get("type") == "quantity_sum":
+    kind = value.get("type")
+    if kind == "quantity_sum":
         if set(value) != {"type", "terms"} or not isinstance(value.get("terms"), list) or not value["terms"]:
             raise _integrity("QuantitySum is malformed.")
         roles = [_verify_selector(item, plan) for item in value["terms"]]
         if any(role[1] != roles[0][1] for role in roles[1:]):
             raise _integrity("QuantitySum terms have incompatible physical roles.")
         return roles[0]
+    if kind == "quantity_difference":
+        if set(value) != {"type", "left", "right"}:
+            raise _integrity("QuantityDifference is malformed.")
+        roles = [_verify_selector(value[side], plan) for side in ("left", "right")]
+        if roles[0][1] != roles[1][1]:
+            raise _integrity("QuantityDifference operands have incompatible physical roles.")
+        return roles[0]
+    if kind == "quantity_absolute":
+        if set(value) != {"type", "operand"}:
+            raise _integrity("QuantityAbsolute is malformed.")
+        return _verify_selector(value["operand"], plan)
     fields = {"type", "spec", "projection", "view"}
     kind = value.get("type")
     expected = {
@@ -2638,7 +2655,7 @@ def _optimization_dependency(selector: Mapping[str, object], *, kind: str = "qua
 
 def _verify_optimization_context_shape(value: object) -> Mapping[str, object]:
     required = {"schema", "schema_version", "phase", "candidate", "owner", "affected_leaves"}
-    if not isinstance(value, Mapping) or not required.issubset(value) or not set(value).issubset(required | {"dependency"}):
+    if not isinstance(value, Mapping) or not required.issubset(value) or not set(value).issubset(required | {"dependency", "aggregation_witness"}):
         raise _integrity("Optimization failure context is open or malformed.")
     if value.get("schema") != "scnsim.optimization_failure_context" or value.get("schema_version") != 1 or value.get("phase") not in {
         "candidate_prepare", "candidate_compile", "view_realization", "baseline_root_anchor",
@@ -2691,6 +2708,35 @@ def _verify_optimization_context_shape(value: object) -> Mapping[str, object]:
         raise _integrity("Optimization failure dependency is malformed.")
     if owner.get("kind") == "dependency" and dependency is None:
         raise _integrity("Optimization dependency failure has no dependency identity.")
+    witness = value.get("aggregation_witness")
+    needs_witness = origin == "baseline" and value.get("phase") in {
+        "objective_aggregation",
+        "total_aggregation",
+    }
+    if needs_witness and witness is None:
+        raise _integrity("Optimization baseline aggregation failure lacks its witness.")
+    if not needs_witness and witness is not None:
+        raise _integrity("Optimization failure carries an inapplicable aggregation witness.")
+    if witness is not None:
+        if not isinstance(witness, Mapping):
+            raise _integrity("Optimization aggregation witness is malformed.")
+        if value.get("phase") == "objective_aggregation":
+            if (
+                set(witness) != {"kind", "objective_id", "terms"}
+                or witness.get("kind") != "objective"
+                or not isinstance(witness.get("objective_id"), str)
+                or not isinstance(witness.get("terms"), list)
+            ):
+                raise _integrity("Optimization objective aggregation witness is malformed.")
+        elif value.get("phase") == "total_aggregation":
+            if (
+                set(witness) != {"kind", "objective_components"}
+                or witness.get("kind") != "total"
+                or not isinstance(witness.get("objective_components"), list)
+            ):
+                raise _integrity("Optimization total aggregation witness is malformed.")
+        else:
+            raise _integrity("Optimization non-aggregation failure carries an aggregation witness.")
     return value
 
 
@@ -5003,7 +5049,7 @@ def _verify_generation_ledger(
     if (
         set(ledger) != expected
         or ledger.get("schema_version") != 4
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_sha256", ""))) is None
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_seal_sha256", ""))) is None
         or not isinstance(population_size, int)
@@ -5124,8 +5170,90 @@ def _selector_terms(value: object) -> list[Mapping[str, object]]:
         terms = value.get("terms")
         if not isinstance(terms, list) or not terms or any(not isinstance(term, Mapping) for term in terms):
             raise _integrity("Optimization QuantitySum terms are malformed.")
-        return list(terms)
+        return [leaf for term in terms for leaf in _selector_terms(term)]
+    if value.get("type") == "quantity_difference":
+        if set(value) != {"type", "left", "right"}:
+            raise _integrity("Optimization QuantityDifference is malformed.")
+        return _selector_terms(value["left"]) + _selector_terms(value["right"])
+    if value.get("type") == "quantity_absolute":
+        if set(value) != {"type", "operand"}:
+            raise _integrity("Optimization QuantityAbsolute is malformed.")
+        return _selector_terms(value["operand"])
     return [value]
+
+
+def _expression_value(
+    value: Mapping[str, object],
+    leaves: list[tuple[float, str]],
+    index: list[int],
+) -> tuple[float, str]:
+    kind = value.get("type")
+    if kind == "quantity_sum":
+        terms = value["terms"]
+        assert isinstance(terms, list)
+        total, unit = _expression_value(terms[0], leaves, index)
+        for term in terms[1:]:
+            term_value, term_unit = _expression_value(term, leaves, index)
+            total += _convert_selector_value(term_value, term_unit, unit)
+            if not math.isfinite(total):
+                raise _integrity("Optimization sum node is non-finite.")
+        return total, unit
+    if kind == "quantity_difference":
+        left, unit = _expression_value(value["left"], leaves, index)
+        right, right_unit = _expression_value(value["right"], leaves, index)
+        result = left - _convert_selector_value(right, right_unit, unit)
+        if not math.isfinite(result):
+            raise _integrity("Optimization difference node is non-finite.")
+        return result, unit
+    if kind == "quantity_absolute":
+        operand, unit = _expression_value(value["operand"], leaves, index)
+        result = abs(operand)
+        if not math.isfinite(result):
+            raise _integrity("Optimization absolute node is non-finite.")
+        return result, unit
+    if index[0] >= len(leaves):
+        raise _integrity("Optimization expression has incomplete leaf evidence.")
+    result, unit = leaves[index[0]]
+    index[0] += 1
+    if not math.isfinite(result):
+        raise _integrity("Optimization expression leaf is non-finite.")
+    return result, unit
+
+
+def _expression_value_allow_nonfinite(
+    value: Mapping[str, object],
+    leaves: list[tuple[float, str]],
+    index: list[int],
+) -> tuple[float, str]:
+    """Mirror the Julia expression chain while retaining its failure value."""
+
+    kind = value.get("type")
+    if kind == "quantity_sum":
+        terms = value["terms"]
+        assert isinstance(terms, list)
+        total, unit = _expression_value_allow_nonfinite(terms[0], leaves, index)
+        for term in terms[1:]:
+            term_value, term_unit = _expression_value_allow_nonfinite(
+                term, leaves, index
+            )
+            total += _convert_selector_value(term_value, term_unit, unit)
+        return total, unit
+    if kind == "quantity_difference":
+        left, unit = _expression_value_allow_nonfinite(value["left"], leaves, index)
+        right, right_unit = _expression_value_allow_nonfinite(
+            value["right"], leaves, index
+        )
+        return left - _convert_selector_value(right, right_unit, unit), unit
+    if kind == "quantity_absolute":
+        operand, unit = _expression_value_allow_nonfinite(
+            value["operand"], leaves, index
+        )
+        return abs(operand), unit
+    if index[0] >= len(leaves):
+        raise _integrity("Optimization expression has incomplete leaf evidence.")
+    result, unit = leaves[index[0]]
+    index[0] += 1
+    return result, unit
 
 
 def _convert_selector_value(value: float, source_unit: object, target_unit: object) -> float:
@@ -5136,6 +5264,45 @@ def _convert_selector_value(value: float, source_unit: object, target_unit: obje
     if source_unit == "hertz" and target_unit == "radian / second":
         return value * (2.0 * math.pi)
     raise _integrity("Optimization term unit conversion is unsupported.")
+
+
+def _objective_aggregation_is_nonfinite(
+    quantity: Mapping[str, object],
+    leaf_values: list[tuple[float, str]],
+    objective: Mapping[str, object],
+) -> bool:
+    """Reproduce the closed Julia aggregation chain for a failed objective."""
+
+    position = [0]
+    value, unit = _expression_value_allow_nonfinite(quantity, leaf_values, position)
+    if position[0] != len(leaf_values):
+        raise _integrity("Optimization aggregation leaves evidence unused.")
+    target_record = objective.get("target")
+    scale_record = objective.get("resolved_scale")
+    if not isinstance(target_record, Mapping) or not isinstance(scale_record, Mapping):
+        raise _integrity("Optimization aggregation request is malformed.")
+    value = _convert_selector_value(value, unit, target_record.get("si_unit"))
+    if not math.isfinite(value):
+        return True
+    target = _f64_value(target_record["si_value_f64"])
+    scale = _f64_value(scale_record["si_value_f64"])
+    residual = (
+        max(0.0, (target - value) / scale)
+        if objective.get("comparison") == "at_least"
+        else (value - target) / scale
+    )
+    squared = residual * residual
+    weighted = _f64_value(objective["weight_f64"]) * squared
+    return not math.isfinite(residual) or not math.isfinite(weighted)
+
+
+def _total_aggregation_is_nonfinite(components: Sequence[Mapping[str, object]]) -> bool:
+    """Reproduce Julia's ordered successful-component cost accumulation."""
+
+    total = 0.0
+    for component in components:
+        total += _f64_value(component["weighted_cost_f64"])
+    return not math.isfinite(total)
 
 
 def _optimization_failure_context(failure: object) -> Mapping[str, object]:
@@ -5246,7 +5413,7 @@ def _verify_baseline_checkpoint_document(
         or checkpoint.get("schema_version") != 1
         or checkpoint.get("request_sha256") != request_sha256
         or checkpoint.get("algorithm_id")
-        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
     ):
         raise _integrity("Optimization baseline checkpoint envelope is open or inconsistent.")
     variables = spec.get("variables")
@@ -5590,6 +5757,7 @@ def _optimization_quantity_failure_consumers(
 def _verify_terminal_optimization_failure(
     failure: object,
     spec: object,
+    plan: Mapping[str, object],
     *,
     completed_generations: int = 0,
 ) -> None:
@@ -5669,8 +5837,47 @@ def _verify_terminal_optimization_failure(
         objective_id = owner.get("objective_id") if isinstance(owner, Mapping) else None
         if objective_id not in [item.get("id") for item in objectives if isinstance(item, Mapping)]:
             raise _integrity("Baseline objective aggregation owner is absent from the request.")
+        if candidate.get("origin") != "baseline":
+            raise _integrity("Population objective aggregation failure escaped candidate evidence.")
+        objective = next(
+            item for item in objectives
+            if isinstance(item, Mapping) and item.get("id") == objective_id
+        )
+        witness = context.get("aggregation_witness")
+        if not isinstance(witness, Mapping) or witness.get("objective_id") != objective_id:
+            raise _integrity("Baseline objective aggregation failure lacks its witness.")
+        _verify_objective_component(
+            {
+                "objective_id": objective_id,
+                "quantity": objective["quantity"],
+                "status": "failure",
+                "terms": witness.get("terms"),
+                "failure": failure,
+            },
+            objective,
+            plan,
+            expected_status="failure",
+        )
         expected = ({"kind": "objective", "objective_id": objective_id}, [], None)
     elif phase == "total_aggregation":
+        if candidate.get("origin") != "baseline":
+            raise _integrity("Population total aggregation failure escaped candidate evidence.")
+        witness = context.get("aggregation_witness")
+        components = (
+            witness.get("objective_components")
+            if isinstance(witness, Mapping)
+            else None
+        )
+        if not isinstance(components, list) or len(components) != len(objectives):
+            raise _integrity("Baseline total aggregation failure lacks its witness.")
+        for objective, component in zip(objectives, components):
+            _verify_objective_component(
+                component, objective, plan, expected_status="success"
+            )
+        if not _total_aggregation_is_nonfinite(components):
+            raise _integrity(
+                "Baseline total aggregation failure reproduces a finite cost."
+            )
         expected = ({"kind": "candidate"}, [], None)
     else:
         raise _integrity("Terminal optimization failure uses an invalid baseline phase.")
@@ -5706,7 +5913,7 @@ def _verify_objective_component(
     ):
         raise _integrity("Optimization objective component is open or inconsistent.")
     term_statuses: list[str] = []
-    total = 0.0
+    leaf_values: list[tuple[float, str]] = []
     target_unit = objective.get("target", {}).get("si_unit") if isinstance(objective.get("target"), Mapping) else None
     for ordinal, (term, selector) in enumerate(zip(terms, expected_terms), 1):
         if not isinstance(term, dict) or term.get("term_ordinal") != ordinal or term.get("selector") != selector:
@@ -5719,7 +5926,7 @@ def _verify_objective_component(
             _verify_selector_lineage(selector, term.get("ref_lineage"), plan)
             role = _verify_selector(selector, plan)
             _verify_quantity_role(term.get("value"), complex_value=False, unit=role[0], dimensionality=role[1])
-            total += _convert_selector_value(_f64_value(term["value"]["si_value_f64"]), role[0], target_unit)
+            leaf_values.append((_f64_value(term["value"]["si_value_f64"]), role[0]))
         elif status == "failure":
             if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "failure"}:
                 raise _integrity("Failed optimization term is open or malformed.")
@@ -5734,14 +5941,25 @@ def _verify_objective_component(
     if expected_status == "success":
         if any(status != "success" for status in term_statuses):
             raise _integrity("Successful objective contains an unevaluated term.")
+        position = [0]
+        total, total_unit = _expression_value(quantity, leaf_values, position)
+        total = _convert_selector_value(total, total_unit, target_unit)
+        if position[0] != len(leaf_values) or not math.isfinite(total):
+            raise _integrity("Optimization expression value is non-finite or leaves evidence unused.")
         _verify_quantity_role(
             component.get("value"), complex_value=False,
             unit=objective["target"]["si_unit"], dimensionality=objective["target"]["dimensionality"],
         )
         if struct.pack(">d", total).hex() != component["value"]["si_value_f64"]:
             raise _integrity("Optimization objective value does not equal its ordered terms.")
-        residual = (total - _f64_value(objective["target"]["si_value_f64"])) / _f64_value(objective["resolved_scale"]["si_value_f64"])
-        weighted = _f64_value(objective["weight_f64"]) * residual * residual
+        target = _f64_value(objective["target"]["si_value_f64"])
+        scale = _f64_value(objective["resolved_scale"]["si_value_f64"])
+        residual = (
+            max(0.0, (target - total) / scale)
+            if objective.get("comparison") == "at_least"
+            else (total - target) / scale
+        )
+        weighted = _f64_value(objective["weight_f64"]) * (residual * residual)
         if (
             not _finite_f64(component.get("normalized_residual_f64"))
             or not _finite_f64(component.get("weighted_cost_f64"))
@@ -5772,6 +5990,15 @@ def _verify_objective_component(
             )
             if not ordinary_failure and any(status != "success" for status in term_statuses):
                 raise _integrity("Failed objective term status order is inconsistent.")
+            if (
+                all(status == "success" for status in term_statuses)
+                and not _objective_aggregation_is_nonfinite(
+                    quantity, leaf_values, objective
+                )
+            ):
+                raise _integrity(
+                    "Objective aggregation failure reproduces a finite objective."
+                )
         elif any(status != "not_evaluated" for status in term_statuses):
             raise _integrity("Unevaluated objective contains evaluated terms.")
 
@@ -5960,6 +6187,10 @@ def _verify_candidate_outcome(
         elif phase == "total_aggregation":
             if any(status != "success" for status in statuses):
                 raise _integrity("Total aggregation failure does not preserve successful objectives.")
+            if not _total_aggregation_is_nonfinite(components):
+                raise _integrity(
+                    "Total aggregation failure reproduces a finite candidate cost."
+                )
             _verify_candidate_failure_context(
                 outcome["failure"], objectives=objectives, candidate=value,
                 phase=phase, owner={"kind": "candidate"}, affected=[],

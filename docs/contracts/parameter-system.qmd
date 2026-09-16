@@ -400,9 +400,21 @@ request.
 
 Every scalar `QuantitySelector` used by optimization is bound immutably to one
 existing View with `selector.on(view)`. Binding is non-executing. It does not
-evaluate the selector, create a View, or capture a Python callback. A
-`QuantitySum` may contain same-dimensionality terms bound to different Views;
-the View belongs to each leaf rather than to the objective as a whole.
+evaluate the selector, create a View, or capture a Python callback.
+
+A scalar optimization expression is an immutable closed tree. Its leaves are
+`QuantitySelector` values; internal nodes are `QuantitySum`, subtraction with
+`-`, and Python `abs(...)`. Constants, multiplication, division, and other
+arithmetic are outside this surface. Operands must share one physical
+dimensionality. Sums and differences use the leftmost operand's public unit
+convention, including the existing hertz/radian-per-second conversion, and
+absolute value preserves that unit. Tree order is semantic: repeated leaves
+remain distinct ordered positions even when they share one underlying root.
+
+Any expression may contain selector leaves bound to different Views; the View
+belongs to each leaf rather than to the objective as a whole. Every leaf is
+evaluated at the same candidate ParameterSet. Shared root dependencies are
+reused without folding or deduplicating the expression positions.
 
 `run.optimize(spec, ...)` requires every selector leaf to be explicitly bound.
 The convenience form `run.optimize(default_view, spec, ...)` fills only
@@ -418,6 +430,12 @@ Missing or foreign bindings and selector/View incompatibility fail before a
 Julia process starts. One candidate is one complete effective ParameterSet
 shared by all bound Views; it is not a collection of independently optimized
 View-local points.
+
+`OptimizationSpec.show()` is declaration-only: it presents the ordered
+expression tree, each bound View, comparison, target, scale setting, weight,
+bounds, and optimizer controls without a Run. `run.explain(...)` adds the
+Run-dependent normalized binding, resolved scale, effective initial parameter
+point, and runtime identity without creating an attempt.
 
 `OptimizationVariable` continues to identify one scalar ref, finite physical
 bounds, and its accepted transform. Bounds are not inferred from grid extrema,

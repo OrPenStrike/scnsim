@@ -56,6 +56,7 @@ EXPECTED_CELL_IDS = (
     "ch2-define-optimization",
     "ch2-show-optimization-spec",
     "ch2-run-optimization",
+    "ch2-show-initial-best-comparison",
     "ch2-evaluate-winner",
     "ch2-render-winner",
     "ch2-show-winner",

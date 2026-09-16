@@ -96,6 +96,8 @@ from .specs import (
     HybridizedPoleSpec,
     OperatorSpec,
     OptimizationSpec,
+    QuantityAbsolute,
+    QuantityDifference,
     QuantitySelector,
     QuantitySum,
     ReportSpec,
@@ -260,8 +262,12 @@ def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
         )
         if selectors:
             return selectors
+    if isinstance(value, QuantityDifference):
+        return _quantity_selectors(value.left) + _quantity_selectors(value.right)
+    if isinstance(value, QuantityAbsolute):
+        return _quantity_selectors(value.operand)
     raise InvalidOptimizationSpec(
-        "objectives require a Direct quantity selector or its QuantitySum",
+        "objectives require a closed Direct scalar expression",
         stage="spec_validation",
     )
 
@@ -1360,13 +1366,27 @@ class CircuitRun:
         expressions: list[Mapping[str, object]] = []
         leaves: list[BoundOptimizationLeaf] = []
         for objective_ordinal, objective in enumerate(spec.objectives):
-            selectors = (
-                objective.quantity.terms
-                if isinstance(objective.quantity, QuantitySum)
-                else (objective.quantity,)
-            )
-            terms: list[dict[str, object]] = []
-            for term_ordinal, selector in enumerate(selectors):
+            term_ordinal = 0
+
+            def bind_expression(value: object) -> Mapping[str, object]:
+                nonlocal term_ordinal
+                if isinstance(value, QuantitySum):
+                    return {
+                        "type": "quantity_sum",
+                        "terms": [bind_expression(term) for term in value.terms],
+                    }
+                if isinstance(value, QuantityDifference):
+                    return {
+                        "type": "quantity_difference",
+                        "left": bind_expression(value.left),
+                        "right": bind_expression(value.right),
+                    }
+                if isinstance(value, QuantityAbsolute):
+                    return {
+                        "type": "quantity_absolute",
+                        "operand": bind_expression(value.operand),
+                    }
+                selector = value
                 if not isinstance(selector, QuantitySelector):
                     raise InvalidOptimizationSpec(
                         "optimization objective contains a non-selector leaf",
@@ -1392,7 +1412,6 @@ class CircuitRun:
                     "projection": selector.projection,
                     "view": _view_declaration(selected._lineage),
                 }
-                terms.append(declaration)
                 leaves.append(
                     BoundOptimizationLeaf.create(
                         objective_id=objective.id,
@@ -1401,11 +1420,10 @@ class CircuitRun:
                         declaration=declaration,
                     )
                 )
-            expressions.append(
-                {"type": "quantity_sum", "terms": terms}
-                if isinstance(objective.quantity, QuantitySum)
-                else terms[0]
-            )
+                term_ordinal += 1
+                return declaration
+
+            expressions.append(bind_expression(objective.quantity))
         encoded = _encode_spec(
             spec,
             parameters,
@@ -1536,7 +1554,7 @@ class CircuitRun:
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
             )
         else:
             raise CompilerInvariantError(
@@ -1828,7 +1846,7 @@ class CircuitRun:
                     )
             for index, objective in enumerate(spec.objectives):
                 parameter_id = f"objective:{index}"
-                selectors = objective.quantity.terms if isinstance(objective.quantity, QuantitySum) else (objective.quantity,)
+                selectors = _quantity_selectors(objective.quantity)
                 selector = selectors[0]
                 objective_unit = _selector_unit(selector)
                 if objective_unit is None:

@@ -460,6 +460,8 @@ class VerifiedResultDecoder:
         if kind == "optimization":
             best = result["best"]
             parameters = self._decode_parameter_set(best["parameters"])
+            baseline = result["baseline"]
+            initial_parameters = self._decode_parameter_set(baseline["parameters"])
             ledger = tuple(
                 _read_json_artifact(directory, artifact)
                 for artifact in result["ledger_artifacts"]
@@ -473,6 +475,13 @@ class VerifiedResultDecoder:
                     cost=float64_from_hex(best["cost_f64"]),
                 ),
                 ledger=ledger,
+                _presentation={
+                    "initial_parameters": initial_parameters,
+                    "initial_candidate": baseline,
+                    "objectives": tuple(request["spec"]["objectives"]),
+                    "variables": tuple(request["spec"]["variables"]),
+                    "best_evaluation_ordinal": best["evaluation_ordinal"],
+                },
             )
         raise EvidenceIntegrityError(
             "verified Result kind is outside the runtime",

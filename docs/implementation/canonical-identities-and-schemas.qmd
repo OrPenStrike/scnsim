@@ -118,7 +118,7 @@ Runtime algorithms are likewise closed for full V1:
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
@@ -138,6 +138,12 @@ optimization requests and ledgers remain historical evidence under their
 original runtime identity. They are not decoded or relabeled as current
 Results; resolving them with the current runtime therefore requires their
 original source-bound leaf rather than a compatibility fallback.
+
+The closed failure context retains a baseline-only aggregation witness when
+objective or total aggregation fails before checkpoint publication. The
+witness contains only the already-computed successful term or objective
+records needed to reproduce the non-finite operation; it is not a checkpoint,
+Result, retry instruction, or authorization to evaluate missing quantities.
 
 Source values and units from the executed attempt remain receipt evidence, but
 only the coherent-SI bits, canonical SI unit, and dimensionality enter Plan or

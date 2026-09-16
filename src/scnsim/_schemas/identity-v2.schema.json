@@ -844,7 +844,7 @@
           "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "algorithm_id": {
-          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"
+          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
         },
         "baseline_checkpoint_sha256": {
           "$ref": "identity-common.schema.json#/$defs/sha256"

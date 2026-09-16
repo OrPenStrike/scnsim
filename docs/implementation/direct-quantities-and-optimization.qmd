@@ -295,7 +295,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -313,6 +313,13 @@ View-qualified continuation keys, and per-term evidence. It does not rename or
 change the pinned CMA
 sampling, update, box transform, stop, seed, or winner rule.
 
+An aggregation failure is independently reproducible evidence. Population
+candidate records retain the successful terms or objective components needed
+to replay the failed expression, normalization, weighted cost, or ordered
+total. A baseline aggregation failure has no checkpoint, so its closed failure
+context carries the same already-computed successful records as a narrow
+aggregation witness; it never triggers another evaluation.
+
 Only complete generations count:
 
 $$
@@ -328,12 +335,24 @@ on a supported retained View.
 The integrated `dev5` slice adds the schema-backed selectors
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
 `ResidueNormalizedCouplingSpec.magnitude`, and
-`ResponseElementSpec.magnitude`/`.real`/`.imag`. `QuantitySum` remains legal
-only as the `quantity` inside a `CostObjective`; it is not a standalone
-quantity request or a new scalar selector. This selector expansion reuses the
+`ResponseElementSpec.magnitude`/`.real`/`.imag`. A `CostObjective.quantity`
+may be one selector or a closed ordered tree composed with `QuantitySum`, `-`,
+and `abs(...)`. Expression leaves retain left-to-right depth-first ordinals;
+repeated leaves are distinct evidence positions while their root dependency
+may be shared. These expressions are not standalone quantity requests or new
+scalar selectors. This selector expansion reuses the
 identical CMA replay, generation-ledger, candidate-cache, winner/tie, and retry
-semantics above and below; it changes no CMA numerical behavior or algorithm
-identity.
+semantics above and below. Version 7 binds the changed expression/comparison
+request and evidence semantics; it changes no CMA sampling or update
+mathematics.
+
+`CostObjective.comparison` is either `"target"` (the default) or
+`"at_least"`. Target comparison uses `(value - target) / scale`. At-least
+comparison uses `max(0, (target - value) / scale)`, so any finite value equal
+to or above the target has zero residual. Both comparisons retain the same
+positive weight and squared-cost rule. Failed or non-finite leaves and
+non-finite aggregate expressions remain typed failures; they cannot become a
+zero at-least penalty.
 
 The candidate cache is request-local and keyed by the exact canonical resolved
 `ParameterSet` plus the selected View/objective dependency identity. It may
