@@ -26,22 +26,32 @@ spaces, sweep Results, and optimization binding. These scopes remain
 
 The structured assembly, Parameter System, diagram, preparation/Run ownership,
 checkpoint/resume, and ReportPanel implementation baselines are integrated.
-Ongoing public-contract corrections remain unaccepted candidate work; neither
-integration nor passing checks promotes these scopes to `ACCEPTED` or
-`STABILIZED`. The accepted numerical Full V1 meanings are retained.
+The agreed multi-View Direct Optimization scope is implemented and usable. Its
+responsibilities remain split between requested-View root evaluation, exact
+reviewed publication transitions, immutable Result-accessor metadata, and
+verified checkpoint, attempt, Result, plot, and report evidence. The three-fix
+repairs and bounded CP5 exercise completed that agreed scope. It nevertheless
+remains `CONVERGING`: neither completion, integration, nor passing checks is
+Human acceptance, stabilization, or a stable-release claim. The accepted
+numerical Full V1 meanings are retained.
 
 On source `9cd5d4e1a27adc4e9c8719370c8a38a86177f8c9`, one bounded Linux
-x86-64 exercise issued exactly two public multi-View Optimization requests and
-one 61-point two-Port Direct request. The first Optimization was interrupted
-only after its verified baseline checkpoint was published; the second reused
-that exact checkpoint and completed one generation of two candidates. A third
-independent Python process then resolved the exact Optimization and Direct
+x86-64 exercise made two calls to the same public multi-View Optimization
+request, creating two attempts, plus one 61-point two-Port Direct request. The
+first Optimization call was interrupted only after its verified baseline
+checkpoint was published; the second reused that exact checkpoint and
+completed one generation of two candidates. A third independent Python
+process then resolved the exact Optimization and Direct
 Results with execution entries denied and zero Julia launches, and saved a
 self-contained Report plus named `signal_in` to `resonator_probe` S-magnitude
 and phase plots; its enclosing private diagnostic exited afterward while
 serializing a nested complex ledger value. This remains `CONVERGING` evidence,
 not a generalized replay, full-suite, macOS, performance, attainment, or
 acceptance claim.
+
+Additional multi-generation exercises, other-platform coverage, historical
+regression stabilization, and release delivery are separate future scopes;
+they are not unfinished CP5 work.
 
 Current CI exercises portable-wheel identity, a small current-API
 Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,

@@ -75,10 +75,14 @@ example, common and differential coordinates of two physical terminals.
 SCNSim owns this circuit-network layer. Physical geometry and electromagnetic
 simulation remain SCGSim responsibilities.
 
-> **Current status:** accepted Direct/HB numerical algorithms and physical
-> models are not reopened. Structured authoring, the independent Parameter
-> System, and parameterized diagrams remain `CONVERGING` with an integrated
-> implementation baseline. See the centralized
+> **Current status:** the agreed multi-View Direct Optimization scope is
+> implemented and usable, including one same-Plan request with per-View
+> lineage and evidence, verified checkpoint reuse across attempts, and typed
+> Result presentation. It remains `CONVERGING`: this is not Human acceptance,
+> stabilization, or a stable-release claim. Accepted Direct/HB numerical
+> algorithms and physical models are not reopened. Structured authoring, the
+> independent Parameter System, and parameterized diagrams also remain
+> `CONVERGING` with an integrated implementation baseline. See the centralized
 > [implementation and evidence status](docs/contracts/index.qmd#implementation-evidence-status)
 > for scoped CI, Engineer-course, historical-test, and delivery limitations.
 
