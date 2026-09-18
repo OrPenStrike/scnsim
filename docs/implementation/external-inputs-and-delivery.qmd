@@ -63,6 +63,12 @@ does not claim whole-course execution. This does not retroactively
 change the historical slice identities below. Full V1 is `STABILIZED`;
 acceptance, stabilization, and integration do not imply release.
 
+The `1.0.0.dev7` research showcase is an explicit local exception to the
+usual stable-version-on-`main` rule. It keeps the new README and presentation
+scope `CONVERGING`; it neither changes the accepted dev1–dev6 runtime slices
+nor represents a stable release. The package metadata and CI version check
+name this one exception directly rather than weakening the general rule.
+
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
 that row; the current Full V1 acceptance covers their combined public

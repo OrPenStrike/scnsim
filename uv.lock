@@ -1793,7 +1793,7 @@ wheels = [
 
 [[package]]
 name = "scnsim"
-version = "1.0.0.dev6"
+version = "1.0.0.dev7"
 source = { editable = "." }
 dependencies = [
     { name = "juliapkg" },

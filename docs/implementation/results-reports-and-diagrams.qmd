@@ -93,21 +93,22 @@ with visible source-index, parameter-identity, and typed-failure evidence; an
 all-failed field is a status table rather than an empty curve or exception.
 
 `OptimizationResult.plot()` shows completed total-cost history plus the exact
-winner summary. `kind="objective"` or `kind="residual"` requires one explicit
+saved-best summary. `kind="objective"` or `kind="residual"` requires one explicit
 `objective=` ID, `kind="parameter"` requires one `parameter=ParameterRef`, and
 `kind="table"` shows each candidate status/cost, retained objective value,
 normalized residual, weighted cost, component status, and every term value,
 View lineage, status, and failure. These are views of the completed ledger,
 never live optimizer progress.
 
-`kind="comparison"` is a domain table over the verified saved result. Its
-settings section names model-default and resolved bounds plus every expression,
-comparison, target, resolved scale, and weight. Its comparison section shows
-the complete initial and saved-best ParameterSets, evaluation ordinals, total
-costs, objective values, normalized residuals, and weighted costs. The saved
-best ordinal is authoritative, including when the baseline is best; the
-presentation does not choose another winner. Report summaries consume this
-same retained comparison data.
+`kind="comparison"` is a domain presentation over the verified saved result.
+Its settings table names model-default and resolved bounds plus every readable
+expression and View, comparison, target, resolved scale, and weight. A separate
+initial/best-found table shows the complete ParameterSets, evaluation ordinals,
+total costs, objective values, normalized residuals, and weighted costs. A
+caller-owned domain subplot receives the same shared data in one table with
+neutral `value`, `initial`, and `best found` columns. The saved best ordinal is
+authoritative, including when the baseline is best; presentation does not
+reselect it. Report summaries consume this same retained comparison data.
 
 Numerical presentation lazily imports Plotly only when `plot()`, `show()`,
 `add_to()`, or report assembly is requested. Solve, evaluate, optimize, and

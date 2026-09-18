@@ -41,6 +41,9 @@ objective expression, comparison, target, scale, or weight constructs a new
 Ports, or a captured parameter definition requires rebuilding the inputs,
 Plan, Run, Views, and Specs. A newly rebuilt Plan's old View or ParameterRef is
 foreign even when a Python name or printed declaration looks the same.
+That rebuild may happen in the same kernel, but it must use the newly returned
+ParameterRef, Plan, Run, View, and Spec handles together; never mix a handle
+retained from the earlier Plan into the rebuilt object graph.
 
 With `versioned=False`, constructing that different Plan at the same workspace
 path deliberately replaces the prior active Plan evidence; it does not erase

@@ -53,6 +53,17 @@ Additional multi-generation exercises, other-platform coverage, historical
 regression stabilization, and release delivery are separate future scopes;
 they are not unfinished CP5 work.
 
+The `1.0.0.dev7` research showcase keeps the new README and presentation
+refinements `CONVERGING`. Optimization declarations and retained-Result labels
+now expose readable scalar-selection and View settings, while comparison
+Figures and reports separate fixed settings from initial/best-found values.
+The unchanged Chapter 4 diagram and raw/PTC response assets remain the public
+numerical examples. This checkpoint has source- and mechanism-level checks for
+the comparison formatter, but no newly generated retained-Result comparison
+image: the preserved historical Result requires an exact catalog source that
+is not available in the retained readback environment, and no substitute Plan
+or Result is accepted.
+
 Current CI exercises portable-wheel identity, a small current-API
 Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
 source-bound figures, static publication, and unchanged standalone RLGC rejection

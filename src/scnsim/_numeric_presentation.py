@@ -1605,7 +1605,7 @@ def optimization_plot(
 ) -> Any:
     go, _, _ = _plotly()
     all_ordinals, _, _, evidence = _ledger_rows(result)
-    winner = f"winner cost {result.best.cost:.12g}"
+    saved = f"saved best cost {result.best.cost:.12g}"
     if kind in {"history", "objective", "residual", "parameter"}:
         ordinals, values, statuses, label, unit = _optimization_series(
             result, kind=kind, objective=objective, parameter=parameter
@@ -1651,12 +1651,29 @@ def optimization_plot(
     elif kind == "comparison":
         if objective is not None or parameter is not None:
             raise ValueError("objective and parameter are invalid for the comparison")
-        rows = optimization_comparison_rows(result)
-        figure = go.Figure(data=[go.Table(
-            header={"values": ["section", "field", "initial", "best found"]},
-            cells={"values": list(zip(*rows, strict=True))},
-            meta={"scnsim": {"source": _presentation_source(result)}},
-        )])
+        settings, comparison = optimization_comparison_dataset(result)
+        figure = go.Figure(data=[
+            go.Table(
+                domain={"y": [0.71, 1.0]},
+                header={"values": ["setting", "value"]},
+                cells={"values": list(zip(*settings, strict=True))},
+                meta={"scnsim": {"source": _presentation_source(result), "section": "settings"}},
+            ),
+            go.Table(
+                domain={"y": [0.0, 0.65]},
+                header={"values": ["field", "initial", "best found"]},
+                cells={"values": list(zip(*comparison, strict=True))},
+                meta={"scnsim": {"source": _presentation_source(result), "section": "comparison"}},
+            ),
+        ])
+        figure.add_annotation(
+            text="Settings", x=0, y=1.04, xref="paper", yref="paper",
+            xanchor="left", showarrow=False,
+        )
+        figure.add_annotation(
+            text="Initial / best-found comparison", x=0, y=0.69,
+            xref="paper", yref="paper", xanchor="left", showarrow=False,
+        )
     else:
         raise ValueError("kind must be 'history', 'objective', 'residual', 'parameter', 'table', or 'comparison'")
     winner_parameters = {
@@ -1669,12 +1686,12 @@ def optimization_plot(
         "winner_cost": result.best.cost,
         "winner_parameters": winner_parameters,
     }})
-    winner_bindings = "; ".join(
+    best_bindings = "; ".join(
         f"{escape(parameter.definitions_id)}.{escape(parameter.id)} = {escape(str(value))}"
         for parameter, value in result.best.parameters.values.items()
     )
     figure.add_annotation(
-        text=f"{winner}; {winner_bindings}", x=0, y=1.12,
+        text=f"{saved}; {best_bindings}", x=0, y=1.12,
         xref="paper", yref="paper", xanchor="left", showarrow=False,
     )
     styled = _style(figure, theme, title=f"Completed optimization {kind}")
@@ -1698,6 +1715,23 @@ def optimization_add_to(
     expected = "domain" if kind in {"table", "comparison"} else "xy"
     if _subplot_type(figure, row, col) != expected:
         raise ValueError(f"optimization {kind} requires a compatible {expected} subplot")
+    if kind == "comparison":
+        if objective is not None or parameter is not None:
+            raise ValueError("objective and parameter are invalid for the comparison")
+        settings, comparison = optimization_comparison_dataset(result)
+        rows = [
+            ("settings", field, value, "", "")
+            for field, value in settings
+        ] + [
+            ("comparison", field, "", initial, best)
+            for field, initial, best in comparison
+        ]
+        figure.add_trace(go.Table(
+            header={"values": ["section", "field", "value", "initial", "best found"]},
+            cells={"values": list(zip(*rows, strict=True))},
+            meta={"scnsim": {"source": _presentation_source(result)}},
+        ), row=row, col=col)
+        return figure
     source = optimization_plot(
         result, kind=kind, objective=objective, parameter=parameter
     )
@@ -1714,8 +1748,10 @@ def optimization_add_to(
     return figure
 
 
-def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]:
-    """Return one verified initial/best presentation table without execution."""
+def optimization_comparison_dataset(
+    result: Any,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str, str]]]:
+    """Return shared settings and initial/best data without execution."""
 
     from hashlib import sha256
 
@@ -1757,7 +1793,55 @@ def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]
             f"{ptc_text}; transform=[{transform_text}]; retain=[{retain_text}]; "
             f"view_sha256={view_sha256}"
         )
-        return f"{kind}.{value.get('projection')} @ {view_text}"
+        spec = value.get("spec")
+        if not isinstance(spec, Mapping):
+            raise ValueError("Optimization selector specification is malformed")
+        spec_type = spec.get("type")
+        def spec_text(record: Mapping[str, object]) -> str:
+            record_type = record.get("type")
+            if record_type == "diagonal_root":
+                return (
+                    f"coordinate={record.get('coordinate')}; "
+                    f"root_hint={_quantity_text(record.get('root_hint'))}"
+                )
+            if record_type == "hybridized_pole":
+                return (
+                    f"coordinates={','.join(str(item) for item in record.get('coordinates', ()))}; "
+                    f"anchor={_quantity_text(record.get('anchor'))}"
+                )
+            return str(record_type)
+
+        if spec_type == "diagonal_root":
+            selection = (
+                f"coordinate={spec.get('coordinate')}; "
+                f"root_hint={_quantity_text(spec.get('root_hint'))}"
+            )
+        elif spec_type == "hybridized_pole":
+            selection = (
+                f"coordinates={','.join(str(item) for item in spec.get('coordinates', ()))}; "
+                f"anchor={_quantity_text(spec.get('anchor'))}"
+            )
+        elif spec_type == "transfer_zero":
+            selection = (
+                f"family={spec.get('family')}; input={spec.get('input_coordinate')}; "
+                f"output={spec.get('output_coordinate')}; anchor={_quantity_text(spec.get('anchor'))}"
+            )
+        elif spec_type == "response_element":
+            selection = (
+                f"family={spec.get('family')}; input={spec.get('input_coordinate')}; "
+                f"output={spec.get('output_coordinate')}; frequency={_quantity_text(spec.get('frequency'))}"
+            )
+        elif spec_type == "residue_normalized_coupling":
+            branch_a, branch_b = spec.get("branch_a"), spec.get("branch_b")
+            if not isinstance(branch_a, Mapping) or not isinstance(branch_b, Mapping):
+                raise ValueError("Optimization residue branch presentation is malformed")
+            selection = (
+                f"branch_a=({spec_text(branch_a)}); branch_b=({spec_text(branch_b)}); "
+                f"frequency={_quantity_text(spec.get('frequency'))}"
+            )
+        else:
+            selection = str(spec_type)
+        return f"{kind}.{value.get('projection')} ({selection}) @ {view_text}"
 
     def bounds_text(value: object) -> str:
         if (
@@ -1802,7 +1886,8 @@ def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]
     if not isinstance(initial_outcome, Mapping) or not isinstance(best_outcome, Mapping):
         raise ValueError("Optimization comparison candidates have no outcome")
 
-    rows: list[tuple[str, str, str, str]] = []
+    settings: list[tuple[str, str]] = []
+    comparison: list[tuple[str, str, str]] = []
     for variable in variables:
         if not isinstance(variable, Mapping):
             raise ValueError("Optimization variable presentation is malformed")
@@ -1812,20 +1897,19 @@ def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]
         name = f"{ref.get('definitions_id')}.{ref.get('parameter_id')}"
         defaults = variable.get("model_default_bounds")
         override = variable.get("consumer_override_bounds")
-        rows.append((
-            "Settings — Model Default",
-            f"{name} bounds ({variable.get('transform')})",
-            "model default " + bounds_text(defaults),
-            "resolved " + bounds_text(override if override is not None else defaults),
+        settings.extend((
+            (f"{name} transform", str(variable.get("transform"))),
+            (f"{name} model-default bounds", bounds_text(defaults)),
+            (f"{name} resolved bounds", bounds_text(override if override is not None else defaults)),
         ))
     for objective in objectives:
         if not isinstance(objective, Mapping):
             raise ValueError("Optimization objective presentation is malformed")
-        rows.append((
-            "Settings — Objective",
-            f"objective {objective.get('id')}",
-            f"expression={expression_text(objective.get('quantity'))}; comparison={objective.get('comparison')}; target={_quantity_text(objective.get('target'))}",
-            f"scale={_quantity_text(objective.get('resolved_scale'))} ({objective.get('scale_source')}); weight={float64_from_hex(objective['weight_f64']):.12g}",
+        name = f"objective {objective.get('id')}"
+        settings.extend((
+            (f"{name} expression / View", expression_text(objective.get("quantity"))),
+            (f"{name} comparison / target", f"{objective.get('comparison')} / {_quantity_text(objective.get('target'))}"),
+            (f"{name} scale / weight", f"{_quantity_text(objective.get('resolved_scale'))} ({objective.get('scale_source')}) / {float64_from_hex(objective['weight_f64']):.12g}"),
         ))
 
     initial_parameters = presentation.get("initial_parameters")
@@ -1842,26 +1926,22 @@ def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]
             raise ValueError("Optimization initial ParameterSet lacks a best-point parameter")
         initial_parameter = initial_by_key[key]
         best_parameter = result.best.parameters.values[parameter]
-        rows.append((
-            "Comparison — Initial Parameters / Best-found Parameters",
+        comparison.append((
             f"{parameter.definitions_id}.{parameter.id} ({'unchanged' if str(initial_parameter) == str(best_parameter) else 'physical value changed'})",
             str(initial_parameter),
             str(best_parameter),
         ))
-    rows.append((
-        "Comparison — Initial Metrics / Best-found Metrics",
+    comparison.append((
         "evaluation ordinal",
         str(initial.get("evaluation_ordinal")),
         str(ordinal),
     ))
-    rows.append((
-        "Comparison — Initial Metrics / Best-found Metrics",
+    comparison.append((
         "total cost",
         f"{float64_from_hex(initial_outcome['cost_f64']):.12g}",
         f"{result.best.cost:.12g}",
     ))
-    rows.append((
-        "Comparison — Cost Improvement",
+    comparison.append((
         "total cost delta (best - initial)",
         "—",
         f"{result.best.cost - float64_from_hex(initial_outcome['cost_f64']):.12g}",
@@ -1879,20 +1959,31 @@ def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]
         target_value = float64_from_hex(objective["target"]["si_value_f64"])
         initial_cost = float64_from_hex(left["weighted_cost_f64"])
         best_cost = float64_from_hex(right["weighted_cost_f64"])
-        rows.extend((
-            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} value", _quantity_text(left.get("value")), _quantity_text(right.get("value"))),
-            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} normalized residual", f"{float64_from_hex(left['normalized_residual_f64']):.12g}", f"{float64_from_hex(right['normalized_residual_f64']):.12g}"),
-            ("Comparison — Initial Metrics / Best-found Metrics", f"{name} weighted cost", f"{initial_cost:.12g}", f"{best_cost:.12g}"),
-            ("Comparison — Cost Improvement", f"{name} weighted-cost delta (best - initial)", "—", f"{best_cost - initial_cost:.12g}"),
+        comparison.extend((
+            (f"{name} value", _quantity_text(left.get("value")), _quantity_text(right.get("value"))),
+            (f"{name} normalized residual", f"{float64_from_hex(left['normalized_residual_f64']):.12g}", f"{float64_from_hex(right['normalized_residual_f64']):.12g}"),
+            (f"{name} weighted cost", f"{initial_cost:.12g}", f"{best_cost:.12g}"),
+            (f"{name} weighted-cost delta (best - initial)", "—", f"{best_cost - initial_cost:.12g}"),
         ))
         if objective.get("comparison") == "at_least":
-            rows.append((
-                "Comparison — Initial Metrics / Best-found Metrics",
+            comparison.append((
                 f"{name} at-least condition",
                 "met" if initial_value >= target_value else "below target",
                 "met" if best_value >= target_value else "below target",
             ))
-    return rows
+    return settings, comparison
+
+
+def optimization_comparison_rows(result: Any) -> list[tuple[str, str, str, str]]:
+    """Return neutral combined rows for report and domain-table consumers."""
+
+    settings, comparison = optimization_comparison_dataset(result)
+    return [
+        ("settings", field, value, "") for field, value in settings
+    ] + [
+        ("comparison", field, initial, best)
+        for field, initial, best in comparison
+    ]
 
 
 def _hb_status_table(cases: Mapping[str, Any]) -> Any:

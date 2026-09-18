@@ -109,12 +109,53 @@ def _selector_text(value: object) -> str:
         return f"abs({_selector_text(value.operand)})"
     if isinstance(value, QuantitySelector):
         lineage = getattr(value._view, "_lineage", None)
-        view = (
-            str(lineage.get("lineage_sha256", "unbound"))[:12]
-            if isinstance(lineage, Mapping)
-            else "unbound"
-        )
-        return f"{value.type}.{value.projection} [View {view}]"
+        if isinstance(lineage, Mapping):
+            ptc = lineage.get("ptc")
+            if isinstance(ptc, Mapping):
+                ptc_text = f"PTC[{','.join(str(item) for item in ptc.get('selected_ports', ()))}]"
+            else:
+                ptc_text = "raw"
+            transforms = lineage.get("transforms", ())
+            transform_text = ",".join(
+                str(item.get("id")) for item in transforms if isinstance(item, Mapping)
+            )
+            retain = lineage.get("retain")
+            retain_text = (
+                ",".join(str(item) for item in retain.get("retained_coordinates", ()))
+                if isinstance(retain, Mapping) else "all"
+            )
+            digest = str(lineage.get("lineage_sha256", "unbound"))[:12]
+            view = f"{ptc_text}; transform=[{transform_text}]; retain=[{retain_text}]; sha={digest}"
+        else:
+            view = "unbound"
+        spec = value.spec
+        if isinstance(spec, DiagonalRootSpec):
+            selection = f"coordinate={_coordinate_id(spec.coordinate)}; root_hint={spec.root_hint}"
+        elif isinstance(spec, HybridizedPoleSpec):
+            selection = f"coordinates={','.join(_coordinate_id(item) for item in spec.coordinates)}; anchor={spec.anchor}"
+        elif isinstance(spec, TransferZeroSpec):
+            selection = (
+                f"family={spec.family}; input={_coordinate_id(spec.input_coordinate)}; "
+                f"output={_coordinate_id(spec.output_coordinate)}; anchor={spec.anchor}"
+            )
+        elif isinstance(spec, ResponseElementSpec):
+            selection = (
+                f"family={spec.family}; input={_coordinate_id(spec.input_coordinate)}; "
+                f"output={_coordinate_id(spec.output_coordinate)}; frequency={spec.frequency}"
+            )
+        elif isinstance(spec, ResidueNormalizedCouplingSpec):
+            def branch_text(branch: DiagonalRootSpec | HybridizedPoleSpec) -> str:
+                if isinstance(branch, DiagonalRootSpec):
+                    return f"coordinate={_coordinate_id(branch.coordinate)}; root_hint={branch.root_hint}"
+                return f"coordinates={','.join(_coordinate_id(item) for item in branch.coordinates)}; anchor={branch.anchor}"
+
+            selection = (
+                f"branch_a=({branch_text(spec.branch_a)}); "
+                f"branch_b=({branch_text(spec.branch_b)}); frequency={spec.frequency}"
+            )
+        else:
+            selection = type(spec).__name__
+        return f"{value.type}.{value.projection} ({selection}) [View {view}]"
     record = getattr(value, "_canonical_record", None)
     if callable(record):
         result = record()

@@ -16,7 +16,7 @@ from ._canonical import canonical_json_bytes, quantity_envelope
 from ._numeric_presentation import (
     figure_fragment,
     hb_outcomes_plot,
-    optimization_comparison_rows,
+    optimization_comparison_dataset,
     report_palette,
 )
 from .presentation import Theme, _report_html
@@ -187,16 +187,24 @@ def _summary(result: AnalysisResult) -> str:
         rows.append(("declared points", len(result.points)))
     elif isinstance(result, OptimizationResult):
         rows.extend((
-            ("winner cost", result.best.cost),
-            ("winner parameters", "; ".join(
+            ("saved best cost", result.best.cost),
+            ("saved best parameters", "; ".join(
                 f"{parameter.definitions_id}.{parameter.id}={value}"
                 for parameter, value in result.best.parameters.values.items()
             )),
             ("completed generation ledgers", len(result.ledger)),
         ))
-        rows.extend(
-            (f"{section}: {field}", f"initial {initial}; best found {best}")
-            for section, field, initial, best in optimization_comparison_rows(result)
+        settings, comparison = optimization_comparison_dataset(result)
+        return (
+            _table("Optimization Result summary", rows)
+            + _table("Optimization settings", settings)
+            + _table(
+                "Initial / best-found comparison",
+                [
+                    (field, f"initial {initial}; best found {best}")
+                    for field, initial, best in comparison
+                ],
+            )
         )
     return _table("Result summary", rows)
 

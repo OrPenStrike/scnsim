@@ -122,7 +122,7 @@ jobs:
 
           import scnsim
 
-          assert scnsim.__version__ == version("scnsim") == "1.0.0.dev6"
+          assert scnsim.__version__ == version("scnsim")
           print(scnsim.__version__)
           PY
 
@@ -162,8 +162,10 @@ jobs:
           uv venv --clear --python 3.10 .venv-py310
           uv pip install --python .venv-py310/bin/python dist/*.whl
           .venv-py310/bin/python - <<'PY'
+          from importlib.metadata import version
+
           import scnsim
-          assert scnsim.__version__ == "1.0.0.dev6"
+          assert scnsim.__version__ == version("scnsim")
           PY
 
       - name: Verify Notebook hygiene

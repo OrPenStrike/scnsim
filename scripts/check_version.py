@@ -11,6 +11,8 @@ VERSION_PATTERN = re.compile(
     r"(?:(?P<dev>\.dev\d+)|(?P<rc>rc\d+))?$"
 )
 
+RESEARCH_MAIN_VERSION = "1.0.0.dev7"
+
 
 def _quoted_value(section: str, key: str) -> str:
     """Read one required quoted scalar from a known generated TOML section."""
@@ -46,12 +48,12 @@ def version_kind(version: str) -> str:
 
 
 def validate_line(version: str, line: str) -> None:
-    """Require prereleases on develop and stable releases on main."""
+    """Validate a repository line, including the bounded dev7 main exception."""
 
     kind = version_kind(version)
     if line == "develop" and kind == "stable":
         raise ValueError("develop must use a development or release-candidate version")
-    if line == "main" and kind != "stable":
+    if line == "main" and kind != "stable" and version != RESEARCH_MAIN_VERSION:
         raise ValueError("main must use a stable version")
 
 
