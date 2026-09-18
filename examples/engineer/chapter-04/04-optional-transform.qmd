@@ -1,0 +1,19 @@
+---
+title: "Chapter 4 · Lesson 4 — Optional transform"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Optional continuation" appearance="simple"}
+The core stops after [Lesson 3](03-ptc-core.qmd). This page requires the same
+live Chapter state; use the [complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _04-optional-transform.qmd >}}
+
+[Previous: Lesson 3 — PTC core](03-ptc-core.qmd) ·
+[Next: Lesson 5 — Response scalar](05-optional-quantity.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

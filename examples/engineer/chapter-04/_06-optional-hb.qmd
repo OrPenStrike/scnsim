@@ -1,0 +1,100 @@
+## Lesson 6 — Optional: read independent Direct and pump-off HB Results {#lesson-ch4-hb}
+
+### Declare separate requests on the same transformed View
+
+Direct and pump-off HB use the same selected View and named physical channel,
+but they retain their own frequency grids and mode conventions. This lesson
+does not interpolate, align, overlay, or compute a residual between them.
+
+```{python}
+#| id: ch4-prepare-direct-and-hb
+from scnsim import (
+    CurrentDrive,
+    HBCaseSpec,
+    HBSolveSpec,
+    HBTruncation,
+    PumpAxis,
+)
+
+optional_direct_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(),
+    output_port="feedline_out",
+    output_mode=(),
+)
+optional_direct_spec = DirectSolveSpec(
+    frequencies=[5.5, 6.0, 6.5] * u.GHz,
+    traces=(optional_direct_trace,),
+)
+
+pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+pump_drive = CurrentDrive(
+    id="pump_drive",
+    at=feedline_in_port,
+    mode=(1,),
+)
+hb_trace = SParameterTrace(
+    id="transmission",
+    input_port="feedline_in",
+    input_mode=(0,),
+    output_port="feedline_out",
+    output_mode=(0,),
+)
+hb_spec = HBSolveSpec(
+    pump_axes=(pump,),
+    drives=(pump_drive,),
+    frequencies=[5.4, 5.9, 6.4] * u.GHz,
+    cases=(HBCaseSpec(id="pump_off", currents={}),),
+    truncation=HBTruncation(
+        pump_harmonics=(3,),
+        modulation_harmonics=(1,),
+        three_wave_mixing=False,
+        four_wave_mixing=True,
+    ),
+    traces=(hb_trace,),
+)
+run.explain(transformed_view, optional_direct_spec).show()
+run.explain(transformed_view, hb_spec).show()
+```
+
+The exact-zero `pump_off` case is still an HB request with its own lattice,
+truncation, result identity, and typed outcome.
+
+```{python}
+#| id: ch4-solve-direct-and-hb
+optional_direct = run.solve(transformed_view, optional_direct_spec)
+hb = run.solve(transformed_view, hb_spec)
+```
+
+```{python}
+#| id: ch4-show-independent-direct-and-hb
+optional_direct.traces["transmission"].plot(
+    component="magnitude",
+    magnitude="db",
+    theme=Theme.AUTO,
+)
+display(optional_direct.s.view)
+
+pump_off = hb.cases["pump_off"]
+if pump_off.succeeded:
+    pump_off.traces["transmission"].plot(
+        component="magnitude",
+        magnitude="db",
+        theme=Theme.AUTO,
+    )
+    display(pump_off.s.view)
+    display(pump_off.states)
+    display(pump_off.state_node_map)
+else:
+    display(pump_off.failure)
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/04-independent-direct-hb.md >}}
+
+:::
+
+The two Results answer their own declared requests. Similar-looking values do
+not establish cross-backend closure, and a valid failed HB case is not a trace.

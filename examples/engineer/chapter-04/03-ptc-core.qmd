@@ -1,0 +1,20 @@
+---
+title: "Chapter 4 · Lesson 3 — PTC core"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lesson 1](01-physical-plan.qmd) and review the certified physical
+diagram in [Lesson 2](02-explicit-capstone.qmd). Execute the
+[complete Chapter Notebook](chapter.ipynb) for live state.
+:::
+
+{{< include _03-ptc-core.qmd >}}
+
+[Previous: Lesson 2 — Explicit capstone](02-explicit-capstone.qmd) ·
+[Optional next: Lesson 4 — Transform](04-optional-transform.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

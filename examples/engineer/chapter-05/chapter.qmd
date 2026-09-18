@@ -1,0 +1,19 @@
+---
+title: "Chapter 5 — Library and reusable Composite"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 5 — Library and reusable Composite
+
+This complete Chapter is one clean-kernel execution unit. Its three web Lessons
+are reading views over the same ordered source fragments. QMD is the editable
+authority; `chapter.ipynb` is a generated zero-output transport artifact.
+
+{{< include _01-library.qmd >}}
+
+{{< include _02-instance.qmd >}}
+
+{{< include _03-reuse.qmd >}}

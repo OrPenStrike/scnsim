@@ -1,0 +1,179 @@
+---
+title: "Contract"
+subtitle: "Public behavior and its implementation design"
+---
+
+::: {.callout-note appearance="simple"}
+## Lifecycle authority
+
+The accepted numerical operations, physical component models, units, and
+Result meanings remain `STABILIZED`. New preparation, Run commit and workspace
+maintenance, optimization checkpoint/resume evidence, and ReportPanel
+composition remain `CONVERGING`. Acceptance and stabilization are not release
+claims.
+
+The public authoring grammar, structured Plan identity, certified diagrams,
+and independent Parameter System are reopened in documentation-first targets.
+[CircuitPlan Assembly](circuit-plan-assembly.qmd) owns the common model;
+[Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+owns composition and visual evidence; [Parameter System, Sweeps, and Bound
+Results](parameter-system.qmd) owns definitions, physical bindings, points,
+spaces, sweep Results, and optimization binding. These scopes remain
+`CONVERGING` with an integrated implementation baseline, not Human acceptance.
+:::
+
+## Implementation and evidence status {#implementation-evidence-status}
+
+The structured assembly, Parameter System, diagram, preparation/Run ownership,
+checkpoint/resume, and ReportPanel implementation baselines are integrated.
+The agreed multi-View Direct Optimization scope is implemented and usable. Its
+responsibilities remain split between requested-View root evaluation, exact
+reviewed publication transitions, immutable Result-accessor metadata, and
+verified checkpoint, attempt, Result, plot, and report evidence. The three-fix
+repairs and bounded CP5 exercise completed that agreed scope. It nevertheless
+remains `CONVERGING`: neither completion, integration, nor passing checks is
+Human acceptance, stabilization, or a stable-release claim. The accepted
+numerical Full V1 meanings are retained.
+
+On source `9cd5d4e1a27adc4e9c8719370c8a38a86177f8c9`, one bounded Linux
+x86-64 exercise made two calls to the same public multi-View Optimization
+request, creating two attempts, plus one 61-point two-Port Direct request. The
+first Optimization call was interrupted only after its verified baseline
+checkpoint was published; the second reused that exact checkpoint and
+completed one generation of two candidates. A third independent Python
+process then resolved the exact Optimization and Direct
+Results with execution entries denied and zero Julia launches, and saved a
+self-contained Report plus named `signal_in` to `resonator_probe` S-magnitude
+and phase plots; its enclosing private diagnostic exited afterward while
+serializing a nested complex ledger value. This remains `CONVERGING` evidence,
+not a generalized replay, full-suite, macOS, performance, attainment, or
+acceptance claim.
+
+Additional multi-generation exercises, other-platform coverage, historical
+regression stabilization, and release delivery are separate future scopes;
+they are not unfinished CP5 work.
+
+The `1.0.0.dev7` research showcase keeps the new README and presentation
+refinements `CONVERGING`. Optimization declarations and retained-Result labels
+now expose readable scalar-selection and View settings, while comparison
+Figures and reports separate fixed settings from initial/best-found values.
+The unchanged Chapter 4 diagram and raw/PTC response assets remain the public
+numerical examples. This checkpoint has source- and mechanism-level checks for
+the comparison formatter, but no newly generated retained-Result comparison
+image: the preserved historical Result requires an exact catalog source that
+is not available in the retained readback environment, and no substitute Plan
+or Result is accepted.
+
+Current CI exercises portable-wheel identity, a small current-API
+Direct/pump-off HB/resolve smoke, runtime preparation, Notebook parity,
+source-bound figures, static publication, and unchanged standalone RLGC rejection
+and HB failure-classifier checks. Engineer Chapter 1 has one explicitly
+generated source-bound authoring diagram, two typed-result S11 presentations,
+complex response data, and a quantity table. Chapter 2 has source-bound
+three-point sweep evidence, a genuine fixed-request
+Optimization winner with independent root readback and selected diagram, and
+optional grid/listed-point evidence. The course web build launches no solver,
+Chapter 3 adds a named three-sample two-Port Direct Result plus certified
+standalone feedline and readout illustrations. Its complete Plan's Default
+diagram remains a typed `schematic_layout` failure, so those distinct
+illustration Plans are not represented as a successful projection of it.
+Chapter 4 adds the certified explicit four-Port capstone, separately labeled
+raw and PTC Direct core Results, and optional transformed-view scalar-response,
+Direct, and pump-off HB
+evidence. Direct and HB preserve their separately declared grids without
+interpolation. Chapter 5 adds one certified reusable-Composite occurrence whose
+public surface includes both physical parameter refs, equivalent ordinary
+Pins, and one explicitly published Coordinate. Chapter 6 adds certified
+Default, T, Cross, and exact-Plan reuse diagrams without changing the Plan to
+satisfy presentation. Chapter 7 records typed authoring and compiled diagram
+limitations alongside three successful Direct points and all sixteen labeled
+four-Port channels; its plotted `[0,0]` trace is identified only as one
+reflection example. Chapter 8 records two distinct Jupyter kernel sessions:
+the first persists Direct/root Results and a Report, and the second reconstructs
+the exact declaration and calls only `resolve()` while leaving the shared
+workspace bytes unchanged. These assets do not establish execution of every
+compiled projection. The [figure inventory](../../examples/README.md) records
+the current source-bound evidence and typed layout limitations. The sixteen
+former Chapter URLs are short migration guides; superseded executable bodies,
+Notebooks, and checkpoint figures remain in Git history.
+
+Retained tests have three distinct evidence roles: current runnable checks;
+numerical and integrity regressions blocked by superseded authoring fixtures;
+and superseded historical expectations that are not current product authority.
+Old-fixture failures do not invalidate downstream numerical assertions, and
+historical expectations do not decide the unaccepted replacement semantics.
+Their bodies remain historical evidence pending authorized stabilization; no
+full historical-suite pass or whole-course execution is claimed. No release,
+consumer migration, or scientific acceptance follows from this evidence.
+
+Current structured `couple_inductive()` accepts a fixed Quantity only;
+coupling-coefficient parameter binding and optimization are not supported.
+The Runtime's illustrative optimization therefore varies capacitance only,
+not the superseded two-variable example.
+
+The model-first [Engineer course](../index.qmd) and
+[Concept](../concepts/physical-authority-and-reusable-composition.qmd) explain
+the reader workflow before these exact contracts: author one complete Plan,
+inspect its ASCDLS projection, then independently select `run.original` or a
+derived View for a numerical request. Diagram rendering never selects or
+mutates that analysis View.
+
+The [engineer-course migration map](../implementation/engineer-course-migration-map.qmd)
+owns course placement only. It does not replace any Contract or implementation
+authority on this page.
+
+## Public contracts
+
+Read these when deciding what a Notebook user may declare, execute, inspect,
+and resolve.
+
+- [Component Authoring Contract](../component-authoring.qmd) retains catalogs,
+  physical component fields and public boundaries, RLGC, Josephson/SQUID,
+  mutual coupling, and Direct/HB lowering semantics.
+- [CircuitPlan Assembly](circuit-plan-assembly.qmd) defines root/inline/reusable
+  assembly, equivalent ordinary public pins, open boundaries, completeness,
+  and shared Plan identity for independent consumers.
+- [Automatic Semantic Circuit Diagram Layout](automatic-semantic-circuit-diagram-layout.qmd)
+  defines handle-based layout including named-tap presentation order,
+  independent audits, and code-free review.
+- [Parameter System, Sweeps, and Bound Results](parameter-system.qmd) defines
+  independent input identities, physical Plan adoption, immutable points and
+  spaces, batch Result inspection, optimization binding, and parameterized
+  diagrams.
+- [V1 Runtime Contract](../v1-runtime-contract.qmd) defines Runs, Refs, Specs,
+  units, reduction, Direct/HB behavior, optimization, Results, attempts,
+  receipts, failure, and known limits.
+
+Public contracts own product semantics. An implementation page may explain a
+mechanism, dependency, data layout, or delivery slice, but it cannot weaken or
+replace a public invariant.
+
+## Implementation Design {#implementation-design}
+
+Read this collection in order before changing the implementation. Each page
+answers one maintainer question. Together they cover the Engineer course and every
+currently declared public V1 surface. Post-V1 surfaces remain fail-fast unless
+a later Human-accepted scope implements them.
+
+1. [Which layer owns each responsibility?](../implementation/system-architecture.qmd)
+2. [When is a Plan sealed, and what is hashed?](../implementation/plan-sealing-and-identity.qmd)
+3. [Which canonical bytes and schemas define identity?](../implementation/canonical-identities-and-schemas.qmd)
+4. [How are catalog and runtime identities made portable?](../implementation/catalog-and-runtime-identity.qmd)
+5. [How is Julia prepared without manual setup?](../implementation/julia-runtime-preparation.qmd)
+6. [What crosses the Python–Julia process boundary?](../implementation/python-julia-protocol.qmd)
+7. [How are requests, attempts, receipts, and arrays stored?](../implementation/workspace-attempts-and-artifacts.qmd)
+8. [How is a Composite sealed and recursively expanded?](../implementation/composite-snapshots-and-recursive-expansion.qmd)
+9. [How do primitive compilation and logical Ports form one physical graph?](../implementation/compilation-ports-and-views.qmd)
+10. [How do Q2D matrices become a complete pi ladder?](../implementation/rlgc-q2d-and-pi-expansion.qmd)
+11. [How does an ordered Ref lineage become one selected network?](../implementation/view-lineage-and-selected-networks.qmd)
+12. [How is one loaded diagonal root solved and certified?](../implementation/diagonal-root-numerical-procedure.qmd)
+13. [How are poles, zeros, response elements, couplings, and operators evaluated?](../implementation/direct-poles-zeros-and-operators.qmd)
+14. [How are Direct operators and optimization evaluated efficiently?](../implementation/direct-quantities-and-optimization.qmd)
+15. [How are full V1 HB normalization and case outcomes realized?](../implementation/hb-realization-and-outcomes.qmd)
+16. [How do typed Results become plots, reports, and diagrams?](../implementation/results-reports-and-diagrams.qmd)
+17. [How are external inputs, provenance, and the four implementation slices bounded?](../implementation/external-inputs-and-delivery.qmd)
+
+The collection remains the implementation authority for stabilized numerical
+behavior. Explicitly historical flat-node records are not a reachable
+compatibility API. Current diagram mechanics are summarized in
+[Results, reports, and diagrams](../implementation/results-reports-and-diagrams.qmd).

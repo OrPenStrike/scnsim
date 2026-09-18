@@ -1,0 +1,22 @@
+---
+title: "Chapter 2 — Sweep and optimize a coupled grounded LC"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 2 — Sweep and optimize a coupled grounded LC
+
+This complete Chapter is its own clean-kernel execution unit. Its four web
+Lessons are shorter reading views over these same ordered source fragments;
+they are not independent notebooks. QMD is the editable authority, while
+`chapter.ipynb` is a generated zero-output transport artifact.
+
+{{< include _01-build.qmd >}}
+
+{{< include _02-sweep.qmd >}}
+
+{{< include _03-optimize.qmd >}}
+
+{{< include _04-optional-spaces.qmd >}}

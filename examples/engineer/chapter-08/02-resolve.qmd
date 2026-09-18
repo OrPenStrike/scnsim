@@ -1,0 +1,20 @@
+---
+title: "Chapter 8 · Lesson 2 — Restart and resolve"
+subtitle: "Report and resolve engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Second independent kernel" appearance="simple"}
+First complete [Lesson 1](01-persist.qmd) and stop its kernel. Start a new
+kernel in the same preserved working directory, then run only this Lesson's
+three cells from the [complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _02-resolve.qmd >}}
+
+[Previous: Lesson 1 — Persist Results](01-persist.qmd) ·
+[Course map](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

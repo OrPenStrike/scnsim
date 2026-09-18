@@ -1,0 +1,132 @@
+---
+title: "System Architecture and Ownership"
+subtitle: "Which layer owns each Runtime responsibility?"
+toc-depth: 2
+---
+
+**Status:** accepted numerical algorithms remain unchanged. Run publication,
+public value ownership, and maintenance diagnostics are a `CONVERGING`
+candidate. The [public contracts](../contracts/index.qmd#public-contracts)
+remain authoritative; this page does not assign one lifecycle state to the
+whole package.
+
+## Keep the Notebook boundary in Python
+
+Python owns every user-facing object and every trust boundary that benefits
+from ordinary Python discovery:
+
+- component authoring, units, Specs, Refs, Runs, and typed Results;
+- dimensional validation and canonical serialization;
+- workspace locking, request/attempt discovery, receipt verification, and
+  exact `resolve()`;
+- AEDT Q2D parsing; and
+- Plotly numerical presentation and Matplotlib/Schemdraw diagram presentation.
+
+`CircuitRun.build_report()` is the validation facade for already verified
+Results. It delegates closed `ReportPanel` selections to a pure report
+composer that owns no Run, workspace, process, or execution callback. The
+composer reuses the same Plotly presentation layer as standalone numeric
+Results; HTML assembly adds only derived presentation identity.
+
+Run construction is also a Python ownership boundary. Python prepares and
+validates one captured Plan snapshot and the original View before it publishes
+a workspace pointer. The pointer update is the logical commit; the supplied
+Plan is sealed from that already-validated state only after commit. A bounded
+maintenance record, not a background task, owns cleanup of a replaced leaf.
+
+Julia never imports Notebook objects or calls a Python objective callback. It
+receives one sealed request and owns the numerical work inside that request:
+component realization, candidate compilation, reduction, Direct quantities,
+CMA-ES, and HB.
+
+The backend remains one `SCNSimBackend` module and one reachable engine. Its
+source is included in dependency order: wire encoding, physical compilation,
+View realization, shared Direct quantity kernels, Result artifact writing,
+Direct terminal quantities, terminal/process orchestration, and Optimization.
+The existing structured compiler is included inside the compilation owner;
+HB and batch execution remain downstream consumers after these eight shared
+owners. This file split assigns maintenance responsibility only. It introduces
+no Julia namespace, alternate dispatch path, protocol version, numerical
+formula, failure rule, or execution boundary.
+
+Optimization alone has one bounded mid-process publication boundary. The Julia
+optimization owner freezes completed baseline content and waits; the Python
+execution/workspace owner independently verifies and atomically publishes the
+request-owned checkpoint before acknowledging it. Julia cannot start a CMA
+generation before that acknowledgement. The checkpoint owns recovery content,
+the publisher seal owns provenance, and neither becomes a Result or a second
+execution engine.
+
+```text
+Notebook
+  -> Python validation and immutable prepared analysis
+  -> canonical request encoding
+  -> one external Julia process
+  -> independently validated staged outcome and artifacts
+  -> receipt seal and verified-success evidence
+  -> verified typed Python Result decoding
+```
+
+`CircuitRun` is the façade for these owners, not their shared mutable context.
+It validates that public Refs and selector Views belong to the captured Run,
+resolves parameter declarations once, and produces a private immutable
+`PreparedAnalysis`. That record contains only finalized declarations,
+normalization, source-unit evidence, and runtime identity. It contains no Run,
+workspace, process callback, or executable context. The canonical encoder
+formats that prepared record and never selects a View or resolves parameters a
+second time.
+
+Execution coordination owns attempt allocation, the one terminal process,
+closed outcome validation, and receipt promotion. It returns only verified
+workspace success evidence. A separate decoder reconstructs typed Results from
+that evidence and the captured identity lookup; it cannot authorize a payload
+that the workspace verifier did not accept. Immediate path-backed decoding
+stays inside the same ownership-checked reader or writer interval. A lazy sweep
+reacquires the original binding's read lock and revalidates the exact request,
+attempt, receipt, and Result seals before validating and reading only the
+requested chunk or point payload; it neither rescans the whole batch nor
+attaches to a replacement leaf. Already materialized detached values may
+outlive that interval. This responsibility split does not change request bytes,
+algorithms, process count, or public methods.
+
+`run.explain()` and a compiled schematic may use the same Julia compile
+preflight, but neither launches a solver nor writes the evidence workspace.
+
+The `CONVERGING` Parameter System keeps this boundary: one ordered
+`ParameterSpace` operation is one request and one Julia process, not one
+process per point or a persistent service. Values are runtime data; compatible
+topology preparation may be reused, but every parameter-dependent assembly and
+calculation is recomputed. Exact target behavior belongs to the
+[Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations).
+
+## Keep the runtime dependency boundary explicit
+
+The reopened [assembly contract](../contracts/circuit-plan-assembly.qmd)
+separates three consumers: Parameter, Calculation, and ASCDLS. Shared immutable
+assembly, units, and physical values sit below them. Diagram public reexports
+and diagram-spec validation load diagram modules lazily without changing public
+names. Pure `_parameter_resolution.py` resolves a frozen snapshot and
+`ParameterSet`; `_physical_values.py` remains the single physical field
+validator. CircuitPlan convenience delegates and Runtime uses its own frozen
+snapshot directly. No numerical operation depends on rendering success, and
+compiled diagrams remain one-way evidence consumers.
+
+The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Plotly, Matplotlib, and Schemdraw
+in Python. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
+JosephsonCircuits, and Julia standard libraries. The lockfile and committed
+Julia project/Manifest are the executable dependency authority; this page
+explains their ownership boundary rather than defining alternate versions.
+
+V1 deliberately does not add Pydantic, a database, a web service, a distributed
+runner, JuliaCall, or a persistent daemon. Canonical files, one child process,
+and typed Python classes cover the declared ownership without another service
+layer.
+
+## Preserve provenance without inheriting the old product
+
+The legacy Circuit Workbench remains historical implementation provenance. It
+does not own SCNSim names, workspace layout, public API, consumers, or release
+train. Reusable algorithms are admitted only through the classified matrix in
+[External Inputs and Delivery](external-inputs-and-delivery.qmd#legacy-adoption-matrix).
+
+[Next: Plan sealing and identity](plan-sealing-and-identity.qmd)

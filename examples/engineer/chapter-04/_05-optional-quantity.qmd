@@ -1,0 +1,38 @@
+## Lesson 5 — Optional: evaluate one Direct response scalar {#lesson-ch4-quantity}
+
+### Read S21 at one explicitly declared frequency
+
+`ResponseElementSpec` asks for one complex S element on the transformed
+retained View. The declared 6.2 GHz point is evaluated directly; it is not
+interpolated from either three-sample trace and is not a root, dip, or qubit
+frequency.
+
+```{python}
+#| id: ch4-evaluate-response-element
+from scnsim import ResponseElementSpec
+
+transmission_at_6_2_spec = ResponseElementSpec(
+    family="S",
+    input_coordinate="feedline_in",
+    output_coordinate="feedline_out",
+    frequency=6.2 * u.GHz,
+)
+run.explain(transformed_view, transmission_at_6_2_spec).show()
+transmission_at_6_2 = run.evaluate(
+    transformed_view,
+    transmission_at_6_2_spec,
+)
+display(transmission_at_6_2.value)
+display(transmission_at_6_2.magnitude)
+display(transmission_at_6_2.real)
+display(transmission_at_6_2.imag)
+transmission_at_6_2.plot()
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/04-response-element.md >}}
+
+[Download the exact scalar](../figures/04-response-element.csv).
+
+:::

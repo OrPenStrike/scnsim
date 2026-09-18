@@ -1,0 +1,16 @@
+---
+title: "Moved — Compensate probes"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 3 — Build](../engineer/chapter-03/01-build.qmd) for the current
+feedline/readout declaration, then Chapter 4 for the
+[physical four-Port Plan](../engineer/chapter-04/01-physical-plan.qmd) and
+[PTC core](../engineer/chapter-04/03-ptc-core.qmd).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figures remain available in Git history.

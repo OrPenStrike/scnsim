@@ -1,0 +1,17 @@
+---
+title: "Moved — Evaluate a quantity"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 1 — Read the loaded root](../engineer/chapter-01/04-root.qmd) for
+the first retained-coordinate quantity and
+[Chapter 4 — Optional quantity](../engineer/chapter-04/05-optional-quantity.qmd)
+for the transformed-view scalar response. Exact quantity behavior remains in
+the [Runtime Contract](../../docs/v1-runtime-contract.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

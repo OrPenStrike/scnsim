@@ -1,0 +1,374 @@
+{
+  "artifacts": {
+    "07-baseline-reflection.svg": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018",
+    "07-capacitance-times-170-over-175-reflection.svg": "1c58ea7451e121adc6e944b472f4ed28eb9454b9408d645d67ee07f1b71e805c",
+    "07-length-1p8-mm-reflection.svg": "c9cfc0fec6d90d4083db765a73874064f99a1c537c7b5f29b392e8b09efc23ff",
+    "07-n2-authoring.md": "2daef636f9897e2e42ca699a9fd36f352e4403307ab11c41d7b4bb4cd082a18a",
+    "07-n2-compiled.md": "6a44d7a77cc35b662540b6b926f7201bdf02b7297a172409dd5e0a5e633adb12",
+    "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
+    "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
+  },
+  "binding": {
+    "cell_ids": [
+      "ch7-define-parameters-and-rlgc",
+      "ch7-add-native-line",
+      "ch7-bind-signal-pins",
+      "ch7-add-four-signal-ports",
+      "ch7-render-authoring",
+      "ch7-show-authoring-audit",
+      "ch7-render-compiled",
+      "ch7-define-three-points",
+      "ch7-prepare-complete-s-request",
+      "ch7-solve-three-points",
+      "ch7-show-named-reflection-examples"
+    ],
+    "cells": {
+      "ch7-add-four-signal-ports": "37a53e436dd4b898ebd6098de5518be0342ffd2c8775deae9ef8bf29eaae0fcb",
+      "ch7-add-native-line": "eee89e14470715a4bb95fe8b5fd4d1f6deb966fcf913d6b9fbed6455bb50f1ad",
+      "ch7-bind-signal-pins": "7b4cf0f93eea93ac2d0ce4f05592181ef98e376d41d9125ec11e0ea4eae8ef62",
+      "ch7-define-parameters-and-rlgc": "616be72fbb11ecc737c279abd1b0ca44934b3780350ee4a6734eac763add94ec",
+      "ch7-define-three-points": "ba06702fd3ee26eb783da60b0ae14e09f03cfc80af5ddab4f2853e05e3100795",
+      "ch7-prepare-complete-s-request": "9e1f784dea9999b59151c38df3d74c93345b8cf65a64e7e014baf1efc627c8ca",
+      "ch7-render-authoring": "d924106bd833006df846fbf3c77affb46704e23d2d1dca045b32838364afdb8c",
+      "ch7-render-compiled": "90b35572dabbf5e871780dc58bfea37f077c1811d41c7896eacc2f20626755ca",
+      "ch7-show-authoring-audit": "2e9f9a14e90600deea86b2c153a50d63bda4fa288ba78da051e82023910528b1",
+      "ch7-show-named-reflection-examples": "8476b905460e98f35aed328206edd105caa61e0a960e1bba91cb2cce9434031b",
+      "ch7-solve-three-points": "bf9215dc3d92e50fa562fce2c9e94259382376b0db109096bc48819692fa7c11"
+    },
+    "generator_sha256": "6552328eafcc9a42874e122c31a1bab6a5199f1fdd21df8158b661e9ba0c360e",
+    "source_tree": {
+      "files": {
+        "src/scnsim/__init__.py": "254dca2a7a1f924a8384c2bc545f11383c870a2fdaf9c5d8cb46a3bca630fd1a",
+        "src/scnsim/_authoring_snapshot.py": "6a94d0a1191bd5ced0ce082edb5aeaaf76af5510639af46f01319bb34fbd997a",
+        "src/scnsim/_backend.py": "f76e7674b9fa196988a2154b0ce55d0e6ad677744ef13b48567c3a158cc7ae89",
+        "src/scnsim/_canonical.py": "ea8f70bb63c9d608e68404e7410c72228ee681c7cf6c7c3c5d6b39e59763ab3f",
+        "src/scnsim/_diagram/__init__.py": "f7f4b4d6f0379c1378eb673825f1841f1ba95261dd6402b0f7c2eade0828cfef",
+        "src/scnsim/_diagram/audit.py": "5221231ce043308d9ba6fea435e9738c8d8f1b519c01d12b65c1ab95f879c48b",
+        "src/scnsim/_diagram/compiled.py": "8933dd1d492952655956629130b3ffa75714258dd3d69a869b6ebc23ef30e092",
+        "src/scnsim/_diagram/composition_constraints.py": "2745e4946f0fe9e68f834676e2c58d49fb85ca8353ec1ccaabec15031b1766f6",
+        "src/scnsim/_diagram/composition_geometry.py": "43401b0a4ad5585f88d0d4e99e69d0d5c93cc734b23293cff6ba1bce9b67b7f5",
+        "src/scnsim/_diagram/composition_model.py": "3dfef84848446eddfbe3e8983a678f9da40ff0e493a6130c4711626034bf5260",
+        "src/scnsim/_diagram/composition_planner.py": "013a45f74faeb35c1924d64e811ea2ff6efe602f0b41438d5f44891650d712dd",
+        "src/scnsim/_diagram/drawing.py": "1eb88ddc11cdc04eafd166255046f62a56c6b14f9905a5fbd1ff20d637b4f166",
+        "src/scnsim/_diagram/equivalence.py": "e0dadb13ff5026746071193128cd91105d35419c64b2a635b4c0c812621acae4",
+        "src/scnsim/_diagram/expected.py": "a3877c634c90e98c1bfd4f602e64ebfc379ecc264b85610f2bfceadc7a30bf46",
+        "src/scnsim/_diagram/metrics.py": "d74f27fb7ef3a7e8577d5cb4c612a5c06cb353c58ab00136ffdbde378f3a5410",
+        "src/scnsim/_diagram/native.py": "5530eb5a92b824cce3ce25d0c797d2b72989db88c4c7d333ee08029fc3b0f106",
+        "src/scnsim/_diagram/pipeline.py": "adce23bb4264723037e6e07f22bfe3c0b50edb1dcacc0853ee632b355d16207a",
+        "src/scnsim/_diagram/reconstruction.py": "00b0e62579c8cac0f4657c7406df775aa0674c637b2db080c3317626f333a5ea",
+        "src/scnsim/_diagram/routing.py": "3db6eecdeca06a8be0ba3783546cce4424465cbe9282cdb0afd0818fb26012ad",
+        "src/scnsim/_diagram/scene.py": "8f8f4dfccb7b8c3153325957c4e28d1336e49c4960e2224b9fb3501e14eedcb2",
+        "src/scnsim/_diagram/structured.py": "fcff970134f7a02f6aedba6defc2c5dab97700e299c7288d32e3d6eab1125811",
+        "src/scnsim/_diagram/values.py": "5206479f6ad431e1534d0ae129961054b0c0ce7315c2e95e7a2375681e0a1862",
+        "src/scnsim/_diagram/witness.py": "b716b16f3f1f3ab11ef83d33aa5c8fe17a05cfa6ee0fe12786b50661c4dfacb0",
+        "src/scnsim/_diagram_spec.py": "71c066820bc6df7e4f157018abcd7ac0b4fb3cc734c8522c72e48e5d614c9de5",
+        "src/scnsim/_julia/Manifest.toml": "e6b7e3c33d3b21dba19e19661967766e86591d37ed289458b5276e9b3eada4d3",
+        "src/scnsim/_julia/Project.toml": "10b3c41423bb258ee2bfad157de6d115d702e8c1ff7bce2e9fd4cea3d5dd3f12",
+        "src/scnsim/_julia/bin/scnsim_request.jl": "3510ba25cce96b716e75ac2ac92ae0a2b96004f4c7d55547c9de88ddaee14907",
+        "src/scnsim/_julia/runtime.json": "057949fa6fca8ed11ea0350b7629bb31fd624bb4a7c3f66cf18d8adbdbe9adaa",
+        "src/scnsim/_julia/src/SCNSimBackend.jl": "8d15a82f4851a8b279359ce49c0bfb699bd292040faaaf3a909f99d30568dfe2",
+        "src/scnsim/_julia/src/batch_v2.jl": "9504a1f35b5406c3b59555ea2294d440409d890f57b4d3dfd792203baffd98d8",
+        "src/scnsim/_julia/src/hb.jl": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902",
+        "src/scnsim/_julia/src/structured_v2.jl": "f3e0f412fbd096c5a90bc5c5269bf258f8e7afdd4c54e2402b7a86abe308c629",
+        "src/scnsim/_parameter_resolution.py": "ee04e7f4861edaab38d364f9646f91adb74ffbbba13e1dd5295c1e29cdcc17f6",
+        "src/scnsim/_parameters.py": "a526aab8648d4c5a9af7b82d974941bb47cb4afe03026a6547d69416c7e1fef6",
+        "src/scnsim/_physical_values.py": "86ee2073025bdd74ef6b1e9ae6dd8e7a227a30249922fca7f9c1091e588ee02a",
+        "src/scnsim/_scaffold.py": "0d45b7ecb1d26875c91226db6291960d5ad72d045adee66666e632ed7435f690",
+        "src/scnsim/_schemas/identity-common.schema.json": "3ebbd6bd8d9486b2390b019f8bce091a8ed1f3b460f30b044c72444c7dee0c7a",
+        "src/scnsim/_schemas/identity-v2.schema.json": "9f5994e95931d3f89bf361fd6b8f217b4051927c1d48c4b61d8a68435a41ea32",
+        "src/scnsim/_workspace.py": "c78cbceda1796a3290d2dc9a5be6ca29c70d61fb0d24ef9a7d573bdf4446bba1",
+        "src/scnsim/authoring.py": "5f37cc05d1982fd587877c1065f81ff3c88a2bae85ec968a9bb15a0d39428bca",
+        "src/scnsim/composition.py": "0e8450a61d8e924558866325988543a0912944ff5f5bb379cdcde795cf34cadf",
+        "src/scnsim/errors.py": "2335ea36b433b8a4db211dc66b1818d5f617da28976786acd23fb711fa7bb7d3",
+        "src/scnsim/io.py": "4999f89d4171cf248a5393dc5c54254436d4d65a0f590ef421f251fa248db36f",
+        "src/scnsim/presentation.py": "4c6b70e7b4ca5314c6dfaca8ac3865d44e461e584a5c97a51c4b47b9a81eef9b",
+        "src/scnsim/results.py": "e6afbca337959608b176bc5807af3ced56e72859139613b33f577629c3251491",
+        "src/scnsim/runtime.py": "eb77a204dd41ce70f848533381157beac0a977219737f031219b953a62a12bc9",
+        "src/scnsim/schematic.py": "9bf407c117a9a706cd7cc3bce761fb56452e82d1d4a68e608f0493575a3fcd66",
+        "src/scnsim/specs.py": "a057b81ca8efe2fb2bb26171bee52b145e92cadfad9f94a245aa9bdf66894a2e",
+        "src/scnsim/units.py": "b42db68916c5904e360d04a2a78abc7e4dc04cd1fc4999f8560c59dcce2c5b53"
+      },
+      "sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+    },
+    "sources": {
+      "examples/engineer/chapter-07/01-rlgc.qmd": "5bd2260edc54264718123efb18c582386e823f0873c064bdc089c17cd83961eb",
+      "examples/engineer/chapter-07/02-ports.qmd": "149e964bf3c9e9cf432a59a50f5cfe874aa7c071e536cb5ce40054f9025c134b",
+      "examples/engineer/chapter-07/03-diagrams.qmd": "6dbf7ece8bfc0acecf0829ae74cad90a3a26953c436c8a82d283d0c3af4c53a9",
+      "examples/engineer/chapter-07/04-parameter-points.qmd": "371953427da0768f3b1efa97ede4ec0cb8b154d77e05f688af9d5bc629cd7036",
+      "examples/engineer/chapter-07/_01-rlgc.qmd": "10f6de6e631ae08572a6ec0af562ed4b7dbc65945daeea94571e0e20570bdb11",
+      "examples/engineer/chapter-07/_02-ports.qmd": "4d1213eaa8b7ff92be85c2f505e80e151dbf2339ea1085cc105b2320fd3ec3e1",
+      "examples/engineer/chapter-07/_03-diagrams.qmd": "9211eca5b4d4b59fec00c9e2f1bedef112b99188547c7d0f4f3c03cb8ca2027b",
+      "examples/engineer/chapter-07/_04-parameter-points.qmd": "115b3f3f4b4c51955041d91fcd83c7d9401cb0950e1c6abbe710c87b605e4000",
+      "examples/engineer/chapter-07/chapter.qmd": "d018b2c3dfdd79e0b3b1630a0c257dfcf5fa0b612a36cdfffe3a0c3e69c2edf5"
+    }
+  },
+  "certificates": {},
+  "environment": {
+    "matplotlib": "3.10.9",
+    "numpy": "2.2.6",
+    "pint": "0.24.4",
+    "python": "3.12.13",
+    "schemdraw": "0.23",
+    "scnsim": "1.0.0.dev6"
+  },
+  "execution": {
+    "cells": {
+      "ch7-add-four-signal-ports": "37a53e436dd4b898ebd6098de5518be0342ffd2c8775deae9ef8bf29eaae0fcb",
+      "ch7-add-native-line": "eee89e14470715a4bb95fe8b5fd4d1f6deb966fcf913d6b9fbed6455bb50f1ad",
+      "ch7-bind-signal-pins": "7b4cf0f93eea93ac2d0ce4f05592181ef98e376d41d9125ec11e0ea4eae8ef62",
+      "ch7-define-parameters-and-rlgc": "616be72fbb11ecc737c279abd1b0ca44934b3780350ee4a6734eac763add94ec",
+      "ch7-define-three-points": "ba06702fd3ee26eb783da60b0ae14e09f03cfc80af5ddab4f2853e05e3100795",
+      "ch7-prepare-complete-s-request": "9e1f784dea9999b59151c38df3d74c93345b8cf65a64e7e014baf1efc627c8ca",
+      "ch7-render-authoring": "d924106bd833006df846fbf3c77affb46704e23d2d1dca045b32838364afdb8c",
+      "ch7-render-compiled": "90b35572dabbf5e871780dc58bfea37f077c1811d41c7896eacc2f20626755ca",
+      "ch7-show-authoring-audit": "2e9f9a14e90600deea86b2c153a50d63bda4fa288ba78da051e82023910528b1",
+      "ch7-show-named-reflection-examples": "8476b905460e98f35aed328206edd105caa61e0a960e1bba91cb2cce9434031b",
+      "ch7-solve-three-points": "bf9215dc3d92e50fa562fce2c9e94259382376b0db109096bc48819692fa7c11"
+    },
+    "generator_sha256": "8c18bae29a53cfc68a7e7a11b3ce903de415aece2ef09f31d3a5ad8f8528108a",
+    "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+  },
+  "metadata_rebind": {
+    "executed_generator_sha256": "8c18bae29a53cfc68a7e7a11b3ce903de415aece2ef09f31d3a5ad8f8528108a",
+    "kind": "source_only_prose_and_checker_correction",
+    "numerical_artifacts_unchanged": true,
+    "reason": "correct diagram prose and reconcile typed outcomes, conditional SVGs, reflection artifacts, and certificates without changing executable cells",
+    "source_receipt_sha256": "14a5c94a8f6ca960c49a75b907fcc038fce2bd3d0433463f4e942101a3bd15fc"
+  },
+  "observations": {
+    "authoring": {
+      "stage": "schematic_layout",
+      "status": "failure"
+    },
+    "compiled": {
+      "stage": "schematic_layout",
+      "status": "failure"
+    },
+    "parameter_points": [
+      {
+        "coordinates": [
+          "readout_head",
+          "readout_tail",
+          "filter_head",
+          "filter_tail"
+        ],
+        "identity": {
+          "batch_result_sha256": "0f21f24c8412d018659d9ec4158d941aa52146f9bfbc753f6e920305daf8a0ab",
+          "parameters_sha256": "2dc7ea021d4bb598ed3cebb6f42cad32613fa2537767d2e66829bb84a4ca588e",
+          "source_index": 0
+        },
+        "label": "baseline",
+        "status": "success",
+        "trace_ids": [
+          "s_readout_head_from_readout_head",
+          "s_readout_head_from_readout_tail",
+          "s_readout_head_from_filter_head",
+          "s_readout_head_from_filter_tail",
+          "s_readout_tail_from_readout_head",
+          "s_readout_tail_from_readout_tail",
+          "s_readout_tail_from_filter_head",
+          "s_readout_tail_from_filter_tail",
+          "s_filter_head_from_readout_head",
+          "s_filter_head_from_readout_tail",
+          "s_filter_head_from_filter_head",
+          "s_filter_head_from_filter_tail",
+          "s_filter_tail_from_readout_head",
+          "s_filter_tail_from_readout_tail",
+          "s_filter_tail_from_filter_head",
+          "s_filter_tail_from_filter_tail"
+        ]
+      },
+      {
+        "coordinates": [
+          "readout_head",
+          "readout_tail",
+          "filter_head",
+          "filter_tail"
+        ],
+        "identity": {
+          "batch_result_sha256": "0f21f24c8412d018659d9ec4158d941aa52146f9bfbc753f6e920305daf8a0ab",
+          "parameters_sha256": "7413f62b09c69f5db387c16c79b40cae26c9ba424d1383d9a7b4de832a2cc78f",
+          "source_index": 1
+        },
+        "label": "length_1p8_mm",
+        "status": "success",
+        "trace_ids": [
+          "s_readout_head_from_readout_head",
+          "s_readout_head_from_readout_tail",
+          "s_readout_head_from_filter_head",
+          "s_readout_head_from_filter_tail",
+          "s_readout_tail_from_readout_head",
+          "s_readout_tail_from_readout_tail",
+          "s_readout_tail_from_filter_head",
+          "s_readout_tail_from_filter_tail",
+          "s_filter_head_from_readout_head",
+          "s_filter_head_from_readout_tail",
+          "s_filter_head_from_filter_head",
+          "s_filter_head_from_filter_tail",
+          "s_filter_tail_from_readout_head",
+          "s_filter_tail_from_readout_tail",
+          "s_filter_tail_from_filter_head",
+          "s_filter_tail_from_filter_tail"
+        ]
+      },
+      {
+        "coordinates": [
+          "readout_head",
+          "readout_tail",
+          "filter_head",
+          "filter_tail"
+        ],
+        "identity": {
+          "batch_result_sha256": "0f21f24c8412d018659d9ec4158d941aa52146f9bfbc753f6e920305daf8a0ab",
+          "parameters_sha256": "72973736e1985c4acc787734f07930ef848cbf02ad453273b17e0fcfba478849",
+          "source_index": 2
+        },
+        "label": "capacitance_times_170_over_175",
+        "status": "success",
+        "trace_ids": [
+          "s_readout_head_from_readout_head",
+          "s_readout_head_from_readout_tail",
+          "s_readout_head_from_filter_head",
+          "s_readout_head_from_filter_tail",
+          "s_readout_tail_from_readout_head",
+          "s_readout_tail_from_readout_tail",
+          "s_readout_tail_from_filter_head",
+          "s_readout_tail_from_filter_tail",
+          "s_filter_head_from_readout_head",
+          "s_filter_head_from_readout_tail",
+          "s_filter_head_from_filter_head",
+          "s_filter_head_from_filter_tail",
+          "s_filter_tail_from_readout_head",
+          "s_filter_tail_from_readout_tail",
+          "s_filter_tail_from_filter_head",
+          "s_filter_tail_from_filter_tail"
+        ]
+      }
+    ]
+  },
+  "publication_binding": {
+    "binding_sha256": "6b38e818299d45a4cb8e0de2cdef6d7c0f0cbe6f8cc48b4fde2726df536db9f1",
+    "generator_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8",
+    "source_tree_sha256": "a708dd88bdb7fe74e9a2028bbfbe5dc40fa9a183bd23568c38917d2ef928fc9a"
+  },
+  "publication_rebind": {
+    "deltas": {
+      "cell_ids": {
+        "after": [
+          "ch7-define-parameters-and-rlgc",
+          "ch7-add-native-line",
+          "ch7-bind-signal-pins",
+          "ch7-add-four-signal-ports",
+          "ch7-render-authoring",
+          "ch7-show-authoring-audit",
+          "ch7-render-compiled",
+          "ch7-define-three-points",
+          "ch7-prepare-complete-s-request",
+          "ch7-solve-three-points",
+          "ch7-show-named-reflection-examples"
+        ],
+        "before": [
+          "ch7-define-parameters-and-rlgc",
+          "ch7-add-native-line",
+          "ch7-bind-signal-pins",
+          "ch7-add-four-signal-ports",
+          "ch7-render-authoring",
+          "ch7-show-authoring-audit",
+          "ch7-render-compiled",
+          "ch7-define-three-points",
+          "ch7-prepare-complete-s-request",
+          "ch7-solve-three-points",
+          "ch7-show-named-reflection-examples"
+        ]
+      },
+      "cells": {},
+      "generator": {
+        "after_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8",
+        "before_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8"
+      },
+      "source_files": {
+        "src/scnsim/_numeric_presentation.py": {
+          "after_sha256": "222f8d296bd9c31f308e85fcc5dedbed555d3efc1d3df201027be4d6368774ee",
+          "before_sha256": "1b44ad153b11410f5b61b653297a51d07e8ddf09f4dc0847cec148e928b8d515"
+        },
+        "src/scnsim/_report.py": {
+          "after_sha256": "b8053298519076d63b9e478055c9a384f59a62a1128780e23d482fb60eca41f6",
+          "before_sha256": "6ab6d50f77a2854f5e3162411c50ca2d9b98c80358335abe0fe13d43db3c5ba4"
+        },
+        "src/scnsim/specs.py": {
+          "after_sha256": "f45e7d350abd46568d617f8fc6a480f2ba3f23e94b79413397e2abc4c8cfb4a0",
+          "before_sha256": "856059fa45c580be694291002e310d641bcc007d7e3f5c5875a2612bddf6fc52"
+        }
+      },
+      "teaching_sources": {}
+    },
+    "execution_identity_retained": true,
+    "historical_execution": {
+      "artifacts": {
+        "07-baseline-reflection.svg": "f004c8bb227601a3ee8288f5736c826d5a465ffdeba4c1a9988fd1b312cc4686",
+        "07-capacitance-times-170-over-175-reflection.svg": "4050ed5a51dff6f1273ca628b9b822b7a609ae374ee3ba3ecfd3d11116e815c1",
+        "07-length-1p8-mm-reflection.svg": "4adb9edaab452914de4e1750ba8139b251bea15bbaaedeba3764d3b5ac5916de",
+        "07-n2-authoring.md": "2daef636f9897e2e42ca699a9fd36f352e4403307ab11c41d7b4bb4cd082a18a",
+        "07-n2-compiled.md": "6a44d7a77cc35b662540b6b926f7201bdf02b7297a172409dd5e0a5e633adb12",
+        "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
+        "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
+      },
+      "binding_sha256": "c214eb7d585506fd1caa993400a5100c1c9ad876119427f005b747fa883e74a5",
+      "generator_sha256": "8c18bae29a53cfc68a7e7a11b3ce903de415aece2ef09f31d3a5ad8f8528108a",
+      "payload_sha256": "9435774372fce639b636bf6822a816b634fdafcb4cb3a3e10d4ee55c50e1ecdb",
+      "prior_publication_artifacts": {
+        "07-baseline-reflection.svg": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018",
+        "07-capacitance-times-170-over-175-reflection.svg": "1c58ea7451e121adc6e944b472f4ed28eb9454b9408d645d67ee07f1b71e805c",
+        "07-length-1p8-mm-reflection.svg": "c9cfc0fec6d90d4083db765a73874064f99a1c537c7b5f29b392e8b09efc23ff",
+        "07-n2-authoring.md": "2daef636f9897e2e42ca699a9fd36f352e4403307ab11c41d7b4bb4cd082a18a",
+        "07-n2-compiled.md": "6a44d7a77cc35b662540b6b926f7201bdf02b7297a172409dd5e0a5e633adb12",
+        "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
+        "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
+      },
+      "prior_publication_binding_sha256": "dd1139307a82706be22e34ea13cc7214439364142e25bcf13ea043e3f182d3b6",
+      "prior_redrawn_artifacts": {
+        "07-baseline-reflection.svg": {
+          "execution_sha256": "f004c8bb227601a3ee8288f5736c826d5a465ffdeba4c1a9988fd1b312cc4686",
+          "prior_publication_sha256": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018"
+        },
+        "07-capacitance-times-170-over-175-reflection.svg": {
+          "execution_sha256": "4050ed5a51dff6f1273ca628b9b822b7a609ae374ee3ba3ecfd3d11116e815c1",
+          "prior_publication_sha256": "1c58ea7451e121adc6e944b472f4ed28eb9454b9408d645d67ee07f1b71e805c"
+        },
+        "07-length-1p8-mm-reflection.svg": {
+          "execution_sha256": "4adb9edaab452914de4e1750ba8139b251bea15bbaaedeba3764d3b5ac5916de",
+          "prior_publication_sha256": "c9cfc0fec6d90d4083db765a73874064f99a1c537c7b5f29b392e8b09efc23ff"
+        }
+      },
+      "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
+    },
+    "kind": "reviewed_source_only_transition",
+    "numerical_evidence_reused": true,
+    "prior_manifest_sha256": "a68aacad6fe670338ab7a8fd3d5cfecbcb11f0b838f94d87c5980c2255ed7ee8",
+    "prior_publication_binding_sha256": "dd1139307a82706be22e34ea13cc7214439364142e25bcf13ea043e3f182d3b6",
+    "prior_publication_rebind_sha256": "45f871ca91dc55693b426a212371d29f2c2a60f64fd9cf10a34f6b0e7f7df00a",
+    "prior_published_artifacts_retained": true,
+    "publication_artifacts": {
+      "07-baseline-reflection.svg": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018",
+      "07-capacitance-times-170-over-175-reflection.svg": "1c58ea7451e121adc6e944b472f4ed28eb9454b9408d645d67ee07f1b71e805c",
+      "07-length-1p8-mm-reflection.svg": "c9cfc0fec6d90d4083db765a73874064f99a1c537c7b5f29b392e8b09efc23ff",
+      "07-n2-authoring.md": "2daef636f9897e2e42ca699a9fd36f352e4403307ab11c41d7b4bb4cd082a18a",
+      "07-n2-compiled.md": "6a44d7a77cc35b662540b6b926f7201bdf02b7297a172409dd5e0a5e633adb12",
+      "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
+      "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
+    },
+    "publication_binding_sha256": "6b38e818299d45a4cb8e0de2cdef6d7c0f0cbe6f8cc48b4fde2726df536db9f1",
+    "redrawn_artifacts": {},
+    "schema": "scnsim.engineer_publication_rebind.v3",
+    "transition_id": "scnsim.research_showcase.20260918"
+  },
+  "results": {
+    "batch": {
+      "attempt_sha256": "0cd4ce17ffc7a055ea3715af1372fce2c1107e5bcaf32c0a664e92ac95164011",
+      "plan_sha256": "3f6bf47078ffdd210f645c87691fc5a4dde538917e2aca8090c324b056f5adbe",
+      "request_sha256": "cc82e12b3294d2822bd577e4065e6c82c796148086fab6aa705968b13f36f403",
+      "result_sha256": "0f21f24c8412d018659d9ec4158d941aa52146f9bfbc753f6e920305daf8a0ab"
+    }
+  },
+  "schema": "scnsim.engineer_chapter7_artifacts.v1"
+}

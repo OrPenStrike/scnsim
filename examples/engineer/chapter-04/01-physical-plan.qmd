@@ -1,0 +1,19 @@
+---
+title: "Chapter 4 · Lesson 1 — Physical Plan"
+subtitle: "Four-Port capstone engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+This web Lesson is for reading. Begin with the [course setup](../setup.qmd).
+For runnable state, open the [complete zero-output Chapter Notebook](chapter.ipynb),
+restart the kernel, and run all six Lessons in order.
+:::
+
+{{< include _01-physical-plan.qmd >}}
+
+[Next: Lesson 2 — Explicit capstone](02-explicit-capstone.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

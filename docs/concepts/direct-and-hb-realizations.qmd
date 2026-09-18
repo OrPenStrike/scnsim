@@ -1,0 +1,96 @@
+---
+title: "One Selected Network, Direct and HB Realizations"
+---
+
+::: {.callout-warning}
+## Accepted backends; CONVERGING parameter spaces
+
+The Direct and harmonic-balance meanings on this page remain accepted. This
+page explains their relationship. Per-point Parameter System binding is a
+separate `CONVERGING` target. Backend rows, equations, capabilities, and
+failures belong to the linked contracts.
+:::
+
+## The analysis question comes before the backend
+
+Once a complete Plan and the required `NetworkViewRef` exist, a reader may
+ask for a small-signal Direct response, a pump-off HB response, or a supported
+driven HB case. Direct and HB are two realizations of that selected network.
+Neither backend owns the public circuit topology.
+
+Both paths must bind the same expanded Plan, component identities, logical Port
+attachments, and selected View. A backend either realizes that input faithfully
+within its declared capability or fails closed.
+
+When a request supplies a `ParameterSet` or `ParameterSpace`, each point first
+binds a complete effective value set to the same Plan and then realizes the
+selected View. Direct and HB may reuse compatible preparation inside one Julia
+process, but neither may reuse a nominal parameter-dependent matrix or treat a
+previous point as the circuit authority.
+
+## What stays common {#direct-and-hb-selected-network}
+
+The public S/Y/Z surface uses the selected View's ordered Port and coordinate
+meaning. One logical Port remains one authored boundary even though Direct and
+HB lower it through different internal matrices. A reader does not author a
+second HB-specific circuit or rename the Port for the solver.
+
+The Result from each request preserves:
+
+- the Plan and selected-View lineage;
+- Port order, direction, reference impedance, and frequency convention;
+- the backend and exact grid used; and
+- its own receipt and numerical evidence.
+
+## What remains different
+
+Direct compiles the selected network to its C/K/G and wave-boundary
+realization. HB keeps the declared nonlinear realization and case/truncation
+meaning. Pump-off HB can therefore provide a comparable linear response when
+the topology and observable match, but it is still independent evidence rather
+than a second implementation of the Direct Result.
+
+Capabilities may differ. A component or selected View that Direct supports is
+not automatically HB-capable, and SCNSim does not weaken the Plan silently to
+make both run.
+
+Direct and HB also keep independent frequency grids. Presentation may show
+their curves together, but it performs no interpolation and does not imply
+pointwise numerical comparison where frequency points differ. Magnitude-only
+similarity is not full complex-network agreement.
+
+Engineer [Chapter 4](../../examples/engineer/chapter-04/06-optional-hb.qmd)
+applies this distinction to one transformed View: its named Direct Result uses
+the declared 5.5/6.0/6.5 GHz grid, while pump-off HB uses the separate
+5.4/5.9/6.4 GHz grid. The page presents both Results independently and makes
+no overlay, interpolation, or new agreement claim.
+
+## A diagram does not choose either realization
+
+The Automatic Semantic Circuit Diagram Layout System (ASCDLS) projects the
+original authored Plan or its compiler expansion. It is not aware of the
+selected analysis View and cannot choose Direct, HB, a pump case, or a Result.
+A compiled diagram can explain lowering evidence, but it remains a Plan
+projection rather than the circuit evaluated after PTC, transforms, or
+retention.
+
+## What this concept deliberately excludes
+
+This page does not make JosephsonCircuits the topology authority, invent a fake
+Direct backend marker, imply arbitrary bias-point linearization, merge native
+frequency grids, or claim that comparable plots validate a physical model. It
+also does not redefine the signed-frequency, state, case, or failure contracts.
+Complete RLGC values remain supported only where the declared backend and
+operation support them; this candidate does not perform baseline-root
+continuation across changing RLGC matrices or imply that such continuation is
+mathematically impossible.
+
+## Contract sections
+
+- [Direct and HB component realization](../component-authoring.qmd#direct-and-hb-realization)
+- [One logical Port, two backend lowerings](../v1-runtime-contract.qmd#one-logical-port-two-backend-lowerings)
+- [Operation support](../v1-runtime-contract.qmd#operation-support)
+- [Common matrix surface](../v1-runtime-contract.qmd#common-matrix-surface)
+- [Named HB drives, cases, mixing, and driven PTC](../v1-runtime-contract.qmd#named-hb-drives-cases-and-mixing)
+- [Independent Direct and HB grids](../v1-runtime-contract.qmd#independent-direct-and-hb-grids)
+- [Parameter points, spaces, and sweep results](../contracts/parameter-system.qmd)

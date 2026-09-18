@@ -1,0 +1,55 @@
+## Lesson 2 — Instantiate and inspect the public surface {#lesson-ch5-instance}
+
+### Bind C and L through physical fields
+
+The factory receives the two independent public inputs. Their baseline values
+match the earlier grounded-LC Chapters.
+
+```{python}
+#| id: ch5-instantiate-composite
+inputs = ParameterDefinitions(id="readout_design")
+capacitance = inputs.parameter(
+    id="capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+inductance = inputs.parameter(
+    id="inductance",
+    baseline=5.8 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+
+plan = CircuitPlan(id="reusable_resonator")
+resonator = plan.add(
+    components_library.parallel_linear_lc_resonator(
+        id="resonator",
+        capacitance=capacitance,
+        inductance=inductance,
+    )
+)
+resonator_terminal = resonator.pin("terminal")
+resonator_alternate_terminal = resonator.pin("alternate_terminal")
+resonator_coordinate = resonator.coordinate("terminal_node")
+resonator_capacitance = resonator.parameter("capacitance")
+resonator_inductance = resonator.parameter("inductance")
+```
+
+The parent receives only those five handles. It cannot reach the factory's
+private capacitor, inductor, bus, or ground structure.
+
+```{python}
+#| id: ch5-show-public-surface
+display(
+    {
+        "terminal Pin": resonator_terminal,
+        "equivalent open Pin": resonator_alternate_terminal,
+        "analysis Coordinate": resonator_coordinate,
+        "capacitance Parameter": resonator_capacitance,
+        "inductance Parameter": resonator_inductance,
+    }
+)
+```
+
+`alternate_terminal` is deliberately left externally open. An open published
+boundary is still part of the component interface; it needs no fake load or
+analysis-only root wiring.

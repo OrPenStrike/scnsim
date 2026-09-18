@@ -1,0 +1,142 @@
+## Lesson 1 — Persist exact Results and build a report {#lesson-ch8-persist}
+
+### Build the complete request in the first kernel
+
+This lesson owns one fresh-kernel execution. It rebuilds a coupled grounded LC,
+then persists a Direct Result and a loaded diagonal-root Result in one shared
+workspace.
+
+Workspace evidence is bound to the exact Plan and package source that created
+it. Repeating visually similar declarations after a package update does not
+imply the same Plan identity. Use a new workspace for the new source, or first
+preserve the complete original workspace together with its pinned environment;
+an ignored workspace is neither a backup nor migration storage.
+
+```{python}
+#| id: ch8-build-persisted-plan
+from IPython.display import display
+
+from scnsim import (
+    CircuitPlan,
+    CircuitRun,
+    DiagonalRootSpec,
+    DirectSolveSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpec,
+    ReductionPipeline,
+    ReportSpec,
+    Theme,
+    components,
+    units as u,
+)
+
+inputs = ParameterDefinitions(id="report_resolve_design")
+capacitance = inputs.parameter(
+    id="capacitance", baseline=110.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+inductance = inputs.parameter(
+    id="inductance", baseline=5.8 * u.nH, spec=ParameterSpec(unit=u.nH)
+)
+plan = CircuitPlan(id="report_resolve_resonator")
+resonator = plan.subsystem(id="resonator")
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=capacitance)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=inductance)
+)
+resonator_bus = resonator.bus(id="terminal")
+resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+resonator_pin = resonator.expose_pin(id="terminal", at=resonator_bus)
+resonator_coordinate = resonator.expose_coordinate(
+    id="terminal_node", at=resonator_bus
+)
+signal_bus = plan.bus(id="signal_boundary")
+coupler = plan.add(
+    components.capacitor(id="coupling_cap", capacitance=6.0 * u.fF)
+)
+plan.series(
+    id="coupling", start=signal_bus, elements=(coupler,), end=resonator_pin
+)
+plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The child Pin is the parent wiring boundary. Its Coordinate selects analysis on
+the same signal bus and creates no second electrical connection.
+
+```{python}
+#| id: ch8-prepare-persisted-requests
+workspace = "workspaces/engineer-chapter-08"
+run = CircuitRun(plan=plan, workspace=workspace)
+direct_spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz)
+quantity_view = run.original.reduce(
+    ReductionPipeline().retain(resonator_coordinate)
+)
+root_spec = DiagonalRootSpec(
+    coordinate=resonator_coordinate,
+    root_hint=6.0 * u.GHz,
+)
+baseline_parameters = ParameterSet()
+run.explain(quantity_view, root_spec, parameters=baseline_parameters).show()
+```
+
+```{python}
+#| id: ch8-execute-persisted-results
+direct = run.solve(run.original, direct_spec, parameters=baseline_parameters)
+root = run.evaluate(quantity_view, root_spec, parameters=baseline_parameters)
+display(direct.s.plot(magnitude="db", theme=Theme.AUTO))
+display(root.plot())
+```
+
+The Direct request uses exactly four declared samples. The loaded root uses a
+6 GHz Newton hint; the hint is not the answer or a search interval.
+
+```{python}
+#| id: ch8-build-result-report
+from scnsim import ReportPanel
+
+report = run.build_report(
+    ReportSpec(
+        inputs=(direct, root),
+        theme=Theme.AUTO,
+        panels=(
+            ReportPanel(
+                result=direct,
+                family="S",
+                input_channel="signal_in",
+                output_channel="signal_in",
+                magnitude="db",
+            ),
+            ReportPanel(result=root, kind="summary"),
+        ),
+    )
+)
+report.show()
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/08-persisted-results.md >}}
+
+[Open the retained report](../figures/08-report.html) ·
+[Inspect the exact Result identities](../figures/08-persisted-results.json)
+
+:::
+
+`ReportSpec` receives the two explicit immutable Results. The first panel uses
+the stored, named S channel and selects magnitude in dB; the second presents
+the loaded root summary. Because these panels name the exact Result objects in
+`inputs`, report assembly cannot silently substitute an identity-equal object.
+Building presentation does not choose another request or create a numerical
+attempt.

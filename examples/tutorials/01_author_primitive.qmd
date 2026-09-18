@@ -1,0 +1,16 @@
+---
+title: "Moved — Author a primitive circuit"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use current [Chapter 1 — Build](../engineer/chapter-01/01-build.qmd) for the
+grounded LC declaration and [Chapter 1 — Diagram](../engineer/chapter-01/02-diagram.qmd)
+for its authoring projection. Exact assembly behavior remains in the
+[CircuitPlan Assembly Contract](../../docs/contracts/circuit-plan-assembly.qmd).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figure remain available in Git history.

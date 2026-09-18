@@ -1,0 +1,16 @@
+---
+title: "Moved — Model an N-trace line"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 3 — Build](../engineer/chapter-03/01-build.qmd) for the CPW
+feedline/readout circuit, [Chapter 6 — T and Cross](../engineer/chapter-06/03-junctions.qmd)
+for its diagram junctions, and [Chapter 7 — Ordered RLGC](../engineer/chapter-07/01-rlgc.qmd)
+for the general multi-conductor model.
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figures remain available in Git history.

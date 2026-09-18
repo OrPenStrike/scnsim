@@ -1,0 +1,16 @@
+---
+title: "Moved — Prepare pump-off HB"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 4 — Optional HB](../engineer/chapter-04/06-optional-hb.qmd) for
+the current pump-off HB request and [Chapter 4 — PTC core](../engineer/chapter-04/03-ptc-core.qmd)
+for the retained core View. Exact request behavior remains in the
+[Runtime Contract](../../docs/v1-runtime-contract.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

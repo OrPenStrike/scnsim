@@ -1,0 +1,126 @@
+## Lesson 3 — Request actual T and Cross junctions {#lesson-ch6-junctions}
+
+### Build a three-contact tapped feedline
+
+The T example reuses the established two-section scalar CPW declaration. Its
+three contacts are the left-section end, right-section start, and exposed tap
+Pin on one owner-local Bus.
+
+```{python}
+#| id: ch6-build-tapped-feedline
+tapped_plan = CircuitPlan(id="tapped_feedline_t")
+feedline = tapped_plan.subsystem(id="feedline")
+cpw = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+left = feedline.add(
+    components.transmission_line(
+        id="left", length=1.0 * u.mm, rlgc=cpw, n_sections=1
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right", length=1.0 * u.mm, rlgc=cpw, n_sections=1
+    )
+)
+input_bus = feedline.bus(id="input")
+tap_bus = feedline.bus(id="tap")
+output_bus = feedline.bus(id="output")
+left_tap = tap_bus.tap(id="left_section")
+right_tap = tap_bus.tap(id="right_section")
+coupling_tap = tap_bus.tap(id="coupling")
+left_section = feedline.series(
+    id="left_section",
+    start=input_bus,
+    elements=(left.between(left.pin("head", conductor="signal"), left.pin("tail", conductor="signal")),),
+    end=left_tap,
+)
+right_section = feedline.series(
+    id="right_section",
+    start=right_tap,
+    elements=(right.between(right.pin("head", conductor="signal"), right.pin("tail", conductor="signal")),),
+    end=output_bus,
+)
+feedline.expose_pin(id="input", at=input_bus)
+feedline_tap_pin = feedline.expose_pin(id="tap", at=coupling_tap)
+feedline.expose_pin(id="output", at=output_bus)
+```
+
+```{python}
+#| id: ch6-request-and-render-t
+tapped_composition = SchematicComposition.automatic(plan=tapped_plan)
+tap_wiring = tapped_composition.replace_wiring(at=tap_bus)
+tap_t = tap_wiring.tee(id="tap_t", branch=DiagramSide.BOTTOM)
+tap_wiring.connect(
+    tapped_composition.endpoint(left_section, boundary="end"), tap_t.left
+)
+tap_wiring.connect(
+    tapped_composition.endpoint(right_section, boundary="start"), tap_t.right
+)
+tap_wiring.connect(tapped_composition.endpoint(feedline_tap_pin), tap_t.bottom)
+tapped_t_diagram = None
+try:
+    tapped_t_diagram = tapped_plan.render_schematic(
+        CircuitDiagramSpec(layout=tapped_composition, theme=Theme.AUTO)
+    )
+except SCNSimValidationError as error:
+    if error.stage != "schematic_layout":
+        raise
+    display({"T layout unavailable": str(error), "stage": error.stage})
+if tapped_t_diagram is not None:
+    display(tapped_t_diagram.show())
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/06-tapped-feedline-t.md >}}
+
+:::
+
+The T is a non-element conductive presentation primitive. It creates no new
+net, Tap, Coordinate, or permission to address private Composite contents.
+
+### Replace the four-contact group with one Cross
+
+```{python}
+#| id: ch6-request-cross
+central_wiring = four_arm_composition.replace_wiring(at=central_bus)
+central_cross = central_wiring.cross(id="central_cross")
+central_wiring.connect(
+    four_arm_composition.endpoint(arms["a"], boundary="start"), central_cross.left
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arms["b"], boundary="start"), central_cross.right
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arms["c"], boundary="start"), central_cross.top
+)
+central_wiring.connect(
+    four_arm_composition.endpoint(arms["d"], boundary="start"), central_cross.bottom
+)
+four_arm_cross = four_arm_plan.render_schematic(
+    CircuitDiagramSpec(layout=four_arm_composition, theme=Theme.AUTO)
+)
+four_arm_cross.show()
+```
+
+::: {.content-visible when-format="html"}
+
+![One explicit Cross serving the four distinct central attachments.](../figures/06-four-arm-cross.svg){#fig-ch6-four-arm-cross .lightbox fig-alt="Four capacitor arms attached to all four arms of one explicitly requested Cross."}
+
+[Open the SVG](../figures/06-four-arm-cross.svg)
+
+:::
+
+```{python}
+#| id: ch6-show-cross-audit
+four_arm_cross.audit.show()
+```
+
+A pair of Ts might preserve electrical connectivity but would not satisfy this
+requested Cross shape. Every attachment and requested arm is used once.

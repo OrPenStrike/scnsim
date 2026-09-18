@@ -1,0 +1,32 @@
+## Lesson 2 — Set complete Port poses {#lesson-ch6-port-poses}
+
+### Understand the eight valid combinations
+
+A Port pose has a marker-facing `boundary_side` and a perpendicular
+`load_side`. The valid pairs are left/top, left/bottom, right/top,
+right/bottom, top/left, top/right, bottom/left, and bottom/right. The complete
+setter updates both directions atomically; it does not change the Port load.
+
+```{python}
+#| id: ch6-set-axes-and-port-poses
+four_arm_composition.axis(arms["a"], DiagramAxis.HORIZONTAL)
+four_arm_composition.axis(arms["b"], DiagramAxis.HORIZONTAL)
+four_arm_composition.axis(arms["c"], DiagramAxis.VERTICAL)
+four_arm_composition.axis(arms["d"], DiagramAxis.VERTICAL)
+four_arm_composition.port_orientation(
+    ports["a"], boundary_side=DiagramSide.LEFT, load_side=DiagramSide.BOTTOM
+)
+four_arm_composition.port_orientation(
+    ports["b"], boundary_side=DiagramSide.RIGHT, load_side=DiagramSide.BOTTOM
+)
+four_arm_composition.port_orientation(
+    ports["c"], boundary_side=DiagramSide.TOP, load_side=DiagramSide.RIGHT
+)
+four_arm_composition.port_orientation(
+    ports["d"], boundary_side=DiagramSide.BOTTOM, load_side=DiagramSide.RIGHT
+)
+four_arm_composition.show()
+```
+
+This lesson uses four of the eight valid poses once. It does not search all
+poses or reinterpret a Port's boundary marker as its circuit attachment.

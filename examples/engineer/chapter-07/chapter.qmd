@@ -1,0 +1,21 @@
+---
+title: "Chapter 7 — Ordered multi-conductor RLGC"
+subtitle: "Engineer course · source candidate · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Chapter 7 — Ordered multi-conductor RLGC
+
+This complete Chapter is one clean-kernel execution unit. Its four web Lessons
+are reading views over the ordered source fragments. QMD is the editable
+authority; `chapter.ipynb` is a generated zero-output transport artifact.
+
+{{< include _01-rlgc.qmd >}}
+
+{{< include _02-ports.qmd >}}
+
+{{< include _03-diagrams.qmd >}}
+
+{{< include _04-parameter-points.qmd >}}

@@ -1,0 +1,15 @@
+---
+title: "Moved — Define and bind physical parameters"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 2 — Bind independent inputs](../engineer/chapter-02/01-build.qmd)
+for the current lesson. The [Parameter System Contract](../../docs/contracts/parameter-system.qmd)
+owns exact definitions, bindings, identities, inspection, and failure behavior.
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and selected-point figure remain available in Git history.

@@ -1,0 +1,16 @@
+---
+title: "Moved — Add a Composite factory"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 5 — Library boundary](../engineer/chapter-05/01-library.qmd) for
+the current factory declaration and [Chapter 5 — Public instance](../engineer/chapter-05/02-instance.qmd)
+for its published Pins and Coordinates. Exact authoring behavior remains in
+the [Component Authoring Contract](../../docs/component-authoring.qmd).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figure remain available in Git history.

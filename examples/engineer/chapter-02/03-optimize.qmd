@@ -1,0 +1,19 @@
+---
+title: "Chapter 2 · Lesson 3 — Optimize and verify"
+subtitle: "Sweep and Optimization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites: Lessons 1–2" appearance="simple"}
+This web Lesson shares the sealed Run and sweep state and is not independently
+runnable. Use the [complete Chapter Notebook](chapter.ipynb) for execution.
+:::
+
+{{< include _03-optimize.qmd >}}
+
+[Previous: Lesson 2 — Sweep capacitance](02-sweep.qmd) ·
+[Next: Lesson 4 — Optional C/L spaces](04-optional-spaces.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

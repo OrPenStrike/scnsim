@@ -1,0 +1,20 @@
+---
+title: "Chapter 2 · Lesson 1 — Build"
+subtitle: "Sweep and Optimization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+This web Lesson is for reading. Begin with the
+[course setup](../setup.qmd). For runnable state, open the
+[complete zero-output Chapter Notebook](chapter.ipynb), restart the kernel, and
+run all four Lessons in order.
+:::
+
+{{< include _01-build.qmd >}}
+
+[Next: Lesson 2 — Sweep capacitance](02-sweep.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

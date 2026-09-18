@@ -1,0 +1,20 @@
+---
+title: "Chapter 1 · Lesson 5 — Change capacitance"
+subtitle: "Coupled grounded LC engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites: Lessons 1–4" appearance="simple"}
+This web Lesson reuses the same Plan, Run, grid, View, and requests and is not
+independently runnable. Use the [complete Chapter Notebook](chapter.ipynb) for
+execution.
+:::
+
+{{< include _05-change-capacitance.qmd >}}
+
+[Previous: Lesson 4 — Loaded root](04-root.qmd) ·
+[Course roadmap](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

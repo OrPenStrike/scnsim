@@ -1,0 +1,18 @@
+---
+title: "Chapter 7 · Lesson 1 — Ordered RLGC"
+subtitle: "Multi-conductor line engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Chapter execution unit" appearance="simple"}
+Begin with the [course setup](../setup.qmd). Read here, but execute the
+[complete Chapter Notebook](chapter.ipynb) from a clean kernel.
+:::
+
+{{< include _01-rlgc.qmd >}}
+
+[Next: Lesson 2 — Four signal Ports](02-ports.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

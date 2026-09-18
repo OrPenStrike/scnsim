@@ -1,0 +1,91 @@
+---
+title: "Compilation, Ports, and Network Views"
+subtitle: "How does one authored Plan become a selected Direct or HB network?"
+toc-depth: 2
+---
+
+**Status:** `STABILIZED` Full V1 implementation.
+
+The distributed-line compiler is specified in
+[RLGC, Q2D, and Pi Expansion](rlgc-q2d-and-pi-expansion.qmd); the immutable
+PTC/transform/retain path and selected-network evidence are specified in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
+This page keeps their shared physical-graph and logical-Port boundary aligned.
+
+## Compile one backend-neutral physical graph
+
+After ParameterSet binding, Julia expands every component into oriented
+physical rows and one ordered node-flux basis. The compile product carries
+component, parameter, node, ground, Port, coupling, and source provenance. It
+forms reciprocal C/K/G evidence for Direct and an exact JosephsonCircuits
+netlist realization for HB; neither backend becomes the Plan authority.
+
+The primitive slice follows the canonical
+[branch-stamping rule](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/physical-circuit-coordinates-node-flux-basis.qmd#g2--stamp-branches-before-interpreting-matrix-entries).
+Non-reference node rows use ascending canonical `node_id`; ground has no row.
+Components use ascending `component_id`, and rows within one component use its
+factory-schema order. For a branch oriented `terminal_1 -> terminal_2`, its
+incidence vector $b$ has `+1` at the first non-ground endpoint and `-1` at the
+second. A grounded endpoint is simply omitted, so a ground-to-node branch keeps
+the sign implied by that same orientation.
+
+The three primitive stamps are
+
+$$
+\Delta C=C_b\,\mathbf b\mathbf b^T,
+\qquad
+\Delta K=L_b^{-1}\mathbf b\mathbf b^T,
+\qquad
+\Delta G=R_b^{-1}\mathbf b\mathbf b^T.
+$$
+
+Every physical value is finite and strictly positive before stamping. The
+compiler accumulates complete symmetric Float64 matrices in that basis; it
+does not infer orientation from matrix position.
+
+Logical Ports are absent from these intrinsic primitive C/K/G stamps. Direct
+selected-network construction subsequently adds the declared Port through its
+selector $B$, reference admittance $Y_0$, and source/load boundary, and then
+performs the documented de-embedding. This prevents the Port reference
+impedance from becoming a DUT resistor.
+
+`run.explain()` uses this compile product to show deterministic rows and maps
+without solving. In the Lessons 1–8 slice its presentation contains only the
+supported evidence: Plan/request/runtime identity and bound parameters;
+Composite hierarchy and public maps; ordered nodes and expanded leaf rows;
+C/K/G; Port `B`, `Y0`, load and selected-network
+steps; Ref lineage and retained/eliminated coordinates; Direct grid or root
+preflight; and, for optimization, variables, unit maps, objectives, expanded
+scales, budget, seed, and algorithm IDs. It omits unsupported RLGC,
+PTC/transform, N-port, and HB sections instead of printing fabricated `N/A`
+rows.
+
+A compiled schematic projects the same expanded physical graph, while an
+authoring schematic remains a Python projection of the Plan.
+
+## Lower one logical Port two ways
+
+Direct maps each Port to selector column `B`, reference admittance `Y0`, load
+stamp `B Y0 B^T`, and power-wave conversion. HB lowers the same Port to exact
+JosephsonCircuits `P + R` rows and solver indices. The receipt proves that node,
+orientation, reference impedance, and load are equivalent across lowerings.
+
+PTC removes only declared, evidenced `nonloading_probe` loads from the analysis
+network. For driven HB it leaves the nonlinear/static balance loaded and
+compensates only the linearized response, as required by the public contract.
+Its canonical port set, transform ordering, retained-coordinate order, and
+selected-network maps are fixed in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
+
+## Replay one ordered view lineage
+
+The compiler replays the public order—bound graph, optional PTC, ordered paired
+transforms, optional terminal retain, then zero-current complement elimination.
+The exact lineage grammar, ParameterSet-dependent weights, port
+canonicalization, N-port realizability, and failure evidence live in
+[View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
+Direct may evaluate a named unported coordinate; S/Y/Z and HB require a
+Port-realizable final basis and fail rather than returning a smaller or
+backend-specific fallback view.
+
+[Next: RLGC, Q2D, and pi expansion](rlgc-q2d-and-pi-expansion.qmd)

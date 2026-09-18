@@ -1,0 +1,65 @@
+---
+title: "Engineer course setup"
+subtitle: "One locked environment and one clean kernel per Chapter"
+format: html
+---
+
+Clone the current development course, install its locked environment, and
+start Jupyter from the repository root:
+
+```bash
+git clone --branch develop --single-branch https://github.com/OrPenStrike/scnsim.git
+cd scnsim
+uv sync --locked
+uv run --with jupyterlab jupyter lab
+```
+
+The `jupyterlab` package is ephemeral tooling for that command; it is not added
+to SCNSim or its lock. An editor-provided Jupyter frontend may instead open the
+Chapter Notebook after `uv sync --locked`. Select the repository's `.venv`
+Python kernel, restart it, and use **Run All**.
+
+Chapters 1–4 form the mainline course; Chapters 5–8 are optional
+continuations. Chapters 1–7 are separate clean-kernel execution units.
+Chapter 8 instead has
+an explicit two-kernel procedure: execute Lesson 1, stop that kernel, then use
+a second fresh kernel to run only Lesson 2 against the same preserved working
+directory. The shorter web Lessons are reading views over ordered source
+fragments and are not independently runnable.
+
+On a cold machine, the first numerical request may prepare the locked Julia
+runtime and take longer than later requests. A relative path such as
+`workspaces/engineer-chapter-02` is resolved from the process's current working
+directory. That workspace is Result evidence, not a disposable calculation
+cache: ignoring it in Git neither deletes nor backs it up, and exact later
+resolution requires its preserved bytes.
+
+For ordinary design iteration, classify the change before reusing a workspace.
+A new `ParameterSet` reuses the same captured Plan, Run, and Views. Changing an
+objective expression, comparison, target, scale, or weight constructs a new
+`OptimizationSpec` on those same objects. Changing model defaults, topology,
+Ports, or a captured parameter definition requires rebuilding the inputs,
+Plan, Run, Views, and Specs. A newly rebuilt Plan's old View or ParameterRef is
+foreign even when a Python name or printed declaration looks the same.
+That rebuild may happen in the same kernel, but it must use the newly returned
+ParameterRef, Plan, Run, View, and Spec handles together; never mix a handle
+retained from the earlier Plan into the rebuilt object graph.
+
+With `versioned=False`, constructing that different Plan at the same workspace
+path deliberately replaces the prior active Plan evidence; it does not erase
+all evidence on every request. Requests on one Plan remain distinct by their
+canonical request identity. Use `versioned=True` when multiple Plan versions
+must coexist, and preserve the workspace bytes required by each version.
+Reusing the same variable names and workspace path in one live kernel is legal
+when the Plan identity is unchanged; a kernel restart is not an identity
+operation and does not repair a foreign handle.
+
+- [Begin Chapter 1](chapter-01/01-build.qmd)
+- [Begin Chapter 2](chapter-02/01-build.qmd)
+- [Begin Chapter 3](chapter-03/01-build.qmd)
+- [Begin Chapter 4](chapter-04/01-physical-plan.qmd)
+- [Begin Chapter 5](chapter-05/01-library.qmd)
+- [Begin Chapter 6](chapter-06/01-default.qmd)
+- [Begin Chapter 7](chapter-07/01-rlgc.qmd)
+- [Begin Chapter 8](chapter-08/01-persist.qmd)
+- [Course map](../../docs/index.qmd)

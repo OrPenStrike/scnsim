@@ -1,0 +1,142 @@
+## Lesson 1 — Build a two-Port feedline and readout {#lesson-ch3-build}
+
+### Start from a clean Chapter kernel
+
+Follow the [engineer course setup](../setup.qmd), then open this Chapter's
+`chapter.ipynb`, restart its Python kernel, and use **Run All**. Chapter 3 is a
+new execution unit; it does not continue Chapter 1 or 2 state.
+
+The main Plan below is the exact bounded two-Port teaching declaration. Each
+line body is a one-section finite-pi approximation to a scalar lossless CPW
+model. The 1 mm sections share one feedline tap; a fixed 6 fF capacitor couples
+that tap directly to a grounded 110 fF/5.8 nH readout.
+
+```{python}
+#| id: ch3-build-feedline
+from IPython.display import display
+
+from scnsim import (
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CircuitRun,
+    DirectSolveSpec,
+    RLGC,
+    SParameterTrace,
+    Theme,
+    components,
+    units as u,
+)
+
+plan = CircuitPlan(id="two_port_feedline_readout")
+feedline = plan.subsystem(id="feedline")
+readout = plan.subsystem(id="readout")
+
+cpw = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+left = feedline.add(
+    components.transmission_line(
+        id="left", length=1.0 * u.mm, rlgc=cpw, n_sections=1
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right", length=1.0 * u.mm, rlgc=cpw, n_sections=1
+    )
+)
+feedline_input = feedline.bus(id="input")
+feedline_middle = feedline.bus(id="middle")
+feedline_output = feedline.bus(id="output")
+feedline.series(
+    id="left_section",
+    start=feedline_input,
+    elements=(
+        left.between(
+            left.pin("head", conductor="signal"),
+            left.pin("tail", conductor="signal"),
+        ),
+    ),
+    end=feedline_middle,
+)
+feedline.series(
+    id="right_section",
+    start=feedline_middle,
+    elements=(
+        right.between(
+            right.pin("head", conductor="signal"),
+            right.pin("tail", conductor="signal"),
+        ),
+    ),
+    end=feedline_output,
+)
+feedline_input_pin = feedline.expose_pin(id="input", at=feedline_input)
+feedline_tap_pin = feedline.expose_pin(id="tap", at=feedline_middle)
+feedline_output_pin = feedline.expose_pin(id="output", at=feedline_output)
+```
+
+The reference conductor is RLGC metadata; `input`, `middle`, and `output` are
+the three authored signal buses. `head` and `tail` preserve each body's
+terminal ordering and do not infer a direction of physical power flow.
+
+```{python}
+#| id: ch3-build-readout
+readout_capacitor = readout.add(
+    components.capacitor(id="capacitor", capacitance=110.0 * u.fF)
+)
+readout_inductor = readout.add(
+    components.inductor(id="inductor", inductance=5.8 * u.nH)
+)
+readout_bus = readout.bus(id="node")
+readout.parallel(
+    id="parallel_lc",
+    start=readout_bus,
+    branches=((readout_capacitor,), (readout_inductor,)),
+    end=readout.ground,
+)
+readout_pin = readout.expose_pin(id="readout_node", at=readout_bus)
+```
+
+The readout's public Pin is a wiring boundary. This Chapter does not need a
+readout analysis Coordinate: its requested observable is the complete
+two-Port feedline scattering response.
+
+```{python}
+#| id: ch3-assemble-main-plan
+input_bus = plan.bus(id="feedline_in")
+output_bus = plan.bus(id="feedline_out")
+plan.link(id="feedline_input", endpoints=(input_bus, feedline_input_pin))
+plan.link(id="feedline_output", endpoints=(output_bus, feedline_output_pin))
+
+coupler = plan.add(
+    components.capacitor(
+        id="feedline_readout_coupler",
+        capacitance=6.0 * u.fF,
+    )
+)
+plan.series(
+    id="feedline_readout",
+    start=feedline_tap_pin,
+    elements=(coupler,),
+    end=readout_pin,
+)
+feedline_in_port = plan.add_port(
+    id="feedline_in",
+    at=input_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+feedline_out_port = plan.add_port(
+    id="feedline_out",
+    at=output_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The two logical Ports own their declared 50 ohm loads. The readout is a
+side-coupled internal subsystem, not a third Port.

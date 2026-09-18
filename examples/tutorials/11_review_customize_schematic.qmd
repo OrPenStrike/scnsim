@@ -1,0 +1,17 @@
+---
+title: "Moved — Review and customize a schematic"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use Chapter 6 for [Default layout](../engineer/chapter-06/01-default.qmd),
+[Port poses](../engineer/chapter-06/02-port-poses.qmd),
+[T and Cross junctions](../engineer/chapter-06/03-junctions.qmd), and
+[reuse](../engineer/chapter-06/04-reuse.qmd). The four authoring refusal cases
+now live in the [Assembly failure table](../../docs/contracts/circuit-plan-assembly.qmd#assembly-failures).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figures remain available in Git history.

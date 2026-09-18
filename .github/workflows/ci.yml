@@ -1,0 +1,520 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-docs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+        with:
+          version: "1.9.38"
+
+      - name: Sync the locked project
+        run: |
+          uv lock --check
+          uv sync --locked
+
+      - name: Verify package version contract
+        env:
+          TARGET_LINE: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
+        run: |
+          case "$TARGET_LINE" in
+            develop|main) line="$TARGET_LINE" ;;
+            *) line=any ;;
+          esac
+          uv run --locked python scripts/check_version.py --line "$line"
+
+      - name: Verify the public package surface
+        run: |
+          uv run --locked python - <<'PY'
+          import inspect
+          from importlib.metadata import version
+
+          import scnsim
+          from scnsim import (
+              CircuitPlan,
+              Library,
+              components,
+          )
+
+          assert scnsim.__version__ == version("scnsim")
+          assert "components" in scnsim.__all__
+          assert "library" not in scnsim.__all__
+          assert not hasattr(scnsim, "library")
+          assert isinstance(components, Library)
+          assert components is scnsim.components
+          assert inspect.getdoc(Library)
+          assert inspect.signature(components.capacitor).return_annotation == "ComponentInstance"
+          assert inspect.signature(CircuitPlan).parameters["id"].kind.name == "KEYWORD_ONLY"
+          assert inspect.getdoc(CircuitPlan)
+          print(scnsim.__version__)
+          PY
+
+      # Other retained tests depend on superseded net/implicit-parameter or
+      # private snapshot APIs. They are preserved, not reported as passing.
+      # Keep the applicable public physical rejection regression hard-failing.
+      - name: Run retained RLGC validation regression
+        env:
+          PYTHONPATH: tests
+        run: >-
+          uv run --locked python -m unittest -v
+          test_dev5_stabilization.Dev5AuthoringTests.test_rlgc_rejects_nonphysical_or_noncanonical_matrices
+
+      - name: Record convergence validation scope
+        run: |
+          echo "### Structured candidate validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "Existing RLGC rejection and HB classifier regressions run unchanged; current build/import, portable identity, Direct/pump-off HB/resolve, Notebook and site checks must pass." >> "$GITHUB_STEP_SUMMARY"
+          echo "Full V1 suite discovery is not a current PASS: its remaining tests depend on superseded assembly, implicit parameters, or private snapshot records. Those tests and their numerical assertions remain preserved pending accepted-contract migration; no compatibility API or blanket continue-on-error is used." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build and inspect the wheel
+        run: |
+          uv build --no-sources
+          uv run --locked python - <<'PY'
+          import glob
+          import zipfile
+
+          wheels = glob.glob("dist/*.whl")
+          assert len(wheels) == 1, wheels
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              names = wheel.namelist()
+          assert "scnsim/py.typed" in names
+          assert "scnsim/_julia/Project.toml" in names
+          assert "scnsim/_julia/Manifest.toml" in names
+          assert "scnsim/_julia/runtime.json" in names
+          assert "scnsim/_julia/src/SCNSimBackend.jl" in names
+          assert "scnsim/_julia/bin/scnsim_request.jl" in names
+          assert any(name.endswith("/licenses/LICENSE") for name in names)
+          assert any(name.endswith("/licenses/NOTICE") for name in names)
+          PY
+          uv venv --clear --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          .venv-wheel/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          import scnsim
+
+          assert scnsim.__version__ == version("scnsim")
+          print(scnsim.__version__)
+          PY
+
+      - name: Verify portable wheel identity and Python 3.10 import
+        run: |
+          mkdir -p dist/path-a dist/path-b
+          cp dist/*.whl dist/path-a/
+          cp dist/*.whl dist/path-b/
+          uv venv --clear --python 3.12 .venv-path-a
+          uv venv --clear --python 3.12 .venv-path-b
+          uv pip install --python .venv-path-a/bin/python dist/path-a/*.whl
+          uv pip install --python .venv-path-b/bin/python dist/path-b/*.whl
+          uv run --locked python - <<'PY'
+          import json
+          import subprocess
+
+          probe = r'''
+          import json
+          from scnsim import CircuitPlan, components, units as u
+          from scnsim._canonical import canonical_plan_document, catalog_source_record, sha256_hex
+
+          plan = CircuitPlan(id="portable-wheel")
+          capacitor = plan.add(components.capacitor(id="c", capacitance=1.0 * u.pF))
+          node = plan.bus(id="n")
+          plan.branch(id="shunt", at=node, elements=(capacitor,), end=plan.ground)
+          plan.add_port(id="p", at=node, role="terminated", reference_impedance=50.0 * u.ohm)
+          source = catalog_source_record(components)
+          document = canonical_plan_document(plan._capture_authoring_snapshot().semantic_record)
+          print(json.dumps([source["source_sha256"], sha256_hex(document)]))
+          '''
+          values = [
+              json.loads(subprocess.check_output([interpreter, "-c", probe], text=True))
+              for interpreter in (".venv-path-a/bin/python", ".venv-path-b/bin/python")
+          ]
+          assert values[0] == values[1], values
+          PY
+          uv venv --clear --python 3.10 .venv-py310
+          uv pip install --python .venv-py310/bin/python dist/*.whl
+          .venv-py310/bin/python - <<'PY'
+          from importlib.metadata import version
+
+          import scnsim
+          assert scnsim.__version__ == version("scnsim")
+          PY
+
+      - name: Verify Notebook hygiene
+        run: |
+          uv run --locked python - <<'PY'
+          import json
+          import re
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
+
+          def source_text(value):
+              if isinstance(value, list) and all(isinstance(item, str) for item in value):
+                  return "".join(value).replace("\r\n", "\n")
+              if isinstance(value, str):
+                  return value.replace("\r\n", "\n")
+              raise AssertionError("cell source must be a string or list of strings")
+
+          def normalized(notebook, label):
+              cells = notebook["cells"]
+              assert cells, f"empty notebook: {label}"
+              first = source_text(cells[0].get("source", ""))
+              assert cells[0].get("cell_type") == "markdown", label
+              assert not first.lstrip().startswith("---\n"), f"literal YAML: {label}"
+              first_line = next((line.strip() for line in first.splitlines() if line.strip()), "")
+              assert first_line.startswith("# "), f"missing visible H1: {label}"
+
+              code_ids = []
+              normalized_cells = []
+              for index, cell in enumerate(cells):
+                  assert not cell.get("attachments"), f"attachment: {label}"
+                  metadata = dict(cell.get("metadata", {}))
+                  metadata.pop("id", None)
+                  value = {
+                      "cell_type": cell["cell_type"],
+                      "source": source_text(cell.get("source", "")),
+                      "metadata": metadata,
+                  }
+                  if cell["cell_type"] == "code":
+                      cell_id = cell.get("id")
+                      assert isinstance(cell_id, str) and cell_id, f"missing code id: {label}:{index}"
+                      assert cell_id not in code_ids, f"duplicate code id: {label}:{cell_id}"
+                      code_ids.append(cell_id)
+                      value["id"] = cell_id
+                      assert cell.get("execution_count") is None, f"executed cell: {label}:{cell_id}"
+                      assert cell.get("outputs") == [], f"output cell: {label}:{cell_id}"
+                      compile(value["source"], label, "exec")
+                  normalized_cells.append(value)
+
+              metadata = notebook.get("metadata", {})
+              kernelspec = metadata.get("kernelspec", {})
+              language_info = metadata.get("language_info", {})
+              relevant_metadata = {
+                  "kernelspec": {
+                      key: kernelspec[key]
+                      for key in ("name", "language")
+                      if key in kernelspec
+                  },
+                  "language_info": {
+                      key: language_info[key]
+                      for key in ("name",)
+                      if key in language_info
+                  },
+              }
+              return {
+                  "nbformat": notebook.get("nbformat"),
+                  "nbformat_minor": notebook.get("nbformat_minor"),
+                  "metadata": relevant_metadata,
+                  "cells": normalized_cells,
+              }
+
+          def render_fresh(source):
+              with tempfile.TemporaryDirectory(prefix="scnsim-reader-ipynb-") as directory:
+                  isolated = Path(directory)
+                  shutil.copytree(Path("examples"), isolated / "examples")
+                  return subprocess.run(
+                      [
+                          "quarto", "render", str(source), "--to", "ipynb",
+                          "--no-execute", "--no-clean", "--output", "-",
+                      ],
+                      cwd=isolated,
+                      check=True,
+                      capture_output=True,
+                  ).stdout
+
+          chapter_specs = (
+              (
+                  Path("examples/engineer/chapter-01/chapter.qmd"),
+                  (
+                      "_01-build.qmd", "_02-diagram.qmd", "_03-s11.qmd",
+                      "_04-root.qmd", "_05-change-capacitance.qmd",
+                  ),
+                  (
+                      "01-build.qmd", "02-diagram.qmd", "03-s11.qmd",
+                      "04-root.qmd", "05-change-capacitance.qmd",
+                  ),
+                  17,
+              ),
+              (
+                  Path("examples/engineer/chapter-02/chapter.qmd"),
+                  (
+                      "_01-build.qmd", "_02-sweep.qmd", "_03-optimize.qmd",
+                      "_04-optional-spaces.qmd",
+                  ),
+                  (
+                      "01-build.qmd", "02-sweep.qmd", "03-optimize.qmd",
+                      "04-optional-spaces.qmd",
+                  ),
+                  18,
+              ),
+              (
+                  Path("examples/engineer/chapter-03/chapter.qmd"),
+                  ("_01-build.qmd", "_02-diagram.qmd", "_03-s21.qmd"),
+                  ("01-build.qmd", "02-diagram.qmd", "03-s21.qmd"),
+                  9,
+              ),
+              (
+                  Path("examples/engineer/chapter-04/chapter.qmd"),
+                  (
+                      "_01-physical-plan.qmd", "_02-explicit-capstone.qmd",
+                      "_03-ptc-core.qmd", "_04-optional-transform.qmd",
+                      "_05-optional-quantity.qmd", "_06-optional-hb.qmd",
+                  ),
+                  (
+                      "01-physical-plan.qmd", "02-explicit-capstone.qmd",
+                      "03-ptc-core.qmd", "04-optional-transform.qmd",
+                      "05-optional-quantity.qmd", "06-optional-hb.qmd",
+                  ),
+                  12,
+              ),
+              (
+                  Path("examples/engineer/chapter-05/chapter.qmd"),
+                  ("_01-library.qmd", "_02-instance.qmd", "_03-reuse.qmd"),
+                  ("01-library.qmd", "02-instance.qmd", "03-reuse.qmd"),
+                  6,
+              ),
+              (
+                  Path("examples/engineer/chapter-06/chapter.qmd"),
+                  ("_01-default.qmd", "_02-port-poses.qmd", "_03-junctions.qmd", "_04-reuse.qmd"),
+                  ("01-default.qmd", "02-port-poses.qmd", "03-junctions.qmd", "04-reuse.qmd"),
+                  10,
+              ),
+              (
+                  Path("examples/engineer/chapter-07/chapter.qmd"),
+                  ("_01-rlgc.qmd", "_02-ports.qmd", "_03-diagrams.qmd", "_04-parameter-points.qmd"),
+                  ("01-rlgc.qmd", "02-ports.qmd", "03-diagrams.qmd", "04-parameter-points.qmd"),
+                  11,
+              ),
+              (
+                  Path("examples/engineer/chapter-08/chapter.qmd"),
+                  ("_01-persist.qmd", "_02-resolve.qmd"),
+                  ("01-persist.qmd", "02-resolve.qmd"),
+                  7,
+              ),
+          )
+          aggregates = [item[0] for item in chapter_specs]
+          sources = aggregates
+          notebooks = [path.with_suffix(".ipynb") for path in sources]
+          assert all(path.is_file() for path in notebooks), notebooks
+
+          expanded_sources = {}
+          for aggregate, fragment_names, wrapper_names, expected_cells in chapter_specs:
+              fragments = [aggregate.parent / name for name in fragment_names]
+              aggregate_text = aggregate.read_text(encoding="utf-8")
+              includes = re.findall(r"\{\{< include ([^ ]+) >\}\}", aggregate_text)
+              assert includes == [path.name for path in fragments], includes
+              fragment_text = "".join(path.read_text(encoding="utf-8") for path in fragments)
+              assert all(not path.read_text(encoding="utf-8").lstrip().startswith("---") for path in fragments)
+              aggregate_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", fragment_text)
+              assert len(aggregate_ids) == fragment_text.count("```{python}") == expected_cells
+              assert len(aggregate_ids) == len(set(aggregate_ids))
+              expanded_sources[aggregate] = fragment_text
+
+              wrappers = [aggregate.parent / name for name in wrapper_names]
+              for wrapper, fragment in zip(wrappers, fragments, strict=True):
+                  text = wrapper.read_text(encoding="utf-8")
+                  frontmatter = text.split("---", 2)[1]
+                  assert re.search(r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$", frontmatter)
+                  assert re.findall(r"\{\{< include ([^ ]+) >\}\}", text) == [fragment.name]
+                  assert not wrapper.with_suffix(".ipynb").exists()
+
+          for source, artifact in zip(sources, notebooks):
+              qmd = source.read_text(encoding="utf-8")
+              frontmatter = qmd.split("---", 2)[1]
+              assert re.search(r"(?m)^jupyter:\s*python3\s*$", frontmatter), source
+              assert re.search(
+                  r"(?m)^execute:\s*\n[ \t]+enabled:\s*false\s*$",
+                  frontmatter,
+              ), source
+              expanded = expanded_sources.get(source, qmd)
+              code_chunks = expanded.count("```{python}")
+              declared_ids = re.findall(r"(?m)^#\| id:\s*(\S+)\s*$", expanded)
+              assert len(declared_ids) == code_chunks, f"missing QMD code id: {source}"
+              assert len(declared_ids) == len(set(declared_ids)), f"duplicate QMD code id: {source}"
+
+              distributed_bytes = artifact.read_bytes()
+              artifact_stat = artifact.stat()
+              artifact_identity = (
+                  artifact_stat.st_dev,
+                  artifact_stat.st_ino,
+                  artifact_stat.st_size,
+                  artifact_stat.st_mtime_ns,
+              )
+              rendered = render_fresh(source)
+
+              current_stat = artifact.stat()
+              current_identity = (
+                  current_stat.st_dev,
+                  current_stat.st_ino,
+                  current_stat.st_size,
+                  current_stat.st_mtime_ns,
+              )
+              assert current_identity == artifact_identity, f"notebook identity changed: {artifact}"
+              assert artifact.read_bytes() == distributed_bytes, f"notebook bytes changed: {artifact}"
+              fresh = json.loads(rendered)
+              distributed = json.loads(distributed_bytes)
+              portable_kernelspec_keys = {"display_name", "language", "name"}
+              distributed_kernelspec = distributed.get("metadata", {}).get("kernelspec", {})
+              assert set(distributed_kernelspec) <= portable_kernelspec_keys, (
+                  f"non-portable kernelspec metadata: {artifact}: "
+                  f"{sorted(set(distributed_kernelspec) - portable_kernelspec_keys)}"
+              )
+              assert normalized(distributed, str(artifact)) == normalized(
+                  fresh, f"fresh render of {source}"
+              ), f"generated notebook drift: {artifact}"
+
+          print("verified", len(aggregates), "expanded Chapter aggregates")
+          PY
+
+      - name: Verify source-bound Tutorial figures without executing them
+        run: |
+          uv run --locked python scripts/generate_engineer_chapter1.py --check
+          uv run --locked python scripts/generate_engineer_chapter2.py --check
+          uv run --locked python scripts/generate_engineer_chapter3.py --check
+          uv run --locked python scripts/generate_engineer_chapter4.py --check
+          uv run --locked python scripts/generate_engineer_chapter5.py --check
+          uv run --locked python scripts/generate_engineer_chapter6.py --check
+          uv run --locked python scripts/generate_engineer_chapter7.py --check
+          uv run --locked python scripts/generate_engineer_chapter8.py --check
+
+      - name: Render and inspect documentation
+        run: |
+          quarto render --no-execute --no-clean
+          uv run --locked python - <<'PY'
+          import re
+          from pathlib import Path
+
+          import subprocess
+
+          tracked = subprocess.check_output(
+              ["git", "ls-files", "*.md", "*.qmd"],
+              text=True,
+          ).splitlines()
+          for source in map(Path, tracked):
+              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", source.read_text()):
+                  if "://" in target or target.startswith(("#", "mailto:")):
+                      continue
+                  relative = target.split("#", 1)[0].strip("<>")
+                  if not relative:
+                      continue
+                  path = (
+                      Path(relative.removeprefix("/"))
+                      if relative.startswith("/")
+                      else source.parent / relative
+                  ).resolve()
+                  assert path.exists(), f"broken local link in {source}: {target}"
+          print("verified local links in", len(tracked), "tracked Markdown/QMD files")
+          PY
+          if git ls-files | grep -Eq '(^|/)(_site|\.quarto|\.venv[^/]*|build|dist)(/|$)|\.quarto_ipynb$'; then
+            echo "generated output is tracked"
+            exit 1
+          fi
+
+  runtime-preparation-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Prepare the packaged Julia runtime
+        env:
+          JULIA_DEPOT_PATH: ${{ runner.temp }}/scnsim-julia-depot
+        run: |
+          uv build --no-sources
+          uv venv --clear --python 3.12 .venv-wheel
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          .venv-wheel/bin/python - <<'PY'
+          from scnsim._backend import prepare_runtime
+
+          runtime = prepare_runtime()
+          assert runtime.julia_version == "1.12.6"
+          PY
+          SCNSIM_RUN_JULIA_TESTS=1 PYTHONPATH=tests \
+            .venv-wheel/bin/python -W error::ResourceWarning \
+            -m unittest -v \
+            test_dev6_stabilization.Dev6PreflightTests.test_hb_numerical_classifier_keeps_linearization_and_response_stages_narrow
+          .venv-wheel/bin/python -W error::ResourceWarning - <<'PY'
+          import sys
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from unittest.mock import patch
+
+          from examples.tutorials.fixtures.primitive_resonator import build_primitive_resonator
+          from scnsim import (
+              CircuitRun, CurrentDrive, DirectSolveSpec, HBCaseSpec,
+              HBSolveSpec, HBTruncation, PumpAxis, SParameterTrace, units as u,
+          )
+
+          fixture = build_primitive_resonator()
+          with TemporaryDirectory() as workspace:
+              run = CircuitRun(plan=fixture.plan, workspace=Path(workspace))
+              direct_spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
+              direct = run.solve(run.original, direct_spec)
+              pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)
+              drive = CurrentDrive(id="pump_drive", at=fixture.signal_port, mode=(1,))
+              hb_spec = HBSolveSpec(
+                  pump_axes=(pump,), drives=(drive,),
+                  frequencies=[5.5, 6.0, 6.5] * u.GHz,
+                  cases=(HBCaseSpec(id="pump_off", currents={}),),
+                  truncation=HBTruncation(
+                      pump_harmonics=(3,), modulation_harmonics=(1,),
+                      three_wave_mixing=False, four_wave_mixing=True,
+                  ),
+                  traces=(SParameterTrace(
+                      id="reflection", input_port="signal_in", input_mode=(0,),
+                      output_port="signal_in", output_mode=(0,),
+                  ),),
+              )
+              hb = run.solve(run.original, hb_spec)
+              assert hb.cases["pump_off"].succeeded, hb.cases["pump_off"]
+              with patch("subprocess.Popen", side_effect=AssertionError("resolve launched a process")):
+                  assert run.resolve(run.original, direct_spec).identity == direct.identity
+                  assert run.resolve(run.original, hb_spec).identity == hb.identity
+              assert not any(
+                  name == "scnsim._diagram" or name.startswith("scnsim._diagram.")
+                  or name in {"scnsim.schematic", "scnsim.composition"}
+                  for name in sys.modules
+              ), "numerical smoke imported the renderer"
+              print("structured Direct, pump-off HB and zero-launch exact resolve passed")
+          PY
+          git diff --check

@@ -1,0 +1,44 @@
+## Lesson 4 — Ask for the loaded root {#lesson-root}
+
+**Prerequisite:** run Lessons 1–3 in the aggregate Chapter Notebook.
+
+The exposed child Coordinate selects the same authored resonator signal bus for
+analysis. Retaining it derives a View; it does not alter the Plan or diagram.
+
+```{python}
+#| id: ch1-prepare-loaded-root-request
+root_view = run.original.reduce(
+    ReductionPipeline().retain(resonator_coordinate)
+)
+root_spec = DiagonalRootSpec(
+    coordinate=resonator_coordinate,
+    root_hint=6.0 * u.GHz,
+)
+```
+
+```{python}
+#| id: ch1-evaluate-baseline-root
+baseline_root = run.evaluate(
+    root_view,
+    root_spec,
+    parameters=ParameterSet(),
+)
+```
+
+```{python}
+#| id: ch1-show-baseline-root
+display(baseline_root.frequency)
+display(baseline_root.linewidth)
+baseline_root.plot()
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include ../figures/01-baseline-root.md >}}
+
+:::
+
+The 6 GHz hint chooses the deterministic root basin; it is not the answer or a
+search interval. The returned frequency and linewidth describe the loaded
+selected operator diagonal. They are neither an S-parameter dip nor the
+unloaded formula `1 / (2π√(LC))`.

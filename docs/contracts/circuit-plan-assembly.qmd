@@ -1,0 +1,758 @@
+---
+title: "CircuitPlan Assembly Contract"
+subtitle: "One physical model shared by independent consumers"
+toc-depth: 3
+---
+
+::: {.callout-warning}
+This reopened contract is CONVERGING with an integrated implementation baseline,
+not Human acceptance or numerical execution evidence. See the centralized
+[implementation and evidence status](index.qmd#implementation-evidence-status).
+:::
+
+This is the single authority for common circuit assembly, ownership, public
+boundaries, completeness, and Plan identity. Physical factory values remain
+owned by the [Component Authoring Contract](../component-authoring.qmd).
+Rendering is a separate consumer governed by the
+[diagram contract](automatic-semantic-circuit-diagram-layout.qmd).
+
+## One authority and three assembly scopes {#one-authority-three-scopes}
+
+`CircuitPlan` remains the sole root physical authority. Two child-scope forms
+use the same grammar without becoming alternate Plans:
+
+| Scope | Creation | Ownership boundary | Product result |
+|---|---|---|---|
+| root `CircuitPlan` | `CircuitPlan(id=...)` | complete circuit, Ports, and Run input | one sealable Plan |
+| inline `SubsystemPlan` | `scope.subsystem(id=...)` | Plan-owned hierarchy used in this declaration | attached mutable child sealed by its parent |
+| Library `CompositePlan` | `CompositePlan(id=id, library=self)` | factory-owned reusable hierarchy | one immutable `ComponentInstance` from `.build()` |
+
+`SubsystemPlan` has no detached constructor or `.build()` path. It is always
+created by and attached to its parent. An author may nest inline Subsystems
+recursively. A Subsystem is an explicit ownership declaration; SCNSim never
+infers one from values, topology, names, modes, geometry, or intended research
+use.
+
+A `CompositePlan` is detached only while a Library factory authors it. Its
+internal native leaves retain their exact catalog provenance, and `.build()`
+publishes only the declared pins, parameters, coordinates, and inductive
+branches. A consumer cannot reach through the resulting component to hidden
+children.
+
+## Common structured-authoring grammar {#structured-authoring-grammar}
+
+The operations below have one target spelling on `CircuitPlan`,
+`SubsystemPlan`, and `CompositePlan`, except where the signatures name a
+narrower owner. `AssemblyScope`, `PublicBoundaryScope`, `StructuredEndpoint`,
+`LinkEndpoint`, and `ElementUse` are documentation unions, not additional
+constructible classes. A `*` marks the keyword-only boundary:
+
+```text
+AssemblyScope := CircuitPlan | SubsystemPlan | CompositePlan
+PublicBoundaryScope := SubsystemPlan | CompositePlan
+StructuredEndpoint := BusRef | TapRef | PinRef | GroundRef
+LinkEndpoint := BusRef | TapRef | PinRef
+ElementUse := ComponentInstance | TwoTerminalUse
+
+AssemblyScope.add(component: ComponentInstance) -> ComponentInstance
+AssemblyScope.subsystem(*, id: str) -> SubsystemPlan
+AssemblyScope.bus(*, id: str | None = None) -> BusRef
+BusRef.tap(*, id: str) -> TapRef
+AssemblyScope.series(
+    *, id: str, start: StructuredEndpoint,
+    elements: tuple[ElementUse, ...], end: StructuredEndpoint,
+) -> SeriesRef
+AssemblyScope.parallel(
+    *, id: str, start: StructuredEndpoint,
+    branches: tuple[tuple[ElementUse, ...], ...], end: StructuredEndpoint,
+) -> ParallelRef
+AssemblyScope.branch(
+    *, id: str, at: BusRef | TapRef,
+    elements: tuple[ElementUse, ...], end: StructuredEndpoint,
+) -> BranchRef
+AssemblyScope.link(
+    *, id: str, endpoints: tuple[LinkEndpoint, ...],
+) -> LinkRef
+AssemblyScope.ground_pins(*, pins: tuple[PinRef, ...]) -> None
+AssemblyScope.couple_inductive(
+    *, id: str, inductor_a: InductiveBranchRef,
+    inductor_b: InductiveBranchRef,
+    coupling_coefficient: Quantity,
+) -> CouplingRef
+PublicBoundaryScope.expose_pin(
+    *, id: str, at: BusRef | TapRef,
+) -> PinRef
+PublicBoundaryScope.expose_coordinate(
+    *, id: str, at: BusRef | TapRef,
+) -> CoordinateRef
+PublicBoundaryScope.expose_inductive_branch(
+    *, id: str, branch: InductiveBranchRef,
+) -> InductiveBranchRef
+CompositePlan.expose_parameter(
+    *, id: str, parameter: ParameterRef,
+) -> ParameterRef
+ComponentInstance.between(
+    pin_1: PinRef, pin_2: PinRef,
+) -> TwoTerminalUse
+CircuitPlan.add_port(
+    *, id: str, at: BusRef | TapRef,
+    role: Literal["terminated", "nonloading_probe"],
+    reference_impedance: Quantity,
+) -> PortRef
+```
+
+IDs are typed and scoped. Added components and inline Subsystems share the
+direct-part namespace of their parent. Buses have another namespace, while
+series, parallel, branch, link, and coupling declarations share the structure
+namespace. Public pins, coordinates, and inductive branches each have separate
+exposure namespaces. Ports have a root-only namespace, and tap IDs are unique
+within one bus. Those structural-handle identities include occurrence path,
+kind, and local ID, so the same spelling may validly name a bus and its public
+pin or a bus and its Port. An exposed parameter retains its independent
+definitions-collection/local-ID identity. Compiler-assigned anonymous/internal
+keys cannot collide with user IDs.
+
+Returned refs are typed, immutable authoring handles; raw strings and foreign
+handles do not substitute for them. `ground_pins()` has no ID and returns no
+public handle: its call grouping is source provenance, not another structure or
+ground domain.
+
+### Register a body, bind its terminals, then choose its structural role
+
+`scope.add(component)` registers one catalog-created body. Registration alone
+does not connect it. Terminal completeness and structural use are separate
+checks. Before complete-graph preflight, every required native terminal must
+be bound.
+An ordinary two-terminal native body must also belong to exactly one
+`series()`, `parallel()`, or `branch()` declaration.
+
+An ordinary factory component with exactly two intrinsically distinct declared
+pins is itself an `ElementUse`; its factory-defined terminal order supplies
+orientation:
+
+```python
+capacitor = scope.add(
+    components.capacitor(id="coupler", capacitance=6.0 * u.fF)
+)
+coupling = scope.series(
+    id="coupling",
+    start=input_bus,
+    elements=(capacitor,),
+    end=output_bus,
+)
+```
+
+An already complete Composite occurrence or native multi-terminal body may
+instead remain one independent direct peer of its scope. Native multi-terminal
+bodies retain their required pin bindings; a Composite may leave public pins
+externally open when its internal physical assembly is complete. If its
+terminal schema permits structural use, the
+author may consume the whole body in exactly one structure. The three built-in
+grounded resonators expose `terminal_1` and `terminal_2` on the same intrinsic
+Bus. Their internal LC, JJ, or SQUID shunts to ground are unchanged. They are
+complete independent Blocks: either or both public pins may remain externally
+open and visible. Their intrinsically equivalent pair cannot be used by
+`.between()` or as an implicit two-terminal structural use. Floating resonator
+pins remain intrinsically distinct. A custom Library retains its own declared
+terminal names; this is not a global pin-renaming rule.
+
+For one structural use of a complete multi-terminal body,
+`component.between(pin_1, pin_2)` supplies the ordered endpoint pair. It is
+optional when that body remains an independent peer and never selects a
+preferred physical conductor or numerical priority. Every remaining required
+native pin must still be bound; unselected Composite public pins may remain
+externally open. An intrinsically equivalent selected pair rejects before
+mutation and is rechecked when consumed. Parent-commoned final nets do not
+establish intrinsic child equivalence. The body appears once; another pair cannot clone it. CPW and
+MTL components retain one ordered multi-terminal electrical model and never
+become scalar-equivalent shortcuts.
+
+`series()` and `.between()` state endpoint incidence and authored order. They
+do not assert a scalar two-terminal equivalent or equal current through a body
+whose complete model includes internal reference shunts. An IDC therefore
+retains all three capacitance branches, and CPW/MTL bodies retain complete RLGC
+matrices, conductor order, and every remaining terminal binding.
+
+Registration, binding, and structure therefore cannot manufacture a phantom
+component, duplicate one body, hide an electrical shortcut, or infer an
+engineering group. Two electrically equivalent declarations may retain
+different authored structure and therefore need not share Plan or semantic
+identity.
+
+Repeated contact with a public terminal is allowed only on its already
+declared net. It does not duplicate the native body or let one terminal join
+two nets.
+
+### Endpoints, buses, taps, and ground {#buses-taps-and-ground}
+
+Structured operators accept these endpoint types where their signatures allow:
+
+```text
+BusRef | TapRef | PinRef | GroundRef
+```
+
+A `CoordinateRef` is an analysis selector, not a wiring endpoint. An endpoint
+must belong to the current scope or be a public pin of one immediate child.
+Hidden child refs, foreign refs, implicit loads, implicit grounding, and
+hidden zero-ohm elements fail before Plan seal.
+
+These handles answer different questions:
+
+| Handle | Meaning |
+|---|---|
+| `BusRef` | one authored electrical net inside its owning scope |
+| `TapRef` | one explicitly named attachment site on that same bus |
+| `PinRef` | a component terminal or a child-scope boundary exposed to its parent |
+| `CoordinateRef` | a selector that makes an electrical coordinate available to analysis |
+
+Ordinary wiring may use a `BusRef` directly. A named tap is useful only when
+the author needs to identify one attachment independently—for example, to
+constrain the presentation order of several contacts on one bus. A tap does
+not create another net, and its ID or declaration order is not a layout
+instruction. Likewise, a public pin whose ID is `"tap"` remains a `PinRef`;
+its spelling does not make it a `TapRef`.
+
+`scope.bus(id=None)` declares one logical net. A named root bus publishes an
+`ElectricNodeRef` immediately through `.node`. An anonymous root bus becomes
+public only when `add_port()` promotes it to the Port-named coordinate;
+accessing `.node` before that declaration fails. A private child bus does not
+publish a root coordinate; its owner must use `expose_coordinate()`. Taps
+delegate `.node` to their bus and therefore resolve the same eventual
+`ElectricNodeRef`, while their attachment handles and drawing anchors remain
+distinct. Promotion is an authoring declaration, not a render side effect, and
+Plan sealing preserves the handle's resolved meaning. A tap has no coordinate
+argument.
+
+`scope.ground` is the `GroundRef` for the single canonical Plan reference. It
+is valid only where `series()`, `parallel()`, or `branch()` accepts a structured
+endpoint. It is not a catalog component, another physical ground model, a
+`link()` endpoint, or a page-wide drawing rail. Ground glyphs remain local to
+the declarations that establish their role.
+
+### Series, parallel, branch, link, and grounding {#structured-operators}
+
+`series()`, `parallel()`, and `branch()` are component-containing assembly
+declarations: each establishes real electrical incidence and a readable
+authored role. They are not labels applied after arbitrary wiring. By contrast,
+`link()` joins existing endpoints directly and contains no component.
+
+`series()` requires at least one `ElementUse`. Electrical order is the tuple
+order, and each adjacent pair creates one generated private internal node. A
+one-element coupling capacitor is valid. Its start and end cannot silently be
+the same endpoint; an intended cycle requires distinct declared junctions and
+another explicit path.
+
+When an author needs a public midpoint in a series chain, the midpoint must be
+declared first as a bus and the chain split into two structures at that bus.
+Compiler-generated private intermediate nodes are not addressable pins or taps.
+
+`parallel()` requires at least two nonempty ordered element tuples. Every
+branch shares exactly the same start/end pair and owns distinct internal nodes.
+Empty tuples do not mean a short. The returned `.branches` is the immutable
+tuple of generated `SeriesRef` handles. Each branch's series order is an
+electrical fact; the branch collection itself is electrically unordered.
+Declaration order supplies default visual order and may enter authoring
+provenance, but a graphical permutation does not change branch membership or
+the circuit.
+
+`branch()` uses the same nonempty chain semantics, but `at` must be a declared
+`BusRef` or `TapRef`. It states that the chain departs a through-bus without
+severing it. This side-branch role enters semantic identity and is not inferred
+from the part name or final drawing. A branch may have the same electrical
+incidence as a series declaration from that bus; it additionally records the
+side-branch role, never current direction. A grounded branch prefers an
+outward/down orientation when feasible, but the drawing preference does not
+change its electrical meaning.
+
+`link()` declares one direct conductive relation with no component. Its
+`endpoints` tuple contains at least two `BusRef`, `TapRef`, or `PinRef` handles;
+tuple order conveys neither direction nor layout, and canonical membership uses
+the existing typed scoped identities. One N-endpoint link is one authored
+zero-wire relation, not a star of invented center branches or a pairwise
+clique. It adds and moves no component, consumes no registered body, and cannot
+replace a required `series()`, `parallel()`, or `branch()` declaration. There is
+no `start=`/`end=` compatibility spelling for the target link API.
+
+A parent may link its own endpoints and public pins of its immediate children.
+It may not use a child's private bus or tap, even when a Python variable still
+holds that handle. A link can make a parent bus, an exposed child pin, and the
+pin's backing private bus one final voltage node without erasing any
+owner-local identity. A parent bus is optional when a physical structure can
+terminate directly at the public pin.
+
+`link()` rejects a raw `GroundRef`; external grounding has the dedicated
+`ground_pins()` operation below. It also rejects an endpoint already equivalent
+to ground before that call, duplicate logical endpoints, or a no-op whose every
+endpoint already belongs to one pre-call electrical class. Partial overlap is
+legal when the declaration safely joins at least two pre-call classes and
+reuses existing wire geometry rather than duplicating it. Separate links may
+therefore extend one net over time without restating earlier wires.
+
+For ordinary non-ground connection, a link may not merge distinct `BusRef`s
+owned by its invoking scope, whether those buses are named or anonymous. A
+child's private backing bus does not count as another parent-owned bus. The same
+rule detects direct, pin-mediated, tap-mediated, and transitive attempts,
+including a later edit inside an inline child that would create a conflict in
+the containing Plan. It does not ban legitimate public return pins merely
+because their component has more than one terminal.
+
+`ground_pins(pins=(...))` accepts one or more eligible `PinRef`s in the current
+scope or on immediate children. It grounds each pin's entire currently
+connected net, so one call may explicitly ground several otherwise independent
+return nets. Distinct pins on the same previously ungrounded net are valid.
+Duplicate logical pins or any pin already equivalent to ground reject the whole
+call; no subset is silently accepted. The tuple order and batch boundary are
+provenance only and define neither geometry nor separate ground domains.
+
+Connectivity validation uses one zero-wire equivalence relation for buses and
+taps, public exposures, links, canonical ground, and structured wire endpoint
+incidences. It never unions through an R, L, C, JJ, or transmission-line body,
+nor infers a short from a numerical value. Coincident structured endpoints,
+model-specific terminal shorts, one-Port-per-final-node, grounded Ports, public
+pin membership, and complete child invariants are checked over the affected
+enclosing Plan.
+
+Each authoring operation prepares and validates its complete effect before an
+atomic commit. A rejection preserves IDs, structures, aliases, body
+consumption, public exposures, parameter definitions, revision/cache state,
+and the diagnostic source paths of successfully committed declarations; it
+adds no diagnostic or provenance history for the rejected attempt. A rejected
+structure ID is reusable. A link that was legal when declared may later become
+grounded by `ground_pins()` or a structured ground endpoint without being
+retroactively reclassified as an invalid historical link.
+
+Incomplete authoring remains legal while the graph is editable.
+`CompositePlan.build()`, immutable render capture, and `CircuitRun` preparation
+perform complete validation over their ownership boundary. A failed authoring
+check leaves that state editable and unsealed; rendering does not seal it.
+Run construction seals the already-validated Plan only when its workspace
+publication logically commits. Ordinary precommit failure therefore leaves an
+initially editable Plan editable. The sole exception is an indeterminate
+post-publication durability failure: no Run is returned, the prepared Plan is
+conservatively sealed, and the typed failure reports that the workspace may
+have changed.
+Atomicity covers SCNSim's authoring state, not arbitrary side effects inside a
+user's Python factory. A well-typed ownership, cardinality, stale-ref, or
+connectivity violation reports `SCNSimValidationError(stage="authoring")` with
+the conflicting endpoints, scope, buses, and earlier path. Wrong endpoint or
+container types raise `TypeError`; post-seal mutation raises `PlanSealedError`.
+
+Real graph cycles remain valid when authored as separate junctions and
+physical paths.
+
+The target decision boundary is therefore exact:
+
+| Declaration | Outcome |
+|---|---|
+| one bus plus two immediate-child public pins in one link | one valid N-endpoint zero-wire relation |
+| two or more pre-call classes with one already-overlapping endpoint | valid extension when every other invariant holds |
+| duplicate logical endpoint, or all endpoints already one class | reject as duplicate or redundant |
+| two distinct buses owned by the invoking scope, directly or through pins/taps | reject the complete operation |
+| a private child ref, foreign/stale ref, raw ground, Port, coordinate, string, or wrong container | reject without publishing a declaration |
+| distinct public return pins, including two already on one ungrounded net, passed to `ground_pins()` | valid explicit grounding when the component and Port invariants hold |
+| duplicate or already-grounded pin in a `ground_pins()` batch | reject the complete batch |
+| connection that shorts a physical element's endpoints or grounds a Port node | reject the complete operation |
+
+No numerical near-zero rule participates in this matrix. Wires establish
+equivalence; physical bodies do not.
+
+### Three local-ground roles {#local-ground-roles}
+
+The target distinguishes three authored responsibilities:
+
+1. **Intrinsic ground.** A subsystem connects a real `series()`, `parallel()`,
+   or `branch()` endpoint to its own `scope.ground`. The subsystem itself owns
+   that grounding and exposes only the boundaries its parent needs.
+2. **Parent-applied ground.** An otherwise ungrounded module exposes an
+   ordinary return bus as a public pin. Its parent calls `ground_pins()` on
+   that pin. A bus whose ID contains `ground` remains ordinary until this
+   explicit operation.
+3. **Port load/reference.** `add_port()` supplies its declared load to the
+   canonical reference. A Port has no separately wireable ground pin, and its
+   graphical ground anchor is not a public electrical handle.
+
+The parent-applied form is deliberately small:
+
+```python
+return_pin = child.expose_pin(id="return", at=return_bus)
+plan.ground_pins(pins=(return_pin,))
+```
+
+All three resolve to the same canonical reference for numerical lowering. The
+authoring projection nevertheless preserves the intrinsic branch, the
+parent-side ground attachment outside the child boundary, or the Port load at
+its authored locality. Several local glyphs therefore do not imply several
+electrical grounds, while one multi-pin grounding call does not force a shared
+cross-subsystem ground rail.
+
+Every final non-ground alias denotes one solver degree of freedom. Ground
+aliases provide no selectable non-reference analytical coordinate. Linking or
+grounding creates no implicit `NetworkViewRef`, transform, retained boundary,
+or reduction.
+
+## Public boundaries and parameters {#public-boundaries}
+
+Inline and reusable scopes deliberately publish their consumer surface:
+
+```python
+terminal = child.expose_pin(id="terminal", at=terminal_bus)
+mode = child.expose_coordinate(id="mode", at=terminal_bus)
+coil = child.expose_inductive_branch(id="coil", branch=inductor_branch)
+```
+
+- `expose_pin()` returns a public wiring `PinRef` for the parent.
+- `expose_coordinate()` returns a public analysis `CoordinateRef`.
+- `expose_inductive_branch()` returns an oriented branch eligible for explicit
+  mutual coupling.
+
+One internal Bus/Tap node may expose several differently named ordinary
+public `PinRef`s. Each has its own scoped identity and boundary, but all denote
+the same true node; no component, Coordinate, or degree of freedom is added.
+For example, `expose_pin(id="plus_1", at=plus_bus)` and
+`expose_pin(id="plus_2", at=plus_bus)` publish equivalent ordinary pins without
+assigning coupling, probe, input, or output roles. Its bus may still have
+several taps. A private named bus is not automatically a root coordinate;
+coordinate exposure is explicit. The `.pin(name)`, `.coordinate(name)`, and
+`.inductive_branch(name)` accessors return only declared public handles.
+Externally commoning two distinct public return pins does not rewrite that
+immutable child schema or imply the pins were intrinsically shorted. Distinct
+pins on one child are not rejected merely for sharing the external reference;
+complete internal topology and model-specific terminal constraints decide
+whether that commoning is physically valid.
+
+Parameter definitions are independent of assembly ownership. A scope acquires
+a parameter only when a registered physical component field consumes the ref.
+A reusable Composite may then publish that already-bound ref:
+
+```python
+public_capacitance = composite.expose_parameter(
+    id="capacitance", parameter=capacitance
+)
+```
+
+The built component's `parameter(name)` lookup returns the exact original
+public ref; it does not create a definition or mutate its baseline. A primitive
+field bound directly to a `ParameterRef` exposes that original ref by field
+name, before and after clone/add. A mapped primitive field returns the original
+`AffineMap.input` ref with its input units and identity, not the transformed
+field value; mapping and physical consumers remain separately captured.
+A literal-only field raises `KeyError` on
+lookup. Composite lookup still requires explicit `expose_parameter()`.
+Compatible factory
+slots accept either a fixed `Quantity` or a compatible independent
+`ParameterRef`. Adding the part records the real field binding and any declared
+fan-out. Parameters are never decorative same-value labels disconnected from
+physical leaves, and a parent never selects a hidden child parameter by path
+guessing. The [Parameter System contract](parameter-system.qmd) owns
+definition identity, Plan adoption, values, spaces, and operation binding.
+
+## Logical Ports remain root-owned {#root-owned-ports}
+
+Only `CircuitPlan` creates logical Ports:
+
+```python
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+`at` is a root `BusRef` or `TapRef`. The Port binds the existing raw-network
+load exactly once and returns a `PortRef` for Direct, HB, and view selection.
+`role` remains exactly `"terminated"` or `"nonloading_probe"`; the latter is
+eligible for the accepted PTC operation but is not portrayed as already
+compensated. Final electrical identity is resolved through buses, taps, public
+child exposures, and anonymous-bus promotion: one resulting electric node may
+own at most one logical Port even when several handles alias that node. Inline
+Subsystems and Library Composites cannot create Ports.
+
+## Inductive coupling remains explicit and nonconductive {#inductive-coupling}
+
+`couple_inductive()` consumes two eligible oriented `InductiveBranchRef`s and
+one signed dimensionless coupling coefficient:
+
+```python
+mutual = plan.couple_inductive(
+    id="mutual",
+    inductor_a=left.inductive_branch("coil"),
+    inductor_b=right.inductive_branch("coil"),
+    coupling_coefficient=-0.12 * u.dimensionless,
+)
+```
+
+It adds no conductive edge. Branch orientation owns the sign; SCNSim does not
+infer it from symbol placement. Existing realizability, reciprocity, and
+positive-definite inductance checks remain the physical authority.
+
+## Complete structural examples {#structured-examples}
+
+### Grounded LC and reusable resonator
+
+Engineer Chapter 1 begins with the minimal inline example: one signal bus and
+two native elements form an explicit `parallel()` between that bus and
+`scope.ground`. The scope binds C to one independent ref, keeps L literal, and
+publishes both a parent-facing Pin and an analysis Coordinate at that same
+signal bus. A root 6 fF capacitor ends directly at the public child Pin; a
+separate root signal bus owns the terminated Port. There is no analysis-only
+root bus or zero-component Link on the resonator side. The later 120 fF point
+changes the real capacitor field on this same Plan and does not retroactively
+make every fixed component value a parameter.
+
+Engineer Chapter 5 repeats the same internal grammar in a
+Library `CompositePlan` and then consume one public terminal while leaving an
+equivalent differently named terminal externally open. The electrical values
+may match, but the factory-owned version has different ownership and
+provenance. No Plan or semantic digest equality is claimed across the two
+authoring sources.
+
+### SQUID, cycles, and mutual coupling
+
+A finite-loop two-junction SQUID uses one direct junction path and one ordered
+loop-inductor/junction path. Each Josephson component owns its intrinsic
+parallel `Cj` exactly once; an exact zero omits that leaf. The shared public
+parameters below fan out to the two real junction bodies rather than acting as
+decorative labels:
+
+```python
+from scnsim import (
+    CircuitPlan,
+    ParameterDefinitions,
+    ParameterSpec,
+    components,
+    units as u,
+)
+
+inputs = ParameterDefinitions(id="finite_loop_inputs")
+josephson_inductance = inputs.parameter(
+    id="josephson_inductance",
+    baseline=310.0 * u.pH,
+    spec=ParameterSpec(unit=u.pH),
+)
+junction_capacitance = inputs.parameter(
+    id="junction_capacitance",
+    baseline=2.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+loop_inductance = inputs.parameter(
+    id="loop_inductance",
+    baseline=45.0 * u.pH,
+    spec=ParameterSpec(unit=u.pH),
+)
+pump_inductance = inputs.parameter(
+    id="pump_inductance",
+    baseline=1.0 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+plan = CircuitPlan(id="finite_loop_coupling")
+
+squid = plan.subsystem(id="squid")
+j1 = squid.add(
+    components.josephson_junction(
+        id="j1",
+        josephson_inductance=josephson_inductance,
+        junction_capacitance=junction_capacitance,
+    )
+)
+j2 = squid.add(
+    components.josephson_junction(
+        id="j2",
+        josephson_inductance=josephson_inductance,
+        junction_capacitance=junction_capacitance,
+    )
+)
+loop = squid.add(
+    components.inductor(id="loop", inductance=loop_inductance)
+)
+a = squid.bus(id="a")
+b = squid.bus(id="b")
+squid.parallel(
+    id="finite_loop",
+    start=a,
+    branches=((j1,), (loop, j2)),
+    end=b,
+)
+squid.expose_pin(id="terminal_1", at=a)
+squid.expose_pin(id="terminal_2", at=b)
+squid.expose_inductive_branch(
+    id="loop",
+    branch=loop.inductive_branch("self"),
+)
+
+pump = plan.subsystem(id="pump")
+pump_coil = pump.add(
+    components.inductor(id="coil", inductance=pump_inductance)
+)
+pump_bus = pump.bus(id="terminal")
+pump.branch(
+    id="coil_to_ground",
+    at=pump_bus,
+    elements=(pump_coil,),
+    end=pump.ground,
+)
+pump.expose_pin(id="terminal", at=pump_bus)
+pump.expose_inductive_branch(
+    id="coil",
+    branch=pump_coil.inductive_branch("self"),
+)
+
+signal_bus = plan.bus(id="signal")
+pump_drive_bus = plan.bus(id="pump_drive")
+plan.link(
+    id="squid_signal",
+    endpoints=(signal_bus, squid.pin("terminal_1")),
+)
+plan.ground_pins(pins=(squid.pin("terminal_2"),))
+plan.link(
+    id="pump_terminal",
+    endpoints=(pump_drive_bus, pump.pin("terminal")),
+)
+plan.couple_inductive(
+    id="flux_pump",
+    inductor_a=squid.inductive_branch("loop"),
+    inductor_b=pump.inductive_branch("coil"),
+    coupling_coefficient=0.12 * u.dimensionless,
+)
+```
+
+The `parallel()` call creates the two genuine paths
+`a -> J1 -> b` and `a -> L_loop -> J2 -> b`; it does not model two directly
+parallel junctions with an unspecified loop. This is a real cycle through
+distinct paths. The SQUID's exposed return is grounded by its parent rather
+than rewritten as an intrinsic child ground. The outer pump scope is completely
+connected before its oriented branch participates in the explicitly
+nonconductive mutual relation.
+The exact Josephson and DC-SQUID physics remain in the linked component and
+Root Knowledge authorities; this contract chooses only structural expression
+and does not substitute the negligible-loop effective-cosine model.
+
+### Multi-terminal line
+
+For an N-conductor transmission line, `reference_conductor` is RLGC metadata,
+not a public `PinRef`. N=1 has two public signal pins; N>1 has exactly 2N
+ordered public signal-conductor pins. One possible structural declaration uses
+`.between(...)` to place one selected head/tail pair and binds every remaining
+pin explicitly by `link(endpoints=(...))` or a bus. An independent line instead
+binds every pin explicitly and omits `.between()`. Either form retains the body,
+conductor order, matrix coefficients, and section provenance exactly once.
+
+### Three-subsystem model
+
+Engineer Chapters 3–4 author one `feedline`, one grounded `readout`, and one
+`floating` inline Subsystem at the root. The complete Chapter 4 Plan owns two
+independent N=1 line sections and public input/tap/output pins. The floating
+scope owns one mutual C/L parallel network plus two separate ground branches.
+Root capacitors join feedline to readout and readout directly to
+`plus_1`/`minus_1`. Equivalent `plus_2`/`minus_2` pins link to the original root
+probe buses and coordinates. Root terminated and nonloading-probe Ports retain
+their distinct roles.
+
+The quarter-wave readout is explicitly a local lumped approximation, not a
+claim of distributed equivalence. The tutorials contain public generic values
+only and supply no scientific acceptance or consumer evidence.
+
+## Plan identity and one-declaration lowering {#structured-plan-identity}
+
+The target Plan snapshot preserves, at minimum:
+
+- scoped IDs and recursive ownership;
+- operator kind and endpoints;
+- ordered series elements and parallel branches;
+- bus/tap identities, N-endpoint link membership, public exposures, and final
+  zero-wire equivalence;
+- canonical-ground membership and parent-applied grounding locations;
+- logical Ports and roles;
+- component catalog source and parameters; and
+- oriented coupling declarations.
+
+Endpoint order within one fixed N-link is canonicalized and does not change
+semantic membership. Replacing one N-link by several binary links may preserve
+electrical equivalence, but it changes the authored structures and therefore
+need not preserve Plan or semantic identities. The batch or tuple order of
+`ground_pins()` does not change physical ground membership or diagram digests.
+
+Numerical and diagram lowering consume that one snapshot. Pure
+`SchematicComposition`, `SchematicLayout`, Theme, and final geometry remain
+outside Plan/request identity. By contrast, declared ownership, order, branch roles, and exposures
+are semantic structure. Rewriting a flat circuit into a hierarchy may preserve
+electrical values/connectivity while changing Plan and semantic identities.
+
+Adding a differently named public pin changes the declared interface and Plan
+identity even when physical fields and node equivalence remain unchanged.
+This does not require another identity schema or public authoring API.
+Factory-source changes may alter catalog/Plan provenance even when electrical
+values are unchanged. Invariance applies only when catalog source and all
+physical/structural declarations are fixed.
+
+## Open public boundaries and independent consumers {#independent-consumers}
+
+Inline Subsystems and every built Composite kind may have partially or entirely
+externally unbound public pins. Their complete intrinsic nets and public
+boundaries remain present. An open boundary is not falsely marked bound and
+creates no implicit wire, load, or ground. Ordinary native and complete-line
+required pins, internal physical completeness, and model-specific short checks
+remain mandatory. Authoring legality does not promise numerical solvability.
+
+The Parameter System, Calculation System, and diagram system are independent
+consumers of the shared immutable assembly model, units, and physical values.
+Parameter resolution and Calculation must work without importing diagram
+modules or successfully rendering a scene. Parameter resolution consumes a
+frozen Plan snapshot and ParameterSet using the same physical field validation;
+CircuitPlan convenience methods delegate without changing that authority.
+Runtime consumes its frozen snapshot directly. Diagram imports and public
+reexports are lazy without changing public names. A diagram request, layout,
+or failure never changes a Plan, numerical request, or parameter definition.
+Compiled diagrams are one-way evidence consumers, not numerical prerequisites.
+
+The [Parameter System](parameter-system.qmd) owns definition/value semantics;
+the [Runtime contract](../v1-runtime-contract.qmd) owns Calculation and Result
+semantics; the [diagram contract](automatic-semantic-circuit-diagram-layout.qmd)
+owns rendering, composition, and independent visual evidence.
+
+## Assembly validation and failure {#assembly-failures}
+
+An individual authoring operation rejects violations knowable at that call,
+including:
+
+- a duplicate ID, a body already consumed by another structure, invalid
+  operator cardinality, duplicate or coincident endpoints, or a redundant
+  link;
+- a foreign, private, or stale endpoint; a `CoordinateRef`, `PortRef`, or
+  `GroundRef` used in a link; or a link that directly or transitively merges
+  two same-scope buses;
+- invalid `ground_pins()` cardinality, a non-pin/foreign/private pin, a
+  duplicate logical pin, or an already-ground-equivalent pin;
+- a duplicate tap ID or public pin ID, or an invalid public exposure;
+- a child Port, invalid Port role/load, implicit load/ground, invalid
+  multi-terminal pair selection, or ineligible/unoriented/foreign mutual
+  coupling.
+
+The migrated four-case authoring table makes these atomic boundaries concrete:
+
+| Attempt | Why it rejects | Legal correction |
+|---|---|---|
+| A parent `link()` uses a Bus owned privately by its child | A Python variable does not publish a child-private endpoint | Expose that Bus as an immediate-child public Pin and link the Pin |
+| A second parent Bus is linked, directly or transitively, to a public Pin already attached to a different Bus in that same parent scope | The operation would silently merge two distinct same-scope buses | Connect the buses through a real physical element and structure |
+| A physical two-terminal element is structured with both endpoints on one Bus | The relation would short that element | Use two distinct endpoint classes for the physical body |
+| `ground_pins()` targets a public signal Pin whose final net carries a Port | A Port-bound signal net cannot also become canonical ground | Ground the distinct public return Pin, not the Port-bound signal Pin |
+
+These are Plan-authoring refusals, not diagram-layout failures. Each failed call
+leaves the previous editable declaration unchanged and its rejected ID reusable.
+
+Incomplete editable authoring is legal between calls. In particular, `add()`
+does not fail merely because its new component has not yet been bound or given
+a structural role. Complete-graph preflight at `CompositePlan.build()`,
+immutable render capture, and `CircuitRun` seal instead reject an unbound
+required native terminal, an ordinary two-terminal native body outside exactly one structure,
+a multiply consumed body, an incomplete independent Composite or multi-terminal
+peer, an incomplete public map or exposure, an unrealizable mutual coupling, or
+invalid final grounding and electrical closure.
+
+These well-typed violations use
+`SCNSimValidationError(stage="authoring")`, except ordinary Python signature
+errors, wrong containers or endpoint types, and strict Enum/type violations
+retain `TypeError`. Mutation of a sealed Plan retains `PlanSealedError`. A
+failed operation rolls back that operation; a failed complete-graph preflight
+leaves the prior graph editable and unsealed. Neither failure creates a partial
+declaration or records the rejected attempt in diagnostic source history.

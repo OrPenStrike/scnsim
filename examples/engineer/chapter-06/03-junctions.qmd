@@ -1,0 +1,19 @@
+---
+title: "Chapter 6 · Lesson 3 — T and Cross"
+subtitle: "Diagram customization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lessons 1–2](01-default.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _03-junctions.qmd >}}
+
+[Previous: Lesson 2 — Port poses](02-port-poses.qmd) ·
+[Next: Lesson 4 — Reuse](04-reuse.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

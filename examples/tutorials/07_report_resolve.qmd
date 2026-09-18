@@ -1,0 +1,17 @@
+---
+title: "Moved — Report and resolve exact requests"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 8 — Persist Results](../engineer/chapter-08/01-persist.qmd) for
+explicit Report inputs and [Chapter 8 — Restart and resolve](../engineer/chapter-08/02-resolve.qmd)
+for the independent-kernel resolve-only path. The
+[Runtime Contract](../../docs/v1-runtime-contract.qmd) owns exact Result and
+workspace behavior.
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

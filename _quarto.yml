@@ -1,23 +1,312 @@
 project:
   type: website
   output-dir: _site
+  resources:
+    - src/scnsim/_schemas/identity-v2.schema.json
+    - src/scnsim/_schemas/identity-common.schema.json
   render:
     - README.md
+    - examples/README.md
     - docs/index.qmd
+    - examples/engineer/setup.qmd
+    - examples/engineer/chapter-01/01-build.qmd
+    - examples/engineer/chapter-01/02-diagram.qmd
+    - examples/engineer/chapter-01/03-s11.qmd
+    - examples/engineer/chapter-01/04-root.qmd
+    - examples/engineer/chapter-01/05-change-capacitance.qmd
+    - examples/engineer/chapter-01/chapter.qmd
+    - examples/engineer/chapter-02/01-build.qmd
+    - examples/engineer/chapter-02/02-sweep.qmd
+    - examples/engineer/chapter-02/03-optimize.qmd
+    - examples/engineer/chapter-02/04-optional-spaces.qmd
+    - examples/engineer/chapter-02/chapter.qmd
+    - examples/engineer/chapter-03/01-build.qmd
+    - examples/engineer/chapter-03/02-diagram.qmd
+    - examples/engineer/chapter-03/03-s21.qmd
+    - examples/engineer/chapter-03/chapter.qmd
+    - examples/engineer/chapter-04/01-physical-plan.qmd
+    - examples/engineer/chapter-04/02-explicit-capstone.qmd
+    - examples/engineer/chapter-04/03-ptc-core.qmd
+    - examples/engineer/chapter-04/04-optional-transform.qmd
+    - examples/engineer/chapter-04/05-optional-quantity.qmd
+    - examples/engineer/chapter-04/06-optional-hb.qmd
+    - examples/engineer/chapter-04/chapter.qmd
+    - examples/engineer/chapter-05/01-library.qmd
+    - examples/engineer/chapter-05/02-instance.qmd
+    - examples/engineer/chapter-05/03-reuse.qmd
+    - examples/engineer/chapter-05/chapter.qmd
+    - examples/engineer/chapter-06/01-default.qmd
+    - examples/engineer/chapter-06/02-port-poses.qmd
+    - examples/engineer/chapter-06/03-junctions.qmd
+    - examples/engineer/chapter-06/04-reuse.qmd
+    - examples/engineer/chapter-06/chapter.qmd
+    - examples/engineer/chapter-07/01-rlgc.qmd
+    - examples/engineer/chapter-07/02-ports.qmd
+    - examples/engineer/chapter-07/03-diagrams.qmd
+    - examples/engineer/chapter-07/04-parameter-points.qmd
+    - examples/engineer/chapter-07/chapter.qmd
+    - examples/engineer/chapter-08/01-persist.qmd
+    - examples/engineer/chapter-08/02-resolve.qmd
+    - examples/engineer/chapter-08/chapter.qmd
+    - examples/tutorials/01_author_primitive.qmd
+    - examples/tutorials/02_solve_direct.qmd
+    - examples/tutorials/03_evaluate_quantity.qmd
+    - examples/tutorials/04_define_parameters.qmd
+    - examples/tutorials/05_sweep_parameters.qmd
+    - examples/tutorials/06_optimize_primitive.qmd
+    - examples/tutorials/07_report_resolve.qmd
+    - examples/tutorials/08_create_library.qmd
+    - examples/tutorials/09_add_composite_factory.qmd
+    - examples/tutorials/10_use_custom_component.qmd
+    - examples/tutorials/11_review_customize_schematic.qmd
+    - examples/tutorials/12_model_n_trace_line.qmd
+    - examples/tutorials/13_compensate_probes.qmd
+    - examples/tutorials/14_transform_retain.qmd
+    - examples/tutorials/15_prepare_hb.qmd
+    - examples/tutorials/16_compare_direct_hb.qmd
+    - docs/concepts/physical-authority-and-reusable-composition.qmd
+    - docs/concepts/compilation-coordinates-and-network-views.qmd
+    - docs/concepts/requests-execution-and-result-ownership.qmd
+    - docs/concepts/direct-and-hb-realizations.qmd
+    - docs/concepts/units-parameters-and-optimization.qmd
+    - docs/contracts/index.qmd
+    - docs/contracts/circuit-plan-assembly.qmd
+    - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
+    - docs/contracts/parameter-system.qmd
+    - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
+    - docs/implementation/system-architecture.qmd
+    - docs/implementation/plan-sealing-and-identity.qmd
+    - docs/implementation/canonical-identities-and-schemas.qmd
+    - docs/implementation/catalog-and-runtime-identity.qmd
+    - docs/implementation/julia-runtime-preparation.qmd
+    - docs/implementation/python-julia-protocol.qmd
+    - docs/implementation/workspace-attempts-and-artifacts.qmd
+    - docs/implementation/composite-snapshots-and-recursive-expansion.qmd
+    - docs/implementation/compilation-ports-and-views.qmd
+    - docs/implementation/rlgc-q2d-and-pi-expansion.qmd
+    - docs/implementation/view-lineage-and-selected-networks.qmd
+    - docs/implementation/diagonal-root-numerical-procedure.qmd
+    - docs/implementation/direct-poles-zeros-and-operators.qmd
+    - docs/implementation/direct-quantities-and-optimization.qmd
+    - docs/implementation/hb-realization-and-outcomes.qmd
+    - docs/implementation/results-reports-and-diagrams.qmd
+    - docs/implementation/external-inputs-and-delivery.qmd
+    - docs/implementation/engineer-course-migration-map.qmd
 
 website:
   title: "SCNSim"
+  description: "Superconducting Circuit Network Simulation"
+  page-navigation: true
+  reader-mode: true
+  search: true
+  repo-url: "https://github.com/OrPenStrike/scnsim"
+  repo-actions: [source, issue]
   navbar:
     left:
       - text: "Overview"
         href: README.md
-      - text: "Review Map"
+      - text: "Tutorial"
         href: docs/index.qmd
-      - text: "V1 Runtime Contract"
-        href: docs/v1-runtime-contract.qmd
+      - text: "Concept"
+        href: docs/concepts/physical-authority-and-reusable-composition.qmd
+      - text: "Contract"
+        href: docs/contracts/index.qmd
+  sidebar:
+    - id: overview
+      title: "Overview"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Repository overview"
+          href: README.md
+    - id: tutorial
+      title: "Engineer Course"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Course map"
+          href: docs/index.qmd
+        - text: "Setup"
+          href: examples/engineer/setup.qmd
+        - section: "Mainline Chapter 1 — Coupled grounded LC"
+          contents:
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-01/01-build.qmd
+            - text: "Lesson 2 — Diagram"
+              href: examples/engineer/chapter-01/02-diagram.qmd
+            - text: "Lesson 3 — S11"
+              href: examples/engineer/chapter-01/03-s11.qmd
+            - text: "Lesson 4 — Loaded root"
+              href: examples/engineer/chapter-01/04-root.qmd
+            - text: "Lesson 5 — Change capacitance"
+              href: examples/engineer/chapter-01/05-change-capacitance.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-01/chapter.qmd
+        - section: "Mainline Chapter 2 — Sweep and Optimization"
+          contents:
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-02/01-build.qmd
+            - text: "Lesson 2 — Sweep capacitance"
+              href: examples/engineer/chapter-02/02-sweep.qmd
+            - text: "Lesson 3 — Optimize and verify"
+              href: examples/engineer/chapter-02/03-optimize.qmd
+            - text: "Lesson 4 — Optional C/L spaces"
+              href: examples/engineer/chapter-02/04-optional-spaces.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-02/chapter.qmd
+        - section: "Mainline Chapter 3 — CPW feedline/readout S21"
+          contents:
+            - text: "Lesson 1 — Build"
+              href: examples/engineer/chapter-03/01-build.qmd
+            - text: "Lesson 2 — Diagram"
+              href: examples/engineer/chapter-03/02-diagram.qmd
+            - text: "Lesson 3 — S21"
+              href: examples/engineer/chapter-03/03-s21.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-03/chapter.qmd
+        - section: "Mainline Chapter 4 — Four-Port capstone"
+          contents:
+            - text: "Lesson 1 — Physical Plan"
+              href: examples/engineer/chapter-04/01-physical-plan.qmd
+            - text: "Lesson 2 — Explicit capstone"
+              href: examples/engineer/chapter-04/02-explicit-capstone.qmd
+            - text: "Lesson 3 — PTC core"
+              href: examples/engineer/chapter-04/03-ptc-core.qmd
+            - text: "Lesson 4 — Optional transform"
+              href: examples/engineer/chapter-04/04-optional-transform.qmd
+            - text: "Lesson 5 — Optional quantity"
+              href: examples/engineer/chapter-04/05-optional-quantity.qmd
+            - text: "Lesson 6 — Optional HB"
+              href: examples/engineer/chapter-04/06-optional-hb.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-04/chapter.qmd
+        - section: "Optional Chapter 5 — Library"
+          contents:
+            - text: "Lesson 1 — Library boundary"
+              href: examples/engineer/chapter-05/01-library.qmd
+            - text: "Lesson 2 — Public instance"
+              href: examples/engineer/chapter-05/02-instance.qmd
+            - text: "Lesson 3 — Parent reuse"
+              href: examples/engineer/chapter-05/03-reuse.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-05/chapter.qmd
+        - section: "Optional Chapter 6 — Diagram customization"
+          contents:
+            - text: "Lesson 1 — Default"
+              href: examples/engineer/chapter-06/01-default.qmd
+            - text: "Lesson 2 — Port poses"
+              href: examples/engineer/chapter-06/02-port-poses.qmd
+            - text: "Lesson 3 — T and Cross"
+              href: examples/engineer/chapter-06/03-junctions.qmd
+            - text: "Lesson 4 — Reuse"
+              href: examples/engineer/chapter-06/04-reuse.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-06/chapter.qmd
+        - section: "Optional Chapter 7 — Multi-conductor RLGC"
+          contents:
+            - text: "Lesson 1 — Ordered RLGC"
+              href: examples/engineer/chapter-07/01-rlgc.qmd
+            - text: "Lesson 2 — Four signal Ports"
+              href: examples/engineer/chapter-07/02-ports.qmd
+            - text: "Lesson 3 — Diagrams"
+              href: examples/engineer/chapter-07/03-diagrams.qmd
+            - text: "Lesson 4 — Parameter points"
+              href: examples/engineer/chapter-07/04-parameter-points.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-07/chapter.qmd
+        - section: "Optional Chapter 8 — Report and resolve"
+          contents:
+            - text: "Lesson 1 — Persist Results"
+              href: examples/engineer/chapter-08/01-persist.qmd
+            - text: "Lesson 2 — Restart and resolve"
+              href: examples/engineer/chapter-08/02-resolve.qmd
+            - text: "Complete Chapter source"
+              href: examples/engineer/chapter-08/chapter.qmd
+    - id: concept
+      title: "Concept"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Physical authority and composition"
+          href: docs/concepts/physical-authority-and-reusable-composition.qmd
+        - text: "Compilation, coordinates, and views"
+          href: docs/concepts/compilation-coordinates-and-network-views.qmd
+        - text: "Requests, execution, and Results"
+          href: docs/concepts/requests-execution-and-result-ownership.qmd
+        - text: "Direct and HB realizations"
+          href: docs/concepts/direct-and-hb-realizations.qmd
+        - text: "Units, parameters, and optimization"
+          href: docs/concepts/units-parameters-and-optimization.qmd
+    - id: contract
+      title: "Contract"
+      style: "floating"
+      collapse-level: 1
+      contents:
+        - text: "Contract map"
+          href: docs/contracts/index.qmd
+        - section: "Public contracts"
+          contents:
+            - text: "Component Authoring Contract"
+              href: docs/component-authoring.qmd
+            - text: "CircuitPlan Assembly"
+              href: docs/contracts/circuit-plan-assembly.qmd
+            - text: "Automatic Semantic Circuit Diagram Layout"
+              href: docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
+            - text: "Parameter System"
+              href: docs/contracts/parameter-system.qmd
+            - text: "V1 Runtime Contract"
+              href: docs/v1-runtime-contract.qmd
+        - section: "Implementation design"
+          contents:
+            - text: "System architecture and ownership"
+              href: docs/implementation/system-architecture.qmd
+            - text: "Plan sealing and identity"
+              href: docs/implementation/plan-sealing-and-identity.qmd
+            - text: "Canonical identities and schemas"
+              href: docs/implementation/canonical-identities-and-schemas.qmd
+            - text: "Catalog and runtime identity"
+              href: docs/implementation/catalog-and-runtime-identity.qmd
+            - text: "Julia runtime preparation"
+              href: docs/implementation/julia-runtime-preparation.qmd
+            - text: "Python–Julia process protocol"
+              href: docs/implementation/python-julia-protocol.qmd
+            - text: "Workspace, attempts, and artifacts"
+              href: docs/implementation/workspace-attempts-and-artifacts.qmd
+            - text: "Composite snapshots and recursive expansion"
+              href: docs/implementation/composite-snapshots-and-recursive-expansion.qmd
+            - text: "Compilation, Ports, and views"
+              href: docs/implementation/compilation-ports-and-views.qmd
+            - text: "RLGC, Q2D, and pi expansion"
+              href: docs/implementation/rlgc-q2d-and-pi-expansion.qmd
+            - text: "View lineage and selected networks"
+              href: docs/implementation/view-lineage-and-selected-networks.qmd
+            - text: "Diagonal-root numerical procedure"
+              href: docs/implementation/diagonal-root-numerical-procedure.qmd
+            - text: "Direct poles, zeros, couplings, and operators"
+              href: docs/implementation/direct-poles-zeros-and-operators.qmd
+            - text: "Direct quantities and optimization"
+              href: docs/implementation/direct-quantities-and-optimization.qmd
+            - text: "HB realization and outcomes"
+              href: docs/implementation/hb-realization-and-outcomes.qmd
+            - text: "Results, reports, and diagrams"
+              href: docs/implementation/results-reports-and-diagrams.qmd
+            - text: "External inputs and delivery"
+              href: docs/implementation/external-inputs-and-delivery.qmd
 
 format:
   html:
-    theme: cosmo
+    theme:
+      light: [cosmo, docs/theme-light.scss]
+      dark: [cosmo, docs/theme-dark.scss]
+    css: docs/styles.css
+    html-math-method: mathjax
+    respect-user-color-scheme: true
     toc: true
+    page-layout: article
+    grid:
+      sidebar-width: 260px
+      body-width: 960px
+      margin-width: 240px
+      gutter-width: 2.5rem
+    code-copy: true

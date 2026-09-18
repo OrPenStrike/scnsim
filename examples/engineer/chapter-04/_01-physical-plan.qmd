@@ -1,0 +1,292 @@
+## Lesson 1 — Build the original four-Port Plan {#lesson-ch4-physical-plan}
+
+### Rebuild every physical subsystem
+
+Follow the [engineer course setup](../setup.qmd), open this Chapter's
+`chapter.ipynb`, restart its Python kernel, and use **Run All**. Chapter 4 does
+not continue another Chapter's state.
+
+This is the exact physical declaration migrated from the four-Port capstone:
+two 1 mm scalar CPW sections, a grounded readout, and a floating pair. The
+finite-pi line sections are not exact distributed equivalents.
+
+```{python}
+#| id: ch4-build-feedline
+from IPython.display import display
+
+from scnsim import (
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CircuitRun,
+    DirectSolveSpec,
+    ParameterDefinitions,
+    ParameterSpec,
+    RLGC,
+    RLGCParameterSpec,
+    ReductionPipeline,
+    SParameterTrace,
+    Theme,
+    components,
+    units as u,
+)
+
+plan = CircuitPlan(id="floating_probe_course")
+feedline = plan.subsystem(id="feedline")
+rlgc = RLGC(
+    conductors=("signal",),
+    reference_conductor="ground",
+    resistance_per_length=[[0.0]] * u.ohm / u.m,
+    inductance_per_length=[[420.0]] * u.nH / u.m,
+    conductance_per_length=[[0.0]] * u.S / u.m,
+    capacitance_per_length=[[175.0]] * u.pF / u.m,
+)
+inputs = ParameterDefinitions(id="floating_probe_design")
+line_rlgc = inputs.parameter(
+    id="line_rlgc",
+    baseline=rlgc,
+    spec=RLGCParameterSpec(
+        conductors=("signal",),
+        reference_conductor="ground",
+    ),
+)
+readout_capacitance = inputs.parameter(
+    id="readout_capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+readout_inductance = inputs.parameter(
+    id="readout_inductance",
+    baseline=5.8 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+mutual_capacitance = inputs.parameter(
+    id="mutual_capacitance",
+    baseline=16.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+mutual_inductance = inputs.parameter(
+    id="mutual_inductance",
+    baseline=7.0 * u.nH,
+    spec=ParameterSpec(unit=u.nH),
+)
+plus_shunt_capacitance = inputs.parameter(
+    id="plus_shunt_capacitance",
+    baseline=45.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+minus_shunt_capacitance = inputs.parameter(
+    id="minus_shunt_capacitance",
+    baseline=42.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+
+left = feedline.add(
+    components.transmission_line(
+        id="left", length=1.0 * u.mm, rlgc=line_rlgc, n_sections=1
+    )
+)
+right = feedline.add(
+    components.transmission_line(
+        id="right", length=1.0 * u.mm, rlgc=line_rlgc, n_sections=1
+    )
+)
+input_bus = feedline.bus(id="input")
+middle_bus = feedline.bus(id="middle")
+output_bus = feedline.bus(id="output")
+left_section = feedline.series(
+    id="left_section",
+    start=input_bus,
+    elements=(
+        left.between(
+            left.pin("head", conductor="signal"),
+            left.pin("tail", conductor="signal"),
+        ),
+    ),
+    end=middle_bus,
+)
+right_section = feedline.series(
+    id="right_section",
+    start=middle_bus,
+    elements=(
+        right.between(
+            right.pin("head", conductor="signal"),
+            right.pin("tail", conductor="signal"),
+        ),
+    ),
+    end=output_bus,
+)
+feedline_input_pin = feedline.expose_pin(id="input", at=input_bus)
+feedline_coupling_pin = feedline.expose_pin(id="tap", at=middle_bus)
+feedline_output_pin = feedline.expose_pin(id="output", at=output_bus)
+```
+
+The CPW reference conductor stays RLGC metadata. The three exposed signal pins
+are the only parent-facing feedline boundaries.
+
+```{python}
+#| id: ch4-build-readout-and-floating
+readout = plan.subsystem(id="readout")
+readout_capacitor = readout.add(
+    components.capacitor(
+        id="capacitor",
+        capacitance=readout_capacitance,
+    )
+)
+readout_inductor = readout.add(
+    components.inductor(
+        id="inductor",
+        inductance=readout_inductance,
+    )
+)
+readout_bus = readout.bus(id="node")
+readout.parallel(
+    id="parallel_lc",
+    start=readout_bus,
+    branches=((readout_capacitor,), (readout_inductor,)),
+    end=readout.ground,
+)
+readout_terminal = readout.expose_pin(id="readout_node", at=readout_bus)
+
+floating = plan.subsystem(id="floating")
+plus_bus = floating.bus(id="plus")
+minus_bus = floating.bus(id="minus")
+mutual_cap = floating.add(
+    components.capacitor(id="mutual_cap", capacitance=mutual_capacitance)
+)
+mutual_ind = floating.add(
+    components.inductor(id="mutual_ind", inductance=mutual_inductance)
+)
+plus_shunt = floating.add(
+    components.capacitor(
+        id="plus_shunt",
+        capacitance=plus_shunt_capacitance,
+    )
+)
+minus_shunt = floating.add(
+    components.capacitor(
+        id="minus_shunt",
+        capacitance=minus_shunt_capacitance,
+    )
+)
+floating.parallel(
+    id="mutual_network",
+    start=plus_bus,
+    branches=((mutual_cap,), (mutual_ind,)),
+    end=minus_bus,
+)
+plus_branch = floating.branch(
+    id="plus_shunt",
+    at=plus_bus,
+    elements=(plus_shunt,),
+    end=floating.ground,
+)
+minus_branch = floating.branch(
+    id="minus_shunt",
+    at=minus_bus,
+    elements=(minus_shunt,),
+    end=floating.ground,
+)
+plus_1 = floating.expose_pin(id="plus_1", at=plus_bus)
+plus_2 = floating.expose_pin(id="plus_2", at=plus_bus)
+minus_1 = floating.expose_pin(id="minus_1", at=minus_bus)
+minus_2 = floating.expose_pin(id="minus_2", at=minus_bus)
+```
+
+The floating subsystem exposes two Pins for each of its two intrinsic nodes.
+Those aliases do not create extra coordinates or merge distinct parent-local
+wiring groups.
+
+```{python}
+#| id: ch4-assemble-four-port-root
+feedline_in_bus = plan.bus(id="feedline_in")
+feedline_out_bus = plan.bus(id="feedline_out")
+readout_root_bus = plan.bus(id="readout_node")
+floating_plus_bus = plan.bus(id="floating_plus")
+floating_minus_bus = plan.bus(id="floating_minus")
+floating_plus = floating_plus_bus.node
+floating_minus = floating_minus_bus.node
+
+plan.link(
+    id="feedline_input_child",
+    endpoints=(feedline_in_bus, feedline_input_pin),
+)
+plan.link(
+    id="feedline_output_child",
+    endpoints=(feedline_out_bus, feedline_output_pin),
+)
+plan.link(id="readout_child", endpoints=(readout_root_bus, readout_terminal))
+plan.link(
+    id="floating_plus_child",
+    endpoints=(floating_plus_bus, plus_2),
+)
+plan.link(
+    id="floating_minus_child",
+    endpoints=(floating_minus_bus, minus_2),
+)
+
+feedline_coupler = plan.add(
+    components.capacitor(
+        id="feedline_readout_coupler",
+        capacitance=6.0 * u.fF,
+    )
+)
+plus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_plus",
+        capacitance=4.0 * u.fF,
+    )
+)
+minus_coupler = plan.add(
+    components.capacitor(
+        id="readout_to_floating_minus",
+        capacitance=3.0 * u.fF,
+    )
+)
+feedline_readout = plan.series(
+    id="feedline_readout",
+    start=feedline_coupling_pin,
+    elements=(feedline_coupler,),
+    end=readout_root_bus,
+)
+readout_floating_plus = plan.series(
+    id="readout_floating_plus",
+    start=readout_root_bus,
+    elements=(plus_coupler,),
+    end=plus_1,
+)
+readout_floating_minus = plan.series(
+    id="readout_floating_minus",
+    start=readout_root_bus,
+    elements=(minus_coupler,),
+    end=minus_1,
+)
+
+feedline_in_port = plan.add_port(
+    id="feedline_in",
+    at=feedline_in_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+feedline_out_port = plan.add_port(
+    id="feedline_out",
+    at=feedline_out_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_plus = plan.add_port(
+    id="floating_probe_plus",
+    at=floating_plus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+probe_minus = plan.add_port(
+    id="floating_probe_minus",
+    at=floating_minus_bus,
+    role="nonloading_probe",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The original Plan has four declared Ports: two terminated feedline boundaries
+and two nonloading probe loads. PTC later chooses an analytical View; it does
+not delete these Ports or change this physical declaration.

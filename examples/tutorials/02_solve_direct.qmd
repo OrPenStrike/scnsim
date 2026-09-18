@@ -1,0 +1,16 @@
+---
+title: "Moved — Ask for a Direct response"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 1 — Read S11](../engineer/chapter-01/03-s11.qmd) for the current
+one-Port response and [Chapter 3 — Read named S21](../engineer/chapter-03/03-s21.qmd)
+for the two-Port path. The [Runtime Contract](../../docs/v1-runtime-contract.qmd)
+remains authoritative for Direct requests and Results.
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

@@ -1,0 +1,16 @@
+---
+title: "Moved — Transform and retain a View"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use Chapter 4 for the [optional transformed View](../engineer/chapter-04/04-optional-transform.qmd)
+and its [direct quantity evaluation](../engineer/chapter-04/05-optional-quantity.qmd).
+Exact View and Result behavior remains in the
+[Runtime Contract](../../docs/v1-runtime-contract.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

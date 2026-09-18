@@ -1,0 +1,16 @@
+---
+title: "Moved — Use a custom component"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 5 — Parent reuse](../engineer/chapter-05/03-reuse.qmd) for the
+current parent assembly and [Chapter 5 — Public instance](../engineer/chapter-05/02-instance.qmd)
+for the reusable boundary. Exact authoring behavior remains in the
+[Component Authoring Contract](../../docs/component-authoring.qmd).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and checkpoint figure remain available in Git history.

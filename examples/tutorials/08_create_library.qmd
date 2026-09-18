@@ -1,0 +1,17 @@
+---
+title: "Moved — Start a reusable Library"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 5 — Library boundary](../engineer/chapter-05/01-library.qmd) for
+the current Library and factory declaration, then
+[Chapter 5 — Public instance](../engineer/chapter-05/02-instance.qmd) for its
+published surface. Exact component behavior remains in the
+[Component Authoring Contract](../../docs/component-authoring.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

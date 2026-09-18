@@ -1,69 +1,134 @@
 ---
-title: "SCNSim V1 Runtime Contract"
-subtitle: "Candidate Notebook UX, units, reduction, execution, and evidence semantics"
+title: "V1 Runtime Contract"
+subtitle: "Accepted execution, units, reduction, Result, and evidence semantics"
 toc-depth: 3
 ---
 
-::: {.callout-warning}
-## CONVERGING contract
+::: {.callout-note}
+## Stabilized numerical meanings with CONVERGING ownership paths
 
-This document is the single current candidate authority for the SCNSim V1
-runtime semantics. It is written for Human review and does not claim
-`ACCEPTED`, `STABILIZED`, integration, release, or installability.
+This document is the current authority for stabilized SCNSim numerical runtime
+semantics.
+The accepted Direct/root/CMA execution, physical component models, RLGC and
+N-port selected networks, PTC/transform/retain, typed quantities, workspace
+evidence, and case-oriented JosephsonCircuits HB semantics remain
+`STABILIZED`. This lifecycle state does not imply a release, main promotion,
+root pin, or consumer migration.
+
+Prepared analysis records, Run commit/maintenance boundaries, multi-View
+optimization evidence, checkpoint/resume, and ReportPanel composition remain
+`CONVERGING`; their integrated candidate implementation is not Human
+acceptance of those reopened ownership scopes.
+
+The public authoring grammar, recursive structured ownership, its Plan-identity
+integration, and certified authoring/compiled diagrams are reopened as one
+`CONVERGING` target. This is not presentation-only: it changes how the
+Plan explicitly declares structure while preserving the accepted physical and
+numerical meanings above. Its implementation baseline is integrated; the
+[central evidence status](contracts/index.qmd#implementation-evidence-status)
+limits execution and delivery claims. Common modeling authority is
+the [CircuitPlan Assembly Contract](contracts/circuit-plan-assembly.qmd);
+composition and visual certification belong to the
+[diagram contract](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+
+Independent parameter definitions, physical Plan binding, parameter spaces,
+sweep Results, optimization binding, and parameterized diagrams are another
+`CONVERGING` scope with an integrated implementation baseline. Their sole
+authority is the [Parameter System Contract](contracts/parameter-system.qmd);
+current V2 envelopes and shared schema definitions do not expose a legacy
+Plan/request/Result compatibility path.
+
+Adaptive presentation-theme semantics remain a separate `CONVERGING` scope.
+`ReportPanel`, automatic report selection, and pure report composition are
+also `CONVERGING`; the accepted numerical Result meanings they present remain
+unchanged.
+
+For a Plan containing an `AffineMap`, dev5 applies the declared authorization
+and records each authorized out-of-support consumer as extrapolation evidence.
 :::
 
-## Reading goal
+## Contract scope
 
 After reading this contract, a package consumer should understand:
 
-1. which object owns the physical circuit and its parameters;
-2. how one Plan produces several lazy reduction references;
-3. which calls execute work and which calls only resolve sealed evidence;
-4. how every physical value carries a checked unit;
-5. how the same reduced model is realized by Direct and HB analysis; and
-6. which identities and artifacts make a result reproducible across Python
+1. how explicit components, wiring, ownership, and public boundaries produce
+   the one physical Plan;
+2. why an ASCDLS Plan projection and an independently selected analysis View
+   serve different jobs;
+3. how one Plan produces several lazy reduction references;
+4. which calls execute work and which calls only resolve sealed evidence;
+5. how every physical value carries a checked unit;
+6. how a target parameter point or ordered space binds the Plan without
+   changing its topology;
+7. which topology, coordinate, and boundary operations SCNSim applies to one
+   declared circuit;
+8. how Direct matrix responses and typed physical quantities share one
+   evaluation contract;
+9. how one HB request represents DC, AC, multi-tone, and mixed operating
+   cases; and
+10. which identities and artifacts make a result reproducible across Python
    processes.
 
 This document defines public product/runtime behavior. Circuit physics,
 scientific Gates, and consumer Design Targets remain in their own authorized
 sources.
 
+The model-first [Engineer course](index.qmd) teaches these objects in short Lessons
+grouped into complete clean-kernel Chapters. The
+Concept pages explain the design pressures behind
+[circuit models, subsystems, and reuse](concepts/physical-authority-and-reusable-composition.qmd),
+[network views](concepts/compilation-coordinates-and-network-views.qmd),
+[execution and Result ownership](concepts/requests-execution-and-result-ownership.qmd),
+[Direct/HB realization](concepts/direct-and-hb-realizations.qmd), and
+[optimization](concepts/units-parameters-and-optimization.qmd). This Contract
+remains the exact authority for signatures, formulas, invariants, failures,
+receipt evidence, and limits. The separate
+[Implementation Design](contracts/index.qmd#implementation-design) explains how
+the Runtime realizes this public behavior without becoming a second public
+contract.
+
 ## Review map
 
-This candidate proposes the following behavior for Human review; none of it is
-accepted yet:
+The review map spans the full V1 contract; lifecycle state remains scoped as
+stated above:
 
 | Review question | Detailed section |
 |---|---|
-| Who owns the Plan, lazy Ref graph, execution, and Results? | [Notebook mental model](#notebook-mental-model) |
+| Which physical factories, parameters, RLGC, Josephson, SQUID, and coupling models are retained? | [Component Authoring Contract](component-authoring.qmd) |
+| How does the target declare structure and certify authoring/compiled diagrams? | [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd) (`CONVERGING`; integrated implementation baseline) |
+| How does the target define inputs, bind them to physical fields, request spaces, and inspect sweep Results? | [Parameter System, Sweeps, and Bound Results](contracts/parameter-system.qmd) (`CONVERGING`; integrated implementation baseline) |
+| Who owns the Plan, lazy Ref graph, execution, and Results? | [Runtime ownership model](#runtime-ownership-model) |
 | Which calls execute, reuse, or only resolve evidence? | [Run operations and durable results](#run-operations-and-durable-results) |
 | How are units, physical identity, and parameter variants represented? | [Units, identity, and parameter variants](#units-identity-and-parameter-variants) |
-| How does one reduced Ref apply to Direct and HB? | [One reduction meaning, two solver realizations](#one-reduction-meaning-two-solver-realizations) |
-| How are optimization and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
+| How do PTC, paired-node transforms, and retained node views stay common to Direct and HB? | [Shared topology and unified node views](#shared-topology-and-unified-node-views) |
+| How are Direct matrices and typed physical quantities exposed? | [Direct matrices and physical quantities](#direct-matrices-and-physical-quantities) |
+| How are HB drives, cases, mixing, truncation, traces, and displays expressed? | [Named HB drives, cases, mixing, and driven PTC](#named-hb-drives-cases-and-mixing) and [HB cases, traces, and display](#hb-cases-traces-and-display) |
+| How are multi-variable objectives, relative normalization, and numerical scaling separated? | [Optimization and numerical scaling](#optimization-and-numerical-scaling) |
 | What fails closed, and what remains out of scope? | [Failure and evidence contract](#failure-and-evidence-contract) and [Known V1 limits](#known-v1-limits) |
+| How do maintainers implement these contracts? | [Implementation Design](contracts/index.qmd#implementation-design) |
 
-Three decisions deliberately remain open: HB sideband elimination scope,
-partial HB batch consumability, and the Direct/HB comparison grid or
-interpolation policy. They are stated precisely under
-[Open Human decisions](#open-human-decisions); examples elsewhere do not choose
-answers for them.
+Partial HB case failure and Direct/HB grid comparison have explicit contracts
+below. The stabilized implementation does not leave either behavior to backend
+or implementation convenience.
 
 ## Product and lifecycle boundary
 
 SCNSim owns:
 
 - Python circuit authoring and runtime interfaces;
-- reusable component and visual catalogs;
+- reusable component Libraries and typed presentation surfaces;
 - physical node-flux compilation and Direct C/K/G;
 - coordinate transforms and Schur-complement reduction;
 - Direct and harmonic-balance analysis;
 - Direct optimization, immutable receipts, results, and reports; and
-- a schematic projection of the original circuit plan.
+- authoring and compiler-expanded schematic projections of the original
+  circuit plan.
 
 SCNSim does not own:
 
-- consumer Design Targets, optimization Gates, or notebook source;
-- D3/IPF/NCUAS values, layouts, manifests, artifacts, or evidence;
+- consumer Design Targets, optimization Gates, or consumer application
+  notebook source;
+- private consumer values, layouts, manifests, artifacts, or evidence;
 - SCGSim layout/EM execution or OrPen PDK source;
 - JosephsonCircuits as a library;
 - quantization; or
@@ -74,74 +139,109 @@ topology, coordinate names, Direct operators, reductions, or public consumer
 contracts.
 
 SCNSim has no previously accepted or delivered Unit or Runtime API to migrate.
-This document revises one `CONVERGING` candidate in place. It does not
-supersede, mutate, redirect, or provide compatibility for the legacy
-Workbench. Reusable implementation may later be transplanted only from the
-exact public handoff with its Git provenance.
+This document records the retained Human-accepted numerical and physical Full
+V1 behavior in place while clearly separating the unaccepted structured-
+authoring target. It does not supersede, mutate, redirect, or provide
+compatibility for the legacy Workbench. Reusable implementation may later be
+transplanted only from the exact public handoff with its Git provenance.
 
-## Notebook mental model
+## Runtime ownership model {#runtime-ownership-model}
 
 ### Four responsibilities
 
 | Object | Owns | Does not own |
 |---|---|---|
-| `CircuitPlan` | Components, parameters, connections, ports, and library identities | Execution state or results |
-| `NetworkModelRef` | One immutable Plan reference and ordered reduction lineage | Compilation, workspace writes, or results |
+| `CircuitPlan` | Target physical/structural declaration, components, parameters, buses/taps, canonical ground, logical Ports, and catalog identities | Execution state or results |
+| `NetworkViewRef` | One immutable Plan reference and ordered topology/view lineage | Compilation, workspace writes, or results |
 | `CircuitRun` | One sealed Plan, workspace, runtime identity, requests, receipts, and execution | Circuit physics or a mutable current model/result |
-| typed Result | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
+| typed `AnalysisResult` | One verified request result and its exact evidence identity | Authority to mutate the Plan, Ref, or Run |
+
+### Two users, one reusable model
+
+The public SCNSim vocabulary serves two different layers:
+
+| Layer | Primary objects | Repeated work it should avoid |
+|---|---|---|
+| Circuit-model development | `Library`, target structured `CircuitPlan`, `NetworkViewRef`, quantity and solve Specs | Re-deriving physical topology, ownership, or analysis semantics in every Notebook |
+| Model consumption | A project-owned Design Target and thin Python façade returning typed Results | Restating components, structure, Ports, objective selectors, weights, and optimizer controls |
+
+The façade is ordinary consumer-package code, not a second SCNSim registry or
+physical authority. It reconstructs the exact Plan/Ref/Spec request, so a
+kernel-restarted consumer can call the same façade to `resolve()` exact durable
+evidence. The model developer may expose `optimize_readout(target, workspace)`
+or another domain-named function; SCNSim does not prescribe those project
+names and does not own their Design Target.
+
+The current native-API engineer course keeps those responsibilities visible
+instead of wrapping them in a project façade. It begins with
+[one complete physical circuit](../examples/engineer/chapter-01/01-build.qmd),
+then teaches [points and Optimization](../examples/engineer/chapter-02/01-build.qmd),
+[a custom Library and Composite](../examples/engineer/chapter-05/01-library.qmd),
+[complete RLGC values](../examples/engineer/chapter-07/01-rlgc.qmd), and
+[restart-safe report/resolve](../examples/engineer/chapter-08/01-persist.qmd).
+PTC, transformed Views, scalar response lookup, and independent Direct/HB
+Results remain in [Chapter 4](../examples/engineer/chapter-04/01-physical-plan.qmd).
+
+This separation is a UX boundary, not a second Runtime. Both users ultimately
+receive the same typed SCNSim Results and exact receipt identities.
 
 `CircuitPlan` is the only physical circuit authority. There is no
 `ReducedCircuitPlan`; a Schur-complement model is an analysis reference derived
 from the Plan, not a second circuit.
 
-### Quantity-only authoring
+Calculation and Parameter resolution consume the shared frozen assembly model
+without importing diagram modules or requiring a successful layout. Diagram
+state cannot mutate the Plan, parameter definitions, or numerical requests.
+An externally open Composite interface is legal assembly, not a promise of
+numerical solvability; required native terminals and physical checks remain.
 
-SCNSim publishes one Pint registry:
+### Component authoring supplies the Plan
+
+The [Component Authoring Contract](component-authoring.qmd) retains immutable
+built-in/custom Libraries and physical factory/lowering semantics. The
+[structured-authoring target](contracts/circuit-plan-assembly.qmd#structured-authoring-grammar)
+owns the proposed public assembly grammar. Its shortest target route is:
 
 ```python
-from scnsim import units as u
-```
+from scnsim import CircuitPlan, components, units as u
 
-Every public physical value uses that registry. Built-in and custom component
-libraries follow the same contract:
-
-```python
-from scnsim import CircuitLibrary, CircuitPlan, ParameterSpec, units as u
-
-library = CircuitLibrary(...)
-
-library.register_component(
-    "capacitor",
-    parameters={
-        "capacitance": ParameterSpec(
-            unit=u.fF,
-            variable_capable=True,
-        ),
-    },
-    ...,
-)
-
-plan = CircuitPlan(...)
+plan = CircuitPlan(id="example")
 readout_cap = plan.add(
-    library.capacitor(
+    components.capacitor(
         id="readout_cap",
         capacitance=92.0 * u.fF,
     )
 )
+readout_bus = plan.bus(id="readout")
+plan.branch(
+    id="readout_capacitance",
+    at=readout_bus,
+    elements=(readout_cap,),
+    end=plan.ground,
+)
 ```
 
-`ParameterSpec.unit` declares the expected dimensionality and preferred
-authoring/display unit. The parameter value remains an explicit Quantity.
-SCNSim does not infer a unit from a parameter name, value size, or Notebook
-context.
+Every Plan owns one canonical ground. The target exposes it as `scope.ground`,
+a local endpoint for intrinsic structured branches. Parent-applied external
+grounding instead uses `ground_pins(pins=(...))` on eligible public pins;
+ordinary zero-wire connections use `link(endpoints=(...))` and cannot accept a
+`GroundRef`. Direct uses the one resulting reference as node flux ground and HB
+lowers it to JosephsonCircuits node `"0"`; the backend spelling is not a public
+coordinate.
+Ordinary two-terminal native bodies retain factory-defined terminal order and
+require exactly one structural use. Complete Composite occurrences and native
+multi-terminal bodies may instead remain independent peers after complete pin
+binding, or may be used once in a compatible structure. `.between()` supplies
+an ordered pair only for that structural use.
 
-Public physical inputs do not accept bare numbers. Counts, indices, seeds,
-booleans, enum choices, and other non-physical controls remain ordinary Python
-values. A physically meaningful dimensionless value uses `u.dimensionless`.
+Every public physical value uses the one `scnsim.units` Pint registry. Public
+physical inputs do not accept bare numbers; a physically meaningful
+dimensionless value uses `u.dimensionless`. Counts, indices, seeds, booleans,
+enum choices, and other non-physical controls remain ordinary Python values.
 
-Custom libraries must use `scnsim.units`; they cannot supply or mutate another
-`UnitRegistry`. An unknown unit, a foreign-registry Quantity, or incompatible
-dimensionality fails at the authoring boundary.
+The Runtime consumes the authored Plan. It does not maintain a mutable Library,
+invent child-component parameters, or infer topology or units from a component
+name.
 
 ### Seal one Plan into one Run
 
@@ -153,60 +253,192 @@ from scnsim import CircuitRun
 run = CircuitRun(
     plan=plan,
     workspace="results/example_run",
+    versioned=False,
 )
 
 original = run.original
 ```
 
-Opening an existing workspace with a different sealed Plan or runtime identity
-must fail rather than relabel, overwrite, or silently select prior evidence.
 The Run has no global `action`, current Ref, current parameters, or current
-result.
+result. `versioned=False` is the default topology-iteration policy: opening the
+same workspace with a different successfully sealed Plan atomically replaces
+the prior Plan workspace and its request evidence without a confirmation
+prompt. Opening it with the same Plan identity reuses the existing workspace.
 
-### Declare a Ref graph without executing
+`versioned=True` preserves topologies beneath the selected parent workspace as
+`iteration01`, `iteration02`, and so on. Each iteration is a complete ordinary
+Plan workspace; the parent index maps Plan identity to iteration, and the same
+Plan reuses its existing directory. Changing a Spec or ParameterSet alone does
+not allocate an iteration.
 
-`run.original` is the zero-reduction root `NetworkModelRef`. `reduce()` returns
+An existing unversioned workspace may be upgraded atomically to
+`versioned=True`; its current Plan becomes `iteration01` without changing its
+requests. The reverse transition is forbidden before mutation because it would
+delete evidence the user explicitly chose to preserve. The error directs the
+user to supply a different workspace path for replacement mode.
+
+Construction first captures and completely validates one authoring snapshot,
+resolves its baseline, derives its canonical identity and original View, and
+prepares the prospective workspace binding. It does not recapture the Plan or
+rerun `complete()` after commit. Under the existing exclusive workspace lock,
+an unchanged pointer is verified in place; a changed active pointer is
+atomically published with any exact old-leaf cleanup intent. That logical
+commit is durably confirmed with directory `fsync`, then the supplied Plan is
+sealed from the already-validated state and the Run is returned.
+
+Ordinary failure before pointer publication returns no Run, leaves an initially
+editable Plan editable, and preserves the previously active workspace leaf.
+Only exact hidden staging owned by the workspace grammar may be removed or
+recovered. If the pointer may have published but durability or state
+confirmation fails, SCNSim cannot safely infer rollback: it seals the prepared
+Plan, returns no Run, and raises `WorkspaceCommitIndeterminateError` at
+`workspace_commit` with Plan/workspace identity evidence and an explicit
+`plan_sealed=True`, `workspace_may_have_changed=True` state.
+
+Old-leaf deletion is postcommit maintenance and cannot turn a successfully
+committed Run into constructor failure. The active root retains one bounded,
+typed cleanup-pending record until the exact retired leaf is absent and that
+state is durably republished. `run.inventory()` reports these maintenance
+records independently of request rows. A later normal exclusive operation may
+finish only the classified leaf, but first validates the active pointer and its
+complete active evidence. Active corruption, absence, or stale binding
+ownership preserves the retired leaf and maintenance record for diagnosis;
+SCNSim neither adopts nor deletes unknown orphans and runs no background
+cleaner.
+
+Sealing is permanent for both that Run and the supplied Python Plan. The same
+`CircuitRun` may execute any number of immutable Refs, Specs, and ParameterSets
+derived from its sealed Plan; none
+of those questions changes the Plan or invalidates earlier Results. Editing
+sealed Plan content—including topology, an authoring baseline, Ports,
+couplings, or a public component schema—raises `PlanSealedError`. The author
+reruns the builder to create a new `CircuitPlan` and `CircuitRun`; the same
+Python variable names and workspace path may be rebound without restarting the
+kernel. Supplying a declared `ParameterSet` does not change topology.
+
+In replacement mode, an older Run or lazy Result fails with
+`WorkspacePlanReplacedError` once another Plan has replaced its backing
+workspace. The check binds an evidence-only workspace-instance ID in addition
+to the Plan hash, so an `A → B → A` sequence cannot accidentally revive the old
+A handle. With `versioned=True`, each Run remains bound to its retained
+iteration and may coexist with newer topology Runs.
+
+### Declare the floating-qubit Ref graph without executing {#floating-qubit-ref-graph}
+
+`run.original` is the zero-reduction root `NetworkViewRef`. `reduce()` returns
 a new immutable Ref and never compiles, launches Julia, solves, or writes a
 receipt:
 
 ```python
-modal = original.reduce(
-    ReductionPipeline().transform(
-        inputs=("phi_a", "phi_b"),
-        outputs={
-            "common": {"phi_a": 0.5, "phi_b": 0.5},
-            "differential": {"phi_a": 1.0, "phi_b": -1.0},
-        },
-        label="modal",
+compensated = original.reduce(
+    ReductionPipeline().ptc(
+        probe_plus,
+        probe_minus,
     )
 )
 
-internal_reduced = modal.reduce(
-    ReductionPipeline().schur_complement(
-        eliminate=("internal_a", "internal_b"),
-        label="internal",
+qubit_modes = compensated.reduce(
+    ReductionPipeline().transform_pair(
+        "qubit_plus",
+        "qubit_minus",
+        id="qubit",
     )
 )
 
-readout = internal_reduced.reduce(readout_pipeline)
-qubit = internal_reduced.reduce(qubit_pipeline)
+qubit_differential = qubit_modes.reduce(
+    ReductionPipeline().retain(
+        "qubit.differential",
+    )
+)
+
+feedline = qubit_modes.reduce(
+    ReductionPipeline().retain(
+        "feedline_in",
+        "feedline_out",
+    )
+)
+
+monitoring = qubit_modes.reduce(
+    ReductionPipeline().retain(
+        "feedline_in",
+        "feedline_out",
+        "monitor",
+    )
+)
 ```
 
-The reusable point is the Ref itself: `original -> modal -> internal_reduced ->
-readout`. A Ref may produce any number of child Refs. Pipeline step labels are
-evidence labels, not a second API such as `model.at("checkpoint")`.
+Here `probe_plus` and `probe_minus` are the `PortRef` handles returned when the
+Plan added the two logical probe Ports. `ptc()` removes their selected,
+evidenced load stamps from the effective analysis topology.
+`transform_pair()` replaces the ordered Public node pair with the generated
+`qubit.common` and `qubit.differential` coordinates. `retain()` selects an
+ordered, non-empty set of Public or generated node coordinates and
+Schur-eliminates the complete complement under `I_external = 0`. None of these
+declarations executes work.
+
+The reusable point is the Ref itself:
+`original -> compensated -> qubit_modes -> feedline`. A Ref may produce any
+number of child Refs, so the same transformed ancestor can support a one-port
+differential view, a two-port feedline view, and a larger monitoring view.
+Pipeline step labels are evidence labels, not a second API such as
+`model.at("checkpoint")`.
 
 ## Run operations and durable results
 
-### One execution owner
+### One execution owner {#solve-versus-evaluate}
 
-The Run performs every operation:
+The Run performs every terminal operation, but `solve()` and `evaluate()` have
+different user-visible jobs:
+
+| Question | Call | Compatible Spec family | Result |
+|---|---|---|---|
+| What is the selected-view S/Y/Z response over a grid? | `run.solve(ref, spec)` | `DirectSolveSpec` | Direct response matrices and named traces |
+| What are the named HB case responses? | `run.solve(ref, spec)` | `HBSolveSpec` | `HBBatchResult` with one typed outcome per declared case |
+| What is one Direct root, pole, zero, coupling, or response scalar? | `run.evaluate(ref, spec)` | Typed Direct quantity Spec | Typed quantity Result |
+| What is the complete Direct dynamic operator? | `run.evaluate(ref, spec)` | `OperatorSpec` | `OperatorResult` |
+| Which parameters minimize declared typed quantity objectives? | `run.optimize(spec)` or `run.optimize(default_view, spec)` | `OptimizationSpec` | `OptimizationResult` |
+
+The `SolveSpec` suffix means “produce a response surface.” A
+`DirectSolveSpec` solves the complete selected-view N-port response over its
+declared grid. It does not guess S21: a one-port view yields S11, a two-port
+view yields the complete 2-by-2 response, and an N-port view yields the
+complete N-by-N response. Named `SParameterTrace` objects are typed projections
+of that same result and never launch another solve.
+`SolveSpec` is only the category name used by this contract; V1 does not add an
+abstract public `SolveSpec` class. Consumers construct `DirectSolveSpec` or
+`HBSolveSpec` directly.
+
+The stabilized Full V1 runtime supports `DirectSolveSpec` on every final View that proves
+its ordered terminal basis is Port-realizable. It publishes the complete
+finite N-port S/Y/Z matrices once, then projects any declared named traces from
+that same result. A non-realizable final View fails closed rather than
+returning an incomplete or fabricated wave response.
+
+A Direct quantity Spec instead asks `evaluate()` for one defined physical
+quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
+example, runs the required-hint deterministic Newton procedure on one physically
+anchored coordinate's operator diagonal and returns its machine-resolved root,
+frequency, linewidth, and local slope evidence. The coordinate owns physical
+identity; `root_hint` only initializes the baseline Newton basin.
+`ResponseElementSpec` may
+evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
+does not imply a frequency-grid response. `OperatorSpec` is the deliberate
+exception that materializes the complete labeled Direct operator.
+
+These combinations fail closed before execution:
 
 ```python
-direct = run.solve(readout, DirectSolveSpec(...))
-hb = run.solve(readout, HBSolveSpec(...))
-operator = run.evaluate(readout, OperatorSpec(...))
-optimization = run.optimize(qubit, OptimizationSpec(...))
+run.solve(feedline, DiagonalRootSpec(...))
+run.evaluate(feedline, DirectSolveSpec(...))
+```
+
+The valid operations remain independent exact requests:
+
+```python
+direct = run.solve(feedline, DirectSolveSpec(...))
+hb = run.solve(feedline, HBSolveSpec(...))
+readout = run.evaluate(feedline, DiagonalRootSpec(...))
+optimization = run.optimize(feedline, OptimizationSpec(...))
 ```
 
 `solve()`, `evaluate()`, and `optimize()` are real actions. They compute the
@@ -215,10 +447,106 @@ sealed request/receipt/artifact evidence, and return the corresponding typed
 Result. They do not mutate the Plan or Ref and do not save a result as mutable
 state on the Run.
 
-If the same exact request already has a complete verified success receipt, the
-operation reuses it without recomputing or overwriting it. A genuinely new
-attempt uses a new request identity or workspace; V1 has no force-overwrite
-flag.
+Presentation is never another action:
+
+```python
+from scnsim import Theme
+
+direct.s.show(magnitude="db", theme=Theme.AUTO)
+direct.traces["transmission"].show(magnitude="db", theme=Theme.DARK)
+readout.show()
+```
+
+These calls read the typed Results already returned above. They do not solve,
+recompute, interpolate, or select a latest request.
+
+### Use response and quantity Results together
+
+One Notebook may legitimately need both the response surface and a physical
+quantity. It declares two Specs and executes two explicit requests against the
+same sealed Run and Ref:
+
+```python
+reflection_trace = SParameterTrace(
+    id="reflection",
+    input_port="signal_in",
+    input_mode=(),
+    output_port="signal_in",
+    output_mode=(),
+)
+direct_spec = DirectSolveSpec(
+    frequencies=frequency_grid,
+    traces=(reflection_trace,),
+)
+root_spec = DiagonalRootSpec(
+    coordinate="readout_node",
+    root_hint=6.0 * u.GHz,
+)
+
+direct = run.solve(view, direct_spec)
+root = run.evaluate(view, root_spec)
+
+report = run.build_report(
+    ReportSpec(inputs=(direct, root), theme=Theme.AUTO)
+)
+```
+
+The two requests may reuse exact sealed compile/dependency evidence, but there
+is no hidden current Result and neither request changes the meaning of the
+other. The Report records both exact input identities rather than deriving the
+root from a plotted S minimum or pretending the diagonal root is S21.
+
+### Request identity and immutable attempts {#request-identity-and-immutable-attempts}
+
+A canonical request identifies the sealed Plan, Ref, Spec, ParameterSet,
+runtime, and operation. Execution history is not part of that identity. If the
+request already has one complete verified success receipt, the operation
+reuses that Result without recomputing or overwriting it.
+
+The Run validates and normalizes those declarations once into a private
+immutable prepared analysis before canonical encoding. Prepared data is
+declarative: it carries no executable Run, workspace, process callback,
+candidate realization, or mutable live-read path. For optimization, each bound
+leaf retains objective ID plus authored objective/term order, while dependency
+sharing remains keyed by the complete View and root/quantity Spec rather than
+by the leaf's objective identity. The canonical request encoder formats only
+this prepared data; it does not choose a View, resolve parameters, or read a
+later baseline value again.
+
+Execution coordination may consume the canonical request and workspace owner,
+but it does not decode an unchecked producer payload. Workspace verification
+first establishes the sealed request/attempt/receipt/result chain. Typed Result
+decoding consumes that verified-success record independently and cannot turn a
+producer assertion into authorization. Immediate path-backed decoding remains
+inside that ownership-checked reader or writer interval. Deferred sweep reads
+reacquire the original binding's reader and revalidate the exact request,
+attempt, receipt, and Result seals before validating and reading only the
+requested chunk or point payload. They do not rescan every sweep payload; a
+replacement leaf raises `WorkspacePlanReplacedError`. Detached materialized
+values may outlive the interval. These private ownership boundaries do not add
+a public Job, prepared-request, or decoder API.
+
+The workspace path is an evidence location, not part of computational request
+identity. A leaf workspace binds one Plan; each request binds its semantic
+runtime. `CircuitRun` resolves the request only inside that Plan workspace. A
+different or relocated workspace does not rename the request, but it may not
+contain the required receipt.
+
+If every prior attempt failed or was interrupted, calling the same operation
+again keeps the canonical request identity and appends a new immutable attempt.
+Earlier requests, logs, failure receipts, and partial artifacts remain
+auditable; there is no force-overwrite flag and no mutable current attempt.
+Only the operation methods create attempts. `resolve()` never retries, resumes,
+or launches work.
+
+Attempt ordinals start at one and use a minimum width of six decimal digits:
+`attempts/000001/`, `attempts/000002/`, and so on. Values beyond six digits
+grow naturally without an artificial maximum. Before promotion, the same
+ordinal appears in
+`attempts/.staging-000001-<lowercase-canonical-UUIDv4>/`. An ordinal spelling,
+UUID form, final directory, or staging directory that does not match its
+sealed attempt evidence fails integrity validation; path formatting is not an
+implementation choice.
 
 ### Explain before execution
 
@@ -226,31 +554,71 @@ V1 does not expose a public JobRef layer. A consumer can inspect a request
 without executing it:
 
 ```python
-run.explain(readout, direct_spec).show()
+run.explain(feedline, direct_spec).show()
 ```
 
-The explanation identifies the sealed Plan, selected Ref, effective
-parameters, operation/backend, grids, reduction lineage, runtime, and exact
-dependency graph.
+`explain()` performs the same deterministic ParameterSet binding and compile
+preflight needed to resolve topology and coordinate evidence, but it does not
+launch a solver, create a request directory, or write the workspace. The
+explanation identifies the sealed Plan, selected Ref, effective parameters,
+operation/backend, grids, reduction lineage, runtime, and exact dependency
+graph. It expands every component to its backend rows, shows Library/schema
+identity, component-pin to electric-node/ground mapping, Public/Internal/
+Port-promoted node identities, zero-wire link membership, intrinsic and
+parent-applied grounding provenance, logical Port attachments and namespace
+mapping,
+Direct `B`/`Y0`/load/wave lowering, HB `P`/`R_port` lowering,
+SQUID loop orientation, and every bound inductive-coupling `L1`, `L2`, signed
+`k`, derived `M`, and backend map. For an automatic paired-node transform it
+also shows every included
+external-cut capacitance branch, every excluded direct-mutual branch, the
+resolved weights and transform, the transformed reference matrix and principal
+root, Port-realizability, and the ordered mode-port realization. It also lists
+the retained/eliminated coordinates, final selected-view channel order,
+induced `A_k`/`B_k`/`R_k`/`D_k`, and per-probe raw/compensated load state. HB
+explanations additionally show the exact source-coefficient index/conjugation
+map, signed nonzero response frequencies, and input/output `W` conversion for
+solver-native Z and S.
+Optimization explanations show
+each required root hint and baseline branch selection, the expanded relative or
+explicit residual scales, quantity dependency graph, shared
+compile/factorization/root work, Julia execution boundary, and baseline
+resolution; candidate-specific continuations remain in candidate receipts.
 
 ### Resolve without execution
 
-`resolve()` accepts the same Ref, spec, and optional ParameterSet as the
-corresponding operation:
+`resolve()` accepts the same Ref, Spec, and parameter selection as its
+corresponding operation. The [Parameter System Contract](contracts/parameter-system.qmd#parameterized-operations)
+owns point/space resolution and optimization's fixed non-active input binding;
+active variables still start at their sealed baseline. `explain()` retains its
+separately declared preflight surface:
 
 ```python
-direct = run.resolve(readout, direct_spec)
+direct = run.resolve(feedline, direct_spec)
 ```
 
 It recomputes the expected request identity, then reads and verifies the sealed
 workspace request, receipt, and artifacts. It never executes, searches for a
-latest stage, or relies on a process-local cache. The same call must therefore
-work after a Notebook kernel restart when every bound identity remains exact.
-Missing, stale, corrupt, or mismatched evidence fails closed with the missing
-or mismatched identity named.
+latest stage, retries a failed or interrupted attempt, or relies on a
+process-local cache. The same call must therefore work after a Notebook kernel
+restart when every bound identity remains exact. Missing, stale, corrupt, or
+mismatched evidence fails closed with the missing or mismatched identity named.
 
-`run.inventory()` may list known requests and their identities, but listing
-does not establish a hidden current selection.
+`run.inventory()` is a shared-lock, read-only inspection of the exact leaf
+bound to that `CircuitRun`. A replaceable workspace lists only its active leaf;
+a versioned Run lists only its own iteration, never sibling iterations. A
+stale Run raises `WorkspacePlanReplacedError`. Requests are ordered by
+`request_sha256`, attempt ordinals are numeric ascending, and request status is
+`succeeded` when a verified success exists or otherwise the failure/interruption
+state of the greatest finalized ordinal. A verified HB batch remains
+`succeeded` even when every case is a numerical failure. Hidden staging is not
+an attempt; an empty request, broken hash chain, or invalid finalized attempt
+is `EvidenceIntegrityError` rather than an omitted row. Inventory never writes
+evidence and does not establish a hidden current/latest selection for
+`resolve()`, reports, or any other API.
+Its separate immutable `maintenance` tuple is empty or contains the exact
+classified retired-leaf cleanup still pending for that root; inventory never
+performs the cleanup.
 
 ## Units, identity, and parameter variants
 
@@ -286,6 +654,9 @@ Physically identical `92.0 * u.fF` and `0.092 * u.pF` produce the same
 computational identity after canonicalization. Their source units remain
 visible provenance and may be displayed differently without splitting the
 physical request identity.
+The receipt preserves the source spelling used by the executed attempt. A
+later semantic-equivalent reuse returns that verified evidence and does not
+append a new attempt merely to log the caller's alternate spelling.
 
 ### Static and runtime checks
 
@@ -297,20 +668,48 @@ dimensionality, so F-versus-H correctness is enforced at runtime by
 SCNSim does not add a parallel phantom-type unit system. See
 [Pint typing](https://pint.readthedocs.io/en/stable/advanced/typing.html).
 
-### Explicit ParameterSet variants
+### Explicit ParameterSet variants {#explicit-parameterset-variants}
+
+::: {.callout-warning}
+The `CONVERGING` [Parameter System Contract](contracts/parameter-system.qmd)
+owns independent definition identity, physical-consumer closure, points,
+`ParameterSpace`, sweep Results, and parameterized diagrams. Its implementation
+baseline is integrated; no compatibility with legacy envelopes is promised.
+:::
 
 The sealed Plan supplies the baseline parameters. An operation may instead
-receive an immutable `ParameterSet` keyed by Plan-derived `ParameterRef`
-objects:
+receive an immutable `ParameterSet` keyed by independently defined refs that
+the Plan consumes. Rebuild the earlier fixed-value example with a real binding
+before sealing; lookup cannot turn its literal into a parameter:
 
 ```python
+from scnsim import DirectSolveSpec, ParameterDefinitions, ParameterSet, ParameterSpec
+
+inputs = ParameterDefinitions(id="readout_inputs")
+capacitance = inputs.parameter(
+    id="capacitance", baseline=92.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+plan = CircuitPlan(id="parameterized_readout")
+readout_cap = plan.add(
+    components.capacitor(id="readout_cap", capacitance=capacitance)
+)
+readout_bus = plan.bus(id="readout")
+plan.branch(
+    id="readout_capacitance", at=readout_bus,
+    elements=(readout_cap,), end=plan.ground,
+)
+plan.add_port(
+    id="signal_in", at=readout_bus, role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+run = CircuitRun(plan=plan, workspace="results/parameterized_readout")
 candidate = ParameterSet({
     readout_cap.parameter("capacitance"): 95.0 * u.fF,
 })
 
 candidate_direct = run.solve(
-    readout,
-    direct_spec,
+    run.original,
+    DirectSolveSpec(frequencies=frequency_grid),
     parameters=candidate,
 )
 ```
@@ -318,33 +717,62 @@ candidate_direct = run.solve(
 Omitting `parameters=` uses the sealed baseline. Supplying a ParameterSet does
 not bind or mutate the Ref; the ParameterSet is part of that operation's exact
 request identity. A ParameterSet with unknown refs, incompatible units,
-non-finite values, or a different Plan family fails before execution.
+non-finite values, or unconsumed/incompatible definitions fails before execution.
 
 Optimization exposes its selected parameters through the same type:
 
 ```python
-optimization = run.optimize(qubit, optimization_spec)
+optimization = run.optimize(feedline, optimization_spec)
 
 winner_hb = run.solve(
-    readout,
+    feedline,
     final_hb_spec,
     parameters=optimization.best.parameters,
 )
 ```
 
-The new HB request uses the `readout` reduction lineage plus the winner
-ParameterSet. It does not inherit the `qubit` reduction lineage. The
-optimization source remains parameter provenance.
+The new HB request uses the explicitly selected `feedline` lineage plus the
+winner ParameterSet. A ParameterSet never carries or changes a Ref lineage;
+the optimization source remains parameter provenance.
 
-## One reduction meaning, two solver realizations
+## Shared topology and unified node views {#shared-topology-and-unified-node-views}
 
-`ReductionPipeline` always names physical node-flux coordinates and contains
-the same ordered transforms and eliminations regardless of backend. Direct and
-HB realize that declaration on different analysis operators.
+`ReductionPipeline` is one ordered, backend-neutral node-coordinate lineage.
+It never chooses Direct or HB. A topology step changes the effective circuit
+analyzed by descendants; a view step changes the coordinates or boundary used
+to inspect that circuit. Both backends consume the same Ref and either realize
+it faithfully or fail before solver execution.
 
-### Direct realization
+### Selective Port-Termination Compensation (PTC) is a shared topology step
 
-SCNSim compiles the original Plan into an ordered node-flux basis and owns:
+The `ptc()` step explicitly receives one or more `nonloading_probe` `PortRef`
+handles from the same Plan:
+
+```python
+compensated = run.original.reduce(
+    ReductionPipeline().ptc(
+        probe_plus,
+        probe_minus,
+    )
+)
+```
+
+For every selected Port, the sealed compiled artifact must prove one exact
+node attachment, finite positive reference impedance, load stamp, and
+backend-lowering identity. The explicit `ptc()` call supplies removal intent;
+the Port role or a caller-provided resistance alone does not. Physical and
+environmental loads that are not selected remain in the effective circuit.
+
+A lineage may contain PTC at most once. It must precede `transform_pair()` and
+`retain()`, and every descendant Ref inherits the same compensation set.
+`retain()` is the terminal basis selection for that lineage. Unknown, repeated,
+terminated, foreign, or unevidenced targets fail before execution.
+
+For Direct analysis, the source-loaded operator first supports the raw solve;
+the selected-network adapter then de-embeds all source resistors and re-adds
+only the omitted, non-PTC matched loads according to the common load mask.
+This is algebraically the explicit removal of each selected probe stamp, but it
+does not confuse a selected source resistor with DUT admittance. SCNSim owns:
 
 ```text
 C: capacitance
@@ -353,84 +781,1416 @@ G: conductance
 D(omega) = K - omega^2 C - i omega G
 ```
 
-For Direct analysis, coordinate transforms and Schur complements are applied
-to `D(omega)` at the requested Quantity-valued sampling points. The same
-declared Ref can be used by `solve()` for observables or by `evaluate()` for
-the operator itself.
+Direct optimization recompiles every candidate ParameterSet and replays the
+complete PTC and view lineage. It never optimizes a nominal matrix that still
+contains the artificial loss channel.
 
-### HB realization
+### Automatic paired-node coordinates are a shared view step
 
-For each HB case, a reduced analysis has two phases:
+`transform_pair()` declares one ordered pair of distinct Public node
+coordinates and one output namespace. Inputs may be Plan `ElectricNodeRef`
+handles, composite `CoordinateRef` handles, or declared coordinate-ID strings:
 
-1. solve the nonlinear pump steady state on the full original physical Plan;
-2. construct the sideband-expanded small-signal operator around that operating
-   point, lift the selected Ref's pipeline into the retained sideband basis,
-   apply its transforms and Schur complements, and evaluate the requested
-   S/Y/Z or named observables.
+```python
+qubit_modes = compensated.reduce(
+    ReductionPipeline().transform_pair(
+        "qubit_plus",
+        "qubit_minus",
+        id="qubit",
+    )
+)
+```
 
-The nonlinear balance is not described as a Schur-reduced nonlinear circuit.
-Reduction applies to the linearized HB analysis operator around the sealed pump
-solution.
+The two inputs are replaced by the ordered outputs `qubit.common` and
+`qubit.differential`. The Ref stores the input pair, output namespace, and the
+automatic rule; it never stores nominal numeric weights and V1 exposes no
+manual-weight override through this operation.
 
-An HB receipt for a reduced Ref binds both:
+The scientific definition is canonical in
+[Admittance Coordinate Transforms](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/admittance-coordinate-transforms.qmd#full-external-cut-weighting).
+After binding the operation's complete ParameterSet, SCNSim enumerates the
+original compiled reciprocal lumped capacitance branches. Each node's
+external cut includes capacitance to ground/reference and to every node outside
+the selected pair; every direct mutual branch between the selected nodes is
+excluded from the weights but remains in the differential energy and compiled
+operator.
 
-- `balance_model`: original Plan, effective ParameterSet, pump declaration,
-  and nonlinear solution identity; and
-- `analysis_model`: selected Ref, sideband operator, reduction lineage, and
-  requested observables.
+This rule selects deterministic floating-pair coordinates. It does not claim
+to diagonalize a loaded network, a frequency-dependent admittance, an already
+Schur-reduced environment, a distributed model, or an operating-point
+linearization. External coordinates may remain coupled to both generated
+coordinates.
 
-Pump-off is an explicit `0 * u.A` drive case through the same HB mechanism as a
-pumped case. It is not a separate solver or fallback.
+PTC and `transform_pair()` are independent declarations. A transform neither
+requires nor inserts PTC and may act on ordinary Public nodes or nodes with
+logical Port attachments. If a lineage contains both, the explicit PTC step
+comes first so the topology change remains visible; PTC changes evidenced
+conductance stamps and does not change capacitance-derived weights.
+
+Direct operations apply the resolved power-conjugate transform to the selected
+operator. HB repeats that same real transform independently inside every
+retained sideband mode. Direct optimization resolves the external cut again
+from every candidate's original compiled capacitance operator rather than
+reusing baseline weights.
+
+The selected-view S matrix uses the generalized real-SPD matrix-reference
+power-wave contract from
+[Port Reference Impedance Semantics](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#real-spd-matrix-reference-power-waves).
+SCNSim transforms the declared physical reference matrix with the resolved
+coordinate map and uses its principal symmetric SPD square root. It does not
+replace a non-diagonal transformed reference with diagonal entries. Direct and
+HB therefore expose the same selected-view wave convention even when the
+backend-native HB convention differs.
+
+### Retain an arbitrary node-coordinate view
+
+`retain()` accepts any ordered, non-empty set of unique Public or generated
+coordinates from the current basis. A selector is a Plan `ElectricNodeRef`, a
+composite-exposed `CoordinateRef`, or a declared coordinate-ID string. Handles
+are preferred while authoring one live Plan. Strings are required for
+transform-generated coordinates and remain valid for named or Port-promoted
+Public coordinates at serialized/team-facade boundaries:
+
+```python
+feedline = compensated.reduce(
+    ReductionPipeline().retain(
+        feedline_in_node,
+        feedline_out_node,
+    )
+)
+
+filter_quantities = compensated.reduce(
+    ReductionPipeline().retain(
+        ipf.coordinate("filter_open_tail"),
+    )
+)
+```
+
+The listed coordinates become the selected-view order. Every coordinate in the
+complete complement is dynamically Schur-eliminated with zero external current
+while loads already present in the effective operator remain. Anonymous
+Internal nodes are never directly selectable and therefore remain in that
+complement. `N=1` and `N=2` are ordinary one- and two-coordinate cases, not
+separate APIs.
+
+The selected-view wave-channel ID is exactly its final retained coordinate ID.
+For an original node this is its Public node ID; for an automatic transform it
+is the generated ID such as `qubit.differential`. A logical Port ID is not a
+channel alias. Only anonymous-node promotion deliberately makes a node ID equal
+to its Port ID. Unknown or foreign handles/IDs, generated-output collisions,
+and duplicate retained identities fail before any trace is bound. A
+`CoordinateRef` can be observed but is not a structured-authoring endpoint and
+cannot be passed to `add_port()`; the owning scope must expose a separate
+`PinRef` for parent wiring. Root Ports attach only to a root `BusRef` or
+`TapRef`.
+
+A probe-free feedline S21 therefore requires both operations:
+
+1. `ptc()` removes the artificial probe shunt; and
+2. `retain()` excludes that probe coordinate from the selected external set.
+
+If a compensated probe remains in the retained set, a requested S matrix still
+applies its declared matched-wave boundary. Energy coupled into that retained
+external port is correct N-port scattering behavior, not a failed PTC.
+
+Zero-current coordinate elimination is the boundary operation described by
+[Schur Complement and Kron Reduction](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#zero-current-schur-versus-matched-wave-submatrices).
+It is not equivalent to selecting the same rows and columns from a native S
+matrix, because omitted native incident waves leave those ports terminated in
+their wave references.
+
+### Terminal-operation capability
+
+The pipeline vocabulary stays common while terminal operations enforce what
+they can physically publish:
+
+| Selected coordinate | Direct `evaluate()` / `optimize()` | Direct `solve()` | HB `solve()` |
+|---|---:|---:|---:|
+| Public node without a logical Port | Yes | No | No |
+| Public node with one logical Port | Yes | Yes | Yes |
+| Generated coordinate from an invertible transform of a complete Port-bound node subspace | Yes | Yes | Yes |
+| Generated coordinate involving a non-Port-bound node | Yes | No | No |
+| Anonymous Internal node | Not directly selectable | Not directly selectable | Not directly selectable |
+
+`solve()` always promises a complete selected-view S/Y/Z surface, so every
+final coordinate must be port-realizable: either one original node with a
+unique logical Port, or a generated coordinate from an invertible transform of
+a complete Port-bound node subspace. Direct does not return a special
+matrix-only solve result when this is false; it fails closed. Direct
+`evaluate()` and `optimize()` may still inspect a named unported Public node in
+the complete node operator because they do not promise a wave-port response.
+
+When no explicit `retain()` exists, `solve()` uses all logical Ports in Plan
+declaration order. `evaluate()` and Direct `optimize()` may instead work from
+the full node operator and their named quantity selectors. HB may omit some
+Port-bound nodes from the selected view: its full nonlinear/static balance
+still includes every logical Port and load, then the linearized raw Z/Y
+operator eliminates omitted channels with `I_external = 0`.
+
+### One logical Port, two backend lowerings
+
+A logical Port is a specialized `CircuitPlan` component, not a Library factory
+and not a JosephsonCircuits row exposed as the product API:
+
+| Port content | Direct | HB / JosephsonCircuits |
+|---|---|---|
+| Node attachment | incidence/selector column `B` | resolved node of `P_i` and `R_port_i` |
+| Reference impedance | `Y0 = 1 / R0` and power-wave conversion | explicit `R_port_i` and solver port impedance |
+| Port marker | no `P` row | exact `P_i` row |
+| Source/load boundary | `G_port = B Y0 B^T` during raw solve | explicit source resistor stamp |
+| Drive | external current injection through `B` | mode-indexed current on `P_i` |
+| PTC | clear proved probe entry in the post-de-embedding load mask | clear the same proved probe entry in every sideband load mask |
+
+The load and wave reference are separately auditable. PTC removes only the
+load stamp; it preserves the logical Port identity, node coordinate, and
+reference impedance required to define the selected S surface. Direct never
+creates a fake `P` element merely to resemble the HB backend. Its receipt says
+`P row = not applicable` and records the actual selector, reference-admittance,
+voltage/current, load, and wave-conversion mapping. HB records the exact `P_i`
+and `R_port_i` rows, solver indices, modes, and port order.
+
+For both lowerings, Port voltage is the attached-node voltage relative to the
+Plan ground and positive Port current enters the Plan at that node. The
+canonical node attachment therefore owns direction; there is no backend- or
+request-specific orientation override.
+
+The logical Port resistance is a wave/source boundary, not a DUT shunt in the
+public network. It participates in the raw solve and therefore supplies the
+external damping of the solved problem, but SCNSim de-embeds the selected
+source boundary before publishing `.y.view`, `.z.view`, and `.s.view`.
+
+Let `B_p` inject the ordered original logical-Port currents into the full node
+basis and let
+
+$$
+R_p=\operatorname{diag}(R_1,\ldots,R_P),
+\qquad D_p=R_p^{1/2}.
+$$
+
+After backend normalization, SCNSim first removes *all* backend `P + R` source
+resistors to recover the intrinsic linearized circuit operator. PTC then
+defines a diagonal original-Port load mask `M`: `M[i,i] = 0` only for an
+explicitly selected `nonloading_probe`; every other logical Port load remains
+active. This mask is independent of whether a Port is retained or omitted.
+
+For a Port-realizable selected view, let $A_k$ map ordered original-Port
+voltages to the final retained voltages. Power-conjugate injection and the
+matrix reference are
+
+$$
+B_k=B_pA_k^T,
+\qquad R_k=A_kR_pA_k^T,
+\qquad D_k=R_k^{1/2}.
+$$
+
+`D_k` is the principal real-SPD square root. Define the power-wave row map and
+its selected/omitted projectors in original Port space:
+
+$$
+Q_k=D_k^{-1}A_kD_p,
+\qquad P_k=Q_k^TQ_k,
+\qquad P_o=I-P_k.
+$$
+
+These wave-boundary objects exist only when the terminal View is
+Port-realizable. Retaining an unported Public node does not turn that node into
+a Port and does not define $A_k$, $B_k$, $R_k$, $D_k$, $Q_k$, $P_k$, $P_o$, or
+an omitted matched-load matrix. Its lineage stores the canonical not-applicable
+representation for every such field: an `evidenceMatrix` with `rows=0` and
+`columns=0`, whose SHA-256 covers the closed
+`applicability=not_port_realizable` envelope. The source-boundary and
+de-embedding hashes cover matching closed not-applicable envelopes. This is an
+identity sentinel, not a zero-valued physical Port model.
+
+The retained node and its complement remain exact node-coordinate lineage.
+Direct quantity evaluation forms the complete loaded node operator—including
+every logical-Port load not removed by PTC—and Schur-eliminates the complement
+under zero external current. It may therefore evaluate a loaded node root.
+`solve()` fails capability preflight on the same View before execution because
+no S/Y/Z wave network exists there.
+
+V1 requires a transformed pair to have one common load state: both original
+Port loads are selected by PTC or neither is. That restriction makes the
+retained and load partitions separable. A mixed-state pair fails preflight
+rather than silently assigning a fractional load to the generated channels.
+The omitted matched-load conductance in original Port coordinates is
+
+$$
+G_{o,p}=D_p^{-1}P_oMP_oD_p^{-1}.
+$$
+
+Let $Y_{\mathrm{circ,node}}$ be the intrinsic, source-resistor-de-embedded
+Direct or normalized HB linearized node admittance. SCNSim applies this exact
+selected-network order:
+
+1. add omitted matched loads,
+   $H=Y_{\mathrm{circ,node}}+B_pG_{o,p}B_p^T$;
+2. add only the selected source boundary and solve
+   $$
+   Z_{\mathrm{src},k}
+   =B_k^T(H+B_kR_k^{-1}B_k^T)^{-1}B_k;
+   $$
+3. obtain $Y_{\mathrm{src},k}$ by a matrix solve and de-embed the selected
+   source boundary,
+   $$Y_{\mathrm{net},k}=Y_{\mathrm{src},k}-R_k^{-1};$$
+4. form public $Z_{\mathrm{net},k}$ from that same network Y; and
+5. form the matrix-reference power-wave response
+
+$$
+\widetilde Y_k=D_kY_{\mathrm{net},k}D_k,
+\qquad
+S^{\mathrm{view}}=(I+\widetilde Y_k)^{-1}(I-\widetilde Y_k).
+$$
+
+Every inverse symbol above defines an equation, not an implementation method;
+factorizations and linear solves are required. A rank-deficient $A_k$,
+non-SPD $R_k$, singular selected solve, or incompatible load partition fails
+closed.
+
+The three public families now describe one de-embedded network:
+
+$$
+Y^{\mathrm{view}}=Y_{\mathrm{net},k},\qquad
+Z^{\mathrm{view}}=Z_{\mathrm{net},k},\qquad
+S^{\mathrm{view}}=S(Y_{\mathrm{net},k},R_k).
+$$
+
+An open one-port therefore has `Y_net = 0` and `S11 = +1`; a DUT whose
+intrinsic input admittance is `1 / R0` has `S11 = 0`. Omitted terminated Ports
+remain matched environmental loads. PTC changes only the explicitly selected
+probe entries of `M`; it never de-embeds an unrelated physical/environmental
+load. The typed matrix view continues to record each relevant probe as `raw`
+or `compensated`, but the selected source boundary is never mislabeled as DUT.
+
+### HB PTC operator realization
+
+JosephsonCircuits first solves each case on the original compiled Plan. SCNSim
+requests the complete solver-native `mode × port` `returnZ` operator. Let
+`Pi_in` and `Pi_out` reorder solver modes to the SCNSim ordering by the *same
+signed physical frequency*. Returned Z uses both the solver's
+`exp(+i * omega * t)` convention and its `1 / sqrt(abs(omega))` input/output
+scaling, so SCNSim forms exactly
+
+$$
+Z_{\mathrm{phys}}^{(-)} =
+W_{\mathrm{out}}
+\left[
+\Pi_{\mathrm{out}}Z_{\mathrm{JC}}^{(+)}\Pi_{\mathrm{in}}^T
+\right]^*
+W_{\mathrm{in}}^{-1}.
+$$
+
+SCNSim conjugates once and does not also reverse Fourier tuples. Only this
+convention- and frequency-normalized physical Z may be used to recover the raw
+source-loaded admittance by a matrix solve. The adapter then follows one
+ordered path:
+
+1. normalize complete HB `returnZ` as above;
+2. de-embed all backend `P + R` source resistors, recovering the intrinsic
+   linearized circuit operator;
+3. resolve the original-Port PTC mask `M` and apply the same mask to every
+   retained sideband replica;
+4. repeat the full-external-cut transform in every retained sideband mode;
+5. build `A_k`, `B_k`, `R_k`, `D_k`, `Q_k`, and the selected/omitted projectors;
+6. add omitted matched loads;
+7. add the selected source boundary and solve the source-loaded response;
+8. subtract `R_k^-1` from the selected source admittance; and
+9. form public Y, Z, and S from that one de-embedded selected network.
+
+The solver's mode tuples, signed physical frequencies, frequency
+normalization, port order, and version are part of this operator identity.
+Native `returnS` is requested only when the observable or reconciliation
+evidence needs it; it is not a second topology authority.
+
+Native `returnS` uses the same solver convention and byte scaling. When it is
+requested for observable or reconciliation evidence, SCNSim independently
+forms
+
+$$
+S_{\mathrm{native,pw}}^{(-)} =
+W_{\mathrm{out}}
+\left[
+\Pi_{\mathrm{out}}S_{\mathrm{JC}}^{(+)}\Pi_{\mathrm{in}}^T
+\right]^*
+W_{\mathrm{in}}^{-1}.
+$$
+
+Here each diagonal `W` entry is `sqrt(abs(omega))` for the corresponding
+ordered input or output mode. This is the normalized backend-native evidence
+documented under
+[JosephsonCircuits photon-flux-to-power normalization](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/simulation/port-reference-impedance-semantics.qmd#josephsoncircuits-photon-flux-to-power-normalization).
+Signed frequencies, the solver-to-SCNSim mode map, phasor convention, and mode
+order remain evidence; only each `W` factor uses absolute frequency magnitude.
+Because JosephsonCircuits `returnZ` itself divides the response and source
+coordinates by `sqrt(abs(omega))`, every input and output mode of the requested
+linear-response operator must have nonzero signed physical frequency. A DC
+component may remain in the nonlinear/static balance, but a zero-frequency
+linear-response mode makes the complete HBSolveSpec fail preflight; SCNSim does
+not publish only Y/Z or silently drop that mode.
+
+### Named HB drives, cases, mixing, and driven PTC {#named-hb-drives-cases-and-mixing}
+
+One `HBSolveSpec` owns an ordered frequency lattice, immutable drive channels,
+truncation, and named cases. A drive declares where one Fourier current enters;
+each case supplies that drive's current:
+
+```python
+pump_a = PumpAxis(id="pump_a", frequency=7.0 * u.GHz)
+pump_b = PumpAxis(id="pump_b", frequency=7.3 * u.GHz)
+
+dc_bias = CurrentDrive(id="dc_bias", at=flux_port, mode=(0, 0))
+pump_a_drive = CurrentDrive(
+    id="pump_a_drive", at=flux_port, mode=(1, 0)
+)
+pump_b_drive = CurrentDrive(
+    id="pump_b_drive", at=flux_port, mode=(0, 1)
+)
+
+hb = run.solve(
+    feedline,
+    HBSolveSpec(
+        pump_axes=(pump_a, pump_b),
+        drives=(dc_bias, pump_a_drive, pump_b_drive),
+        frequencies=signal_grid,
+        traces=(
+            SParameterTrace(
+                id="signal_gain",
+                input_port="feedline_in",
+                input_mode=(0, 0),
+                output_port="feedline_out",
+                output_mode=(0, 0),
+            ),
+            SParameterTrace(
+                id="idler_conversion",
+                input_port="feedline_in",
+                input_mode=(0, 0),
+                output_port="feedline_out",
+                output_mode=(1, -1),
+            ),
+        ),
+        cases=(
+            HBCaseSpec(id="unbiased", currents={}),
+            HBCaseSpec(
+                id="dc_only",
+                currents={dc_bias: 120.0 * u.uA},
+            ),
+            HBCaseSpec(
+                id="dc_pump_a_low",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_a_drive: 0.4 * u.uA,
+                },
+            ),
+            HBCaseSpec(
+                id="dc_two_tone",
+                currents={
+                    dc_bias: 120.0 * u.uA,
+                    pump_a_drive: 0.4 * u.uA,
+                    pump_b_drive: 0.2j * u.uA,
+                },
+            ),
+        ),
+        truncation=HBTruncation(
+            pump_harmonics=(3, 3),
+            modulation_harmonics=(1, 1),
+            max_intermodulation_order=3,
+            three_wave_mixing=True,
+            four_wave_mixing=True,
+        ),
+        allow_driven_ptc=True,
+    ),
+)
+```
+
+Here `flux_port` is the `PortRef` returned by `plan.add_port()`. A
+`CurrentDrive` cannot target a node ID or selected-view channel string.
+Conversely, each `SParameterTrace.input_port` and `output_port` names a
+selected-view wave channel; after `transform_pair()` that channel need not map
+to one original `PortRef`.
+
+`PumpAxis` declares one independent strong-tone fundamental. A commensurate
+higher tone is a higher integer mode on the same fundamental, not another
+axis. `CurrentDrive` owns only its ID, physical location, oriented injection
+map, and mode; it never owns a current. An omitted case binding materializes as
+exact `0 * u.A`.
+
+Case values are complex Fourier-series coefficients, not peak or RMS phasors:
+
+$$
+i(t)=\sum_{\mathbf m} I_{\mathbf m}
+e^{-i\mathbf m\cdot\boldsymbol\omega_p t}.
+$$
+
+For a real current, `I[-m] = conj(I[m])`; therefore a single nonzero-mode
+coefficient has physical sinusoidal peak amplitude `2 * abs(I[m])`. SCNSim
+generates the negative-mode conjugate from each declared nonzero-mode drive and
+rejects an independently declared conjugate partner. The all-zero DC
+coefficient is self-conjugate and must be real. The sealed schema records this
+coefficient convention, source phase/calibration provenance, and every
+oriented injection map `B_l`.
+
+Backend lowering translates the convention before solving. The coefficient
+identity is
+
+$$
+I_{\mathbf n}^{(+)}=I_{-\mathbf n}^{(-)}.
+$$
+
+If JosephsonCircuits retains representative tuple `r`, SCNSim therefore writes
+
+$$
+I_{\mathrm{JC}}^{(+)}[r]=I_{\mathrm{SCN}}^{(-)}[-r].
+$$
+
+For a user-declared coefficient `c` at tuple `m`, the same numeric tuple
+receives `conj(c)`; the opposite tuple receives `c`. The exact-zero DC
+coefficient is real and unchanged. Port-orientation sign is applied separately
+from this phasor/mode conversion. The adapter materializes the generated
+conjugate pair and then performs one index lookup; it must not both reverse a
+tuple and conjugate the same coefficient a second time. This map is part of
+request/receipt identity, so a complex pump phase cannot pass through by
+accident.
+
+Sources superpose in the compiled source vector,
+
+$$
+\mathbf u_{\mathbf m}=\sum_\ell
+\mathbf B_\ell I_{\ell,\mathbf m}.
+$$
+
+Only contributions with the same oriented injection map may be collapsed to a
+scalar effective current; different locations or orientations remain distinct
+vector contributions. Accumulation follows drive declaration order and
+evidence retains every contribution, generated conjugate, injection map, and
+effective source vector.
+
+`pump_axes=()` and `mode=()` form the pure-DC case. Otherwise every drive and
+trace tuple rank and order match `pump_axes`. All cases share this request-wide
+basis, drive schema, truncation, and mixing selection; a different basis or
+selection is a different `HBSolveSpec` and `HBBatchResult`.
+If any declared drive uses the all-zero mode, DC terms are enabled for the
+whole batch so every case remains comparable; a case may still bind that drive
+to exact zero.
+
+Classification happens after ParameterSet binding, Quantity validation,
+conjugate generation, and orientation-aware source-vector accumulation:
+
+- any nonzero effective all-zero-mode current makes `BiasState.ON`;
+- any nonzero effective nonzero-mode current makes `PumpState.ON`; and
+- a DC-only case is Bias-on and Pump-off.
+
+Exact cancellation produces the corresponding Off state; SCNSim invents no
+near-zero tolerance. Case IDs remain the only public lookup identity. They name
+declared experimental conditions, not Bias/Pump classifications, and remain in
+declaration order under `hb.cases[id]`.
+
+Three-wave and four-wave mixing are request-global model selections, not pump
+counts or separate runs. `HBTruncation.three_wave_mixing` and
+`four_wave_mixing` are required booleans. When both are enabled, one combined
+Fourier-lattice nonlinear balance and one combined linearized response retain
+both interaction families. When both are disabled, the result is explicitly a
+mixing-disabled comparison and cannot be labeled a nonlinear mixing result.
+The reusable physics remains canonical under
+[source superposition and generated mixing](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#source-superposition-and-generated-mixing).
+
+Per-axis `pump_harmonics` and `modulation_harmonics` keep their separate
+operating-point and small-signal meanings. Optional
+`max_intermodulation_order=N` adds the finite-lattice crop
+
+$$
+\sum_j |m_j| \le N.
+$$
+
+Omitting it applies no additional diamond crop; the per-axis limits still make
+the basis finite. A supplied `N` is a nonnegative integer and must retain every
+declared drive and requested trace mode. `run.explain()` enumerates the actual
+tuples, signed physical frequencies, source/trace bindings, and exact
+tuple-frequency collisions. Exact collisions fail closed; SCNSim does not
+invent a near-commensurability tolerance or Gate. See
+[mixing order versus intermodulation truncation](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/harmonic-balance-periodic-steady-state.qmd#mixing-order-versus-intermodulation-truncation).
+
+The operating-point lattice stores one signed ordinary frequency
+$f_m=\sum_jm_jf_{p,j}$ per tuple. The linear-response lattice stores the full
+ordered grid
+
+$$
+f_{k,m}=f_k+\sum_jm_jf_{p,j},\qquad \omega_{k,m}=2\pi f_{k,m},
+$$
+
+for every requested `spec.frequencies[k]` and every input/output tuple. Each
+mode grid must match the request grid and the matrix leading dimension in
+length and order. Zero-frequency preflight, $W_{\mathrm{in/out}}$, signed-mode
+permutation, and reconciliation all consume these full grids; no single sample
+or tuple-only offset may stand in for them.
+
+`HBSolveSpec.allow_driven_ptc` defaults to `False`. If a selected Ref contains
+PTC and any case has nonzero effective DC or AC operating-point drive, the
+complete request fails preflight unless this override is explicit. Undriven
+cases remain exact PTC realizations. An authorized driven case instead solves
+the static/nonlinear balance on the original Plan with probe shunts present,
+then applies PTC only to the response linearized around that loaded operating
+point. Result and receipt must say `loaded balance` and `compensated analysis
+topology`; they cannot claim an unloaded operating point.
+
+HB numerical controls are runtime-owned and have no public override object or
+keyword. V1 binds Julia `1.12.6`, JosephsonCircuits `0.5.4`, one Julia/BLAS
+thread, `iterations=1000`, `ftol=1e-8`,
+`switchofflinesearchtol=1e-5`, `alphamin=1e-4`, and `nbatches=1` in the HB
+algorithm identity. Each case starts independently from `x0=zeros`, runs in
+declaration order, and never inherits another case's operating point.
+
+SCNSim does not treat an upstream maximum-iteration warning as success. After
+the backend returns a candidate state `x`, it recomputes the final residual
+`F` and accepts that case only when
+
+$$
+\lVert F\rVert_\infty \le 10^{-8}
+\quad\text{or}\quad
+\left(\lVert x\rVert_2>0\ \text{and}\
+\frac{\lVert F\rVert_2}{\lVert x\rVert_2}<10^{-8}\right).
+$$
+
+Otherwise that declared case receives an `HBCaseFailure`. These fixed controls
+and this check are product behavior, not a user-selectable convergence Gate.
+`max_intermodulation_order` maps to both backend pump and modulation lattice
+crops, and a request containing any `mode=()` drive enables DC terms for every
+case so their common basis remains exact. The complete adapter and artifact
+mechanics are fixed in
+[HB Realization and Outcomes](implementation/hb-realization-and-outcomes.qmd).
+
+### Required lineage and receipt evidence
+
+The durable evidence chain for every terminal `AnalysisResult` binds the sealed
+Plan, compiled operator, ParameterSet, ordered Ref lineage,
+retained/eliminated coordinates, selected channel order, and exact runtime
+identity. Those records remain owned by their canonical Plan, request, Result,
+artifact, and receipt documents rather than being duplicated into every public
+Result object.
+
+The Plan/compile evidence records every exact Library and component-schema
+identity, component hierarchy and public schema, pin-to-electric-node/ground
+mapping, Public/Internal/Port-promoted node identities, canonical ground and
+backend-node-zero mapping, N-link membership, intrinsic and parent-applied
+grounding provenance, logical Port mapping,
+source units and canonical SI values, public ParameterRefs, expanded
+primitive/backend rows, and Direct/HB realization. Composite evidence includes
+public parameters/baselines, identity fan-out, AffineMap equations/support,
+public pins/coordinates, and hidden-child expansion. RLGC evidence includes
+conductor/reference identity, complete matrix order and health, positive
+head-to-tail series-current/extractor `+z` orientation, manual/Q2D source
+classification, parsed canonical values, extraction frequency, content-derived
+provenance, transmission-line pi-ladder convention, section count, and bound
+section length; all three IDC capacitance branches, each JJ
+and optional parallel `Cj`, the two shared-parameter
+SQUID junctions and finite loop, and every coupled branch orientation with
+bound `L1`, `L2`, signed `k`, derived `M`, and backend mapping. The authoring
+surface and its fail-closed rules are defined in
+[V1 Component Authoring](component-authoring.qmd). The exact recursively sealed
+graph and deterministic lowering are fixed in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd),
+while distributed-line parsing and expansion are fixed in
+[RLGC, Q2D, and Pi Expansion](implementation/rlgc-q2d-and-pi-expansion.qmd).
+
+In the `dev4` slice, `run.explain()` materializes expanded branch rows,
+`omitted-as-zero` labels, and derived mutual-inductance mappings. Terminal
+receipts bind the sealed Plan, request, and exact runtime identities; they do
+not duplicate those compiler-row diagnostics as a second evidence schema.
+
+A logical Port record includes its identity, role, reference impedance,
+node/coordinate attachment, and one-Port-per-node evidence. Direct records
+`B`, `Y0`, `G_port`, voltage/current and wave conversion, plus `P row = not
+applicable`; HB records exact `P_i`/`R_port_i` rows, solver indices, mode order,
+and raw-Z lineage.
+
+A PTC lineage additionally records selected `PortRef` identities, proved load
+stamps, original-Port load mask, load state before/after compensation, resolved
+resistances, removal intent, raw-Z/derived-intrinsic-operator identities,
+per-probe `raw`/`compensated` labels, and reconstruction or residual evidence.
+
+Every `transform_pair()` lineage additionally records its exact ordered Public
+node inputs, Port-realizability mapping and current directions, all included
+external-cut branches, all
+excluded direct-mutual branches, resolved weights, power-conjugate maps,
+transformed real-SPD reference matrix, principal root and reconstruction
+evidence, and generated coordinate order. These obligations apply whether or
+not the lineage contains PTC.
+
+Every `retain()` lineage records the ordered retained coordinates, complete
+eliminated complement, final selected-view channel order, and exact
+full-row-rank `A_k`, injection `B_k`, induced reference `R_k`, principal root
+`D_k`, wave map `Q_k`, selected/omitted projectors, omitted matched loads,
+selected source boundary, and public-network de-embedding evidence.
+The canonical step order, recomputation boundary, and N-port realization are
+fixed in
+[View Lineage and Selected Networks](implementation/view-lineage-and-selected-networks.qmd).
+
+Every HB Result additionally records the request-global pump-axis and drive
+schemas; operating-point and modulation limits; optional intermodulation crop;
+three-/four-wave-mixing selections; retained mode tuples, signed frequencies,
+and mode-port order; solver normalization and version; input/output `W`
+matrices; solver-to-SCNSim phasor, mode-index, and `returnZ`/`returnS`
+conversion, same-signed-frequency permutation, and single-conjugation proof;
+and the source-loaded, intrinsic, selected-network, and reconciliation
+identities.
+Each case records its declared current contributions, generated conjugates,
+SCNSim-to-solver coefficient/index map, oriented injection maps, effective
+mode-indexed source vectors, derived Bias/Pump states, and exact case identity.
+A driven PTC Result also records
+`allow_driven_ptc`, loaded balance topology, and compensated analysis topology.
+
+Direct quantity and optimization receipts additionally record quantity-spec
+identity, selector and dimensionality, root/pole/zero branch and its declared
+locator, the `DiagonalRootSpec.root_hint`, baseline selection, continuation and
+local slope/residue evidence where applicable, shared dependency nodes, expanded
+residual scale and source, objective weight, candidate failure ledger, and the
+one Julia-process execution identity. The canonical optimization request owns
+model-default bounds, any immutable consumer overrides, resolved bounds, and
+the authorization set. Its receipt retains those roles only transitively by
+binding that request hash; receipt-local evidence records AffineMap
+support/extrapolation outcomes and authorization provenance, physical candidate
+values, dimensionless optimizer coordinates, and the source-unit spelling used
+by the executed attempt. It never duplicates a second bounds authority.
+
+### Direct and HB component realization
+
+Both backends consume the same expanded Plan. R, L, and C rows stay linear.
+Direct lowers complete validated RLGC matrices; HB lowers complete C/G and L
+but requires diagonal R. A nonzero off-diagonal R fails HB preflight without
+altering the Direct-capable Plan. Direct realizes each JJ with its declared zero-phase,
+zero-bias `L_J0` and retains any explicit parallel `Cj`; it does not accept an
+arbitrary bias phase in V1. HB retains the nonlinear Josephson rows. A symmetric
+SQUID remains a two-junction finite-loop topology in both paths: Direct uses two
+`L_J0` small-signal branches, while HB keeps both nonlinear junctions, the loop,
+and any mutual pump coupling.
+
+JosephsonCircuits is only the HB backend. Its official
+[flux-pumped JPA example](https://josephsoncircuits.org/stable/#Flux-pumped-Josephson-parametric-amplifier-(JPA))
+describes flux-pump and three-wave-mixing support as relatively untested;
+SCNSim records that backend limitation instead of enlarging its guarantee.
+
+RLGC acceptance is strict on the canonical Float64 matrices. Reciprocity uses
+exact symmetry; Maxwell C/G signs and row sums must already have their required
+signs; C/L must pass unpivoted symmetric Cholesky; and the minimum eigenvalue of
+G/R must be nonnegative. SCNSim does not symmetrize, clip, project, add a
+grounding correction, or retain a corrected matrix beside the raw source.
+Failure names the exact matrix invariant rather than manufacturing a usable
+line model.
 
 ### Operation support
 
-| Operation | Original Ref | Reduced Ref |
-|---|---:|---:|
-| `run.evaluate(ref, OperatorSpec)` | Yes | Yes |
-| `run.solve(ref, DirectSolveSpec)` | Yes | Yes |
-| `run.solve(ref, HBSolveSpec)` | Yes | Yes |
-| `run.optimize(ref, OptimizationSpec)` | Yes | Yes; Direct objective only in V1 |
-| `ref.render_schematic(...)` | Original only | No; inspect the operator/reduction instead |
+| Selected Ref lineage | Direct evaluate/optimize | Direct solve | HB solve |
+|---|---:|---:|---:|
+| Original | Yes | all logical Ports | all logical Ports |
+| PTC | Yes | Yes | Yes; driven PTC requires authorization |
+| `transform_pair()` over a complete Port-bound node pair | Yes | Yes | Yes |
+| `retain()` of only Port-realizable coordinates | Yes | Yes | Yes |
+| Named unported Public node or transform involving one | Yes | No | No |
 
 Physical compilation belongs to the original Plan and is not presented as a
 separate reduced compile action. Terminal operations materialize or exactly
-resolve the required original and reduced stages internally.
+resolve the required original and selected-view stages internally.
 
-## Operator evaluation and downstream calculation
+## Direct matrices and physical quantities
 
-`run.evaluate()` materializes an operator without requiring an unrelated
-response solve:
+### Common matrix surface
+
+Direct and HB expose the same selected-view S/Y/Z families without pretending
+their enclosing Results are identical:
 
 ```python
-operator = run.evaluate(
-    internal_reduced,
-    OperatorSpec(frequencies=frequency_grid),
-)
+direct.s.view
+direct.y.view
+direct.z.view
 
-matrix = operator.at(6.2 * u.GHz).matrix
-coordinates = operator.coordinates
+case = hb.cases["dc_pump_a_low"]
+case.s.view
+case.y.view
+case.z.view
 ```
 
-The typed Result carries sampling identity, ordered coordinates, units,
-ParameterSet, complete reduction lineage, condition evidence, and matrix
-Quantities. The consumer may use `.magnitude` for ordinary NumPy calculation,
-but the Result itself does not expose an unlabelled matrix as its only public
-meaning.
+HB may additionally expose backend-native and reconciliation evidence. Direct
+does not acquire a fake case layer. S display accepts
+`magnitude="linear" | "db"`; dimensionful Y/Z matrices remain linear Quantity
+surfaces.
+
+For the canonical $e^{-i\omega t}$ convention, the Direct circuit admittance is
+
+$$
+Y_{\mathrm{circ}}(\omega)
+=\frac{D(\omega)}{-i\omega}
+=G-i\omega C+\frac{i}{\omega}K.
+$$
+
+`DirectSolveSpec.frequencies` is one SCNSim-registry frequency Quantity whose
+magnitude is a non-empty, one-dimensional, finite, strictly increasing,
+duplicate-free grid with every $f>0$. The first slice rejects scalar, ragged,
+unordered, repeated, zero, and negative grids before starting an attempt.
+
+At each grid point the angular frequency used in $D(\omega)$ and
+$Y_{\mathrm{circ}}(\omega)$ is $\omega=2\pi f$ after coherent-SI conversion.
+
+At every requested point SCNSim must form finite selected-network Y, Z, and S.
+A failed Schur complement, source-boundary solve, Y-to-Z solve, or Y-to-S solve
+fails the whole request as `DirectResponseFormationError` with the exact stage.
+It publishes no partial grid, pseudoinverse, infinity, or stale family. For
+every required $AX=B$, including multiple right-hand
+sides, SCNSim computes the normalized backward residual
+
+$$
+\eta(A,X,B)=
+\frac{\lVert AX-B\rVert_\infty}
+{\lVert\lvert A\rvert\lvert X\rvert+\lvert B\rvert\rVert_\infty},
+$$
+
+where absolute values are entrywise complex magnitudes and the matrix infinity
+norm is the maximum absolute row sum. Exact `0/0` is zero; a zero denominator
+with nonzero numerator is infinity. All operands and the resulting residual
+must be finite, and
+
+$$
+\eta(A,X,B)\le\tau(n),\qquad
+\tau(n)=256(n+1)\,\epsilon_{\mathrm{Float64}}.
+$$
+
+Here $n$ is the order of the square $A$ being checked. An empty complement that
+requires no solve is a no-op rather than a zero-dimensional factorization.
+The residual is a mandatory execution-time Gate but its raw value is not a
+public Result or receipt field. Condition number is neither a Gate nor a
+required computation.
+The exact-open one-Port identity $Y=0,\ S=+1$ remains an internal algebra probe;
+because finite Z does not exist, it cannot become a successful complete public
+`DirectSolveResult`.
+
+### Typed Direct quantity catalog
+
+`run.evaluate()` evaluates one declared Direct physical quantity or
+materializes the full dynamic operator without requiring an unrelated response
+sweep:
+
+```python
+readout_root = DiagonalRootSpec(
+    coordinate="readout_node",
+    root_hint=6.0 * u.GHz,
+)
+
+evaluated = run.evaluate(quantity_view, readout_root)
+
+evaluated.root
+evaluated.frequency
+evaluated.linewidth
+evaluated.slope
+```
+
+For a named retained coordinate $r$, this request solves the defining complex
+root problem
+
+$$
+\left[\mathbf D_R^{E\downarrow}(\widetilde\Omega_r)\right]_{rr}=0.
+$$
+
+The selected Ref determines what this diagonal means. Retaining one authored
+node eliminates its complement with `I_external = 0`; logical-Port loads and
+other uncompensated stamps remain in the effective operator. The resulting
+root is therefore loaded when those attachments are present. It is not the
+uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
+larger retained block.
+
+Required `root_hint` is a Quantity-valued approximate location used only to
+start deterministic complex Newton for one locally simple, machine-resolved
+root at the sealed baseline ParameterSet. It is not
+the returned root, an optimization target, a constraint, or an implicit search
+window. The evaluated frequency may differ from the hint. A non-baseline
+ParameterSet, including every optimization candidate, uses deterministic
+continuation owned by the identified baseline root; it never selects whichever
+root is then closest to the original hint or to the preceding CMA-ES candidate.
+Missing or dimensionally invalid hints and detected repeated or
+non-continuable roots fail closed.
+
+The Primitive Direct E2E realization supports one retained coordinate and
+requires the complete compiled capacitance matrix to be positive definite for
+`DiagonalRootSpec`. Singular-C descriptor/infinite-mode handling remains a
+later quantity scope; real-grid Direct S/Y/Z does not inherit this restriction.
+The exact scalar Schur residual, analytic derivative, 32-update complex-Newton
+limit, machine-resolution certificate, and deterministic dyadic continuation
+are fixed in
+[Diagonal-Root Numerical Procedure](implementation/diagonal-root-numerical-procedure.qmd).
+V1 does not enumerate the complete QEP spectrum to certify this root.
+Its certificate is machine-resolution evidence, not a validated global root or
+analytic-branch enclosure; possible undetected Newton-basin exchange remains a
+known V1 limitation.
+
+`readout_root.frequency` on the Spec is an immutable selector that can be
+placed in an objective; `evaluated.frequency` is the resulting Quantity. Merely
+accessing the selector does not execute or consult process memory.
+
+The V1 catalog is intentionally small:
+
+| Spec | Declared operation | Public result |
+|---|---|---|
+| `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
+| `HybridizedPoleSpec` | Complex root of the determinant of the terminal View's complete ordered retained block (at least two coordinates) | pole/root bundle with branch evidence |
+| `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
+| `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
+| `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
+
+```python
+transmission = ResponseElementSpec(
+    family="S",
+    input_coordinate="feedline_in",
+    output_coordinate="feedline_out",
+    frequency=6.2 * u.GHz,
+)
+
+transfer_zero = TransferZeroSpec(
+    anchor=6.5 * u.GHz,
+    family="Y",
+    input_coordinate=feedline_out_node,
+    output_coordinate=filter_open_tail,
+)
+
+operator = run.evaluate(
+    quantity_view,
+    OperatorSpec(frequencies=frequency_grid),
+)
+```
+
+Root-like bundles expose only physically defined typed scalar selectors such as
+`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
+branch locator (including `DiagonalRootSpec.root_hint`), continuation,
+local slope/residue evidence, units, ParameterSet, selected Ref boundary, and
+operator identity remain attached. `DiagonalRootSpec` promises the documented
+machine-resolved Newton procedure, not a globally unique spectral root. A
+locally repeated/non-simple pole or zero, or a coupling input without its
+required local slope/residue evidence, fails closed under that quantity's own
+contract.
+`HybridizedPoleSpec.coordinates` must equal the terminal View's retained
+coordinate sequence exactly; it cannot introduce a hidden second retain
+boundary. A real hybrid/zero anchor initializes a real angular frequency, while
+a complex anchor preserves both declared components under the $2\pi$
+conversion. An anchor is a Newton-basin initializer, never a nearest-root
+instruction.
+
+`frequencyAnchor` keeps that distinction in the exact request bytes. A plain
+real Quantity encodes as `quantity_f64`; a Python complex Quantity, including
+one whose imaginary component is exactly `0`, encodes as
+`complex_quantity_f64` with independently canonical real and imaginary SI
+bits. Both forms retain the declared source-unit provenance in the receipt.
+There is no lossy real fallback, compatibility alias, or implicit removal of a
+zero imaginary component.
+`TransferZeroSpec` currently exposes only an ordered S/Y/Z projection; a
+generic cofactor/minor object is not part of the V1 scaffold. The Spec also
+requires its selected transfer denominator to
+remain finite and nonsingular at the zero. A coincident numerator zero and pole
+is rejected as an unresolved cancellation rather than published as a transfer
+zero.
+For the canonical `exp(-i * Omega * t)` convention, `.root` is the complex
+angular-frequency Quantity, `.frequency` is `real(Omega) / (2 * pi)`, and the
+positive passive linewidth is `-2 * imag(Omega) / (2 * pi)`. The Result records
+the convention instead of inferring a sign from a plotted trace.
+
+`QuantitySelector.on(view)` immutably and non-executingly binds one scalar
+projection to an existing `NetworkViewRef`. A `CostObjective` accepts a closed
+ordered expression of selector leaves, `QuantitySum`, binary `-`, and Python
+`abs(...)`; it is not a standalone `run.evaluate()` request or a Python
+callback. Every operand must have the same dimensionality, but leaves may bind
+different Views belonging to the same captured Plan. No constants,
+multiplication, division, or other general expression nodes are accepted. A
+consumer may still request `OperatorSpec` and use
+its labeled Quantity matrix for ordinary Python/NumPy calculation; a full
+operator or matrix cannot itself become one scalar cost.
+
+The fixed local numerical procedures, analytic derivatives, branch evidence,
+principal-square-root convention, continuation, artifact units, and typed
+failure mapping for this catalog are defined in
+[Direct Poles, Zeros, Couplings, and Operators](implementation/direct-poles-zeros-and-operators.qmd).
+That page implements this catalog; it does not add a second public selector or
+global root-search promise.
+
+The reusable definitions remain canonical in SCQ_Design:
+[anchored diagonal roots and hybridized poles](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/schur-complement-kron-reduction.qmd#anchored-bare-diagonal-roots-and-hybridized-poles),
+[poles, zeros, and residues](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/poles-zeros-residues.qmd),
+and the
+[local residue-normalized coupling](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/network-modeling/poles-zeros-residues.qmd#local-residue-normalized-open-coupling).
+SCNSim documents only how those quantities are selected, evaluated, and
+evidenced.
 
 ## Optimization and numerical scaling
 
-### Candidate evaluation
+### Quantity objectives and one Julia execution
 
-V1 optimization evaluates Direct objectives only. For every candidate,
-SCNSim binds the candidate ParameterSet to the original Plan, compiles that
-candidate, replays the selected Ref's complete reduction lineage, and then
-evaluates the objective. A nominal reduced matrix is never reused across
-different candidates.
+V1 optimization evaluates Direct objectives only. It accepts any number of
+same-Plan bound `NetworkViewRef` leaves, optimization variables, and scalar
+quantity objectives:
 
-Optimization resume requires identical Plan, Ref, variable, objective,
-algorithm, controls, seed, runtime, and completed-generation identities. An
-interrupted generation is discarded and replayed deterministically rather
-than published as complete evidence.
+```text
+Definitions author
+  ParameterSpec + immutable baseline + independent ref
+
+Component Library author
+  physical bindings + explicit public exposure + fan-out/AffineMap support
+
+Circuit-model author
+  reusable default OptimizationSpec + variables/bounds/objectives/optimizer
+
+Notebook consumer
+  inspect the default + provide a Design Target + optional immutable override
+```
+
+Runtime slices change which already-declared selectors are executable, not the
+View model or optimizer. `1.0.0.dev3` evaluates
+`DiagonalRootSpec.frequency` and `.linewidth` on a supported retained quantity
+View. Its original one-Port/no-trace restriction belongs only to that slice's
+`solve_direct` response surface. `1.0.0.dev5` reuses the same CMA replay,
+ledger, cache, retry, and winner contract while enabling
+`HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
+`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResponseElementSpec.magnitude`/`.real`/`.imag`. Before its owning slice, each
+selector fails fast with `ScaffoldUnavailableError`; it is not excluded from
+full V1. Closed scalar expressions remain legal only inside a `CostObjective`.
+
+`ParameterSpec` never owns optimization bounds. A circuit-model package may
+instead expose one clearly named model default:
+
+```python
+def build_default_optimization_spec(target) -> OptimizationSpec:
+    return OptimizationSpec(
+        variables=(
+            OptimizationVariable(
+                parameter=model.shared_short_length,
+                bounds=(0.6 * u.mm, 1.2 * u.mm),
+            ),
+            OptimizationVariable(
+                parameter=model.idc_finger_length,
+                bounds=(40.0 * u.um, 68.0 * u.um),
+            ),
+        ),
+        objectives=build_objectives(target),
+        optimizer=CMAESSpec(seed=17, max_evaluations=400),
+    )
+```
+
+The consumer discovers the recipe without reading its source:
+
+```python
+default_spec = model.build_default_optimization_spec(target)
+
+model.idc_finger_length.show()
+default_spec.show()
+default_spec.variable(model.idc_finger_length).bounds
+run.explain(optimization_view, default_spec).show()
+```
+
+These surfaces answer different questions. `parameter.show()` reports the
+independent definition's baseline and schema, not global Plan consumers;
+`default_spec.show()` reports active variables, default bounds, quantity
+objectives, weights, expanded normalization, and optimizer;
+`run.explain()` reports Plan-specific consumers, maps, support, and the fully
+bound request that would execute. None starts
+a solver or writes the workspace.
+
+```python
+from scnsim import ParameterDefinitions, ParameterSpec
+
+inputs = ParameterDefinitions(id="optimization_inputs")
+resonator_capacitance = inputs.parameter(
+    id="capacitance", baseline=110.0 * u.fF, spec=ParameterSpec(unit=u.fF)
+)
+```
+
+This is a one-variable model-context excerpt. During the model's pre-seal
+construction, pass `resonator_capacitance` to its real capacitor field and
+register and wire that body in the model supplying `quantity_view` and
+`readout_root`; creating this definition alone is not a physical binding.
+Coupling stays a fixed Quantity, for example `0.12 * u.dimensionless`:
+current `couple_inductive()` does not support parameter binding or
+coupling-coefficient optimization. This supported capacitance-only example
+does not claim that the earlier two-variable problem passed. Objective values
+and weights remain illustrative requests, not achieved design claims.
+
+```python
+qubit_root = DiagonalRootSpec(
+    coordinate="qubit.differential",
+    root_hint=4.8 * u.GHz,
+)
+
+optimization_spec = OptimizationSpec(
+    variables=(
+        OptimizationVariable(
+            parameter=resonator_capacitance,
+            bounds=(80.0 * u.fF, 120.0 * u.fF),
+        ),
+    ),
+    objectives=(
+        CostObjective(
+            id="readout_frequency",
+            quantity=readout_root.frequency,
+            target=6.2 * u.GHz,
+            weight=100.0 * u.dimensionless,
+        ),
+        CostObjective(
+            id="combined_linewidth",
+            quantity=QuantitySum(
+                qubit_root.linewidth,
+                readout_root.linewidth,
+            ),
+            target=2.0 * u.MHz,
+            weight=10.0 * u.dimensionless,
+        ),
+    ),
+    optimizer=CMAESSpec(seed=17, max_evaluations=200),
+)
+
+optimization = run.optimize(quantity_view, optimization_spec)
+```
+
+The example uses the convenience form: `quantity_view` fills only selectors
+that have not already been bound with `.on(view)`. Calling
+`run.optimize(optimization_spec)` instead requires every leaf to be explicitly
+bound. Normalization happens before request hashing; an unused convenience
+default does not enter the request, and the two forms are identity-equivalent
+when their effective leaf bindings match. All bound Views must belong to this
+run and captured Plan or validation fails before Julia starts.
+
+When objectives genuinely use different retained Views, bind each scalar leaf
+instead of passing a default. In this excerpt, `qubit_view` and `readout_view`
+are already-derived Views of the same `run` and captured Plan:
+
+```python
+cross_view_objective = CostObjective(
+    id="combined_linewidth",
+    quantity=QuantitySum(
+        qubit_root.linewidth.on(qubit_view),
+        readout_root.linewidth.on(readout_view),
+    ),
+    target=2.0 * u.MHz,
+    weight=10.0 * u.dimensionless,
+)
+optimization = run.optimize(
+    OptimizationSpec(
+        variables=optimization_spec.variables,
+        objectives=(cross_view_objective,),
+        optimizer=optimization_spec.optimizer,
+    )
+)
+```
+
+Both Views receive the same candidate `ParameterSet`. This is not two searches
+or a comparison between independently selected winners.
+
+The best values remain an immutable `ParameterSet`. Reusing them is an
+explicitly new request and never mutates the Plan baseline or the selected
+Ref:
+
+```python
+winner_root = run.evaluate(
+    quantity_view,
+    readout_root,
+    parameters=optimization.best.parameters,
+)
+winner_root.frequency
+```
+
+The model default is immutable. A consumer creates a `custom_spec` only when a
+notebook must depart from it:
+
+```python
+custom_spec = default_spec.with_variable_overrides(
+    bounds={
+        model.idc_finger_length: (
+            38.0 * u.um,
+            76.0 * u.um,
+        ),
+    },
+    allow_extrapolation=(model.idc_finger_length,),
+)
+```
+
+Overrides use exact `ParameterRef` keys. `show()` distinguishes
+`model_default`, `consumer_override`, and resolved bounds; the request owns all
+three and its receipt binds them transitively through the request hash. There
+is no global extrapolation switch or second hidden bound source.
+Calling `with_variable_overrides()` never mutates its source: original
+model-default bounds remain fixed, named overrides replace any prior override,
+and unmentioned overrides are preserved. Its `allow_extrapolation=` argument
+is the complete authorization set for the returned Spec rather than an
+implicit union with the source. The full Spec, resolved bounds, and sorted
+authorization identities enter request identity; only authoring-unit spelling
+stays evidence-only.
+
+Each `AffineMap.support` is a calibration-evidence interval. Values inside it
+need no authorization. An out-of-support value fails by default; a request may
+approve extrapolation only for named `ParameterRef` objects. An unapproved
+optimization candidate becomes
+`InvalidCandidatePhysicalParameter(stage="affine_support")` with tagged `Inf`
+cost. Every out-of-support fan-out records exactly one evidence entry: a
+rejected candidate uses authorization source `none`, while an approved
+candidate uses `optimization_spec` (or `parameter_set` for an ordinary
+solve/evaluate receipt). Each entry records the public parameter, exact
+consumer, support, input value, lower/upper side, canonical distance beyond
+support, and authorization source without
+claiming that Q2D or another calibration validated the extrapolated region.
+Distance uses the public input/support dimensionality and coherent-SI value
+`support_lower - input_value` on the lower side or
+`input_value - support_upper` on the upper side, and is strictly positive.
+Binding order is fixed: resolve the public value, check every fan-out support,
+validate authorization, apply each `AffineMap`, then validate mapped primitive
+physical domains. Candidate ledgers own candidate extrapolation evidence;
+ordinary solve/evaluate receipts own evidence authorized by their explicit
+`ParameterSet`.
+Authorization is request-local: passing an extrapolated winner to a later
+solve/evaluate request requires a new explicit ParameterSet approval:
+
+```python
+approved_winner = ParameterSet(
+    optimization.best.parameters.values,
+    allow_extrapolation=(model.idc_finger_length,),
+)
+
+direct = run.solve(response_view, direct_spec, parameters=approved_winner)
+```
+
+The original winner values remain immutable; candidate and winner
+`ParameterSet.allow_extrapolation` are empty. The new request records its own
+authorization instead of inheriting the optimizer's approval.
+
+The public `run.evaluate()` contract does not force candidate work back through
+Python. One optimization request launches one Julia process. Parameter binding,
+candidate compilation, Ref-lineage replay, quantity evaluation, shared
+factorization/root work, objective aggregation, and CMA-ES remain inside that
+process. Python submits the sealed request and receives process-local progress
+and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
+daemon. Repeated quantity identities share dependency nodes within a candidate.
+
+The Julia process may emit generation-level JSONL progress for internal
+presentation and diagnostics. Progress records never enter Plan, request,
+optimization, candidate, or Result identity and cannot become a scientific
+Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
+observer, public JobRef, or persistent daemon.
+
+`CMAESSpec` has the fixed public surface
+
+```python
+CMAESSpec(
+    seed=0,
+    max_evaluations=200,
+    population_size=None,
+    initial_sigma=0.25,
+)
+```
+
+For $n$ active variables, `population_size=None` resolves to
+$\lambda=4+\lfloor3\ln n\rfloor$. The sealed baseline must lie inside every
+bound, maps to the initial unit-box mean $m_0$, is evaluated first, consumes one
+evaluation, and remains winner-eligible. Baseline evaluation failure fails the
+request. `initial_sigma` is a positive finite unit-coordinate scale. `seed`
+accepts a signed 64-bit integer; an explicit population size is an integer of
+at least two, and the evaluation budget must be large enough for the required
+complete generation.
+
+The runtime pins
+[CMAEvolutionStrategy.jl 0.2.6](https://github.com/jbrea/CMAEvolutionStrategy.jl/tree/v0.2.6),
+registry tree `6bf0985be2c5ea58305d2d04e336684f64fdc12a`. Its public
+`minimize()` initializes
+
+$$
+C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
+\qquad i=0,\ldots,n-1,
+$$
+
+rather than exact identity. SCNSim maps physical parameters once to
+$z\in[0,1]$, calls `minimize(objective, baseline_z, initial_sigma, ...)`,
+supplies `lower=zeros(n)`, `upper=ones(n)`, and
+lets the package apply its lin-quad unit-box transform. SCNSim does not clip,
+mirror, or apply another physical box transform. The signed Int64 seed is
+reinterpreted as UInt64 with the same bits. The canonical request carries the
+Python-prepared baseline coordinates as
+`baseline_optimizer_coordinates_f64` in variable order. Julia consumes these
+exact IEEE-754 bits instead of recomputing the logarithmic normalization with
+its system math library; candidate mapping and CMA sampling/update remain the
+pinned Julia path.
+
+The fixed request identities are
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
+`popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
+`parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
+ftol, xtol, stagnation, target, time, and noise controls set to `nothing`. Its
+internal callback captures evaluated-generation evidence and emits progress;
+it does not change sampling or stopping, and ledger sealing waits for the
+continuation boundary below. With
+budget $B$, it runs exactly
+$g=\lfloor(B-1)/\lambda\rfloor$ complete generations and requires $g\ge1$;
+unused remainder is evidence. Candidate failures and cache hits still consume
+their declared population ordinal. The winner is the lowest finite cost among
+the baseline and completed candidates; an exact cost tie selects the earliest
+evaluation ordinal in baseline, generation, then population-column order.
+These execution controls bound reproducibility but do not decide whether the
+result meets a Design Target.
+
+A closed request envelope bound to the exact known v3, v4, v5, or v6 outer optimization
+identity raises `UnsupportedEvidenceVersionError` with the operation and exact
+expected/observed algorithm IDs. This identifies the need for its original
+source-bound runtime; it does not claim the historical request's remaining
+contents were verified. Malformed envelopes, wrong Plan/request bindings, and
+current-version evidence corruption remain `EvidenceIntegrityError`.
+
+Version 7 binds the closed scalar-expression tree, its exact per-node unit
+conversion order, and target/at-least comparison semantics. It retains version
+6's Python-owned baseline coordinate bits and the pinned CMA sampling/update
+mathematics.
+
+Every population outcome records both the callback-visible raw CMA sample
+column `optimizer_latent_coordinates_f64` and its transformed unit-box
+`optimizer_coordinates_f64` beside the physical bindings. Both arrays have
+length $n$ in request-variable order. Retry invokes the
+same pinned `minimize()` from the original seed. The batch objective verifies
+the transformed coordinates, generation, and population column before
+returning stored costs; the package callback then verifies the raw sample bits
+before the mean or covariance update. The raw check is mandatory because the
+lin-quad transform is many-to-one. The first unsealed generation resumes
+physical evaluation. SCNSim neither serializes nor restores the package's
+private optimizer object; either replay mismatch is `EvidenceIntegrityError`.
+
+A callback precedes the package update and therefore cannot by itself seal a
+resumable generation. Each verified ledger also carries the canonical
+`cmaes-jl-0.2.6-julia-1.12.6-continuation-state.v1` certificate over all
+future-affecting mean, sigma/path, covariance/decomposition, stop, constraint,
+and exact MersenneTwister fields. For $k<g$, ledger $k$ becomes verified only at
+callback $k+1$ before its update, under boundary
+`post_update_post_next_sample_pre_next_update`; the certificate also covers the
+next raw and transformed `[n, lambda]` populations. Interruption before that
+boundary falls back to ledger $k-1$. The final ledger is certified only after
+`minimize()` returns under `terminal_post_update`, with `Stop.it=g` and
+`reason=:maxiter`. For sealed generations retry compares transformed samples
+before returning stored costs. For the first unsealed generation it caches the
+transformed sample, evaluates normally, and compares package state, RNG, raw
+sample, and cached transformed sample against the preceding certificate in the
+callback before update or evidence publication. These hashes are
+continuation-integrity evidence, not independently reconstructable state
+artifacts, and are never restored as optimizer state.
+
+For every candidate, generation-ledger version 3 stores each objective's bound
+quantity plus one record for every leaf selector and View in request order.
+Successful leaves carry their actual realized lineage and evaluated Quantity;
+failures preserve already evaluated terms and mark the exact failed or
+not-evaluated remainder. Successful objectives additionally store their
+evaluated Quantity, signed normalized residual, and weighted component cost.
+Optimization-owned failures carry a closed context that binds the logical
+candidate position, execution phase, public `objective_id` plus one-based
+`term_ordinal` where applicable, request-derived View/quantity dependency keys,
+and the authored-order affected leaves. View realization affects only that
+View's consumers; a dependency failure affects its triggering leaf and blocked
+same-dependency consumers. A residue selector's two private branch roots retain
+distinct dependency identities, and a failed branch names only public
+selectors that consume that root. Projection-only failure affects its owner leaf; and
+candidate preparation/compilation affects every leaf. Objective and total
+aggregation retain completed term/component evidence without inventing a
+failed leaf. The baseline uses ordinal/generation zero and null population
+column, including `baseline_root_anchor` failures before a candidate record,
+and every such baseline failure aborts the request.
+For a terminal population failure, the generation is the next unsealed
+generation after the verified ledger prefix and remains inside the requested
+generation bound; its column is bounded by the requested population size and
+must reproduce the public evaluation ordinal. This is position consistency,
+not independent observation of the last live child column. Within a failed
+objective, terms before the one failure are successful and later terms are
+not evaluated; an objective-aggregation failure instead retains all of that
+objective's terms as successful.
+The request-owned target, resolved scale/source, and weight must reproduce each
+successful component and total. A candidate-dependent invalid
+primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,
+local-slope, and Newton/continuation failures retain their corresponding typed
+root errors and tagged positive-infinity penalty. If any of those occurs while
+evaluating the mandatory baseline, the request fails instead of creating an
+optimization Result. Invalid variables, bounds, objectives, selectors, or
+controls fail preflight as `InvalidOptimizationSpec`; a compiler invariant,
+runtime failure, or process protocol failure aborts the request rather than
+becoming a candidate outcome.
+
+Julia package precompilation may reduce load and first-execution latency but
+does not promise every specialization is already compiled. SCNSim adds no
+special precompile workload until representative measurement shows startup is
+material to this one-process boundary. See Julia's official
+[execution-latency and precompilation guidance](https://docs.julialang.org/en/v1/manual/performance-tips/#Execution-latency,-package-loading-and-package-precompiling-time).
+
+For every candidate, SCNSim binds its ParameterSet to the original Plan,
+compiles that candidate, replays the complete selected Ref lineage, and
+evaluates all objectives. A nominal reduced matrix is never reused across
+different candidates. A singular/non-finite/branch failure is recorded as a
+typed non-evaluable candidate, contributes `Inf` to the optimizer, and does not
+publish stale or fallback quantities. Other candidates continue.
+
+Optimization resume requires identical Plan, Ref, variables, quantity specs,
+objectives, expanded normalization, algorithm, controls, seed, runtime, and
+completed-generation ledger. An interrupted generation is discarded and
+replayed deterministically rather than published as complete evidence.
+
+The mandatory successful optimization baseline is durably checkpointed before
+the first generation. The request-owned checkpoint preserves the exact
+baseline candidate and continuation roots; a separate immutable publisher seal
+binds its original launched attempt. Reuse avoids repeating baseline work but
+consumes no logical evaluation and changes neither CMA-ES state nor ordering.
+The verifier reconstructs the baseline point and normalized coordinates from
+the sealed request, rejects every incomplete or failed baseline, and binds
+directly reproducible public root projections back to their successful terms.
+The final Result must exactly reproduce the verified baseline and primary View
+lineage. A later attempt that consumes recovery evidence binds the exact
+checkpoint content/seal pair.
+It is partial recovery evidence only: inventory may report it without a final
+attempt, but `resolve()` still requires a verified success. Referenced missing,
+corrupt, symlinked, or unsupported-version checkpoint evidence fails closed. A
+typed baseline failure remains a terminal request failure and publishes no
+checkpoint.
+
+### Engineer course realization {#ipf-optimization-example}
+
+The Contract does not duplicate a complete workflow. The engineer course
+teaches [Optimization](../examples/engineer/chapter-02/01-build.qmd),
+[general RLGC](../examples/engineer/chapter-07/01-rlgc.qmd), and
+[Direct/HB analysis](../examples/engineer/chapter-04/01-physical-plan.qmd) as
+separate native-API operations without becoming a second contract authority.
+
+### Relative objective normalization
+
+For `comparison="target"` (the default), every objective uses
+
+$$
+r_i = \frac{q_i-t_i}{s_i},
+\qquad
+J = \sum_i w_i |r_i|^2.
+$$
+
+For `comparison="at_least"`, its residual instead uses
+
+$$
+r_i = \max\!\left(0, \frac{t_i-q_i}{s_i}\right).
+$$
+
+An exact finite value equal to or above the target therefore contributes zero.
+This is one-sided cost shaping, not maximization and not a hard feasibility
+Gate. Every selector and internal expression node must remain finite before
+comparison; failure or non-finite evidence cannot become a zero residual.
+
+Normalization occurs before weighting, so `weight` expresses relative
+importance rather than target magnitude or physical unit:
+
+- for a nonzero target, omitted `scale` expands to `abs(target)`;
+- for an exact zero dimensionless target, omitted `scale` expands to
+  `1 * u.dimensionless`;
+- for an exact zero dimensionful target, omitted `scale` fails closed; and
+- an explicit positive, finite, same-dimensionality `scale` overrides those
+  defaults.
+
+SCNSim never divides by the current candidate `abs(q_i)`: that denominator is
+undefined at zero and destroys optimization direction for a zero target. A
+`CostObjective.weight` is required, positive, finite, and dimensionless. It
+multiplies the squared residual as written above; it is not itself squared.
+Explain/request/receipt surfaces store the expanded scale plus its source:
+`relative_target`, `dimensionless_unity`, or `explicit`. These scales
+nondimensionalize cost; they do not create a Gate, tolerance, or acceptance
+rule. See the canonical
+[normalized weighted objective](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/numerical-methods/auditable-scientific-optimization.qmd#normalized-weighted-objective).
 
 ### Four distinct scaling contracts
 
@@ -443,21 +2203,39 @@ SCNSim keeps these operations separate:
 | Objective residual normalization | Make declared metric errors comparable | Only Human/Design-Target-declared objective terms |
 | Linear-algebra conditioning | Improve numerical solution of the same operator | Internal representation only; never physics |
 
-Bounded variables are converted to canonical SI and then mapped to
-dimensionless unit-interval coordinates:
+Every active `ParameterRef` appears exactly once. Its lower and upper bounds are
+finite, have the parameter's dimensionality, satisfy $x_{i,\min}<x_{i,\max}$,
+and contain the sealed baseline in the closed interval. Linear variables are
+converted to one coherent SI unit and mapped to dimensionless unit-interval
+coordinates:
 
 $$
 z_i = \frac{x_i-x_{i,\min}}{x_{i,\max}-x_{i,\min}} \in [0,1].
 $$
 
-Finite physical bounds therefore default to unit-interval optimizer
-coordinates. A logarithmic transform is used only when `OptimizationSpec`
-explicitly declares it. The ledger records both dimensionless optimizer
-coordinates and physical Quantity values.
+The default is this linear map. When a variable explicitly declares
+`transform="log"`, its lower bound, upper bound, and baseline must all be
+strictly positive. Using their positive coherent-SI magnitudes $\widehat x$,
+SCNSim instead uses the dimensionless ratio map
 
-Objective targets, residual scales, weights, tolerances, and Gates remain
-consumer/Human declarations. Unit conversion cannot invent or silently modify
-them.
+$$
+z_i=
+\frac{\ln(\widehat x_i/\widehat x_{i,\min})}
+{\ln(\widehat x_{i,\max}/\widehat x_{i,\min})},
+\qquad
+\widehat x_i=
+\widehat x_{i,\min}
+\left(\frac{\widehat x_{i,\max}}{\widehat x_{i,\min}}\right)^{z_i}.
+$$
+
+Taking a logarithm of a dimensionful Quantity directly is never permitted.
+Invalid order, dimensionality, positivity, duplicate variables, or an
+out-of-bounds baseline fails before an attempt. The ledger records both
+dimensionless optimizer coordinates and physical Quantity values.
+
+Objective targets and weights remain consumer/Human declarations. The product
+rule above deterministically expands an omitted residual scale; unit conversion
+cannot alter that scale, the target, the weight, a tolerance, or a Gate.
 
 ### Linear algebra is not unit display
 
@@ -466,14 +2244,23 @@ operator is ill-conditioned. Multiplying an entire equation by a scalar also
 does not change its condition number.
 
 SCNSim therefore does not expose a `ScalingSpec`, ScalingOptimizer, mutable
-scale state, or automatic coordinate equilibration in this V1 candidate.
+scale state, or automatic coordinate equilibration in Full V1.
 Direct and Schur implementations must:
 
 - use factorization/linear solves rather than an explicit inverse;
-- expose matrix norms, condition number, floating-point precision, and
-  reconstruction/backward residual evidence; and
-- keep conditioning evidence distinct from a Human-selected acceptability
+- compute and enforce every operation-specific normalized residual and
+  machine-resolution certificate before publishing success; and
+- keep those execution checks distinct from a Human-selected design-quality
   threshold.
+
+Raw residuals, condition estimates, and complete numerical certificates are
+not durable Result or receipt fields. A verified success states that the exact
+operation algorithm ID and semantic runtime source digest completed every
+required internal Gate. The Result stores the materialized answer and identity;
+the receipt stores provenance and the hash chain. `resolve()` validates that
+durable chain without recomputing the numerical checks. Re-evaluating the
+numerical decision requires executing the same request again rather than
+inferring it from omitted diagnostics.
 
 If later public fixtures demonstrate a real raw-SI conditioning problem, the
 shared solve boundary may add a deterministic, reversible equilibration. Its
@@ -483,6 +2270,44 @@ implementation scope.
 
 ## Results, display, and reports
 
+`Result` means an immutable, already-materialized value whose inspection cannot
+execute work. `AnalysisResult(Result)` is the receipt-backed terminal subset
+returned by `solve()`, `evaluate()`, and `optimize()`. Every Analysis Result
+exposes an immutable `ResultIdentity` containing its Plan, request, attempt, and
+Result SHA-256 values. `DiagonalRootResult` is the concrete result of
+`DiagonalRootSpec`; `resolve()` overloads preserve the corresponding concrete
+type.
+
+`ExplanationResult`, `CircuitDiagramResult`, and `ReportResult` are derived
+Results. They do not fabricate request or receipt identity. `ReportSpec.inputs`
+accepts explicit `AnalysisResult` objects, including inputs from different
+Plans, and preserves each source identity independently.
+
+`ReportPanel` selects presentation from one exact object in
+`ReportSpec.inputs`; an identity-equal replacement object is not that input.
+Repeating the same Result object in `inputs` is ambiguous and fails; distinct
+independently verified objects remain distinct even when their canonical
+identities match.
+The immutable panel is normalized once to one of `response`, `matrix`,
+`summary`, `outcomes`, or `history`. It has no arbitrary keyword, callback,
+layout, or execution surface. Omitting `kind` while supplying a family,
+channel, case, or trace selector deterministically means `response`; an exact
+frequency or matrix-style selector means `matrix`; and an objective,
+parameter, or history selector means `history`. Conflicting selector groups or
+fields that a normalized kind does not consume fail instead of being ignored.
+Response channels resolve to exact `(coordinate, mode)` members, matrix
+frequencies must be exact materialized points, and Optimization history
+selectors must name objective or parameter evidence present in the completed
+ledger. A parameter selector must also match the retained complete definition,
+not only its definitions and parameter IDs. A failed HB case exposes no matrix:
+report selection is limited to the case or to an exact declared trace/channel
+pair captured from its verified request, and the report labels the requested
+response unavailable alongside the typed outcome rather than manufacturing
+values; a named trace includes its declared input and output coordinates and
+modes.
+`ReportSpec.panels` is optional and does not change the existing `inputs` and
+`theme` meanings.
+
 ### Typed Quantity results
 
 Result scalar and array physical values use the SCNSim Pint registry. Consumers
@@ -490,121 +2315,616 @@ can convert presentation units without changing result identity:
 
 ```python
 frequencies = direct.frequencies.to(u.GHz)
-matrix_si = operator.matrix.to_base_units()
+matrix_si = operator.at(6.2 * u.GHz).matrix.to_base_units()
 matrix_values = matrix_si.magnitude
+root_frequency = evaluated.frequency.to(u.GHz)
+probe_loads = direct.y.view.probe_loads
 ```
 
-Each Result carries its exact result/ref identity for serialization and audit.
+Each `AnalysisResult` carries its exact Result/Ref identity for serialization
+and audit; derived Results preserve their explicit source identities instead of
+inventing an operation receipt. Every matrix view also carries the ordered
+coordinate IDs, exact flattened input/output `(coordinate, mode)` channel
+labels, and its per-probe `raw`/`compensated` load-state mapping. Direct uses
+the empty mode tuple; HB uses coordinate-major/mode-minor channel order.
 Passing typed Results is the normal downstream UX; raw receipt paths remain an
 audit surface.
 
+Result decoding detaches mutable mappings and numeric buffers once. Array
+backing is immutable rather than merely marked `writeable=False`, so a normal
+public attempt to re-enable writes cannot mutate verified evidence. Quantity
+getters for matrix data, frequencies, scalar quantities, traces, operator
+points, and HB states return fresh inexpensive wrappers/views over that private
+backing, not a full matrix copy per read. Public Pint in-place conversion either
+fails against immutable backing or changes only a returned wrapper. Lazy
+parameter-point payload loading and artifact chunk reads remain lazy; this
+ownership rule does not eagerly load a sweep.
+
 ### Display is explicit
 
-`result.show()` immediately presents a readable summary in the active
-environment. Notebook presentation is inline; interactive script presentation
-uses the supported renderer; a headless environment fails with a clear export
-instruction rather than claiming it displayed output.
+Numeric `result.show()` displays one native Plotly Figure and returns `None`, so
+a final notebook expression does not trigger a duplicate MIME display. Numeric
+`result.plot()` returns the Figure without displaying it. Diagram and HTML
+presentation objects retain their documented return behavior. Presentation
+cannot execute, interpolate, or alter result identity.
 
 `plot()` is not a universal Result method. Only a Result subtype with a natural
 figure contract exposes it. Plot methods return the supported figure object so
 the caller can display, save, or further configure it.
 
-### Explicit downstream sources
+### HB case outcomes, traces, and display {#hb-cases-traces-and-display}
 
-HB batches use named cases:
+A completed HB request returns an `HBBatchResult`. Its public case index is one
+ordered, read-only mapping keyed by every unique ID declared in `HBSolveSpec`.
+Each value is an `HBCaseOutcome`, including a case that failed numerically:
 
 ```python
-pump_off = hb["pump_off"]
-pump_low = hb["pump_low"]
+unbiased = hb.cases["unbiased"]
+dc_only = hb.cases["dc_only"]
+dc_pump_a_low = hb.cases["dc_pump_a_low"]
+dc_two_tone = hb.cases["dc_two_tone"]
+
+assert unbiased.succeeded
+assert unbiased.bias_state is BiasState.OFF
+assert unbiased.pump_state is PumpState.OFF
+assert dc_only.bias_state is BiasState.ON
+assert dc_only.pump_state is PumpState.OFF
+assert dc_pump_a_low.bias_state is BiasState.ON
+assert dc_pump_a_low.pump_state is PumpState.ON
+assert dc_two_tone.pump_state is PumpState.ON
 ```
+
+`hb.topology_evidence` is the immutable request-global record of the loaded
+nonlinear balance and raw or PTC-compensated response lineage. Each successful
+case separately exposes `operating_point_closure`, including the exact
+absolute/relative residual evidence and successful disjunct (or the closed
+no-operating-lattice not-applicable reason). A failed case has no success-only
+closure record; its failure identity instead binds stage, message, ordinal,
+case ID, and the complete effective-source evidence.
+
+`HBBatchResult` does not implement `hb[id]`. `PumpState` is a derived
+classification on each successful outcome, not an alternate lookup key. `BiasState`
+independently records effective all-zero-mode drive. A case whose declared
+drives sum to zero remains addressable by its declared ID while reporting the
+corresponding Off states.
+
+A successful outcome exposes S/Y/Z, traces, normalized node-flux `states`,
+`BiasState`, and `PumpState`
+directly, and its `failure` property is `None`. A failed outcome exposes
+`succeeded=False` and `failure: HBCaseFailure`, whose stable `kind`, `stage`,
+`message`, and evidence identity are receipt-backed. It also preserves case
+identity and effective sources. Accessing S/Y/Z, traces, or success-only states
+on that failed outcome raises that same `HBCaseFailure`; it never returns
+`None`, an empty matrix, or a stale value.
+
+`states` is operating-point evidence, not a `NetworkViewRef`, coordinate
+handle, or drive target. It cannot be supplied to `retain()`,
+`transform_pair()`, or `CurrentDrive.at`; anonymous Internal nodes remain
+non-selectable. Its ordered state-node map matches the compiler node order and
+the array's node axis exactly: Plan Public/port-promoted nodes map back to the
+sealed Plan, Composite-private nodes map by component-path segments plus their
+private-node ID, and anonymous Internal nodes expose only their
+`internal-<sha256>` audit identity. The adapter derives the weber-valued
+$\Phi^-_{m,n}=\varphi_0\operatorname{conj}(x^+_{\mathrm{JC},m,n})$ artifact
+from the fixed backend state while `returnnodeflux=false`; it does not request
+or publish a second backend node-flux authority.
+
+A valid request may therefore produce a fully successful, partially
+successful, or all-numerical-failure batch. All three are completed, verified
+`HBBatchResult` receipts and are reused by the same request; a case numerical
+failure does not make the request retryable. A process, protocol,
+runtime-preparation, or receipt-integrity failure remains a request-level
+failure rather than a fabricated case outcome, so a later identical operation
+may append a new attempt.
+
+An `SParameterTrace` names one complex matrix projection across the request's
+frequency grid. Its `input_port` and `output_port` fields are selected-view wave
+channel IDs, not necessarily original logical Port IDs. A channel generated by
+`transform_pair()` is valid when the terminal view is Port-realizable. Mode
+tuples must match the number and ordering of the HB pump axes. Trace IDs are
+unique within the spec. A Direct spec may use the same trace type with empty
+mode tuples.
+
+Named traces are typed projections of the complete selected-view matrix. They
+do not launch separate solves, hide the full matrix, or become another
+physical authority:
+
+```python
+case = hb.cases["dc_pump_a_low"]
+
+case.traces["signal_gain"].show()
+case.s.view
+case.y.view
+case.z.view
+case.s.backend_native
+case.s.reconciliation
+case.s.show()
+```
+
+`case.s.view` is the SCNSim selected-view generalized power-wave matrix.
+`case.s.backend_native` preserves the backend-returned matrix, basis, reference,
+and normalization. `case.s.reconciliation` records the exact conversion and
+residual evidence when topology, load, boundary, reference plane, reference
+matrix, frequency, and normalization are comparable.
+
+Canonical selected HB matrix storage is the flattened three-dimensional stack
+`[F, N_out * M_out, N_in * M_in]`. Each channel label is an exact
+`(coordinate, mode)` pair in coordinate-major/mode-minor order; there is no
+implicit five-dimensional reshape. Native evidence uses original logical-Port
+major/mode-minor labels. Lift the Port-space map rather than applying it
+directly to the mode-by-Port matrix:
+
+$$
+\mathcal Q_{k,\mathrm{in}}=Q_k\otimes I_{M_{\mathrm{in}}},
+\qquad
+\mathcal Q_{k,\mathrm{out}}=Q_k\otimes I_{M_{\mathrm{out}}}.
+$$
+
+For equal topology, reference plane, signed-frequency order, normalization,
+and load mask, the comparable evidence is
+
+$$
+S_k=\mathcal Q_{k,\mathrm{out}}
+S_{\mathrm{native,pw}}
+\mathcal Q_{k,\mathrm{in}}^T.
+$$
+
+Comparable evidence preserves the unreplicated physical $Q_k$ in deterministic
+row-major form and binds it to its Plan/View producer identity. Receipt loading
+reconstructs the lifted projection and independently reproduces the selected S
+matrix and recorded residual; a self-consistent but forged residual string is
+not accepted.
+
+A plain subset of original Ports is therefore comparable by its principal
+submatrix when every omitted Port retains its native matched load. A PTC or
+other unequal boundary is not comparable merely because channel names match.
+In that case the reconciliation surface reports `comparable=False`, one exact
+reason discriminator (`topology`, `load_or_ptc`, `reference_plane`,
+`reference_matrix`, `signed_frequency_grid`, `channel_basis`, or
+`normalization`), and the SHA-256 identity of the longest canonical Ref-lineage
+prefix that remained comparable; it is neither `None` nor a fabricated
+residual.
+
+Batch display supports declared traces, selected matrix channels, and
+exact-frequency complete-matrix inspection through native Plotly Figures:
+
+```python
+figure = hb.plot(theme=Theme.AUTO)  # detached; magnitude="linear"
+hb.show(magnitude="db", theme=Theme.DARK)  # displays once; returns None
+case_figure = hb.cases["dc_pump_a_low"].plot(theme=Theme.LIGHT)
+matrix_figure = hb.cases["dc_pump_a_low"].s.plot(
+    input_channel=("signal_in", (0,)),
+    output_channel=("signal_out", (0,)),
+    magnitude="db",
+)
+```
+
+When traces are declared, `hb.plot()` creates one panel per trace and overlays
+the cases in declaration order; `trace="signal_gain"` selects one declared
+trace. With no named traces, the default selects the first stored input/output
+channel pair and labels that exact pair. Callers select any other pair through
+`input_channel=` and `output_channel=`; the complete stored channel inventory
+remains inspectable in Figure metadata. SCNSim does not materialize a hidden
+Cartesian dropdown or guess S21. Every curve keeps its native grid and case
+identity without interpolation, and presentation never mixes backend-native
+evidence into the selected-view plot. Native `add_to()` overlays bind both
+axes' physical meanings, display units, and source Result/View/case identity.
+Compatible frequency coordinates are converted to the subplot's established
+display unit before insertion; parameter refs and categorical channel bases
+must match exactly. Rejection occurs before mutating the caller Figure.
+
+For a partially successful batch, `hb.plot()` plots only the successful
+outcomes and appends a visible failed-case summary containing every failed case
+ID and typed reason. It never silently omits a declared case. An all-failed
+numerical batch produces the failure summary without inventing an empty plot or
+promoting any case to success.
+
+Complex S display shows magnitude and wrapped phase in `[-180 deg, 180 deg]`.
+The default `magnitude="linear"` displays `abs(S)`. `magnitude="db"` displays
+`20 log10(abs(S))`; an exact zero remains `-inf dB` without an epsilon, floor,
+or clipping, and its phase is shown as undefined rather than zero. This option
+changes presentation only. Dimensionful Y/Z results retain their
+Quantity-valued linear presentation.
+
+`OptimizationResult.plot()` presents completed total candidate cost and an
+exact winner summary. Completed objective cost, normalized residual, and
+parameter histories require `kind="objective", objective=...`,
+`kind="residual", objective=...`, or `kind="parameter", parameter=...`.
+`kind="table"` presents every retained component term, value, View lineage,
+status, and failure, together with each component's evaluated value,
+normalized residual, weighted cost, and status. None of these surfaces
+observes a live optimizer.
+`kind="comparison"` presents the verified objective settings and exact
+initial-versus-saved-best parameters and metrics. The saved evaluation ordinal
+remains the winner authority even when it names the baseline; report summaries
+reuse the same detached presentation record and perform no calculation.
+
+### Independent Direct and HB grids {#independent-direct-and-hb-grids}
+
+Direct and HB Results retain the exact grids requested by their own Specs.
+SCNSim does not create a hidden shared grid, interpolate one Result onto the
+other, or derive pointwise residuals merely because both Results describe the
+same selected network.
+
+`plot()`, `show()`, and Report presentation may overlay traces that use different grids;
+each curve keeps its own coordinates and identity. Numerical comparison is an
+explicit downstream calculation on already materialized typed scalar
+Quantities with compatible dimensionality. V1 adds no general `compare()` API
+and does not infer peaks, dips, bandwidths, roots, or resonances from plotted
+curves.
+
+### Explicit downstream sources
 
 Reports name every source rather than selecting a latest result:
 
 ```python
+direct_report = run.build_report(
+    ReportSpec(inputs=(direct, evaluated), theme=Theme.AUTO)
+)
+
 report = run.build_report(
-    ReportSpec(inputs=(direct, pump_off, pump_low))
+    ReportSpec(inputs=(direct, hb), theme=Theme.DARK)
+)
+
+selected = run.build_report(
+    ReportSpec(
+        inputs=(direct,),
+        theme=Theme.LIGHT,
+        panels=(
+            ReportPanel(
+                result=direct,
+                family="S",
+                input_channel="feedline_in",
+                output_channel="feedline_out",
+                magnitude="db",
+            ),
+        ),
+    )
 )
 ```
 
-Report assembly records the exact chosen inputs and may be Direct-only, contain
-one HB case, or contain several pump cases.
+Report assembly records the exact chosen inputs and may combine a Direct
+response with a typed quantity, include one complete HB batch and its declared
+successful/failed case outcomes, or present one exact optimization result and
+its candidate/failure evidence. An individual HB case is derived within its
+batch and is not a separate `AnalysisResult`; using the batch preserves the one
+terminal receipt. Report assembly never changes which candidate is best or
+turns a Design Target into a pass/fail Gate.
 
-The Direct/HB comparison operation is intentionally not named yet. Its public
-shape depends on the unresolved comparison-grid decision and must not imply an
-interpolation policy before Human review.
+When a Result has explicit panels, those panels replace its automatic figure
+selection while its source-identity summary remains. Automatic report content
+is deliberately conservative:
 
-## Schematic projection
+- a one-input/one-output Direct Result shows its named S magnitude in dB and a
+  summary, without automatically adding phase;
+- a multichannel Direct Result, scalar Evaluation, or Operator Result shows an
+  inventory/summary rather than guessing a channel or expanding every matrix;
+- an HB batch shows every declared case outcome, including typed failures;
+- a parameter sweep reads only point metadata (`parameters`, `source_index`,
+  identity, status, and failure), never each point's lazy scientific Result;
+  and
+- an Optimization Result shows completed cost history plus its winner/outcome
+  summary.
 
-`original.render_schematic(CircuitDiagramSpec(...))` renders the original Plan
-only. The diagram is inspection/evidence, not a second topology authority.
+Standalone numeric `plot()` defaults remain unchanged. An explicit matrix
+panel requires an exactly materialized frequency; a table retains the whole
+complex, channel-ordered matrix, while a heatmap requires one explicit
+component. An explicit HB response may select a declared trace or typed input
+and output channels, never both. A named trace retains its declared input and
+output Port/mode labels. `case=None` means all declared cases in declaration
+order, with successful traces and typed failures visible; it never means the
+first case. A failed selected case produces its outcome evidence rather than
+reading an absent matrix.
 
-The candidate composer uses deterministic Grid + Attach placement, reusable
-component anchors/public terminals, explicit junctions, and orthogonal routes.
-Every visible component, terminal, connection, and port must trace to the
-sealed Plan.
+`ReportResult.save(path)` accepts only a new `.html` path whose parent already
+exists. It refuses overwrite, writes atomically, and returns a `Path`. The
+single self-contained HTML embeds Plotly plots, summary tables, and every
+source identity, but not complete large raw arrays, workspace links,
+timestamps, or inferred PASS/FAIL claims. It bundles Plotly JavaScript once,
+uses no CDN, and does not open a browser. User-derived labels and failure text
+are escaped before entering the document.
 
-Diagram identity is separate from Plan identity. Changing layout or theme does
-not invalidate numerical receipts, and diagram failure does not block
-numerical stages. Reduced Refs are inspected through their coordinates,
-operators, transforms, eliminations, and observables rather than a fabricated
-equivalent-circuit schematic.
+`ReportResult.presentation_sha256` identifies the normalized input order,
+panel selections, and resolved report theme. It is derived presentation
+identity, not a calculation request, receipt, or authenticity signature.
+Building a report cannot change any source Result identity or workspace state.
+
+`ReportSpec.theme` accepts only `Theme.AUTO`, `Theme.LIGHT`, or `Theme.DARK`.
+The report body, tables, and embedded Direct/HB Figures share that one theme.
+For numeric Figures, `AUTO` resolves to Plotly's configured template when each
+Figure is built and does not track later browser/OS theme changes. Report
+assembly resolves `AUTO` once from that same template and applies its paper,
+text, grid, and first accent colors to the surrounding body and tables.
+Omitted colors in a custom template use Plotly's ordinary light fallback;
+unrecognized custom background syntax affects only the browser control-scheme
+hint, not the resolved body color. Explicit themes stay fixed. Report HTML adds
+no custom JavaScript solely for theme tracking; independent diagram SVG
+behavior remains unchanged.
+
+An invalid suffix raises `ValueError`, a missing parent raises
+`FileNotFoundError`, and an existing target raises `FileExistsError`; other
+filesystem failures remain their ordinary `OSError` subtype. Report export is
+derived presentation and never creates an analysis attempt or receipt.
+
+## Authoring and compiled schematics
+
+Authoring and compiled schematics are read-only Plan projections rather than
+reduced Refs, solver results, or alternate topology authorities. Their
+target product contract is
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+It defines the target structured declarations, `CircuitDiagramSpec`, directly
+constructible `SchematicLayout`, recursive native expansion,
+`CircuitDiagramAudit`, Plan/compiler/expanded/presentation identities,
+independent visible electrical/ownership reconstruction, separately verified
+source rows, provenance, and code-free review packet.
+
+The layout target includes a pure-presentation `tap_order` mapping for complete
+permutations of explicitly named taps on an authored bus. It does not publish
+private electrical state, order implicit direct-bus contacts, or alter a Plan,
+View, request, or Result. Exact validation and failure behavior remain solely
+in the linked structured-authoring contract.
+
+The authoring target's direct-connection surface is one N-endpoint
+`link(endpoints=(...))` over eligible buses, taps, and pins. External grounding
+has the separate `ground_pins(pins=(...))` operation; intrinsic branches retain
+`scope.ground`, and logical Ports retain their own load/reference behavior.
+Those forms share one final canonical reference without erasing owner-local
+public boundaries or local diagram evidence.
+
+That scope is `CONVERGING` with an integrated implementation baseline. The
+[central evidence status](contracts/index.qmd#implementation-evidence-status)
+limits current validation claims. Superseded flat authoring and catalog-hint
+surfaces have no compatibility path.
+
+The shared boundary remains narrow: schematic rendering does not seal or mutate
+a Plan, execute an analysis, write a workspace, or change physical, request, or
+Result identity. The target may project baseline values or one explicit
+`ParameterSet`; it rejects `ParameterSpace`. PTC, retained coordinates,
+transforms, selected Views, and numerical Results remain request/Result
+evidence and must not be drawn as if they altered the authored circuit. Exact
+point binding and `parameters_sha256` belong to the
+[Parameter System Contract](contracts/parameter-system.qmd#parameterized-diagrams).
+
+The two paths meet only at their shared exact Plan source and public references:
+ASCDLS does not create, select, or mutate a `NetworkViewRef`, while
+`CircuitRun` does not infer physical ownership or assembly intent from a View
+or numerical Result.
+
+All structured grammar, automatic and handle-based local layout, native
+Subsystem/Composite expansion, Port and ground projection, certified digests,
+independent visible A/B reconstruction, separately verified source rows,
+provenance, and diagram failure behavior belong only to the linked contract. A
+successful current diagram certifies only its declared projection and exact
+point, not a numerical calculation or whole-course acceptance.
+
+The target failure boundary has two explicit preflight stages. Invalid hints,
+unplaceable required marks, collisions, illegal obstacle crossings, broken
+conductive paths, and ambiguous crossing grammar raise
+`SCNSimValidationError(stage="schematic_layout")`. A mismatch between the
+independently expected and reconstructed electrical or semantic manifest raises
+`SCNSimValidationError(stage="schematic_audit")`. Either failure returns no
+`CircuitDiagramResult` and allocates no runtime attempt, receipt, artifact, or
+workspace entry.
 
 ## Failure and evidence contract
 
+SCNSim-specific failures derive from `SCNSimError` through exactly five categories:
+`SCNSimValidationError`, `SCNSimStateError`, `SCNSimCapabilityError`,
+`SCNSimExecutionError`, and `SCNSimEvidenceError`. Every typed failure exposes
+a stable machine `kind`, an exact `stage`, and immutable evidence. A started
+operation seals its typed failure receipt before raising; preflight validation
+creates no attempt. `resolve()` reconstructs the typed failure boundary but,
+without a verified success, raises `ResultUnavailableError` and never retries.
+Runtime preparation precedes request/attempt mutation; its failure raises
+`RuntimePreparationError` without an attempt and leaves any already Plan-bound
+Run workspace intact. Once an attempt is allocated, child launch failure and
+every later missing or invalid outcome are attempt-backed
+`BackendProtocolError` failures with a sealed failure receipt. Allocation
+reserves ordinal/staging only; a blocked bootstrap lets Python finalize one
+truthful immutable `allocated` or `launched` attempt record before numerical
+execution begins.
+
+The current public scaffold machine-maps `PlanSealedError`,
+`WorkspacePlanReplacedError`,
+`WorkspaceVersioningDowngradeForbidden`,
+`WorkspaceCommitIndeterminateError`, `UnsupportedEvidenceVersionError`,
+`UnsupportedRuntimePlatformError`, `PortRealizabilityError`,
+`InvalidDiagonalRootHint`, `InvalidOptimizationSpec`,
+`DirectResponseFormationError`, `InvalidCandidatePhysicalParameter`,
+`CompilerInvariantError`,
+`UnsupportedSingularCapacitanceForDiagonalRootV1`,
+`EliminatedBlockSolveFailure`, `RootSlopeUnresolved`,
+`NumericalResolutionUnresolved`, `HBCaseFailure`, `RuntimePreparationError`,
+`BackendProtocolError`, `ResultUnavailableError`, `EvidenceIntegrityError`, and
+`ScaffoldUnavailableError`. The last is reserved for explicitly deferred
+surfaces; it cannot represent an attempted numerical failure.
+
+Ordinary Python call-signature and filesystem errors retain their standard
+exception types where the Contract says so; they are not backend failure
+receipts disguised as SCNSim numerical errors.
+
 SCNSim fails closed for:
 
-- a workspace bound to another Plan or runtime identity;
-- an unsupported component or missing Direct linearization;
+- an attempted `versioned=True` to `versioned=False` workspace downgrade, a
+  malformed versioned index, duplicate Plan-to-iteration mapping, or replaced
+  workspace accessed through a stale Run/Result handle;
+- a request directory whose canonical request differs from the sealed Plan,
+  Ref, Spec, ParameterSet, runtime, or operation; a second writer for the same
+  workspace; or an attempt that would overwrite prior evidence;
+- any target authoring violation involving duplicate IDs, an ordinary
+  two-terminal native body outside exactly one structure, a multiply consumed
+  body, an internally incomplete independent body, unbound required native pins,
+  foreign/hidden endpoints,
+  invalid series/parallel/branch/N-link declarations, invalid `ground_pins()` use,
+  public exposure, transitive same-scope bus conflicts, physical-terminal
+  shorts, or root Port attachment, as enumerated by the
+  [structured fail-closed contract](contracts/circuit-plan-assembly.qmd#assembly-failures);
+- a non-positive physical leaf R/L/C/`L_J0`, negative `Cj`, invalid RLGC
+  conductor/reference identity, matrix shape/order/units, inexact symmetry,
+  invalid Maxwell sign/row sum, failed C/L Cholesky, negative G/R minimum
+  eigenvalue, invalid AEDT Q2D primary blocks or conductor map, or
+  non-positive/non-integer section count;
+- a Direct/HB general-line mismatch, including nonzero off-diagonal R in HB;
+- an invalid Composite public/hidden identity, a wired `CoordinateRef`, invalid
+  `AffineMap` units/support/baseline, or mapped nonphysical child value;
+- a SQUID without shared junction parameters or a valid finite loop;
+- mutual coupling across Plans, across non-inductive or unoriented branches,
+  or with non-finite/dimensionful `k`, `abs(k) >= 1`, or a complete bound
+  inductance matrix that is not reciprocal positive definite;
+- an unsupported component expansion or missing Direct/HB realization;
+- an incomplete/invalid Plan requested for schematic rendering, an invalid
+  diagram representation/theme, a `schematic_layout` preflight failure, a
+  `schematic_audit` manifest mismatch, or an unauditable compiled expansion;
 - a bare physical number, unknown unit, foreign registry, or dimensionality
   mismatch;
-- a ParameterSet containing unknown refs, non-finite values, or another Plan
-  family;
-- invalid port roles or ambiguous physical coordinates;
+- a current-runtime `ParameterSet` containing unknown refs, non-finite values,
+  or another Plan family;
+- a parameter definition, binding, set, space, sweep selection, collection, or
+  parameterized diagram that violates the
+  [Parameter System failure boundary](contracts/parameter-system.qmd#parameter-system-failures);
+- invalid Port roles, reference impedance, load mapping, or ambiguous physical
+  coordinates;
+- an unknown, duplicate, terminated, foreign, or unevidenced PTC `PortRef`;
+- repeated PTC or PTC ordered after `transform_pair()` or `retain()`;
+- an automatic pair transform with unknown, duplicate, Internal, identically
+  selected, differently referenced, or inconsistently oriented Public nodes;
+- incomplete or ambiguous capacitor-branch provenance, a non-finite or
+  negative physical branch capacitance, a non-positive external-cut sum, or a
+  nonreciprocal compiled capacitance operator outside the declared scope;
+- a non-finite or singular pair transform, a non-real/non-symmetric/non-SPD
+  physical or transformed reference matrix, or failed principal-root
+  reconstruction;
+- a generated-coordinate collision, rank-deficient retained Port map, or
+  inconsistent derived `A_k`, `B_k`, `R_k`, principal `D_k`, `Q_k`, or
+  selected/omitted projector evidence;
+- a `transform_pair()` across Port-bound nodes with different PTC/load states;
+- an unknown or duplicate pump axis, drive, case, or trace identity; a drive
+  bound outside the request; a non-positive/non-finite axis frequency; or an
+  incomplete request-global drive materialization;
+- a non-integer drive/trace mode, tuple-rank/order mismatch, non-current or
+  non-finite drive Quantity, complex DC coefficient, or unknown drive/trace
+  coordinate;
+- an independently declared negative-mode partner, inconsistent current
+  orientation/injection map, or invalid Fourier-coefficient materialization;
+- an invalid per-axis harmonic declaration, negative/non-integer
+  `max_intermodulation_order`, retained-lattice exclusion of a declared
+  drive/requested trace mode, or exact tuple-frequency collision;
+- any zero-frequency HB linear-response input or output mode;
+- an empty, duplicate, unknown, or Internal retained-coordinate selector;
+- a Direct or HB `solve()` view with a non-Port-realizable final coordinate;
+- an HB pair transform involving any non-Port-bound input node;
+- a PTC Ref paired with any nonzero effective DC or AC drive without explicit
+  `allow_driven_ptc=True`;
 - a non-full-rank transform or singular/non-finite Schur partition;
+- disagreement between Direct and HB Port node, reference impedance, load, or
+  selected-channel mappings;
+- a duplicate optimization variable/objective ID, foreign or hidden
+  `ParameterRef`, invalid physical bounds/coordinate transform, or foreign
+  quantity selector;
+- conflicting model-default/consumer-override bounds, an unknown override key,
+  an out-of-support bound/candidate without per-ParameterRef extrapolation
+  authorization, or extrapolation authorization inherited by another request;
+- a bundle, full matrix/operator, or dimensionally invalid composition used as
+  one scalar objective;
+- a target/selector dimensionality mismatch, non-positive/non-finite weight or
+  explicit scale, or a zero dimensionful target without explicit scale;
+- a missing, non-finite, non-positive, or dimensionally invalid
+  `DiagonalRootSpec.root_hint` (`InvalidDiagonalRootHint`);
+- a sealed `CircuitPlan` authoring mutation;
+- `DiagonalRootSpec` applied to a non-positive-definite complete capacitance
+  matrix in the Primitive Direct V1
+  (`UnsupportedSingularCapacitanceForDiagonalRootV1`), an unsolved eliminated
+  block (`EliminatedBlockSolveFailure`), an unresolved/non-simple slope
+  (`RootSlopeUnresolved`), or a complex-Newton machine certificate that does not
+  close within 32 updates (`NumericalResolutionUnresolved`);
+- deterministic diagonal-root continuation whose physical path, branch, or
+  subdivision cannot be completed, reported with its typed non-continuable
+  failure rather than a different root;
+- a locally repeated/non-simple pole or zero, or a residue-coupling input
+  without the local slope/residue evidence required by its quantity spec;
+- a transfer-zero candidate with a non-finite or singular denominator, or an
+  unresolved pole-zero cancellation;
 - a missing or mismatched exact receipt during resolve;
-- an HB backend result that cannot expose or reconstruct the required lifted
-  operator identity;
-- an optimization resume fingerprint or completed-generation mismatch; or
+- an HB backend result that cannot bind complete mode-port Z, signed
+  frequencies, input/output `W` normalization, phasor/mode-index conversion,
+  or the required lifted operator identity;
+- an HB adapter that reverses tuples and conjugates twice, cannot prove its
+  same-signed-frequency permutation, or cannot de-embed every backend source
+  resistor before selected-network construction;
+- a missing or inconsistent per-case SCNSim-to-JosephsonCircuits source
+  coefficient/conjugate-mode map;
+- a returned HB case whose independently recomputed final residual satisfies
+  neither fixed V1 condition, recorded as that case's `HBCaseFailure` rather
+  than request success data;
+- a selected matrix whose per-probe raw/compensated load-state labels do not
+  match its lineage and stamps;
+- an attempted reconciliation across unequal topology, PTC/load state,
+  boundary, reference plane, reference matrix, frequency, or wave
+  normalization;
+- an optimization resume fingerprint, expanded-normalization identity, or
+  completed-generation mismatch; or
 - a corrupt request, receipt, or artifact hash.
 
-Condition number is published evidence, not an automatic pass/fail decision.
-SCNSim does not invent conditioning thresholds, optimization Gates, search
+V1 exposes no public timeout, JobRef, or cancellation object. A
+`KeyboardInterrupt` terminates the active Julia child process, seals the
+attempt as interrupted when its staging evidence is valid, and re-raises the
+interrupt in Python. A later call to the same operation appends a new attempt;
+`resolve()` does not continue or retry it.
+
+Condition number is neither computed nor published by the V1 Direct/root
+runtime. SCNSim does not invent conditioning thresholds, optimization Gates, search
 envelopes, targets, weights, or acceptance conditions from backend defaults or
 tests.
 
-Diagram failure and an individual numerical-case failure stay on their own
-evidence surfaces. They cannot silently become successful numerical evidence
-or overwrite unrelated success receipts.
+Diagram failure and an individual `HBCaseFailure` stay on their own evidence
+surfaces. They cannot silently become successful numerical evidence or
+overwrite unrelated success receipts.
 
 ## Known V1 limits
 
+- Component authoring is limited to the explicit built-in catalog and custom
+  Library contract in [V1 Component Authoring](component-authoring.qmd); there
+  is no string discovery, mutable global registry, generic resonator topology
+  enum, or arbitrary composite-child injection.
+- Q2D ingestion accepts one primary general N-conductor R/L/G/C extraction and
+  freezes its coefficients across the circuit solve grid. Frequency-dependent
+  interpolation/extrapolation is not included, and HB rejects nonzero
+  off-diagonal series R.
+- Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
+  callbacks, expression ASTs, and calibration-table interpolation are not
+  included.
+- Primitive Direct `DiagonalRootSpec` supports one retained coordinate with a
+  positive-definite complete capacitance matrix. Singular-C descriptor roots
+  and complete-QEP spectrum enumeration are not included. Deterministic dyadic
+  continuation does not provide a validated global analytic-branch enclosure.
+- Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
+  small-signal realization; arbitrary bias-point linearization is not included.
+- JosephsonCircuits flux-pump and three-wave-mixing behavior retains its
+  upstream relatively-untested limitation.
+- HB V1 uses one fixed, versioned numerical policy and independent zero-state
+  initialization per case. It exposes no `HBNumericsSpec`, warm-start policy,
+  multithreaded batch mode, or callback hook.
 - HB reduction acts on the small-signal sideband operator after the original
   nonlinear balance; nonlinear model-order reduction is not included.
+- Driven PTC is a compensated small-signal view around a static/nonlinear
+  balance that still contains the selected shunts; it is not an unloaded
+  operating-point solution.
+- Automatic `transform_pair()` is limited to the declared reciprocal lumped
+  two-node capacitance scope. It is not universal modal diagonalization and
+  V1 provides no manual-weight override through this API.
 - HB optimization objectives are not included; optimization is Direct-only.
+- Direct optimization accepts one selected Ref per request and no Python
+  callable, general expression AST, or persistent Julia daemon.
 - Quantization is not included.
 - Direct and HB may use independent grids; comparison performs no implicit
   interpolation.
 - No compatibility alias exists for the legacy Workbench import or bare-float
   physical inputs.
 - No implicit latest-result selector exists.
-- Schematic auto-layout is deterministic Grid + Attach, not a general
-  constraint solver.
+- V1 has no public timeout, JobRef, cancellation API, callback progress
+  framework, or persistent Julia daemon.
+- Structured authoring, Plan-identity integration, and certified diagrams are
+  one `CONVERGING` scope with an integrated implementation baseline, not
+  Human acceptance of the contract defined in
+  [Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
 - V1 has no public linear-algebra scaling configuration.
-
-## Open Human decisions
-
-These semantics remain `CONVERGING` and are not decided by the Units/scaling
-revision:
-
-1. When an HB problem retains several sidebands, should eliminating one named
-   physical coordinate remove its replica from every retained sideband, or may
-   a pipeline step select particular sidebands?
-2. If one case in a multi-case HB batch fails numerically, should successful
-   cases remain directly consumable from a partial batch receipt, or should the
-   whole batch be non-consumable?
-3. For numerical Direct/HB comparison, must both solver specs contain an exact
-   shared comparison grid, or should SCNSim provide one explicitly selected
-   interpolation policy?
-
-Until the Human resolves these questions, implementation and durable tests
-must not freeze an answer.

@@ -1,0 +1,17 @@
+---
+title: "Moved — Sweep parameter points"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 2 — Evaluate a sweep](../engineer/chapter-02/02-sweep.qmd) for the
+ordered three-point path and
+[Chapter 2 — Optional spaces](../engineer/chapter-02/04-optional-spaces.qmd)
+for Cartesian and listed spaces. Exact collection semantics remain in the
+[Parameter System Contract](../../docs/contracts/parameter-system.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

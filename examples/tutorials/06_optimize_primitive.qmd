@@ -1,0 +1,16 @@
+---
+title: "Moved — Tune a physical parameter"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 2 — Optimize](../engineer/chapter-02/03-optimize.qmd) for the
+established objective, bounds, fixed seed and budget, returned winner, and
+independent readback. Exact optimizer binding remains in the
+[Parameter System Contract](../../docs/contracts/parameter-system.qmd).
+
+This short page preserves the former URL. The superseded executable body,
+Notebook, and winner figure remain available in Git history.

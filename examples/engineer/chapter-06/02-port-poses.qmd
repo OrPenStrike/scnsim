@@ -1,0 +1,19 @@
+---
+title: "Chapter 6 · Lesson 2 — Port poses"
+subtitle: "Diagram customization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisite" appearance="simple"}
+Complete [Lesson 1](01-default.qmd), then use the
+[complete Chapter Notebook](chapter.ipynb).
+:::
+
+{{< include _02-port-poses.qmd >}}
+
+[Previous: Lesson 1 — Default](01-default.qmd) ·
+[Next: Lesson 3 — T and Cross](03-junctions.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

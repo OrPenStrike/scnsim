@@ -1,0 +1,19 @@
+---
+title: "Chapter 5 · Lesson 3 — Parent reuse"
+subtitle: "Library and reusable Composite engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites" appearance="simple"}
+Complete [Lessons 1–2](01-library.qmd), then execute the
+[complete Chapter Notebook](chapter.ipynb) from a clean kernel.
+:::
+
+{{< include _03-reuse.qmd >}}
+
+[Previous: Lesson 2 — Public instance](02-instance.qmd) ·
+[Course map](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)

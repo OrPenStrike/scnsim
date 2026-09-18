@@ -1,0 +1,16 @@
+---
+title: "Moved — Read Direct and HB Results"
+subtitle: "Engineer-course migration guide"
+execute:
+  enabled: false
+---
+
+# This Chapter has moved
+
+Use [Chapter 4 — Optional HB](../engineer/chapter-04/06-optional-hb.qmd) for
+the separated Direct and HB Results. Continue with Chapter 8 to
+[persist Results](../engineer/chapter-08/01-persist.qmd) and
+[resolve them after restart](../engineer/chapter-08/02-resolve.qmd).
+
+This short page preserves the former URL. The superseded executable body and
+Notebook remain available in Git history.

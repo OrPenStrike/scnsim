@@ -1,0 +1,131 @@
+## Lesson 1 — Build the coupled resonator {#lesson-build}
+
+### Start from a clean engineer workspace
+
+Clone the repository, install the locked development environment, and start
+Jupyter from the repository root:
+
+```bash
+git clone --branch develop --single-branch https://github.com/OrPenStrike/scnsim.git
+cd scnsim
+uv sync --locked
+uv run --with jupyterlab jupyter lab
+```
+
+`jupyterlab` is ephemeral development tooling in that command; it is not added
+to the project or its lock. If your editor already supplies a Jupyter frontend,
+open the Notebook there after `uv sync --locked` instead.
+
+Open `examples/engineer/chapter-01/chapter.ipynb`, select the project's
+`.venv` Python kernel, restart it, and use
+**Run All**. The Chapter is complete in one clean kernel; the individual web
+Lessons are reading views and deliberately share Chapter state. On a cold
+machine, the first numerical request may prepare the locked Julia runtime and
+take longer than later requests. Its workspace is evidence owned by this Run,
+not a cache to copy into another project.
+
+### Define the one value we will change
+
+This first circuit is a lumped grounded parallel LC resonator, capacitively
+coupled to one terminated measurement Port. Capacitance is the sole independent
+input because Lesson 5 will select another physical value on this same Plan.
+The inductor, coupler, and Port impedance remain fixed literals.
+
+We use a Subsystem because the capacitor, inductor, shared signal bus, and local
+ground form one owned LC unit that is easier to review and later reuse. The
+coupler and measurement Port stay parent-owned because they connect that unit
+to its environment. A Subsystem is an explicit ownership choice, not a wrapper
+required around every component.
+
+```{python}
+#| id: ch1-import-and-define-capacitance
+import numpy as np
+from IPython.display import display
+
+from scnsim import (
+    CircuitDiagramSpec,
+    CircuitPlan,
+    CircuitRun,
+    DiagonalRootSpec,
+    DirectSolveSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpec,
+    ReductionPipeline,
+    Theme,
+    components,
+    units as u,
+)
+
+inputs = ParameterDefinitions(id="engineer_lc_design")
+capacitance = inputs.parameter(
+    id="capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+```
+
+Allocating `capacitance` does not add it to a circuit. The physical binding is
+the capacitor factory field in the next cell. `110 fF` is the baseline, not a
+mutable global value.
+
+### Author the grounded LC inside a child boundary
+
+```{python}
+#| id: ch1-build-grounded-lc-child
+plan = CircuitPlan(id="engineer_coupled_lc")
+resonator = plan.subsystem(id="resonator")
+
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=capacitance)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=5.8 * u.nH)
+)
+resonator_bus = resonator.bus(id="signal")
+resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+resonator_terminal = resonator.expose_pin(
+    id="terminal",
+    at=resonator_bus,
+)
+resonator_coordinate = resonator.expose_coordinate(
+    id="signal",
+    at=resonator_bus,
+)
+```
+
+The exposed Pin is the parent wiring boundary. The exposed Coordinate is the
+analysis handle for the same child signal bus. Neither declaration adds an
+electrical node, component, or wire, and the parent never reaches into the
+child's private bus.
+
+### Couple the child directly to one terminated Port
+
+```{python}
+#| id: ch1-assemble-coupler-and-port
+signal_bus = plan.bus(id="signal_boundary")
+coupling_capacitor = plan.add(
+    components.capacitor(id="coupling_capacitor", capacitance=6.0 * u.fF)
+)
+plan.series(
+    id="coupling",
+    start=signal_bus,
+    elements=(coupling_capacitor,),
+    end=resonator_terminal,
+)
+signal_port = plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+```
+
+The 6 fF element ends directly at the public child Pin. There is no analysis-only
+root bus or zero-component Link on the resonator side. The terminated Port owns
+its declared 50 ohm reference load to the canonical ground.

@@ -1,0 +1,20 @@
+---
+title: "Chapter 2 · Lesson 4 — Optional C/L spaces"
+subtitle: "Sweep and Optimization engineer course"
+jupyter: python3
+execute:
+  enabled: false
+format: html
+---
+
+::: {.callout-note title="Prerequisites: Lessons 1–3" appearance="simple"}
+This optional web Lesson shares the same Plan, Run, View, and request and is not
+independently runnable. Use the [complete Chapter Notebook](chapter.ipynb) for
+execution.
+:::
+
+{{< include _04-optional-spaces.qmd >}}
+
+[Previous: Lesson 3 — Optimize and verify](03-optimize.qmd) ·
+[Course roadmap](../../../docs/index.qmd) ·
+[Download the complete Chapter Notebook](chapter.ipynb)
