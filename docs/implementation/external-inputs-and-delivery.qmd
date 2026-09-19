@@ -109,7 +109,7 @@ than introducing a fallback runtime.
 
 The final row has no postponed behavior inside the accepted Full V1 scope.
 Explicit limitations such as HB optimization, implicit grid interpolation,
-public numerical knobs, release delivery, and the SCQGate quantization handoff
+public numerical knobs, release delivery, and the SCQSim quantization handoff
 remain outside it. Durable stabilization tests freeze only the accepted
 behavior above.
 
