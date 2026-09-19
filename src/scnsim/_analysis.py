@@ -29,6 +29,7 @@ from .authoring import CoordinateRef, ElectricNodeRef, ParameterSet
 from .errors import CompilerInvariantError, InvalidOptimizationSpec
 from .specs import (
     DiagonalRootSpec,
+    OperatorElementRootSpec,
     DirectSolveSpec,
     HBSolveSpec,
     HybridizedPoleSpec,
@@ -227,6 +228,8 @@ def _quantity_coordinates(
 ) -> tuple[str | ElectricNodeRef | CoordinateRef, ...]:
     if isinstance(spec, DiagonalRootSpec):
         return (spec.coordinate,)
+    if isinstance(spec, OperatorElementRootSpec):
+        return spec.row, spec.column
     if isinstance(spec, HybridizedPoleSpec):
         return tuple(spec.coordinates)
     if isinstance(spec, TransferZeroSpec):
@@ -295,6 +298,19 @@ def _encode_root(
     }
 
 
+def _encode_element_root(
+    spec: OperatorElementRootSpec,
+    *,
+    coordinate_bindings: Mapping[tuple[str, str], str],
+) -> dict[str, object]:
+    return {
+        "type": "operator_element_root",
+        "row": _bound_coordinate_id(spec.row, coordinate_bindings),
+        "column": _bound_coordinate_id(spec.column, coordinate_bindings),
+        "root_hint": quantity_envelope(spec.root_hint, si_unit="hertz", registry=units.registry),
+    }
+
+
 def _encode_scalar_expression(
     value: object,
     *,
@@ -344,6 +360,7 @@ def _encode_scalar_expression(
 
 def _encode_direct_quantity(
     spec: DiagonalRootSpec
+    | OperatorElementRootSpec
     | HybridizedPoleSpec
     | TransferZeroSpec
     | ResidueNormalizedCouplingSpec
@@ -354,6 +371,8 @@ def _encode_direct_quantity(
 ) -> dict[str, object]:
     if isinstance(spec, DiagonalRootSpec):
         return _encode_root(spec, coordinate_bindings=coordinate_bindings)
+    if isinstance(spec, OperatorElementRootSpec):
+        return _encode_element_root(spec, coordinate_bindings=coordinate_bindings)
     if isinstance(spec, HybridizedPoleSpec):
         return {
             "type": "hybridized_pole",
@@ -411,6 +430,7 @@ def _encode_spec(
     spec: DirectSolveSpec
     | HBSolveSpec
     | DiagonalRootSpec
+    | OperatorElementRootSpec
     | HybridizedPoleSpec
     | TransferZeroSpec
     | ResidueNormalizedCouplingSpec
@@ -496,6 +516,7 @@ def _encode_spec(
         spec,
         (
             DiagonalRootSpec,
+            OperatorElementRootSpec,
             HybridizedPoleSpec,
             TransferZeroSpec,
             ResidueNormalizedCouplingSpec,

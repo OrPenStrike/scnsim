@@ -141,8 +141,8 @@ function run_terminal(request_path::String, staging::String)
             solve_hb(request, plan, raw_compiled, view, request_sha, attempt_sha, staging)
         elseif operation == "evaluate_direct"
             kind = get(request["spec"], "type", nothing)
-            if kind == "diagonal_root"
-                evaluate_diagonal_root(request, plan, compiled, request_sha, attempt_sha, staging)
+            if kind in ("diagonal_root", "operator_element_root")
+                evaluate_element_root(request, plan, compiled, request_sha, attempt_sha, staging)
             elseif kind == "hybridized_pole"
                 evaluate_hybridized_pole(request, plan, compiled, request_sha, attempt_sha, staging)
             elseif kind == "transfer_zero"
@@ -306,7 +306,9 @@ function preflight(plan_path::String, request_path::String)
             "load_stamp" => f64_matrix_evidence(load),
             "selected_network_steps" => ["intrinsic_CKG", "port_load_BY0BT", "source_boundary", "power_wave_deembedding"],
         ),
-        "root_preflight" => Dict("supported" => "single_retained_coordinate", "algorithm_id" => runtime["algorithm_ids"]["diagonal_root"]),
+        "root_preflight" => Dict("supported" => "selected_view_element", "basis" => view.terminal,
+            "selection" => get(realized_request["spec"], "type", nothing) in ("diagonal_root", "operator_element_root") ? realized_request["spec"] : nothing,
+            "algorithm_id" => get(runtime["algorithm_ids"], String(get(realized_request["spec"], "type", "")), runtime["algorithm_ids"]["diagonal_root"])),
         "optimization_preflight" => Dict("supported" => "dev5_full_scalar_selector_catalog", "algorithm_id" => runtime["algorithm_ids"]["optimization"]),
         "direct_hb_capability" => Dict(
             "direct" => "full_rlgc_nport_selected_network",

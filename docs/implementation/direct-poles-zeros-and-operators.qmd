@@ -4,9 +4,11 @@ subtitle: "How does each typed Direct quantity bind one selected network and clo
 toc-depth: 3
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** existing pole, zero, coupling, and operator meanings are
+`STABILIZED`; selected-View element roots are `CONVERGING` and specified in
+the [root procedure](diagonal-root-numerical-procedure.qmd).
 
-This page realizes the full public Direct quantity catalog. It does not change
+This page realizes the previously accepted Direct quantity catalog. It does not change
 the definitions in the
 [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog),
 and it does not infer a pole or zero from a sampled response. The fixed

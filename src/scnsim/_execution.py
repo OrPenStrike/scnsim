@@ -701,6 +701,7 @@ def _validate_success_staging(
         in {
             "direct_response",
             "diagonal_root",
+            "operator_element_root",
             "hybridized_pole",
             "transfer_zero",
             "residue_normalized_coupling",

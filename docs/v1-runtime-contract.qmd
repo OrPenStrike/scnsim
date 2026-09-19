@@ -12,7 +12,8 @@ semantics.
 The accepted Direct/root/CMA execution, physical component models, RLGC and
 N-port selected networks, PTC/transform/retain, typed quantities, workspace
 evidence, and case-oriented JosephsonCircuits HB semantics remain
-`STABILIZED`. This lifecycle state does not imply a release, main promotion,
+`STABILIZED` outside the selected-View element-root extension, which is
+`CONVERGING`. This lifecycle state does not imply a release, main promotion,
 root pin, or consumer migration.
 
 Prepared analysis records, Run commit/maintenance boundaries, multi-View
@@ -415,11 +416,17 @@ that same result. A non-realizable final View fails closed rather than
 returning an incomplete or fabricated wave response.
 
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
-quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
-example, runs the required-hint deterministic Newton procedure on one physically
-anchored coordinate's operator diagonal and returns its machine-resolved root,
-frequency, linewidth, and local slope evidence. The coordinate owns physical
-identity; `root_hint` only initializes the baseline Newton basin.
+quantity without creating an unrelated response sweep. `DiagonalRootSpec`
+selects one named diagonal of the complete final View operator and returns its
+machine-resolved root, frequency, linewidth, and local slope. The coordinate
+must belong to that View's ordered terminal basis; the basis need not be a
+singleton. `OperatorElementRootSpec(row, column, root_hint)` selects a named
+ordered element of that same operator and returns its locally simple complex
+root, real-part frequency, and slope $dF_{row,column}/d\omega$. Unlike a
+diagonal root, it imposes no passive-imaginary-root policy and has no linewidth
+selector. Neither Spec reduces the final View a second time. Their coordinate
+handles own physical identity; `root_hint` only initializes the baseline Newton
+basin.
 `ResponseElementSpec` may
 evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
 does not imply a frequency-grid response. `OperatorSpec` is the deliberate
@@ -1581,15 +1588,16 @@ evaluated.linewidth
 evaluated.slope
 ```
 
-For a named retained coordinate $r$, this request solves the defining complex
+For a named coordinate $r$ in the final View basis, this request solves the defining complex
 root problem
 
 $$
 \left[\mathbf D_R^{E\downarrow}(\widetilde\Omega_r)\right]_{rr}=0.
 $$
 
-The selected Ref determines what this diagonal means. Retaining one authored
-node eliminates its complement with `I_external = 0`; logical-Port loads and
+The selected Ref determines what this diagonal means. A final View may retain
+one or several authored coordinates, eliminating only its complement with
+`I_external = 0`; logical-Port loads and
 other uncompensated stamps remain in the effective operator. The resulting
 root is therefore loaded when those attachments are present. It is not the
 uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
@@ -1606,11 +1614,12 @@ root is then closest to the original hint or to the preceding CMA-ES candidate.
 Missing or dimensionally invalid hints and detected repeated or
 non-continuable roots fail closed.
 
-The Primitive Direct E2E realization supports one retained coordinate and
-requires the complete compiled capacitance matrix to be positive definite for
-`DiagonalRootSpec`. Singular-C descriptor/infinite-mode handling remains a
-later quantity scope; real-grid Direct S/Y/Z does not inherit this restriction.
-The exact scalar Schur residual, analytic derivative, 32-update complex-Newton
+The selected-element root does not require positive-definite complete
+capacitance. Its eliminated block must instead admit the checked solves used
+to form the selected View operator and derivative at every Newton point.
+Descriptor/infinite-mode interpretation beyond a locally simple root remains
+outside this scope. The exact selected Schur element, analytic derivative,
+32-update complex-Newton
 limit, machine-resolution certificate, and deterministic dyadic continuation
 are fixed in
 [Diagonal-Root Numerical Procedure](implementation/diagonal-root-numerical-procedure.qmd).
@@ -1628,6 +1637,7 @@ The V1 catalog is intentionally small:
 | Spec | Declared operation | Public result |
 |---|---|---|
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
+| `OperatorElementRootSpec` | Complex root of one named row/column element of the complete final View operator | root, real-part frequency, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of the terminal View's complete ordered retained block (at least two coordinates) | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
 | `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
@@ -2831,10 +2841,8 @@ SCNSim fails closed for:
 - a missing, non-finite, non-positive, or dimensionally invalid
   `DiagonalRootSpec.root_hint` (`InvalidDiagonalRootHint`);
 - a sealed `CircuitPlan` authoring mutation;
-- `DiagonalRootSpec` applied to a non-positive-definite complete capacitance
-  matrix in the Primitive Direct V1
-  (`UnsupportedSingularCapacitanceForDiagonalRootV1`), an unsolved eliminated
-  block (`EliminatedBlockSolveFailure`), an unresolved/non-simple slope
+- an unsolved selected-View eliminated block
+  (`EliminatedBlockSolveFailure`), an unresolved/non-simple element slope
   (`RootSlopeUnresolved`), or a complex-Newton machine certificate that does not
   close within 32 updates (`NumericalResolutionUnresolved`);
 - deterministic diagonal-root continuation whose physical path, branch, or
@@ -2893,10 +2901,11 @@ overwrite unrelated success receipts.
 - Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
   callbacks, expression ASTs, and calibration-table interpolation are not
   included.
-- Primitive Direct `DiagonalRootSpec` supports one retained coordinate with a
-  positive-definite complete capacitance matrix. Singular-C descriptor roots
-  and complete-QEP spectrum enumeration are not included. Deterministic dyadic
-  continuation does not provide a validated global analytic-branch enclosure.
+- Direct element roots require a locally simple machine-resolved selected-View
+  scalar root and solvable eliminated block, but not full-C positive
+  definiteness. Descriptor-mode interpretation and complete-QEP enumeration
+  are not included. Deterministic dyadic continuation does not provide a
+  validated global analytic-branch enclosure.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its

@@ -77,6 +77,7 @@ from .errors import (
 )
 from .results import (
     DiagonalRootResult,
+    OperatorElementRootResult,
     DirectQuantityResult,
     DirectSolveResult,
     ExplanationResult,
@@ -91,6 +92,7 @@ from .results import (
 )
 from .specs import (
     DiagonalRootSpec,
+    OperatorElementRootSpec,
     DirectSolveSpec,
     HBSolveSpec,
     HybridizedPoleSpec,
@@ -170,7 +172,7 @@ def _parameter_value_record(parameter: ParameterRef, value: object) -> Mapping[s
 def _uses_baseline_root(spec: object) -> bool:
     """Return whether a Spec owns baseline-root continuation."""
 
-    if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec)):
+    if isinstance(spec, (DiagonalRootSpec, OperatorElementRootSpec, HybridizedPoleSpec, TransferZeroSpec)):
         return True
     if isinstance(spec, ResidueNormalizedCouplingSpec):
         return True
@@ -700,6 +702,15 @@ class CircuitRun:
     def evaluate(
         self,
         ref: NetworkViewRef,
+        spec: OperatorElementRootSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OperatorElementRootResult: ...
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
         spec: OperatorSpec,
         *,
         parameters: ParameterSet | None = None,
@@ -718,7 +729,7 @@ class CircuitRun:
     def evaluate(
         self,
         ref: NetworkViewRef,
-        spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
+        spec: DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
         parameters: ParameterSpace,
     ) -> ParameterSweepResult: ...
@@ -727,6 +738,7 @@ class CircuitRun:
         self,
         ref: NetworkViewRef,
         spec: DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -736,6 +748,7 @@ class CircuitRun:
         parameters: ParameterSet | ParameterSpace | None = None,
     ) -> (
         DiagonalRootResult
+        | OperatorElementRootResult
         | DirectQuantityResult
         | OperatorResult
         | ParameterSweepResult
@@ -796,6 +809,9 @@ class CircuitRun:
     def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DiagonalRootResult | ParameterSweepResult: ...
 
     @overload
+    def resolve(self, ref: NetworkViewRef, spec: OperatorElementRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> OperatorElementRootResult | ParameterSweepResult: ...
+
+    @overload
     def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec, *, parameters: ParameterSet | None = None) -> OptimizationResult: ...
 
     @overload
@@ -819,6 +835,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -831,6 +848,7 @@ class CircuitRun:
         DirectSolveResult
         | HBBatchResult
         | DiagonalRootResult
+        | OperatorElementRootResult
         | DirectQuantityResult
         | OperatorResult
         | OptimizationResult
@@ -847,6 +865,7 @@ class CircuitRun:
             spec,
             (
                 DiagonalRootSpec,
+                OperatorElementRootSpec,
                 HybridizedPoleSpec,
                 TransferZeroSpec,
                 ResidueNormalizedCouplingSpec,
@@ -888,6 +907,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -906,6 +926,7 @@ class CircuitRun:
                 DirectSolveSpec,
                 HBSolveSpec,
                 DiagonalRootSpec,
+                OperatorElementRootSpec,
                 HybridizedPoleSpec,
                 TransferZeroSpec,
                 ResidueNormalizedCouplingSpec,
@@ -925,6 +946,7 @@ class CircuitRun:
                 spec,
                 (
                     DiagonalRootSpec,
+                    OperatorElementRootSpec,
                     HybridizedPoleSpec,
                     TransferZeroSpec,
                     ResidueNormalizedCouplingSpec,
@@ -1064,7 +1086,10 @@ class CircuitRun:
         ref: NetworkViewRef,
         value: str | ElectricNodeRef | CoordinateRef,
     ) -> str:
-        if isinstance(value, str) and value in ref._available_coordinates:
+        if isinstance(value, str) and (
+            value in ref._available_coordinates
+            or value in ref._lineage["terminal_coordinates"]
+        ):
             return value
         return self._coordinate_id(value)
 
@@ -1072,7 +1097,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         *,
         selector_views: Mapping[int, NetworkViewRef] | None = None,
     ) -> None:
@@ -1099,7 +1124,7 @@ class CircuitRun:
                 if trace.input_mode or trace.output_mode:
                     raise ValueError("Direct traces require empty mode tuples")
             return
-        if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
+        if isinstance(spec, (DiagonalRootSpec, OperatorElementRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
             self._validate_direct_quantity_spec(operation, ref, spec)
             return
         active = {
@@ -1135,7 +1160,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
+        spec: DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
         residue_branch: bool = False,
     ) -> None:
@@ -1143,14 +1168,20 @@ class CircuitRun:
 
         if isinstance(spec, DiagonalRootSpec):
             coordinate = self._view_coordinate_id(ref, spec.coordinate)
-            invalid = (
-                coordinate not in ref._retained or len(ref._retained) < 2
-                if residue_branch
-                else len(ref._retained) != 1 or ref._retained[0] != coordinate
-            )
+            channels = tuple(ref._lineage["terminal_coordinates"])
+            invalid = coordinate not in channels or (residue_branch and len(channels) < 2)
             if invalid:
                 raise SCNSimValidationError(
-                    "DiagonalRootSpec coordinate is incompatible with the retained View",
+                    "DiagonalRootSpec coordinate is absent from the final View basis",
+                    stage="preflight",
+                    evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_quantity"},
+                )
+            return
+        if isinstance(spec, OperatorElementRootSpec):
+            channels = frozenset(ref._lineage["terminal_coordinates"])
+            if self._view_coordinate_id(ref, spec.row) not in channels or self._view_coordinate_id(ref, spec.column) not in channels:
+                raise SCNSimValidationError(
+                    "OperatorElementRootSpec row and column must belong to the final View basis",
                     stage="preflight",
                     evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_quantity"},
                 )
@@ -1440,6 +1471,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -1545,7 +1577,8 @@ class CircuitRun:
             semantic["algorithm_id"] = "scnsim.hb_response.josephsoncircuits.v1"
         elif operation == "evaluate_direct":
             semantic["algorithm_id"] = {
-                "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+                "diagonal_root": "scnsim.diagonal_root.newton32.v2",
+                "operator_element_root": "scnsim.operator_element_root.newton32.v1",
                 "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
                 "transfer_zero": "scnsim.transfer_zero.newton32.v1",
                 "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
@@ -1554,7 +1587,7 @@ class CircuitRun:
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
             )
         else:
             raise CompilerInvariantError(
@@ -1598,7 +1631,7 @@ class CircuitRun:
 
     def _source_units(
         self,
-        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet,
         *,
         parameter_space: ParameterSet | ParameterSpace | None,
@@ -1799,6 +1832,8 @@ class CircuitRun:
                         )
         elif isinstance(spec, DiagonalRootSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
+        elif isinstance(spec, OperatorElementRootSpec):
+            add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
         elif isinstance(spec, HybridizedPoleSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="hybridized_pole", field="anchor"), spec.anchor, "hertz")
         elif isinstance(spec, TransferZeroSpec):
@@ -1861,7 +1896,7 @@ class CircuitRun:
                 for term_index, term in enumerate(selectors):
                     selected_spec = term.spec
                     prefix = f"selector:{term_index}"
-                    if isinstance(selected_spec, DiagonalRootSpec):
+                    if isinstance(selected_spec, (DiagonalRootSpec, OperatorElementRootSpec)):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:root_hint"), selected_spec.root_hint, "hertz")
                     elif isinstance(selected_spec, HybridizedPoleSpec):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:anchor"), selected_spec.anchor, "hertz")

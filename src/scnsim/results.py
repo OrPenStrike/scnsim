@@ -209,6 +209,7 @@ def _is_verified_analysis_result(value: object) -> bool:
         type(value) in (
             DirectSolveResult,
             DiagonalRootResult,
+            OperatorElementRootResult,
             DirectQuantityResult,
             OperatorResult,
             OptimizationResult,
@@ -522,6 +523,18 @@ class DiagonalRootResult(DirectQuantityResult):
 
     def __init__(self) -> None:
         unavailable("DiagonalRootResult construction")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OperatorElementRootResult(DirectQuantityResult):
+    """Verified locally simple root of one ordered selected-View element."""
+
+    root: Quantity
+    frequency: Quantity
+    slope: Quantity
+
+    def __init__(self) -> None:
+        unavailable("OperatorElementRootResult construction")
 
 
 @dataclass(frozen=True, slots=True)

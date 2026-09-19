@@ -131,6 +131,8 @@ def _selector_text(value: object) -> str:
         spec = value.spec
         if isinstance(spec, DiagonalRootSpec):
             selection = f"coordinate={_coordinate_id(spec.coordinate)}; root_hint={spec.root_hint}"
+        elif isinstance(spec, OperatorElementRootSpec):
+            selection = f"row={_coordinate_id(spec.row)}; column={_coordinate_id(spec.column)}; root_hint={spec.root_hint}"
         elif isinstance(spec, HybridizedPoleSpec):
             selection = f"coordinates={','.join(_coordinate_id(item) for item in spec.coordinates)}; anchor={spec.anchor}"
         elif isinstance(spec, TransferZeroSpec):
@@ -268,7 +270,7 @@ def _family(value: str) -> Literal["S", "Y", "Z"]:
 def _selector_unit(value: object) -> str | None:
     if not isinstance(value, QuantitySelector):
         return None
-    if value.type in {"diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
+    if value.type in {"diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
         return "hertz"
     if value.type == "residue_coupling_projection":
         return "radian / second"
@@ -400,6 +402,41 @@ class DiagonalRootSpec:
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"type": "diagonal_root", "coordinate": _coordinate_id(self.coordinate), "root_hint": self.root_hint}
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorElementRootSpec:
+    """Select one ordered element root of the complete final View operator."""
+
+    row: Coordinate
+    column: Coordinate
+    root_hint: Quantity
+
+    def __init__(self, *, row: Coordinate, column: Coordinate, root_hint: Quantity) -> None:
+        _coordinate_id(row)
+        _coordinate_id(column)
+        try:
+            units.require_positive_quantity(root_hint, "hertz", name="root_hint")
+        except Exception as exc:
+            raise InvalidDiagonalRootHint(
+                "root_hint must be a finite positive frequency Quantity",
+                stage="spec_validation",
+            ) from exc
+        object.__setattr__(self, "row", row)
+        object.__setattr__(self, "column", column)
+        object.__setattr__(self, "root_hint", _detached_quantity(root_hint))
+
+    @property
+    def frequency(self) -> QuantitySelector:
+        return QuantitySelector(self, "frequency", "operator_element_root_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "operator_element_root",
+            "row": _coordinate_id(self.row),
+            "column": _coordinate_id(self.column),
+            "root_hint": self.root_hint,
+        }
 
 
 @dataclass(frozen=True, slots=True)

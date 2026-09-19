@@ -563,6 +563,14 @@
         "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "linewidth", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }
       }
     },
+    "pointOperatorElementRoot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "schema_version", "result_kind", "scalar_catalog", "array_catalog"],
+      "properties": {
+        "schema": { "const": "scnsim.parameter_point_payload" }, "schema_version": { "const": 2 }, "result_kind": { "const": "operator_element_root" }, "array_catalog": { "type": "object", "maxProperties": 0 },
+        "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }
+      }
+    },
     "pointHBCase": {
       "oneOf": [
         { "type": "object", "additionalProperties": false, "required": ["case_ordinal", "case_id", "status", "bias_state", "pump_state", "effective_sources", "operating_point_closure", "artifacts", "traces", "reconciliation", "backend_normalization_evidence_sha256", "state_node_map"], "properties": { "case_ordinal": { "type": "integer", "minimum": 1 }, "case_id": { "$ref": "#/$defs/identifier" }, "status": { "const": "success" }, "bias_state": { "enum": ["off", "on"] }, "pump_state": { "enum": ["off", "on"] }, "effective_sources": { "type": "array", "items": { "$ref": "identity-common.schema.json#/$defs/hbEffectiveSource" } }, "operating_point_closure": { "$ref": "identity-common.schema.json#/$defs/hbOperatingPointClosure" }, "artifacts": { "type": "object", "additionalProperties": { "$ref": "#/$defs/pointArtifact" } }, "traces": { "type": "array", "items": { "$ref": "#/$defs/pointArtifact" } }, "reconciliation": { "$ref": "identity-common.schema.json#/$defs/hbReconciliation" }, "backend_normalization_evidence_sha256": { "$ref": "#/$defs/sha256" }, "state_node_map": { "type": "array", "minItems": 1, "items": { "$ref": "identity-common.schema.json#/$defs/hbStateNodeMapEntry" } } } },
@@ -617,7 +625,7 @@
       ]
     },
     "parameterPointPayload": {
-      "oneOf": [ { "$ref": "#/$defs/pointDirectResponse" }, { "$ref": "#/$defs/pointDiagonalRoot" }, { "$ref": "#/$defs/pointHBBatch" }, { "$ref": "#/$defs/pointScalarPayload" } ]
+      "oneOf": [ { "$ref": "#/$defs/pointDirectResponse" }, { "$ref": "#/$defs/pointDiagonalRoot" }, { "$ref": "#/$defs/pointOperatorElementRoot" }, { "$ref": "#/$defs/pointHBBatch" }, { "$ref": "#/$defs/pointScalarPayload" } ]
     },
     "singlePointEnvelope": {
       "type": "object",
@@ -637,6 +645,12 @@
       "allOf": [
         { "$ref": "#/$defs/singlePointEnvelope" },
         { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "diagonal_root" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "linewidth", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }, "array_catalog": { "type": "object", "maxProperties": 0 } } }
+      ]
+    },
+    "singleOperatorElementRootResult": {
+      "allOf": [
+        { "$ref": "#/$defs/singlePointEnvelope" },
+        { "type": "object", "additionalProperties": false, "required": ["schema", "schema_version", "result_kind", "request_sha256", "attempt_sha256", "parameters", "parameters_sha256", "ref_lineage", "scalar_catalog", "array_catalog"], "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "operator_element_root" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "additionalProperties": false, "required": ["root", "frequency", "slope"], "properties": { "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" } } }, "array_catalog": { "type": "object", "maxProperties": 0 } } }
       ]
     },
     "singleHBResult": {
@@ -677,7 +691,7 @@
       "properties": { "schema": { "const": "scnsim.result" }, "schema_version": { "const": 2 }, "result_kind": { "const": "operator" }, "request_sha256": { "$ref": "#/$defs/sha256" }, "attempt_sha256": { "$ref": "#/$defs/sha256" }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "scalar_catalog": { "type": "object", "maxProperties": 0 }, "array_catalog": { "type": "object", "additionalProperties": false, "required": ["frequencies", "operator"], "properties": { "frequencies": { "$ref": "identity-common.schema.json#/$defs/directFrequencyArtifact" }, "operator": { "$ref": "identity-common.schema.json#/$defs/operatorArtifact" } } } }
     },
     "singlePointResult": {
-      "oneOf": [ { "$ref": "#/$defs/singleDirectResult" }, { "$ref": "#/$defs/singleDiagonalResult" }, { "$ref": "#/$defs/singleHBResult" }, { "$ref": "#/$defs/singleOptimizationResult" }, { "$ref": "#/$defs/singleHybridizedPoleResult" }, { "$ref": "#/$defs/singleTransferZeroResult" }, { "$ref": "#/$defs/singleResidueCouplingResult" }, { "$ref": "#/$defs/singleResponseElementResult" }, { "$ref": "#/$defs/singleOperatorResult" } ]
+      "oneOf": [ { "$ref": "#/$defs/singleDirectResult" }, { "$ref": "#/$defs/singleDiagonalResult" }, { "$ref": "#/$defs/singleOperatorElementRootResult" }, { "$ref": "#/$defs/singleHBResult" }, { "$ref": "#/$defs/singleOptimizationResult" }, { "$ref": "#/$defs/singleHybridizedPoleResult" }, { "$ref": "#/$defs/singleTransferZeroResult" }, { "$ref": "#/$defs/singleResidueCouplingResult" }, { "$ref": "#/$defs/singleResponseElementResult" }, { "$ref": "#/$defs/singleOperatorResult" } ]
     },
     "candidateOutcome": {
       "type": "object",
@@ -844,7 +858,7 @@
           "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "algorithm_id": {
-          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
         },
         "baseline_checkpoint_sha256": {
           "$ref": "identity-common.schema.json#/$defs/sha256"

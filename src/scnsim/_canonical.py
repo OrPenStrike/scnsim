@@ -61,10 +61,11 @@ _UNITS: dict[str, str] = {
 _DIRECT_ALGORITHMS = {
     "solve_direct": "scnsim.direct_response.v1",
     "solve_hb": "scnsim.hb_response.josephsoncircuits.v1",
-    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
+    "optimize_direct": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
 }
 _EVALUATION_ALGORITHMS = {
-    "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+    "diagonal_root": "scnsim.diagonal_root.newton32.v2",
+    "operator_element_root": "scnsim.operator_element_root.newton32.v1",
     "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
     "transfer_zero": "scnsim.transfer_zero.newton32.v1",
     "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
@@ -72,7 +73,7 @@ _EVALUATION_ALGORITHMS = {
     "operator": "scnsim.direct_operator.v1",
 }
 _DIRECT_RESULTS = frozenset({
-    "direct_response", "diagonal_root", "hybridized_pole", "transfer_zero",
+    "direct_response", "diagonal_root", "operator_element_root", "hybridized_pole", "transfer_zero",
     "residue_normalized_coupling", "response_element", "operator", "optimization", "hb_batch",
 })
 

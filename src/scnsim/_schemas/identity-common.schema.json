@@ -645,14 +645,15 @@
         "algorithm_id": {
           "enum": [
             "scnsim.direct_response.v1",
-            "scnsim.diagonal_root.newton32.v1",
+            "scnsim.diagonal_root.newton32.v2",
+            "scnsim.operator_element_root.newton32.v1",
             "scnsim.hybridized_pole.newton32.v1",
             "scnsim.transfer_zero.newton32.v1",
             "scnsim.residue_normalized_coupling.v1",
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -1220,6 +1221,7 @@
     "directEvaluationSpec": {
       "oneOf": [
         { "$ref": "#/$defs/diagonalRootSpec" },
+        { "$ref": "#/$defs/operatorElementRootSpec" },
         { "$ref": "#/$defs/hybridizedPoleSpec" },
         { "$ref": "#/$defs/transferZeroSpec" },
         { "$ref": "#/$defs/residueNormalizedCouplingSpec" },
@@ -1358,6 +1360,16 @@
         "root_hint": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
       }
     },
+    "operatorElementRootSpec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "row", "column", "root_hint"],
+      "properties": {
+        "type": { "const": "operator_element_root" },
+        "row": { "$ref": "#/$defs/identifier" },
+        "column": { "$ref": "#/$defs/identifier" },
+        "root_hint": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+      }
+    },
     "networkViewDeclaration": {
       "type": "object", "additionalProperties": false,
       "required": ["type", "ptc", "transforms", "retain"],
@@ -1377,6 +1389,16 @@
             "type": { "const": "diagonal_root_projection" },
             "spec": { "$ref": "#/$defs/diagonalRootSpec" },
             "projection": { "enum": ["frequency", "linewidth"] },
+            "view": { "$ref": "#/$defs/networkViewDeclaration" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "spec", "projection", "view"],
+          "properties": {
+            "type": { "const": "operator_element_root_projection" },
+            "spec": { "$ref": "#/$defs/operatorElementRootSpec" },
+            "projection": { "const": "frequency" },
             "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
@@ -1672,7 +1694,7 @@
         "schema": { "const": "scnsim.optimization_baseline_checkpoint" },
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
-        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" },
+        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" },
         "baseline": { "$ref": "identity-v2.schema.json#/$defs/optimizationBaseline" },
         "baseline_roots": {
           "type": "array",

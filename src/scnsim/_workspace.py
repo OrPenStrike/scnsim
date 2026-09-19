@@ -1826,14 +1826,15 @@ def _verify_request_document(
         "solve_direct": {"direct_solve": "scnsim.direct_response.v1"},
         "solve_hb": {"hb_solve": "scnsim.hb_response.josephsoncircuits.v1"},
         "evaluate_direct": {
-            "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+            "diagonal_root": "scnsim.diagonal_root.newton32.v2",
+            "operator_element_root": "scnsim.operator_element_root.newton32.v1",
             "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
             "transfer_zero": "scnsim.transfer_zero.newton32.v1",
             "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -1859,6 +1860,7 @@ def _verify_request_document(
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v4",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v5",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
     }
     if operation == "optimize_direct" and algorithm_id in historical_optimization_algorithms:
         raise UnsupportedEvidenceVersionError(
@@ -1866,6 +1868,16 @@ def _verify_request_document(
             stage="workspace",
             evidence={
                 "operation": "optimize_direct",
+                "expected_algorithm_id": expected_algorithm,
+                "observed_algorithm_id": algorithm_id,
+            },
+        )
+    if operation == "evaluate_direct" and isinstance(spec, dict) and spec.get("type") == "diagonal_root" and algorithm_id == "scnsim.diagonal_root.newton32.v1":
+        raise UnsupportedEvidenceVersionError(
+            "Stored diagonal-root evidence requires its original source-bound runtime.",
+            stage="workspace",
+            evidence={
+                "operation": "evaluate_direct",
                 "expected_algorithm_id": expected_algorithm,
                 "observed_algorithm_id": algorithm_id,
             },
@@ -2385,10 +2397,18 @@ def _verify_v1_evaluation_spec(
     kind = spec["type"]
     if kind == "diagonal_root":
         coordinate = spec.get("coordinate")
-        invalid = coordinate not in terminal or len(terminal) < 2 if residue_branch else terminal != [coordinate]
+        invalid = coordinate not in terminal or (residue_branch and len(terminal) < 2)
         if set(spec) != {"type", "coordinate", "root_hint"} or invalid:
-            raise _integrity("Diagonal-root Spec is incompatible with its retained View.")
+            raise _integrity("Diagonal-root Spec is incompatible with its final View.")
         _verify_quantity_role(spec.get("root_hint"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+        if _f64_value(spec["root_hint"]["si_value_f64"]) <= 0.0:
+            raise _integrity("Diagonal-root hint must be positive.")
+    elif kind == "operator_element_root":
+        if set(spec) != {"type", "row", "column", "root_hint"} or spec.get("row") not in terminal or spec.get("column") not in terminal:
+            raise _integrity("Operator-element-root Spec is incompatible with its final View.")
+        _verify_quantity_role(spec.get("root_hint"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+        if _f64_value(spec["root_hint"]["si_value_f64"]) <= 0.0:
+            raise _integrity("Operator-element-root hint must be positive.")
     elif kind == "hybridized_pole":
         if set(spec) != {"type", "coordinates", "anchor"} or len(terminal) < 2 or _identifiers(spec.get("coordinates"), field="Hybridized-pole coordinates") != terminal:
             raise _integrity("Hybridized-pole coordinates must equal the complete retained View.")
@@ -2567,6 +2587,7 @@ def _verify_selector(value: object, plan: Mapping[str, object]) -> tuple[str, st
     kind = value.get("type")
     expected = {
         "diagonal_root_projection": ("diagonal_root", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
+        "operator_element_root_projection": ("operator_element_root", {"frequency"}, ("hertz", "inverse_time")),
         "hybridized_pole_projection": ("hybridized_pole", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
         "transfer_zero_projection": ("transfer_zero", {"frequency"}, ("hertz", "inverse_time")),
         "residue_coupling_projection": ("residue_normalized_coupling", {"magnitude"}, ("radian / second", "inverse_time")),
@@ -2647,9 +2668,17 @@ def _optimization_dependency(selector: Mapping[str, object], *, kind: str = "qua
     if not isinstance(view, Mapping):
         raise _integrity("Optimization selector View is malformed.")
     view_sha = _sha256(_canonical_bytes(view))
-    dependency_sha = view_sha if kind == "view" else _sha256(_canonical_bytes({
-        "type": selector.get("type"), "spec": selector.get("spec"), "view": view,
-    }))
+    selector_type = selector.get("type")
+    if selector_type in {"diagonal_root_projection", "residue_diagonal_root_projection", "operator_element_root_projection"}:
+        spec = selector.get("spec")
+        if not isinstance(spec, Mapping):
+            raise _integrity("Optimization root selector is malformed.")
+        row = spec.get("row") if selector_type == "operator_element_root_projection" else spec.get("coordinate")
+        column = spec.get("column") if selector_type == "operator_element_root_projection" else spec.get("coordinate")
+        record = {"type": "selected_element_root", "view": view, "row": row, "column": column, "root_hint": spec.get("root_hint")}
+    else:
+        record = {"type": selector_type, "spec": selector.get("spec"), "view": view}
+    dependency_sha = view_sha if kind == "view" else _sha256(_canonical_bytes(record))
     return {"kind": kind, "view_sha256": view_sha, "dependency_sha256": dependency_sha}
 
 
@@ -2752,6 +2781,38 @@ def _is_projection_only_optimization_failure(value: object) -> bool:
         and isinstance(evidence, Mapping)
         and evidence.get("operation") == "optimize_direct"
         and evidence.get("context_kind") == "optimization_candidate"
+    )
+
+
+def _is_shared_element_root_failure(value: object, selector: Mapping[str, object]) -> bool:
+    """Distinguish a shared numerical root from a leaf-local passive policy."""
+
+    if selector.get("type") not in {"diagonal_root_projection", "operator_element_root_projection"} or not isinstance(value, Mapping):
+        return False
+    evidence = value.get("evidence")
+    if not isinstance(evidence, Mapping) or evidence.get("operation") != "optimize_direct":
+        return False
+    return (
+        evidence.get("context_kind") in {"direct_quantity", "direct_response"}
+        and value.get("kind") in {
+            "eliminated_block_solve_failure", "root_slope_unresolved",
+            "numerical_resolution_unresolved", "direct_response_formation",
+        }
+        or evidence.get("context_kind") == "optimization_candidate"
+        and value.get("kind") == "numerical_resolution_unresolved"
+        and value.get("stage") == "series_rl"
+    )
+
+
+def _is_leaf_local_passive_root_failure(value: object, selector: Mapping[str, object]) -> bool:
+    if not isinstance(value, Mapping) or value.get("kind") != "numerical_resolution_unresolved" or value.get("stage") != "newton_certificate":
+        return False
+    evidence = value.get("evidence")
+    if not isinstance(evidence, Mapping) or evidence.get("operation") != "optimize_direct":
+        return False
+    return (
+        selector.get("type") == "diagonal_root_projection" and evidence.get("context_kind") == "optimization_candidate"
+        or selector.get("type") == "residue_coupling_projection" and evidence.get("context_kind") == "direct_quantity"
     )
 
 
@@ -3034,15 +3095,17 @@ def _verify_single_result_document(
                 or catalog[role].get("probe_load_state") != expected_probes
             ):
                 raise _integrity("Direct artifacts disagree with the request View or each other.")
-    elif kind == "diagonal_root":
+    elif kind in {"diagonal_root", "operator_element_root"}:
         if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
-            raise _integrity("Diagonal-root Result envelope is open or has array payloads.")
+            raise _integrity("Element-root Result envelope is open or has array payloads.")
         scalars = result.get("scalar_catalog")
-        if not isinstance(scalars, dict) or set(scalars) != {"root", "frequency", "linewidth", "slope"}:
-            raise _integrity("Diagonal-root scalar catalog is incomplete.")
+        expected = {"root", "frequency", "slope"} | ({"linewidth"} if kind == "diagonal_root" else set())
+        if not isinstance(scalars, dict) or set(scalars) != expected:
+            raise _integrity("Element-root scalar catalog is incomplete.")
         _verify_quantity_role(scalars["root"], complex_value=True, unit="radian / second", dimensionality="inverse_time")
         _verify_quantity_role(scalars["frequency"], complex_value=False, unit="hertz", dimensionality="inverse_time")
-        _verify_quantity_role(scalars["linewidth"], complex_value=False, unit="hertz", dimensionality="inverse_time")
+        if kind == "diagonal_root":
+            _verify_quantity_role(scalars["linewidth"], complex_value=False, unit="hertz", dimensionality="inverse_time")
         _verify_quantity_role(scalars["slope"], complex_value=True, unit="siemens", dimensionality="conductance")
     elif kind == "hybridized_pole":
         _verify_root_like_result(result, {"root", "frequency", "linewidth", "slope", "evidence_sha256"})
@@ -5049,7 +5112,7 @@ def _verify_generation_ledger(
     if (
         set(ledger) != expected
         or ledger.get("schema_version") != 4
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_sha256", ""))) is None
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_seal_sha256", ""))) is None
         or not isinstance(population_size, int)
@@ -5349,7 +5412,7 @@ def _verify_candidate_failure_context(
 
 def _optimization_root_selectors(selector: Mapping[str, object]) -> list[Mapping[str, object]]:
     kind = selector.get("type")
-    if kind in {"diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
+    if kind in {"diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
         return [selector]
     if kind == "residue_coupling_projection":
         spec = selector.get("spec")
@@ -5413,7 +5476,7 @@ def _verify_baseline_checkpoint_document(
         or checkpoint.get("schema_version") != 1
         or checkpoint.get("request_sha256") != request_sha256
         or checkpoint.get("algorithm_id")
-        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
     ):
         raise _integrity("Optimization baseline checkpoint envelope is open or inconsistent.")
     variables = spec.get("variables")
@@ -5553,7 +5616,7 @@ def _verify_checkpoint_root_projections(
             kind = selector.get("type")
             projection = selector.get("projection")
             if kind not in {
-                "diagonal_root_projection", "hybridized_pole_projection",
+                "diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection",
                 "transfer_zero_projection",
             }:
                 # Residue-coupling branch anchors have no public projection
@@ -5730,6 +5793,7 @@ def _optimization_quantity_failure_consumers(
     start: int,
     selector: Mapping[str, object],
     dependency: Mapping[str, object],
+    failure: object,
 ) -> list[dict[str, object]]:
     """Derive later public consumers of the selector or its failed private root."""
 
@@ -5738,18 +5802,23 @@ def _optimization_quantity_failure_consumers(
         _optimization_dependency(root)
         for root in _optimization_root_selectors(selector)
     ]
-    if dependency == selector_dependency:
-        return [
-            locator for locator, item in catalog[start:]
-            if _optimization_dependency(item) == dependency
-        ]
-    if dependency in root_dependencies:
+    if dependency in root_dependencies and (
+        _is_shared_element_root_failure(failure, selector)
+        or dependency != selector_dependency
+    ):
         return [
             locator for locator, item in catalog[start:]
             if any(
                 _optimization_dependency(root) == dependency
                 for root in _optimization_root_selectors(item)
             )
+        ]
+    if dependency == selector_dependency:
+        if _is_leaf_local_passive_root_failure(failure, selector):
+            return [catalog[start][0]]
+        return [
+            locator for locator, item in catalog[start:]
+            if _optimization_dependency(item) == dependency
         ]
     raise _integrity("Quantity failure dependency disagrees with its failed selector.")
 
@@ -5830,7 +5899,7 @@ def _verify_terminal_optimization_failure(
             if _is_projection_only_optimization_failure(failure):
                 raise _integrity("Projection-only failure claims a shared dependency.")
             expected_affected = _optimization_quantity_failure_consumers(
-                catalog, index, selector, dependency,
+                catalog, index, selector, dependency, failure,
             )
         expected = ({"kind": "leaf", "leaf": leaf}, expected_affected, dependency)
     elif phase == "objective_aggregation":
@@ -6153,7 +6222,7 @@ def _verify_candidate_outcome(
                 if _is_projection_only_optimization_failure(outcome["failure"]):
                     raise _integrity("Projection-only failure claims a shared dependency.")
                 affected = _optimization_quantity_failure_consumers(
-                    catalog, start, selector, dependency,
+                    catalog, start, selector, dependency, outcome["failure"],
                 )
             _verify_candidate_failure_context(
                 outcome["failure"], objectives=objectives, candidate=value,

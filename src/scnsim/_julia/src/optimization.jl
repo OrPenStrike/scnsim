@@ -155,12 +155,21 @@ selector_dependency_key(selector) = canonical_json(Dict(
     "view" => selector["view"],
 ))
 
-function root_selector_key(selector)
+function root_numeric_record(selector)
     kind = get(selector, "type", nothing)
-    kind in ("diagonal_root_projection", "residue_diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection") ||
+    if kind in ("diagonal_root_projection", "residue_diagonal_root_projection", "operator_element_root_projection")
+        spec = selector["spec"]
+        row = kind == "operator_element_root_projection" ? spec["row"] : spec["coordinate"]
+        column = kind == "operator_element_root_projection" ? spec["column"] : spec["coordinate"]
+        return Dict("type" => "selected_element_root", "view" => selector["view"],
+            "row" => row, "column" => column, "root_hint" => spec["root_hint"])
+    end
+    kind in ("hybridized_pole_projection", "transfer_zero_projection") ||
         fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "root continuation requires a root-like selector")
-    return selector_dependency_key(selector)
+    return Dict("type" => selector["type"], "spec" => selector["spec"], "view" => selector["view"])
 end
+
+root_selector_key(selector) = canonical_json(root_numeric_record(selector))
 
 function selector_leaves(selector)::Vector{Any}
     kind = get(selector, "type", nothing)
@@ -204,11 +213,10 @@ optimization_candidate_position(ordinal::Int, generation::Int, column) = Dict{St
 
 function optimization_dependency(selector; kind::String = "quantity")
     view_sha = sha256_hex(canonical_bytes(selector["view"]))
-    dependency_sha = kind == "view" ? view_sha : sha256_hex(canonical_bytes(Dict(
-        "type" => selector["type"],
-        "spec" => selector["spec"],
-        "view" => selector["view"],
-    )))
+    selector_type = get(selector, "type", nothing)
+    root_like = selector_type in ("diagonal_root_projection", "residue_diagonal_root_projection", "operator_element_root_projection")
+    dependency_sha = kind == "view" ? view_sha : sha256_hex(canonical_bytes(root_like ? root_numeric_record(selector) : Dict(
+        "type" => selector["type"], "spec" => selector["spec"], "view" => selector["view"])))
     return Dict{String,Any}(
         "kind" => kind,
         "view_sha256" => view_sha,
@@ -251,6 +259,21 @@ is_projection_only_optimization_failure(failure::BackendFailure) =
     failure.kind == "invalid_optimization_spec" &&
     failure.stage in ("selector", "quantity_sum") &&
     failure.context_kind == "optimization_candidate"
+
+function is_shared_element_root_failure(failure::BackendFailure, selector)::Bool
+    get(selector, "type", nothing) in ("diagonal_root_projection", "operator_element_root_projection") || return false
+    # The numerical element root is shared across public selector kinds.  The
+    # diagonal passive-sign check runs afterwards and belongs only to its leaf.
+    return failure.context_kind in ("direct_quantity", "direct_response") &&
+        failure.kind in ("eliminated_block_solve_failure", "root_slope_unresolved", "numerical_resolution_unresolved", "direct_response_formation") ||
+        failure.context_kind == "optimization_candidate" &&
+        failure.kind == "numerical_resolution_unresolved" && failure.stage == "series_rl"
+end
+
+is_leaf_local_passive_root_failure(failure::BackendFailure, selector) =
+    failure.kind == "numerical_resolution_unresolved" && failure.stage == "newton_certificate" &&
+    ((get(selector, "type", nothing) == "diagonal_root_projection" && failure.context_kind == "optimization_candidate") ||
+     (get(selector, "type", nothing) == "residue_coupling_projection" && failure.context_kind == "direct_quantity"))
 
 function optimization_all_leaves(request)
     return Any[item["locator"] for item in optimization_leaf_catalog(request)]
@@ -309,7 +332,7 @@ end
 
 function root_selector_specs(selector, found::Dict{String,Any} = Dict{String,Any}())
     selector_type = get(selector, "type", nothing)
-    if selector_type in ("diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
+    if selector_type in ("diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
         found[root_selector_key(selector)] = selector
     elseif selector_type == "residue_coupling_projection"
         # A residue objective has two anchored branch locators.  They are
@@ -354,12 +377,14 @@ end
 function selector_root_at(selector, compiled::CompiledPrimitive, view::RealizedView;
         start::Union{Nothing,ComplexF64} = nothing)::ComplexF64
     kind = String(selector["type"]); spec = selector["spec"]
-    if kind == "diagonal_root_projection"
-        return diagonal_root(compiled, String(spec["coordinate"]), quantity_value(spec["root_hint"]); start = start)[1]
+    if kind in ("diagonal_root_projection", "operator_element_root_projection")
+        row = String(kind == "diagonal_root_projection" ? spec["coordinate"] : spec["row"])
+        column = String(kind == "diagonal_root_projection" ? spec["coordinate"] : spec["column"])
+        return operator_element_root(compiled, view.terminal, row, column, quantity_value(spec["root_hint"]); start = start)[1]
     elseif kind == "residue_diagonal_root_projection"
         coordinate = String(spec["coordinate"]); index = findfirst(==(coordinate), view.terminal)
         index === nothing && fail("validation", "invalid_optimization_spec", "residue_branch", "optimization_candidate", "residue diagonal coordinate is absent from the terminal View")
-        return retained_diagonal_root(compiled, view.terminal, index::Int, quantity_value(spec["root_hint"]); start = start)
+        return operator_element_root(compiled, view.terminal, coordinate, coordinate, quantity_value(spec["root_hint"]); start = start)[1]
     elseif kind == "hybridized_pole_projection"
         return hybridized_pole(compiled, String.(spec["coordinates"]), spec["anchor"]; start = start)[1]
     elseif kind == "transfer_zero_projection"
@@ -439,7 +464,7 @@ publish cycles per second.
 """
 function selector_public_unit(selector)::String
     kind = String(selector["type"])
-    if kind in ("diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection", "residue_diagonal_root_projection")
+    if kind in ("diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection", "residue_diagonal_root_projection")
         return "hertz"
     elseif kind == "residue_coupling_projection"
         return "radian / second"
@@ -503,14 +528,16 @@ end
 function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator)::Float64
     selector_type = get(selector, "type", nothing)
     projection = selector["projection"]
-    if selector_type == "diagonal_root_projection"
+    if selector_type in ("diagonal_root_projection", "operator_element_root_projection")
         key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
                 selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
+        selector_type == "diagonal_root_projection" && imag(root) > 0.0 &&
+            fail("execution", "numerical_resolution_unresolved", "newton_certificate", "optimization_candidate", "diagonal root violates the passive imaginary-root policy")
         projection == "frequency" && return real(root) / (2.0 * pi)
-        projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
+        selector_type == "diagonal_root_projection" && projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
     elseif selector_type == "hybridized_pole_projection"
         key = root_selector_key(selector)
         root = get!(roots, key) do
@@ -717,8 +744,10 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
                 failure = optimization_backend_failure(error, "quantity_evaluation")
                 projection_only = is_projection_only_optimization_failure(failure)
                 dependency = projection_only ? nothing : optimization_dependency(term)
-                affected = projection_only ? Any[locator] :
-                    optimization_quantity_leaves(request, term, locator)
+                affected = projection_only || is_leaf_local_passive_root_failure(failure, term) ? Any[locator] :
+                    is_shared_element_root_failure(failure, term) ?
+                        optimization_root_leaves(request, term; trigger = locator) :
+                        optimization_quantity_leaves(request, term, locator)
                 context = optimization_context(
                     "quantity_evaluation", candidate,
                     Dict("kind" => "leaf", "leaf" => locator),
@@ -872,7 +901,7 @@ function write_generation_ledger(staging, request, request_sha, attempt_sha,
         "schema_version" => 4,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
         "baseline_checkpoint_sha256" => checkpoint_sha,
         "baseline_checkpoint_seal_sha256" => checkpoint_seal_sha,
         "generation" => generation,
@@ -999,7 +1028,7 @@ function sibling_ledgers(staging::String, request_sha::String, attempt_sha::Stri
         occursin(r"^(?!000000$)(?:[0-9]{6}|[1-9][0-9]{6,})$", name) || continue
         isdir(entry) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "final attempt is not a directory")
         for (digest, ledger) in finalized_attempt_ledgers(entry, request_sha, attempt_sha)
-            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" &&
+            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" &&
                 get(ledger, "baseline_checkpoint_sha256", nothing) == checkpoint_sha &&
                 get(ledger, "baseline_checkpoint_seal_sha256", nothing) == checkpoint_seal_sha ||
                 fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "prior generation ledger has incompatible algorithm identity")
@@ -1281,7 +1310,7 @@ function optimization_root_specs_ordered(request)
     seen = Set{String}()
     function visit!(selector)
         kind = get(selector, "type", nothing)
-        if kind in ("diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
+        if kind in ("diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection")
             key = root_selector_key(selector)
             if !(key in seen)
                 push!(seen, key); push!(rows, (key, selector))
@@ -1333,7 +1362,7 @@ function optimization_checkpoint_document(request, request_sha::String, baseline
         "schema" => "scnsim.optimization_baseline_checkpoint",
         "schema_version" => 1,
         "request_sha256" => request_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
         "baseline" => baseline,
         "baseline_roots" => root_rows,
     )
@@ -1344,7 +1373,7 @@ function roots_from_checkpoint(request, checkpoint)
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint fields are invalid")
     get(checkpoint, "schema", nothing) == "scnsim.optimization_baseline_checkpoint" &&
         get(checkpoint, "schema_version", nothing) == 1 &&
-        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7" ||
+        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" ||
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint version is unsupported")
     declared = checkpoint["baseline_roots"]
     specs = optimization_root_specs_ordered(request)

@@ -5,7 +5,8 @@ toc-depth: 2
 ---
 
 **Status:** Accepted Direct quantity formulas and CMA mathematics remain
-`STABILIZED`; the newer preparation, multi-View binding, checkpoint/resume,
+`STABILIZED` outside the `CONVERGING` selected-View element-root extension;
+the newer preparation, multi-View binding, checkpoint/resume,
 and ReportPanel ownership paths remain `CONVERGING`.
 
 The numerical algorithms below remain accepted. The `CONVERGING`
@@ -84,22 +85,27 @@ Plan once and realizes each distinct leaf View from that compiled primitive.
 It does not start a subprocess or recursively invoke Python for a leaf. View
 realization is keyed by its complete canonical declaration.
 
-Each baseline continuation anchor is keyed by canonical View lineage plus the
-root-like quantity Spec. Projection is excluded, so frequency and linewidth of
-the same root reuse one anchor, while the same Spec on different Views cannot
-share an anchor accidentally. Every candidate continues from that baseline
-anchor; candidates do not select branches from one another.
+Each selected-element baseline anchor is keyed by the complete View
+declaration, ordered row/column, and root hint. Projection and the public
+diagonal/generic policy are excluded: a diagonal frequency, linewidth, generic
+diagonal frequency, or coupling diagonal branch may share one numerical root
+while retaining distinct public Result and leaf identities. Different Views,
+elements, or hints do not share. Diagonal passive-imaginary policy is checked
+for each consuming leaf, including a cache hit; it cannot poison the generic
+root dependency. Every candidate continues from the baseline anchor, never
+from the preceding candidate.
 
-Standalone diagonal-root evaluation follows the same View-qualified rule: its
-baseline anchor and each continuation point realize the request's declared
-View before applying the unchanged root procedure.
+Standalone diagonal and element-root evaluation follows the same View-qualified
+rule: baseline and each continuation point realize the full declared View
+before selecting an element. There is no second singleton reduction.
 
 Before canonical request encoding, Python normalizes every optimization leaf
 into an immutable `BoundOptimization` declaration. A leaf keeps its authored
 objective ID, objective ordinal, and term ordinal in exact order. That leaf
 identity is not its dependency identity: dependency sharing continues to use
-the complete bound View declaration plus root/quantity Spec, excluding only
-the selected projection exactly as the execution contract already requires.
+the complete bound View declaration plus numerical root element and hint (or
+the full non-root quantity declaration), excluding root projection and public
+policy.
 Consequently two objective leaves may remain independently auditable while
 sharing one compiled/root dependency.
 

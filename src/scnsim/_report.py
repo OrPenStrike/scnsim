@@ -14,6 +14,7 @@ from typing import Any
 from . import units
 from ._canonical import canonical_json_bytes, quantity_envelope
 from ._numeric_presentation import (
+    _quantity_text,
     figure_fragment,
     hb_outcomes_plot,
     optimization_comparison_dataset,
@@ -163,6 +164,17 @@ def _summary(result: AnalysisResult) -> str:
             ("named traces", ", ".join(result.traces) or "none"),
         ))
     elif isinstance(result, DirectQuantityResult):
+        presentation = result._presentation
+        spec = presentation.get("spec") if isinstance(presentation, Mapping) else None
+        lineage = presentation.get("ref_lineage") if isinstance(presentation, Mapping) else None
+        if isinstance(spec, Mapping) and spec.get("type") in {"diagonal_root", "operator_element_root"}:
+            basis = lineage.get("terminal_coordinates") if isinstance(lineage, Mapping) else None
+            row = spec.get("coordinate") if spec["type"] == "diagonal_root" else spec.get("row")
+            column = spec.get("coordinate") if spec["type"] == "diagonal_root" else spec.get("column")
+            rows.extend((("final View basis", ", ".join(str(item) for item in basis) if isinstance(basis, (list, tuple)) else "unavailable"),
+                         ("root equation", f"F_View[{row}, {column}](omega) = 0"),
+                         ("root hint", _quantity_text(spec.get("root_hint"))),
+                         ("frequency", "Re(omega) / (2 pi); slope = dF_View[row,column] / d omega")))
         for name in (
             "root", "frequency", "linewidth", "slope", "value", "magnitude",
             "real", "imag", "zero", "numerator_slope", "denominator", "coupling",

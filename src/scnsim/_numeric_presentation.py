@@ -766,6 +766,19 @@ def scalar_plot(result: Any, *, theme: Theme = Theme.AUTO) -> Any:
         if isinstance(spec, Mapping) and isinstance(spec.get("type"), str):
             names.append("quantity_spec")
             values.append(escape(spec["type"]))
+            if spec["type"] in {"diagonal_root", "operator_element_root"}:
+                basis = lineage.get("terminal_coordinates") if isinstance(lineage, Mapping) else None
+                if isinstance(basis, list):
+                    names.append("final_view_basis")
+                    values.append(escape(", ".join(str(item) for item in basis)))
+                row = spec.get("coordinate") if spec["type"] == "diagonal_root" else spec.get("row")
+                column = spec.get("coordinate") if spec["type"] == "diagonal_root" else spec.get("column")
+                names.extend(("root_equation", "root_hint", "frequency_interpretation"))
+                values.extend((
+                    escape(f"F_View[{row}, {column}](omega) = 0"),
+                    escape(_quantity_text(spec.get("root_hint"))),
+                    "Re(omega) / (2 pi); slope = dF_View[row,column] / d omega",
+                ))
     figure = go.Figure(data=[go.Table(header={"values": ["field", "value"]}, cells={"values": [names, values]})])
     figure.update_layout(meta={"scnsim": {"kind": "scalar_quantity", "fields": names}})
     return _style(figure, theme, title="Direct scalar quantity")
@@ -1804,6 +1817,11 @@ def optimization_comparison_dataset(
                     f"coordinate={record.get('coordinate')}; "
                     f"root_hint={_quantity_text(record.get('root_hint'))}"
                 )
+            if record_type == "operator_element_root":
+                return (
+                    f"row={record.get('row')}; column={record.get('column')}; "
+                    f"root_hint={_quantity_text(record.get('root_hint'))}"
+                )
             if record_type == "hybridized_pole":
                 return (
                     f"coordinates={','.join(str(item) for item in record.get('coordinates', ()))}; "
@@ -1814,6 +1832,11 @@ def optimization_comparison_dataset(
         if spec_type == "diagonal_root":
             selection = (
                 f"coordinate={spec.get('coordinate')}; "
+                f"root_hint={_quantity_text(spec.get('root_hint'))}"
+            )
+        elif spec_type == "operator_element_root":
+            selection = (
+                f"row={spec.get('row')}; column={spec.get('column')}; "
                 f"root_hint={_quantity_text(spec.get('root_hint'))}"
             )
         elif spec_type == "hybridized_pole":

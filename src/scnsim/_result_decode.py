@@ -48,6 +48,7 @@ from .errors import EvidenceIntegrityError, HBCaseFailure
 from .results import (
     BiasState,
     DiagonalRootResult,
+    OperatorElementRootResult,
     DirectQuantityResult,
     DirectSolveResult,
     HBBatchResult,
@@ -307,10 +308,10 @@ class VerifiedResultDecoder:
                 ),
                 traces=trace_results,
             )
-        if kind == "diagonal_root":
+        if kind in {"diagonal_root", "operator_element_root"}:
             scalars = result["scalar_catalog"]
             return _verified_result(
-                DiagonalRootResult,
+                DiagonalRootResult if kind == "diagonal_root" else OperatorElementRootResult,
                 identity=identity,
                 root=complex_quantity_from_envelope(
                     scalars["root"], registry=units.registry
@@ -318,9 +319,7 @@ class VerifiedResultDecoder:
                 frequency=quantity_from_envelope(
                     scalars["frequency"], registry=units.registry
                 ),
-                linewidth=quantity_from_envelope(
-                    scalars["linewidth"], registry=units.registry
-                ),
+                linewidth=quantity_from_envelope(scalars["linewidth"], registry=units.registry) if kind == "diagonal_root" else None,
                 slope=complex_quantity_from_envelope(
                     scalars["slope"], registry=units.registry
                 ),
@@ -733,6 +732,7 @@ class VerifiedResultDecoder:
             )
         selector_kind = {
             "diagonal_root": "diagonal_root_projection",
+            "operator_element_root": "operator_element_root_projection",
             "hybridized_pole": "hybridized_pole_projection",
             "transfer_zero": "transfer_zero_projection",
             "residue_normalized_coupling": "residue_coupling_projection",
@@ -740,6 +740,7 @@ class VerifiedResultDecoder:
         }.get(request_spec.get("type"))
         projections = {
             "diagonal_root": ("frequency", "linewidth"),
+            "operator_element_root": ("frequency",),
             "hybridized_pole": ("frequency", "linewidth"),
             "transfer_zero": ("frequency",),
             "residue_normalized_coupling": ("magnitude",),

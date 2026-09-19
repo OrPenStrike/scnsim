@@ -64,7 +64,7 @@ function execute_point_operation!(request, plan, raw_compiled, view, request_sha
         solve_hb(request, plan, raw_compiled, view, request_sha, attempt_sha, staging)
     elseif operation == "evaluate_direct"
         kind = get(request["spec"], "type", nothing)
-        kind == "diagonal_root" ? evaluate_diagonal_root(request, plan, compiled, request_sha, attempt_sha, staging) :
+        kind in ("diagonal_root", "operator_element_root") ? evaluate_element_root(request, plan, compiled, request_sha, attempt_sha, staging) :
         kind == "hybridized_pole" ? evaluate_hybridized_pole(request, plan, compiled, request_sha, attempt_sha, staging) :
         kind == "transfer_zero" ? evaluate_transfer_zero(request, plan, view, request_sha, attempt_sha, staging) :
         kind == "residue_normalized_coupling" ? evaluate_residue_normalized_coupling(request, plan, view, request_sha, attempt_sha, staging) :

@@ -39,30 +39,33 @@ function solve_direct(request, view::RealizedView, request_sha::String, attempt_
     write_success(staging, request, request_sha, attempt_sha, result, [frequency_artifact, s_artifact, y_artifact, z_artifact])
 end
 
-function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, request_sha::String, attempt_sha::String, staging::String)
+function evaluate_element_root(request, plan, compiled::CompiledPrimitive, request_sha::String, attempt_sha::String, staging::String)
     spec = request["spec"]
-    get(spec, "type", nothing) == "diagonal_root" ||
-        fail("capability", "scaffold_unavailable", "evaluate_direct", "direct_quantity", "operation requires a diagonal-root Spec")
+    kind = get(spec, "type", nothing)
+    kind in ("diagonal_root", "operator_element_root") ||
+        fail("capability", "scaffold_unavailable", "evaluate_direct", "direct_quantity", "operation requires an element-root Spec")
     lineage = request["ref_lineage"]
-    retained = lineage["retain"]
-    retained === nothing && fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec requires a retained one-coordinate View")
-    lineage["terminal_coordinates"] == retained["retained_coordinates"] ||
-        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec terminal coordinates do not match retain()")
-    coordinates = retained["retained_coordinates"]
-    length(coordinates) == 1 && coordinates[1] == spec["coordinate"] ||
-        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec coordinate must equal the retained View coordinate")
+    coordinates = String.(lineage["terminal_coordinates"])
+    row = String(kind == "diagonal_root" ? spec["coordinate"] : spec["row"])
+    column = String(kind == "diagonal_root" ? spec["coordinate"] : spec["column"])
+    row in coordinates && column in coordinates ||
+        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "root element coordinates must belong to the final View")
     hint = quantity_value(spec["root_hint"])
     baseline_values = plan_parameter_values(plan)
     candidate_values = parameter_values(request)
     baseline_raw = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
         authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
     _, baseline_view = realized_ref_lineage(baseline_raw, declarative_lineage(plan, request, baseline_raw))
-    baseline_root, baseline_slope = diagonal_root(baseline_view.compiled, String(spec["coordinate"]), hint)
+    baseline_view.terminal == coordinates ||
+        fail("execution", "compiler_invariant", "root_view", "direct_quantity", "baseline and selected root View bases disagree")
+    baseline_root, baseline_slope = kind == "diagonal_root" ?
+        diagonal_root(baseline_view.compiled, coordinates, row, hint) :
+        operator_element_root(baseline_view.compiled, coordinates, row, column, hint)
     if same_parameter_values(baseline_values, candidate_values)
         omega, slope = baseline_root, baseline_slope
     else
         selector = Dict{String,Any}(
-            "type" => "diagonal_root_projection",
+            "type" => kind == "diagonal_root" ? "diagonal_root_projection" : "operator_element_root_projection",
             "spec" => spec,
             "projection" => "frequency",
         )
@@ -70,15 +73,18 @@ function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, requ
             plan, request, baseline_values, candidate_values, baseline_root, selector;
             context_kind = "direct_quantity",
         )
-        slope = root_certificate(compiled, omega, String(spec["coordinate"])).fp
+        slope = operator_element_state(compiled, omega, coordinates,
+            findfirst(==(row), coordinates)::Int, findfirst(==(column), coordinates)::Int).fp
     end
+    kind == "diagonal_root" && imag(omega) > 0.0 &&
+        fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "diagonal root violates the passive imaginary-root policy")
     scalars = Dict{String,Any}(
         "root" => complex_quantity(omega, "radian / second", "inverse_time"),
         "frequency" => quantity(real(omega) / (2.0 * pi), "hertz", "inverse_time"),
-        "linewidth" => quantity(-2.0 * imag(omega) / (2.0 * pi), "hertz", "inverse_time"),
         "slope" => complex_quantity(slope, "siemens", "conductance"),
     )
-    result = result_envelope("diagonal_root", request_sha, attempt_sha, scalars, Dict{String,Any}())
+    kind == "diagonal_root" && (scalars["linewidth"] = quantity(-2.0 * imag(omega) / (2.0 * pi), "hertz", "inverse_time"))
+    result = result_envelope(kind, request_sha, attempt_sha, scalars, Dict{String,Any}())
     write_success(staging, request, request_sha, attempt_sha, result, Any[])
 end
 
@@ -319,6 +325,7 @@ function residue_branch(compiled::CompiledPrimitive, coordinates::Vector{String}
         coordinate = String(spec["coordinate"]); index = findfirst(==(coordinate), coordinates)
         index === nothing && fail("validation", "port_realizability", "residue_branch", "direct_quantity", "diagonal branch coordinate is absent from the common retained basis")
         omega = root === nothing ? retained_diagonal_root(compiled, coordinates, index::Int, quantity_value(spec["root_hint"])) : root
+        imag(omega) <= 0.0 || fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "residue diagonal root violates the passive imaginary-root policy")
         vector = zeros(ComplexF64, length(coordinates)); vector[index::Int] = 1.0 + 0.0im
     elseif kind == "hybridized_pole"
         String.(spec["coordinates"]) == coordinates || fail("validation", "port_realizability", "residue_branch", "direct_quantity", "hybridized branch must name the complete common retained basis")
@@ -338,49 +345,13 @@ end
 
 """One diagonal branch of the common retained operator, not a separately reduced View."""
 function retained_diagonal_state(compiled::CompiledPrimitive, coordinates::Vector{String}, coordinate_index::Int, omega::ComplexF64)
-    indices = selected_coordinate_indices(compiled, coordinates); n = length(compiled.nodes)
-    Q, Qp = operator_at(compiled, omega; loaded = true), operator_derivative_at(compiled, omega; loaded = true)
-    eliminated = [k for k in 1:n if k ∉ indices]
-    if isempty(eliminated)
-        ri = indices[coordinate_index]
-        f, fp = Q[ri, ri], Qp[ri, ri]
-        x = zeros(ComplexF64, n); x[ri] = 1.0 + 0.0im
-        bound = operator_absolute_bound(compiled, omega; loaded = true) * abs.(x)
-        closure = bound[ri] == 0.0 ? (abs(f) == 0.0 ? 0.0 : Inf) : abs(f) / bound[ri]
-        return (f = f, fp = fp, scale = abs(fp), closure = closure)
-    end
-    X = checked_solve(Q[eliminated, eliminated], Q[eliminated, indices], "eliminated_block_solve_failure", "eliminated_block", length(eliminated))
-    Xp = checked_solve(Q[eliminated, eliminated], Qp[eliminated, indices] - Qp[eliminated, eliminated] * X, "eliminated_block_solve_failure", "derivative_eliminated_block", length(eliminated))
-    F = Q[indices, indices] - Q[indices, eliminated] * X
-    Fp = Qp[indices, indices] - Qp[indices, eliminated] * X - Q[indices, eliminated] * Xp
-    ri = indices[coordinate_index]; col = coordinate_index
-    scale = abs(Qp[ri, ri]) + sum(abs.(Qp[ri, eliminated]) .* abs.(X[:, col])) + sum(abs.(Q[ri, eliminated]) .* abs.(Xp[:, col]))
-    x = zeros(ComplexF64, n); x[ri] = 1.0 + 0.0im; x[eliminated] .= -X[:, col]
-    bound = operator_absolute_bound(compiled, omega; loaded = true) * abs.(x)
-    closure = bound[ri] == 0.0 ? (abs(F[col, col]) == 0.0 ? 0.0 : Inf) : abs(F[col, col]) / bound[ri]
-    return (f = F[col, col], fp = Fp[col, col], scale = scale, closure = closure)
+    return operator_element_state(compiled, omega, coordinates, coordinate_index, coordinate_index)
 end
 
 function retained_diagonal_root(compiled::CompiledPrimitive, coordinates::Vector{String}, index::Int, hint::Float64;
         start::Union{Nothing,ComplexF64} = nothing)::ComplexF64
-    isfinite(hint) && hint > 0.0 || fail("validation", "invalid_diagonal_root_hint", "root_hint", "direct_quantity", "retained diagonal root hint is invalid")
-    omega = start === nothing ? complex(2.0 * pi * hint) : start
-    for _ in 1:32
-        state = retained_diagonal_state(compiled, coordinates, index, omega)
-        value, slope = state.f, state.fp
-        slope != 0.0 || fail("execution", "root_slope_unresolved", "retained_diagonal_newton", "direct_quantity", "retained diagonal slope is zero")
-        candidate = omega - value / slope
-        same = reinterpret(UInt64, real(candidate)) == reinterpret(UInt64, real(omega)) && reinterpret(UInt64, imag(candidate)) == reinterpret(UInt64, imag(omega))
-        omega = candidate; same && break
-    end
-    state = retained_diagonal_state(compiled, coordinates, index, omega)
-    value, slope, scale = state.f, state.fp, state.scale
-    correction = slope == 0.0 ? Inf : abs(value / slope) / abs(omega)
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 && imag(omega) <= 0.0 &&
-        isfinite(scale) && scale > 0.0 && abs(slope) / scale > tau(length(compiled.nodes)) && state.closure <= tau(length(compiled.nodes)) &&
-        isfinite(correction) && correction <= tau(length(compiled.nodes)) ||
-        fail("execution", "numerical_resolution_unresolved", "retained_diagonal_newton", "direct_quantity", "retained diagonal root certificate did not close")
-    return omega
+    coordinate = coordinates[index]
+    return diagonal_root(compiled, coordinates, coordinate, hint; start = start)[1]
 end
 
 function residue_normalized_coupling_value(compiled::CompiledPrimitive, coordinates::Vector{String}, spec;

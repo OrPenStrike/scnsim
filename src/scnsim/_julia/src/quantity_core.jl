@@ -1,78 +1,60 @@
 # Included into the single SCNSimBackend module.
 # Shared Direct quantity kernels and certified root calculations.
 
-function root_certificate(compiled::CompiledPrimitive, omega::ComplexF64, coordinate::String)
-    n = length(compiled.nodes)
-    index = findfirst(==(coordinate), compiled.nodes)
-    index === nothing && fail("validation", "port_realizability", "root", "direct_quantity", "retained coordinate is absent from the compiled basis")
-    r = index::Int
-    Q = operator_at(compiled, omega; loaded = true)
-    loaded_g = complex.(compiled.G) .+ complex.(port_load_admittance(compiled))
-    Qp = operator_derivative_at(compiled, omega; loaded = true)
-    eliminated = [i for i in 1:n if i != r]
-    if isempty(eliminated)
-        X = ComplexF64[]
-        Xp = ComplexF64[]
-        f = Q[r, r]
-        fp = Qp[r, r]
-        eta_e = 0.0
-    else
-        Qee = Q[eliminated, eliminated]
-        Qer = Q[eliminated, r]
-        X = try
-            Qee \ Qer
-        catch
-            fail("execution", "eliminated_block_solve_failure", "eliminated_block", "direct_quantity", "DiagonalRoot eliminated block is singular")
-        end
-        eta_e = backward_residual(Qee, X, Qer)
-        isfinite(eta_e) && eta_e <= tau(n) || fail("execution", "eliminated_block_solve_failure", "eliminated_block", "direct_quantity", "DiagonalRoot eliminated block lacks residual evidence")
-        Qpeer = Qp[eliminated, r]
-        Qpee = Qp[eliminated, eliminated]
-        derivative_rhs = Qpeer - Qpee * X
-        Xp = try
-            Qee \ derivative_rhs
-        catch
-            fail("execution", "eliminated_block_solve_failure", "derivative_eliminated_block", "direct_quantity", "DiagonalRoot derivative eliminated solve is singular")
-        end
-        derivative_residual = backward_residual(Qee, Xp, derivative_rhs)
-        isfinite(derivative_residual) && derivative_residual <= tau(n) ||
-            fail("execution", "eliminated_block_solve_failure", "derivative_eliminated_block", "direct_quantity", "DiagonalRoot derivative eliminated solve exceeded its normalized backward-residual Gate")
-        f = Q[r, r] - sum(Q[r, eliminated] .* X)
-        fp = Qp[r, r] - sum(Qp[r, eliminated] .* X) - sum(Q[r, eliminated] .* Xp)
-    end
-    x = zeros(ComplexF64, n)
-    x[r] = 1.0 + 0.0im
-    !isempty(eliminated) && (x[eliminated] .= -X)
-    abs_operator = operator_absolute_bound(compiled, omega; loaded = true)
-    q_residual = norm(Q * x, Inf)
-    q_denominator = norm(abs_operator * abs.(x), Inf)
-    eta_q = q_denominator == 0.0 ? (q_residual == 0.0 ? 0.0 : Inf) : q_residual / q_denominator
-    f_denominator = (abs_operator * abs.(x))[r]
-    eta_f = f_denominator == 0.0 ? (abs(f) == 0.0 ? 0.0 : Inf) : abs(f) / f_denominator
-    correction = fp == 0.0 ? Inf : abs(f / fp) / abs(omega)
-    slope_scale = abs(Qp[r, r])
-    if !isempty(eliminated)
-        slope_scale += sum(abs.(Qp[r, eliminated]) .* abs.(X)) + sum(abs.(Q[r, eliminated]) .* abs.(Xp))
-    end
-    normalized_slope = slope_scale == 0.0 ? Inf : abs(fp) / slope_scale
-    return (f = f, fp = fp, eta_e = eta_e, eta_q = eta_q, eta_f = eta_f,
-        correction = correction, normalized_slope = normalized_slope)
-end
-
-"""Exact loaded operator and derivative on an ordered retained coordinate set."""
-function selected_operator(compiled::CompiledPrimitive, omega::ComplexF64, coordinates::Vector{String})
+"""One authority for the complete selected View operator and derivative."""
+function selected_operator_state(compiled::CompiledPrimitive, omega::ComplexF64, coordinates::Vector{String})
     indices = selected_coordinate_indices(compiled, coordinates)
     Q = operator_at(compiled, omega; loaded = true)
     Qp = operator_derivative_at(compiled, omega; loaded = true)
     eliminated = [index for index in eachindex(compiled.nodes) if index ∉ indices]
-    isempty(eliminated) && return Q[indices, indices], Qp[indices, indices]
+    if isempty(eliminated)
+        X = zeros(ComplexF64, 0, length(indices)); Xp = similar(X)
+        return (F = Q[indices, indices], Fp = Qp[indices, indices], Q = Q, Qp = Qp,
+            X = X, Xp = Xp, indices = indices, eliminated = eliminated, eta_e = 0.0)
+    end
     Qee, Qer = Q[eliminated, eliminated], Q[eliminated, indices]
     X = checked_solve(Qee, Qer, "eliminated_block_solve_failure", "eliminated_block", length(eliminated))
     Qpeer, Qpee = Qp[eliminated, indices], Qp[eliminated, eliminated]
-    Xp = checked_solve(Qee, Qpeer - Qpee * X, "eliminated_block_solve_failure", "derivative_eliminated_block", length(eliminated))
+    derivative_rhs = Qpeer - Qpee * X
+    Xp = checked_solve(Qee, derivative_rhs, "eliminated_block_solve_failure", "derivative_eliminated_block", length(eliminated))
     F = Q[indices, indices] - Q[indices, eliminated] * X
     Fp = Qp[indices, indices] - Qp[indices, eliminated] * X - Q[indices, eliminated] * Xp
-    return F, Fp
+    return (F = F, Fp = Fp, Q = Q, Qp = Qp, X = X, Xp = Xp,
+        indices = indices, eliminated = eliminated,
+        eta_e = max(backward_residual(Qee, X, Qer), backward_residual(Qee, Xp, derivative_rhs)))
+end
+
+"""Exact loaded operator and derivative on an ordered retained coordinate set."""
+function selected_operator(compiled::CompiledPrimitive, omega::ComplexF64, coordinates::Vector{String})
+    state = selected_operator_state(compiled, omega, coordinates)
+    return state.F, state.Fp
+end
+
+"""One ordered scalar projection of the already selected View; never a second reduction."""
+function operator_element_state(compiled::CompiledPrimitive, omega::ComplexF64,
+        coordinates::Vector{String}, row::Int, column::Int)
+    state = selected_operator_state(compiled, omega, coordinates)
+    1 <= row <= length(coordinates) && 1 <= column <= length(coordinates) ||
+        fail("validation", "port_realizability", "root", "direct_quantity", "element coordinate is absent from the final View")
+    i, j = state.indices[row], state.indices[column]
+    f, fp = state.F[row, column], state.Fp[row, column]
+    x = zeros(ComplexF64, length(compiled.nodes)); x[j] = 1.0 + 0.0im
+    !isempty(state.eliminated) && (x[state.eliminated] .= -state.X[:, column])
+    bound = operator_absolute_bound(compiled, omega; loaded = true) * abs.(x)
+    checked_rows = vcat([i], state.eliminated)
+    residual = norm((state.Q * x)[checked_rows], Inf)
+    denominator = norm(bound[checked_rows], Inf)
+    eta_q = denominator == 0.0 ? (residual == 0.0 ? 0.0 : Inf) : residual / denominator
+    eta_f = bound[i] == 0.0 ? (abs(f) == 0.0 ? 0.0 : Inf) : abs(f) / bound[i]
+    slope_scale = abs(state.Qp[i, j])
+    if !isempty(state.eliminated)
+        slope_scale += sum(abs.(state.Qp[i, state.eliminated]) .* abs.(state.X[:, column])) +
+            sum(abs.(state.Q[i, state.eliminated]) .* abs.(state.Xp[:, column]))
+    end
+    return (f = f, fp = fp, eta_e = state.eta_e, eta_q = eta_q, eta_f = eta_f,
+        correction = fp == 0.0 ? Inf : abs(f / fp) / abs(omega),
+        normalized_slope = slope_scale == 0.0 ? Inf : abs(fp) / slope_scale,
+        scale = slope_scale, closure = eta_f)
 end
 
 function complex_frequency_value(value)::ComplexF64
@@ -247,20 +229,16 @@ function hybridized_pole(compiled::CompiledPrimitive, coordinates::Vector{String
     return omega, slope, v
 end
 
-function diagonal_root(compiled::CompiledPrimitive, coordinate::String, hint::Float64; start::Union{Nothing,ComplexF64} = nothing)
+function operator_element_root(compiled::CompiledPrimitive, coordinates::Vector{String},
+        row::String, column::String, hint::Float64; start::Union{Nothing,ComplexF64} = nothing)
     isfinite(hint) && hint > 0.0 || fail("validation", "invalid_diagonal_root_hint", "root_hint", "direct_quantity", "root_hint must be finite and strictly positive")
-    try
-        cholesky(Symmetric(compiled.C); check = true)
-    catch
-        fail("capability", "unsupported_singular_capacitance_for_diagonal_root_v1", "capacitance_positive_definiteness", "direct_quantity", "DiagonalRootSpec requires positive-definite full capacitance")
-    end
+    ri = findfirst(==(row), coordinates); cj = findfirst(==(column), coordinates)
+    (ri === nothing || cj === nothing) && fail("validation", "port_realizability", "root", "direct_quantity", "root element is absent from the final View")
     omega = isnothing(start) ? complex(2.0 * pi * hint) : start
     isfinite(real(omega)) && isfinite(imag(omega)) || fail("execution", "numerical_resolution_unresolved", "newton", "direct_quantity", "root initialization is non-finite")
-    last = nothing
     for _ in 1:32
-        state = root_certificate(compiled, omega, coordinate)
-        last = state
-        state.fp == 0.0 && fail("execution", "root_slope_unresolved", "newton", "direct_quantity", "DiagonalRoot derivative is zero")
+        state = operator_element_state(compiled, omega, coordinates, ri::Int, cj::Int)
+        state.fp == 0.0 && fail("execution", "root_slope_unresolved", "newton", "direct_quantity", "selected element derivative is zero")
         candidate = omega - state.f / state.fp
         same_bits = reinterpret(UInt64, real(candidate)) == reinterpret(UInt64, real(omega)) &&
             reinterpret(UInt64, imag(candidate)) == reinterpret(UInt64, imag(omega))
@@ -269,12 +247,19 @@ function diagonal_root(compiled::CompiledPrimitive, coordinate::String, hint::Fl
             break
         end
     end
-    state = root_certificate(compiled, omega, coordinate)
-    conditions = isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 && imag(omega) <= 0.0 &&
+    state = operator_element_state(compiled, omega, coordinates, ri::Int, cj::Int)
+    conditions = isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 &&
         state.eta_e <= tau(length(compiled.nodes)) && state.eta_q <= tau(length(compiled.nodes)) &&
         state.eta_f <= tau(length(compiled.nodes)) && state.correction <= tau(length(compiled.nodes))
-    conditions || fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "DiagonalRoot Newton procedure did not reach its machine-resolution certificate")
+    conditions || fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "selected element Newton procedure did not reach its machine-resolution certificate")
     state.normalized_slope > tau(length(compiled.nodes)) ||
-        fail("execution", "root_slope_unresolved", "slope_certificate", "direct_quantity", "DiagonalRoot local slope is unresolved")
+        fail("execution", "root_slope_unresolved", "slope_certificate", "direct_quantity", "selected element local slope is unresolved")
     return omega, state.fp
+end
+
+function diagonal_root(compiled::CompiledPrimitive, coordinates::Vector{String}, coordinate::String,
+        hint::Float64; start::Union{Nothing,ComplexF64} = nothing)
+    omega, slope = operator_element_root(compiled, coordinates, coordinate, coordinate, hint; start = start)
+    imag(omega) <= 0.0 || fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "diagonal root violates the passive imaginary-root policy")
+    return omega, slope
 end
