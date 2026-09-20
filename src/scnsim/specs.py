@@ -378,7 +378,7 @@ class DiagonalRootSpec:
     """
 
     coordinate: Coordinate
-    root_hint: Quantity
+    _root_hint: Quantity
 
     def __init__(self, *, coordinate: Coordinate, root_hint: Quantity) -> None:
         _coordinate_id(coordinate)
@@ -390,7 +390,11 @@ class DiagonalRootSpec:
                 stage="spec_validation",
             ) from exc
         object.__setattr__(self, "coordinate", coordinate)
-        object.__setattr__(self, "root_hint", _detached_quantity(root_hint))
+        object.__setattr__(self, "_root_hint", _detached_quantity(root_hint))
+
+    @property
+    def root_hint(self) -> Quantity:
+        return quantity_view(self._root_hint)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -410,7 +414,7 @@ class OperatorElementRootSpec:
 
     row: Coordinate
     column: Coordinate
-    root_hint: Quantity
+    _root_hint: Quantity
 
     def __init__(self, *, row: Coordinate, column: Coordinate, root_hint: Quantity) -> None:
         _coordinate_id(row)
@@ -424,7 +428,11 @@ class OperatorElementRootSpec:
             ) from exc
         object.__setattr__(self, "row", row)
         object.__setattr__(self, "column", column)
-        object.__setattr__(self, "root_hint", _detached_quantity(root_hint))
+        object.__setattr__(self, "_root_hint", _detached_quantity(root_hint))
+
+    @property
+    def root_hint(self) -> Quantity:
+        return quantity_view(self._root_hint)
 
     @property
     def frequency(self) -> QuantitySelector:

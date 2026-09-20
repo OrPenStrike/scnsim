@@ -1,5 +1,47 @@
 ## Lesson 5 — Optional: evaluate one Direct response scalar {#lesson-ch4-quantity}
 
+### Choose the equation after choosing the View
+
+The preceding optional `transformed_view` retains `feedline_in`,
+`feedline_out`, and `floating.differential`, in that order. These are the
+final-basis coordinates for the following distinct questions; the original
+floating plus/minus pair is no longer the selected basis.
+
+| Question | Declaration | Interpretation |
+|---|---|---|
+| Loaded diagonal root | `DiagonalRootSpec(coordinate="floating.differential", ...)` | A complex root of that final-View diagonal, with real-part frequency and diagonal linewidth. |
+| Ordered element root | `OperatorElementRootSpec(row="feedline_in", column="feedline_out", ...)` | A complex root of that selected operator element, with real-part frequency and local slope; no generic linewidth. |
+| Response at one frequency | `ResponseElementSpec(family="S", input_coordinate="feedline_in", output_coordinate="feedline_out", ...)` | A complex S value at the declared frequency, not a root. |
+
+The next plain Python example **only declares** optional root Specs; it is not
+an executable Chapter cell and does not claim either root exists:
+
+```python
+from scnsim import DiagonalRootSpec, OperatorElementRootSpec
+
+diagonal_spec = DiagonalRootSpec(
+    coordinate="floating.differential", root_hint=6.0 * u.GHz,
+)
+element_spec = OperatorElementRootSpec(
+    row="feedline_in", column="feedline_out", root_hint=6.0 * u.GHz,
+)
+```
+
+If requested separately, these are the call shapes, not results from this
+lesson. `explain` compiles and preflights through Julia without creating an
+attempt; `evaluate` performs the calculation and may fail if the selected root
+cannot be certified. Binding `.frequency.on(transformed_view)` declares an
+Optimization selector, whereas `diagonal_result.frequency` is a computed
+Result quantity. Neither real-part root frequency is a real-axis zero, an S21
+notch, or a mode label.
+
+```python
+run.explain(transformed_view, diagonal_spec).show()
+diagonal_result = run.evaluate(transformed_view, diagonal_spec)
+frequency_selector = element_spec.frequency.on(transformed_view)
+display(diagonal_result.frequency)
+```
+
 ### Read S21 at one explicitly declared frequency
 
 `ResponseElementSpec` asks for one complex S element on the transformed

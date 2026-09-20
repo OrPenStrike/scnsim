@@ -3,7 +3,11 @@
 **Prerequisite:** run Lessons 1–3 in the aggregate Chapter Notebook.
 
 The exposed child Coordinate selects the same authored resonator signal bus for
-analysis. Retaining it derives a View; it does not alter the Plan or diagram.
+analysis. Retaining it derives the one-coordinate boundary for this question;
+it does not alter the Plan or diagram. The Spec then selects a diagonal element
+*within that View*. A single coordinate is this lesson's choice, not an API
+limit: a different retained boundary changes the operator equation and may
+select a different root even with the same coordinate and hint.
 
 ```{python}
 #| id: ch1-prepare-loaded-root-request

@@ -24,6 +24,13 @@ coordinate.
 Those are different questions about one Plan. They are not three rewired
 circuits.
 
+Author the physical circuit once as a `CircuitPlan`, then select an ordered
+`NetworkViewRef` for the calculation. A root Spec names a coordinate or
+ordered operator element **in that final View**; it does not itself retain a
+boundary. `run.evaluate(view, spec)` can then return a Result whose frequency
+and slope belong to that selected equation. Changing `retain()` changes the
+equation, even when the Spec uses the same coordinate name and root hint.
+
 ## Do not collapse three kinds of identity
 
 | Kind | What it means | What it does not mean |

@@ -768,7 +768,7 @@ def scalar_plot(result: Any, *, theme: Theme = Theme.AUTO) -> Any:
             values.append(escape(spec["type"]))
             if spec["type"] in {"diagonal_root", "operator_element_root"}:
                 basis = lineage.get("terminal_coordinates") if isinstance(lineage, Mapping) else None
-                if isinstance(basis, list):
+                if isinstance(basis, (list, tuple)):
                     names.append("final_view_basis")
                     values.append(escape(", ".join(str(item) for item in basis)))
                 row = spec.get("coordinate") if spec["type"] == "diagonal_root" else spec.get("row")
