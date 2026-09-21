@@ -525,7 +525,7 @@ function selector_value_in_unit(value::Float64, source::String, target::String):
     fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum terms do not share a convertible public unit convention")
 end
 
-function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator)::Float64
+function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator)
     selector_type = get(selector, "type", nothing)
     projection = selector["projection"]
     if selector_type in ("diagonal_root_projection", "operator_element_root_projection")
@@ -536,16 +536,16 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
         end
         selector_type == "diagonal_root_projection" && imag(root) > 0.0 &&
             fail("execution", "numerical_resolution_unresolved", "newton_certificate", "optimization_candidate", "diagonal root violates the passive imaginary-root policy")
-        projection == "frequency" && return real(root) / (2.0 * pi)
-        selector_type == "diagonal_root_projection" && projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
+        projection == "frequency" && return (real(root) / (2.0 * pi), nothing)
+        selector_type == "diagonal_root_projection" && projection == "linewidth" && return (-2.0 * imag(root) / (2.0 * pi), nothing)
     elseif selector_type == "hybridized_pole_projection"
         key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
                 selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
-        projection == "frequency" && return real(root) / (2.0 * pi)
-        projection == "linewidth" && return -2.0 * imag(root) / (2.0 * pi)
+        projection == "frequency" && return (real(root) / (2.0 * pi), nothing)
+        projection == "linewidth" && return (-2.0 * imag(root) / (2.0 * pi), nothing)
     elseif selector_type == "transfer_zero_projection"
         spec = selector["spec"]; input = findfirst(==(String(spec["input_coordinate"])), view.terminal); output = findfirst(==(String(spec["output_coordinate"])), view.terminal)
         (input === nothing || output === nothing) && fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "transfer-zero selector coordinate is absent")
@@ -554,7 +554,7 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
                 selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
         end
-        projection == "frequency" && return real(zero) / (2.0 * pi)
+        projection == "frequency" && return (real(zero) / (2.0 * pi), nothing)
     elseif selector_type == "response_element_projection"
         spec = selector["spec"]; input = findfirst(==(String(spec["input_coordinate"])), view.terminal); output = findfirst(==(String(spec["output_coordinate"])), view.terminal)
         (input === nothing || output === nothing) && fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "response selector coordinate is absent")
@@ -570,9 +570,9 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
                 rethrow()
             end
         end
-        projection == "magnitude" && return abs(value)
-        projection == "real" && return real(value)
-        projection == "imag" && return imag(value)
+        projection == "magnitude" && return (abs(value), nothing)
+        projection == "real" && return (real(value), nothing)
+        projection == "imag" && return (imag(value), nothing)
     elseif selector_type == "residue_coupling_projection"
         branch_a_selector = residue_branch_selector(selector["spec"]["branch_a"], selector["view"])
         branch_b_selector = residue_branch_selector(selector["spec"]["branch_b"], selector["view"])
@@ -596,9 +596,27 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
         end
         root_a = branch_root(branch_a_selector, key_a)
         root_b = branch_root(branch_b_selector, key_b)
-        value = residue_normalized_coupling_value(compiled, view.terminal, selector["spec"];
-            branch_a_root = root_a, branch_b_root = root_b)[1]
-        projection == "magnitude" && return abs(value)
+        key = selector_dependency_key(selector)
+        cached = get!(roots, key) do
+            value, _, _, omega_a, omega_b, omega_eval = residue_normalized_coupling_value(
+                compiled, view.terminal, selector["spec"];
+                branch_a_root = root_a, branch_b_root = root_b,
+            )
+            Dict{String,Any}(
+                "value" => value,
+                "evidence" => Dict{String,Any}(
+                    "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"),
+                    "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"),
+                    "evaluation_omega" => complex_quantity(omega_eval, "radian / second", "inverse_time"),
+                    "coupling" => complex_quantity(value, "radian / second", "inverse_time"),
+                ),
+            )
+        end
+        value = cached["value"]::ComplexF64
+        evidence = cached["evidence"]
+        projection == "magnitude" && return (abs(value), evidence)
+        projection == "real" && return (real(value), evidence)
+        projection == "imag" && return (imag(value), evidence)
     end
     fail("validation", "invalid_optimization_spec", "selector", "optimization_candidate", "optimization selector projection is invalid")
 end
@@ -707,7 +725,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
     views = prepared_views === nothing ? candidate_view_cache(plan, request, raw_compiled, candidate) : prepared_views
     components = Any[]
     total = 0.0
-    roots = Dict{String,ComplexF64}()
+    roots = Dict{String,Any}()
     for (objective_index, objective) in enumerate(request["spec"]["objectives"])
         selector = objective["quantity"]
         selector isa AbstractDict || fail("capability", "scaffold_unavailable", "optimization", "optimization_candidate", "optimization quantity must be a selector record")
@@ -724,7 +742,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
                     fail("execution", "compiler_invariant", "optimization", "optimization_candidate", "candidate View cache is incomplete")
                 selected = views[view_key]
                 view = selected["view"]::RealizedView
-                term_value = root_selector_value(
+                term_value, term_evidence = root_selector_value(
                     term, plan, request, baseline_values, values, baseline_roots,
                     roots, view.compiled, view, candidate, locator,
                 )
@@ -733,13 +751,15 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
                     "optimization_candidate", "candidate selector value is non-finite",
                 )
                 push!(leaf_values, term_value)
-                push!(term_records, Dict{String,Any}(
+                record = Dict{String,Any}(
                     "term_ordinal" => term_index,
                     "selector" => term,
                     "status" => "success",
                     "ref_lineage" => selected["lineage"],
                     "value" => quantity(term_value, selector_public_unit(term), objective["target"]["dimensionality"]),
-                ))
+                )
+                term_evidence === nothing || (record["residue_coupling_evidence"] = term_evidence)
+                push!(term_records, record)
             catch error
                 failure = optimization_backend_failure(error, "quantity_evaluation")
                 projection_only = is_projection_only_optimization_failure(failure)
@@ -901,7 +921,7 @@ function write_generation_ledger(staging, request, request_sha, attempt_sha,
         "schema_version" => 4,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9",
         "baseline_checkpoint_sha256" => checkpoint_sha,
         "baseline_checkpoint_seal_sha256" => checkpoint_seal_sha,
         "generation" => generation,
@@ -1028,7 +1048,7 @@ function sibling_ledgers(staging::String, request_sha::String, attempt_sha::Stri
         occursin(r"^(?!000000$)(?:[0-9]{6}|[1-9][0-9]{6,})$", name) || continue
         isdir(entry) || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "final attempt is not a directory")
         for (digest, ledger) in finalized_attempt_ledgers(entry, request_sha, attempt_sha)
-            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" &&
+            get(ledger, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9" &&
                 get(ledger, "baseline_checkpoint_sha256", nothing) == checkpoint_sha &&
                 get(ledger, "baseline_checkpoint_seal_sha256", nothing) == checkpoint_seal_sha ||
                 fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "prior generation ledger has incompatible algorithm identity")
@@ -1362,7 +1382,7 @@ function optimization_checkpoint_document(request, request_sha::String, baseline
         "schema" => "scnsim.optimization_baseline_checkpoint",
         "schema_version" => 1,
         "request_sha256" => request_sha,
-        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
+        "algorithm_id" => "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9",
         "baseline" => baseline,
         "baseline_roots" => root_rows,
     )
@@ -1373,7 +1393,7 @@ function roots_from_checkpoint(request, checkpoint)
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint fields are invalid")
     get(checkpoint, "schema", nothing) == "scnsim.optimization_baseline_checkpoint" &&
         get(checkpoint, "schema_version", nothing) == 1 &&
-        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" ||
+        get(checkpoint, "algorithm_id", nothing) == "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9" ||
         fail("evidence", "evidence_integrity", "optimization_checkpoint", "artifact", "baseline checkpoint version is unsupported")
     declared = checkpoint["baseline_roots"]
     specs = optimization_root_specs_ordered(request)

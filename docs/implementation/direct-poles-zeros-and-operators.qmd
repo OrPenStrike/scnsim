@@ -431,6 +431,30 @@ its positive-oriented coordinate vector. A hybridized branch contributes its
 phase-canonical right null vector. Mismatched reductions are not silently
 embedded or frequency-sorted.
 
+Its required `frequency` declaration is either a positive real frequency
+Quantity or the exact literal `"complex_root_midpoint"`. In fixed mode,
+`omega_eval = 2*pi*frequency`. In midpoint mode, each candidate owns
+
+$$
+\omega_{\mathrm{eval}}=\frac{\omega_a+\omega_b}{2},
+$$
+
+using the complete complex roots of that candidate and selected View. This
+does not freeze the baseline midpoint or move either branch slope away from its
+own root. The coupling is always formed from the complete complex operator,
+
+$$
+J=\frac{v_a^T F_V(\omega_{\mathrm{eval}})v_b}{\sqrt{s_a s_b}},
+\qquad
+s_i=-v_i^T F'_V(\omega_i)v_i,
+$$
+
+with transpose rather than conjugate transpose and the existing principal
+square-root, reciprocity, orientation, and finite-value rules. The full complex
+`J`, both complex roots, and `omega_eval` are evidence before any `.real`,
+`.imag`, or `.magnitude` projection. A non-finite hidden component therefore
+cannot pass through a finite-looking scalar projection.
+
 For this full-V1 coupling operation, a `DiagonalRootSpec` branch names one
 diagonal of the common multi-coordinate $Q_R^{E\downarrow}$; the other retained
 coordinates remain in $R$. It carries its scalar diagonal residual and local
@@ -574,7 +598,7 @@ vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 The closed algorithm IDs are
 `scnsim.hybridized_pole.newton32.v1`,
 `scnsim.transfer_zero.newton32.v1`,
-`scnsim.residue_normalized_coupling.v1`,
+`scnsim.residue_normalized_coupling.v2`,
 `scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
 formula, derivative, normalization, iteration/subdivision rule, artifact
 layout, or branch policy requires a new runtime algorithm identity.

@@ -114,11 +114,11 @@ Runtime algorithms are likewise closed for full V1:
 | diagonal root | `scnsim.diagonal_root.newton32.v1` |
 | hybridized pole | `scnsim.hybridized_pole.newton32.v1` |
 | transfer zero | `scnsim.transfer_zero.newton32.v1` |
-| residue-normalized coupling | `scnsim.residue_normalized_coupling.v1` |
+| residue-normalized coupling | `scnsim.residue_normalized_coupling.v2` |
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or

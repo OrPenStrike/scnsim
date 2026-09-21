@@ -649,11 +649,11 @@
             "scnsim.operator_element_root.newton32.v1",
             "scnsim.hybridized_pole.newton32.v1",
             "scnsim.transfer_zero.newton32.v1",
-            "scnsim.residue_normalized_coupling.v1",
+            "scnsim.residue_normalized_coupling.v2",
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
             "scnsim.hb_response.josephsoncircuits.v1",
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
+            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
           ]
         },
         "python_source_sha256": { "$ref": "#/$defs/sha256" },
@@ -1199,7 +1199,12 @@
         "type": { "const": "residue_normalized_coupling" },
         "branch_a": { "$ref": "#/$defs/rootBranchSpec" },
         "branch_b": { "$ref": "#/$defs/rootBranchSpec" },
-        "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
+        "frequency": {
+          "oneOf": [
+            { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
+            { "const": "complex_root_midpoint" }
+          ]
+        }
       }
     },
     "responseElementSpec": {
@@ -1428,7 +1433,7 @@
           "properties": {
             "type": { "const": "residue_coupling_projection" },
             "spec": { "$ref": "#/$defs/residueNormalizedCouplingSpec" },
-            "projection": { "const": "magnitude" },
+            "projection": { "enum": ["real", "imag", "magnitude"] },
             "view": { "$ref": "#/$defs/networkViewDeclaration" }
           }
         },
@@ -1694,7 +1699,7 @@
         "schema": { "const": "scnsim.optimization_baseline_checkpoint" },
         "schema_version": { "const": 1 },
         "request_sha256": { "$ref": "#/$defs/sha256" },
-        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8" },
+        "algorithm_id": { "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9" },
         "baseline": { "$ref": "identity-v2.schema.json#/$defs/optimizationBaseline" },
         "baseline_roots": {
           "type": "array",
@@ -2565,6 +2570,16 @@
         "optimization_context": { "$ref": "#/$defs/optimizationFailureContext" }
       }
     },
+    "residueCouplingTermEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["branch_a_root", "branch_b_root", "evaluation_omega", "coupling"],
+      "properties": {
+        "branch_a_root": { "$ref": "#/$defs/complexQuantity" },
+        "branch_b_root": { "$ref": "#/$defs/complexQuantity" },
+        "evaluation_omega": { "$ref": "#/$defs/complexQuantity" },
+        "coupling": { "$ref": "#/$defs/complexQuantity" }
+      }
+    },
     "optimizationTermEvidence": {
       "oneOf": [
         {
@@ -2575,8 +2590,16 @@
             "selector": { "$ref": "#/$defs/quantitySelector" },
             "status": { "const": "success" },
             "ref_lineage": { "$ref": "#/$defs/refLineage" },
-            "value": { "$ref": "#/$defs/quantity" }
-          }
+            "value": { "$ref": "#/$defs/quantity" },
+            "residue_coupling_evidence": { "$ref": "#/$defs/residueCouplingTermEvidence" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "selector": { "properties": { "type": { "const": "residue_coupling_projection" } }, "required": ["type"] } }, "required": ["selector"] },
+              "then": { "required": ["residue_coupling_evidence"] },
+              "else": { "not": { "required": ["residue_coupling_evidence"] } }
+            }
+          ]
         },
         {
           "type": "object", "additionalProperties": false,

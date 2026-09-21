@@ -1830,11 +1830,11 @@ def _verify_request_document(
             "operator_element_root": "scnsim.operator_element_root.newton32.v1",
             "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
             "transfer_zero": "scnsim.transfer_zero.newton32.v1",
-            "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
+            "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v2",
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"},
+        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -1861,6 +1861,7 @@ def _verify_request_document(
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v5",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v6",
         "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7",
+        "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8",
     }
     if operation == "optimize_direct" and algorithm_id in historical_optimization_algorithms:
         raise UnsupportedEvidenceVersionError(
@@ -2428,7 +2429,13 @@ def _verify_v1_evaluation_spec(
             raise _integrity("Residue-normalized coupling Spec is malformed.")
         _verify_v1_evaluation_spec(branches[0], terminal, port_realizable, residue_branch=True)
         _verify_v1_evaluation_spec(branches[1], terminal, port_realizable, residue_branch=True)
-        _verify_quantity_role(spec.get("frequency"), complex_value=False, unit="hertz", dimensionality="inverse_time")
+        frequency = spec.get("frequency")
+        if frequency == "complex_root_midpoint":
+            pass
+        else:
+            _verify_quantity_role(frequency, complex_value=False, unit="hertz", dimensionality="inverse_time")
+            if _f64_value(frequency["si_value_f64"]) <= 0.0:
+                raise _integrity("Residue coupling frequency must be positive.")
     elif kind == "response_element":
         if set(spec) != {"type", "family", "input_coordinate", "output_coordinate", "frequency"} or spec.get("family") not in {"S", "Y", "Z"} or spec.get("input_coordinate") not in terminal or spec.get("output_coordinate") not in terminal:
             raise _integrity("Response-element Spec is malformed.")
@@ -2590,7 +2597,7 @@ def _verify_selector(value: object, plan: Mapping[str, object]) -> tuple[str, st
         "operator_element_root_projection": ("operator_element_root", {"frequency"}, ("hertz", "inverse_time")),
         "hybridized_pole_projection": ("hybridized_pole", {"frequency", "linewidth"}, ("hertz", "inverse_time")),
         "transfer_zero_projection": ("transfer_zero", {"frequency"}, ("hertz", "inverse_time")),
-        "residue_coupling_projection": ("residue_normalized_coupling", {"magnitude"}, ("radian / second", "inverse_time")),
+        "residue_coupling_projection": ("residue_normalized_coupling", {"real", "imag", "magnitude"}, ("radian / second", "inverse_time")),
         "response_element_projection": ("response_element", {"magnitude", "real", "imag"}, None),
     }.get(kind)
     if set(value) != fields or expected is None or value.get("projection") not in expected[1] or not isinstance(value.get("spec"), dict) or value["spec"].get("type") != expected[0]:
@@ -3129,13 +3136,34 @@ def _verify_single_result_document(
         if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
             raise _integrity("Residue coupling Result envelope is malformed.")
         scalars = result.get("scalar_catalog")
-        if not isinstance(scalars, dict) or set(scalars) != {"coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"}:
+        expected_scalars = {
+            "coupling", "magnitude", "branch_a_residue", "branch_b_residue",
+            "branch_a_root", "branch_b_root", "evaluation_omega", "evidence_sha256",
+        }
+        if not isinstance(scalars, dict) or set(scalars) != expected_scalars:
             raise _integrity("Residue coupling scalar catalog is incomplete.")
-        _verify_quantity_role(scalars["coupling"], complex_value=True, unit="radian / second", dimensionality="inverse_time")
-        _verify_quantity_role(scalars["magnitude"], complex_value=False, unit="radian / second", dimensionality="inverse_time")
+        coupling_evidence = {
+            name: scalars[name]
+            for name in ("branch_a_root", "branch_b_root", "evaluation_omega", "coupling")
+        }
+        request_spec = request.get("spec")
+        if not isinstance(request_spec, Mapping):
+            raise _integrity("Residue coupling request Spec is malformed.")
+        _verify_residue_coupling_evidence(
+            coupling_evidence,
+            request_spec,
+            expected_projection="magnitude",
+            projected_value=scalars["magnitude"],
+        )
         for field in ("branch_a_residue", "branch_b_residue"):
             _verify_quantity_role(scalars[field], complex_value=True, unit="ohm", dimensionality="resistance")
-        _valid_sha(scalars["evidence_sha256"])
+        expected_evidence = {
+            "schema": "scnsim.residue_normalized_coupling_evidence",
+            "schema_version": 2,
+            **coupling_evidence,
+        }
+        if scalars.get("evidence_sha256") != _sha256(_canonical_bytes(expected_evidence)):
+            raise _integrity("Residue coupling evidence digest disagrees with its scalar catalog.")
     elif kind == "response_element":
         if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("array_catalog") != {}:
             raise _integrity("Response-element Result envelope is malformed.")
@@ -4126,6 +4154,67 @@ def _verify_quantity_role(value: object, *, complex_value: bool, unit: str, dime
         raise _integrity("Typed quantity Result field has the wrong physical role.")
 
 
+def _complex_quantity_value(value: object, *, unit: str, dimensionality: str) -> complex:
+    _verify_quantity_role(
+        value, complex_value=True, unit=unit, dimensionality=dimensionality
+    )
+    assert isinstance(value, Mapping)
+    return complex(
+        _f64_value(value["real_si_f64"]),
+        _f64_value(value["imag_si_f64"]),
+    )
+
+
+def _verify_residue_coupling_evidence(
+    evidence: object,
+    spec: Mapping[str, object],
+    *,
+    expected_projection: str | None = None,
+    projected_value: object = None,
+) -> None:
+    fields = {"branch_a_root", "branch_b_root", "evaluation_omega", "coupling"}
+    if not isinstance(evidence, Mapping) or set(evidence) != fields:
+        raise _integrity("Residue coupling evidence is open or malformed.")
+    values = {
+        name: _complex_quantity_value(
+            evidence[name], unit="radian / second", dimensionality="inverse_time"
+        )
+        for name in fields
+    }
+    frequency = spec.get("frequency")
+    if frequency == "complex_root_midpoint":
+        expected_omega = (values["branch_a_root"] + values["branch_b_root"]) / 2.0
+    else:
+        _verify_quantity_role(
+            frequency, complex_value=False, unit="hertz", dimensionality="inverse_time"
+        )
+        assert isinstance(frequency, Mapping)
+        expected_omega = complex(2.0 * math.pi * _f64_value(frequency["si_value_f64"]))
+    actual_omega = values["evaluation_omega"]
+    if (
+        struct.pack(">d", actual_omega.real) != struct.pack(">d", expected_omega.real)
+        or struct.pack(">d", actual_omega.imag) != struct.pack(">d", expected_omega.imag)
+    ):
+        raise _integrity("Residue coupling evaluation location disagrees with its request and roots.")
+    if expected_projection is not None:
+        projected = {
+            "real": values["coupling"].real,
+            "imag": values["coupling"].imag,
+            "magnitude": abs(values["coupling"]),
+        }.get(expected_projection)
+        if projected is None:
+            raise _integrity("Residue coupling projection is invalid.")
+        _verify_quantity_role(
+            projected_value,
+            complex_value=False,
+            unit="radian / second",
+            dimensionality="inverse_time",
+        )
+        assert isinstance(projected_value, Mapping)
+        if struct.pack(">d", projected) != bytes.fromhex(str(projected_value["si_value_f64"])):
+            raise _integrity("Residue coupling projection disagrees with its full complex evidence.")
+
+
 def _verify_quantity_any(value: object) -> None:
     if not isinstance(value, dict) or value.get("type") != "quantity_f64":
         raise _integrity("Typed quantity is malformed.")
@@ -5112,7 +5201,7 @@ def _verify_generation_ledger(
     if (
         set(ledger) != expected
         or ledger.get("schema_version") != 4
-        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
+        or ledger.get("algorithm_id") != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_sha256", ""))) is None
         or _SHA256.fullmatch(str(ledger.get("baseline_checkpoint_seal_sha256", ""))) is None
         or not isinstance(population_size, int)
@@ -5476,7 +5565,7 @@ def _verify_baseline_checkpoint_document(
         or checkpoint.get("schema_version") != 1
         or checkpoint.get("request_sha256") != request_sha256
         or checkpoint.get("algorithm_id")
-        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
+        != "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
     ):
         raise _integrity("Optimization baseline checkpoint envelope is open or inconsistent.")
     variables = spec.get("variables")
@@ -5990,11 +6079,24 @@ def _verify_objective_component(
         status = term.get("status")
         term_statuses.append(str(status))
         if status == "success":
-            if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "value"}:
+            successful_fields = {"term_ordinal", "selector", "status", "ref_lineage", "value"}
+            if selector.get("type") == "residue_coupling_projection":
+                successful_fields.add("residue_coupling_evidence")
+            if set(term) != successful_fields:
                 raise _integrity("Successful optimization term is open or malformed.")
             _verify_selector_lineage(selector, term.get("ref_lineage"), plan)
             role = _verify_selector(selector, plan)
             _verify_quantity_role(term.get("value"), complex_value=False, unit=role[0], dimensionality=role[1])
+            if selector.get("type") == "residue_coupling_projection":
+                selector_spec = selector.get("spec")
+                if not isinstance(selector_spec, Mapping):
+                    raise _integrity("Residue coupling selector Spec is malformed.")
+                _verify_residue_coupling_evidence(
+                    term.get("residue_coupling_evidence"),
+                    selector_spec,
+                    expected_projection=str(selector.get("projection")),
+                    projected_value=term.get("value"),
+                )
             leaf_values.append((_f64_value(term["value"]["si_value_f64"]), role[0]))
         elif status == "failure":
             if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "failure"}:

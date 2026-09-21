@@ -42,6 +42,42 @@ frequency_selector = element_spec.frequency.on(transformed_view)
 display(diagonal_result.frequency)
 ```
 
+### Declare coupling location and projection separately
+
+`ResidueNormalizedCouplingSpec` keeps the complete complex coupling in its
+Result. The Spec's `.real`, `.imag`, and `.magnitude` properties merely declare
+which signed or nonnegative scalar an Optimization objective consumes; they do
+not run Julia. Here `frequency="complex_root_midpoint"` means the complete
+complex midpoint of the two candidate roots, recomputed at every candidate.
+It is not a real-frequency average or a default.
+
+```python
+from scnsim import DiagonalRootSpec, ResidueNormalizedCouplingSpec
+
+branch_a = DiagonalRootSpec(
+    coordinate="feedline_in", root_hint=6.0 * u.GHz,
+)
+branch_b = DiagonalRootSpec(
+    coordinate="floating.differential", root_hint=6.2 * u.GHz,
+)
+coupling_spec = ResidueNormalizedCouplingSpec(
+    branch_a=branch_a,
+    branch_b=branch_b,
+    frequency="complex_root_midpoint",
+)
+real_selector = coupling_spec.real.on(transformed_view)
+imag_selector = coupling_spec.imag.on(transformed_view)
+absolute_real_selector = abs(real_selector)
+magnitude_selector = coupling_spec.magnitude.on(transformed_view)
+```
+
+For an evaluated `coupling_result`, `coupling_result.coupling` is the complex
+Quantity. Its `.real` and `.imag` Quantities are derived from that verified
+complex value, `.magnitude` is the verified nonnegative coupling projection,
+and `coupling_result.evaluation_omega` records the actual complex angular
+frequency. By contrast, `quantity.magnitude` in Pint is the bare numeric
+payload, and `abs(quantity)` is ordinary Quantity arithmetic.
+
 ### Read S21 at one explicitly declared frequency
 
 `ResponseElementSpec` asks for one complex S element on the transformed

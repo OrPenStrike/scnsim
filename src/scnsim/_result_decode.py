@@ -381,20 +381,30 @@ class VerifiedResultDecoder:
             )
         if kind == "residue_normalized_coupling":
             scalars = result["scalar_catalog"]
+            coupling = complex_quantity_from_envelope(
+                scalars["coupling"], registry=units.registry
+            )
             return _verified_result(
                 DirectQuantityResult,
                 identity=identity,
-                coupling=complex_quantity_from_envelope(
-                    scalars["coupling"], registry=units.registry
-                ),
+                coupling=coupling,
                 magnitude=quantity_from_envelope(
                     scalars["magnitude"], registry=units.registry
+                ),
+                real=units.registry.Quantity(
+                    complex(coupling.magnitude).real, coupling.units
+                ),
+                imag=units.registry.Quantity(
+                    complex(coupling.magnitude).imag, coupling.units
                 ),
                 branch_a_residue=complex_quantity_from_envelope(
                     scalars["branch_a_residue"], registry=units.registry
                 ),
                 branch_b_residue=complex_quantity_from_envelope(
                     scalars["branch_b_residue"], registry=units.registry
+                ),
+                evaluation_omega=complex_quantity_from_envelope(
+                    scalars["evaluation_omega"], registry=units.registry
                 ),
                 _presentation={
                     "view": request.get("view"),
@@ -743,7 +753,7 @@ class VerifiedResultDecoder:
             "operator_element_root": ("frequency",),
             "hybridized_pole": ("frequency", "linewidth"),
             "transfer_zero": ("frequency",),
-            "residue_normalized_coupling": ("magnitude",),
+            "residue_normalized_coupling": ("real", "imag", "magnitude"),
             "response_element": ("magnitude", "real", "imag"),
         }.get(request_spec.get("type"), ())
         allowed = (

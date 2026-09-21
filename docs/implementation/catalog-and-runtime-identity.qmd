@@ -98,7 +98,7 @@ semantic runtime.
 
 An operation-level algorithm ID is transitive, not a label for only the outer
 driver. In particular,
-`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7` binds the exact CMA,
+`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9` binds the exact CMA,
 unit-box transform, Direct operator, selected quantity, continuation, and
 replay-certificate algorithms it invokes. Version 6 additionally binds the
 Python-normalized sealed baseline optimizer-coordinate bits; Julia consumes
@@ -106,6 +106,11 @@ those bits rather than independently repeating logarithmic normalization.
 Version 7 adds the closed scalar-expression tree, per-node unit conversion,
 and target/at-least comparison semantics while retaining the pinned CMA
 sampling and update mathematics.
+Version 9 additionally binds candidate-local complex-root-midpoint coupling,
+the full complex coupling witness stored with every successful coupling term,
+and independent midpoint/projection verification. Version 8 remains a known
+published predecessor and is rejected through the typed unsupported-version
+path.
 Version 5 binds generation-ledger v4, its closed optimization failure context,
 and the baseline-checkpoint content/seal protocol. Changing any
 dependency requires a new outer ID even when the `OptimizationSpec` bytes are

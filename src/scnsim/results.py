@@ -482,12 +482,14 @@ class DirectQuantityResult(AnalysisResult):
     coupling: Quantity | None = None
     branch_a_residue: Quantity | None = None
     branch_b_residue: Quantity | None = None
+    evaluation_omega: Quantity | None = None
     family: Literal["S", "Y", "Z"] | None = None
     _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
     _quantity_fields = frozenset({
         "root", "frequency", "linewidth", "slope", "value", "magnitude",
         "real", "imag", "zero", "numerator_slope", "denominator", "coupling",
         "branch_a_residue", "branch_b_residue",
+        "evaluation_omega",
     })
 
     def __init__(self) -> None:

@@ -587,32 +587,32 @@
       "properties": {
         "root": { "$ref": "#/$defs/complexQuantity" }, "frequency": { "$ref": "#/$defs/quantity" }, "linewidth": { "$ref": "#/$defs/quantity" }, "slope": { "$ref": "#/$defs/complexQuantity" }, "evidence_sha256": { "$ref": "#/$defs/sha256" },
         "zero": { "$ref": "#/$defs/complexQuantity" }, "numerator_slope": { "$ref": "#/$defs/complexQuantity" }, "denominator": { "$ref": "#/$defs/complexQuantity" },
-        "coupling": { "$ref": "#/$defs/complexQuantity" }, "magnitude": { "$ref": "#/$defs/quantity" }, "branch_a_residue": { "$ref": "#/$defs/complexQuantity" }, "branch_b_residue": { "$ref": "#/$defs/complexQuantity" },
+        "coupling": { "$ref": "#/$defs/complexQuantity" }, "magnitude": { "$ref": "#/$defs/quantity" }, "branch_a_residue": { "$ref": "#/$defs/complexQuantity" }, "branch_b_residue": { "$ref": "#/$defs/complexQuantity" }, "branch_a_root": { "$ref": "#/$defs/complexQuantity" }, "branch_b_root": { "$ref": "#/$defs/complexQuantity" }, "evaluation_omega": { "$ref": "#/$defs/complexQuantity" },
         "family": { "enum": ["S", "Y", "Z"] }, "value": { "$ref": "#/$defs/complexQuantity" }, "real": { "$ref": "#/$defs/quantity" }, "imag": { "$ref": "#/$defs/quantity" }
       }
     },
     "hybridizedPoleScalars": {
       "allOf": [
         { "$ref": "#/$defs/pointScalarCatalog" },
-        { "required": ["root", "frequency", "linewidth", "slope", "evidence_sha256"], "not": { "anyOf": [{ "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+        { "required": ["root", "frequency", "linewidth", "slope", "evidence_sha256"], "not": { "anyOf": [{ "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["branch_a_root"] }, { "required": ["branch_b_root"] }, { "required": ["evaluation_omega"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
       ]
     },
     "transferZeroScalars": {
       "allOf": [
         { "$ref": "#/$defs/pointScalarCatalog" },
-        { "required": ["zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+        { "required": ["zero", "frequency", "numerator_slope", "denominator", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["coupling"] }, { "required": ["magnitude"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["branch_a_root"] }, { "required": ["branch_b_root"] }, { "required": ["evaluation_omega"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
       ]
     },
     "residueCouplingScalars": {
       "allOf": [
         { "$ref": "#/$defs/pointScalarCatalog" },
-        { "required": ["coupling", "magnitude", "branch_a_residue", "branch_b_residue", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
+        { "required": ["coupling", "magnitude", "branch_a_residue", "branch_b_residue", "branch_a_root", "branch_b_root", "evaluation_omega", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["family"] }, { "required": ["value"] }, { "required": ["real"] }, { "required": ["imag"] }] } }
       ]
     },
     "responseElementScalars": {
       "allOf": [
         { "$ref": "#/$defs/pointScalarCatalog" },
-        { "required": ["family", "value", "magnitude", "real", "imag", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }] } }
+        { "required": ["family", "value", "magnitude", "real", "imag", "evidence_sha256"], "not": { "anyOf": [{ "required": ["root"] }, { "required": ["frequency"] }, { "required": ["linewidth"] }, { "required": ["slope"] }, { "required": ["zero"] }, { "required": ["numerator_slope"] }, { "required": ["denominator"] }, { "required": ["coupling"] }, { "required": ["branch_a_residue"] }, { "required": ["branch_b_residue"] }, { "required": ["branch_a_root"] }, { "required": ["branch_b_root"] }, { "required": ["evaluation_omega"] }] } }
       ]
     },
     "pointScalarPayload": {
@@ -858,7 +858,7 @@
           "$ref": "identity-common.schema.json#/$defs/sha256"
         },
         "algorithm_id": {
-          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
+          "const": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
         },
         "baseline_checkpoint_sha256": {
           "$ref": "identity-common.schema.json#/$defs/sha256"

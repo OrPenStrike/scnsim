@@ -533,15 +533,33 @@ class ResidueNormalizedCouplingSpec:
 
     branch_a: DiagonalRootSpec | HybridizedPoleSpec
     branch_b: DiagonalRootSpec | HybridizedPoleSpec
-    frequency: Quantity
+    _frequency: Quantity | Literal["complex_root_midpoint"]
 
-    def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity) -> None:
+    def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity | Literal["complex_root_midpoint"]) -> None:
         if not isinstance(branch_a, (DiagonalRootSpec, HybridizedPoleSpec)) or not isinstance(branch_b, (DiagonalRootSpec, HybridizedPoleSpec)):
             raise TypeError("branches must be DiagonalRootSpec or HybridizedPoleSpec")
-        units.require_positive_quantity(frequency, "hertz", name="frequency")
+        if isinstance(frequency, str):
+            if frequency != "complex_root_midpoint":
+                raise ValueError('frequency string must be "complex_root_midpoint"')
+            retained_frequency: Quantity | Literal["complex_root_midpoint"] = frequency
+        else:
+            units.require_positive_quantity(frequency, "hertz", name="frequency")
+            retained_frequency = _detached_quantity(frequency)
         object.__setattr__(self, "branch_a", branch_a)
         object.__setattr__(self, "branch_b", branch_b)
-        object.__setattr__(self, "frequency", _detached_quantity(frequency))
+        object.__setattr__(self, "_frequency", retained_frequency)
+
+    @property
+    def frequency(self) -> Quantity | Literal["complex_root_midpoint"]:
+        return self._frequency if isinstance(self._frequency, str) else quantity_view(self._frequency)
+
+    @property
+    def real(self) -> QuantitySelector:
+        return QuantitySelector(self, "real", "residue_coupling_projection")
+
+    @property
+    def imag(self) -> QuantitySelector:
+        return QuantitySelector(self, "imag", "residue_coupling_projection")
 
     @property
     def magnitude(self) -> QuantitySelector:

@@ -365,18 +365,29 @@ function residue_normalized_coupling_value(compiled::CompiledPrimitive, coordina
     singular = svd(hcat(va, vb)).S
     length(singular) >= 2 && singular[2] / singular[1] > tau(length(coordinates)) ||
         fail("execution", "root_slope_unresolved", "residue_rank", "direct_quantity", "residue branch vectors are not independent")
-    frequency = quantity_value(spec["frequency"]); isfinite(frequency) && frequency > 0.0 ||
-        fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency must be finite and positive")
-    for omega in unique([omega_a, omega_b, complex(2.0 * pi * frequency)])
+    frequency = spec["frequency"]
+    omega_eval = if frequency == "complex_root_midpoint"
+        (omega_a + omega_b) / 2.0
+    elseif frequency isa AbstractDict
+        value = quantity_value(frequency)
+        isfinite(value) && value > 0.0 ||
+            fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency must be finite and positive")
+        complex(2.0 * pi * value)
+    else
+        fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency declaration is invalid")
+    end
+    isfinite(real(omega_eval)) && isfinite(imag(omega_eval)) ||
+        fail("execution", "root_slope_unresolved", "residue_coupling", "direct_quantity", "residue coupling evaluation location is non-finite")
+    for omega in unique([omega_a, omega_b, omega_eval])
         Fcheck, _ = selected_operator(compiled, omega, coordinates)
         denominator = norm(abs.(Fcheck) + abs.(transpose(Fcheck)), Inf)
         asym = denominator == 0.0 ? (norm(Fcheck - transpose(Fcheck), Inf) == 0.0 ? 0.0 : Inf) : norm(Fcheck - transpose(Fcheck), Inf) / denominator
         isfinite(asym) && asym <= tau(length(coordinates)) || fail("execution", "root_slope_unresolved", "reciprocity", "direct_quantity", "selected operator is not reciprocal")
     end
-    F, _ = selected_operator(compiled, complex(2.0 * pi * frequency), coordinates)
+    F, _ = selected_operator(compiled, omega_eval, coordinates)
     coupling = only(transpose(va) * F * vb) / sqrt(sa * sb)
     isfinite(real(coupling)) && isfinite(imag(coupling)) || fail("execution", "root_slope_unresolved", "residue_coupling", "direct_quantity", "residue-normalized coupling is non-finite")
-    return coupling, residue_a, residue_b, omega_a, omega_b
+    return coupling, residue_a, residue_b, omega_a, omega_b, omega_eval
 end
 
 function evaluate_residue_normalized_coupling(request, plan, view::RealizedView, request_sha::String, attempt_sha::String, staging::String)
@@ -384,7 +395,7 @@ function evaluate_residue_normalized_coupling(request, plan, view::RealizedView,
     coordinates = copy(view.terminal); compiled = view.compiled
     baseline_values, candidate_values = plan_parameter_values(plan), parameter_values(request)
     if same_parameter_values(baseline_values, candidate_values)
-        coupling, residue_a, residue_b, omega_a, omega_b = residue_normalized_coupling_value(compiled, coordinates, spec)
+        coupling, residue_a, residue_b, omega_a, omega_b, omega_eval = residue_normalized_coupling_value(compiled, coordinates, spec)
     else
         raw_base = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
             authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
@@ -396,13 +407,16 @@ function evaluate_residue_normalized_coupling(request, plan, view::RealizedView,
             context_kind = "direct_quantity")
         omega_b = selector_root_with_continuation(plan, request, baseline_values, candidate_values, base_b, branch_b_selector;
             context_kind = "direct_quantity")
-        coupling, residue_a, residue_b, omega_a, omega_b = residue_normalized_coupling_value(compiled, coordinates, spec;
+        coupling, residue_a, residue_b, omega_a, omega_b, omega_eval = residue_normalized_coupling_value(compiled, coordinates, spec;
             branch_a_root = omega_a, branch_b_root = omega_b)
     end
-    evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.residue_normalized_coupling_evidence", "schema_version" => 1,
-        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"))))
+    evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.residue_normalized_coupling_evidence", "schema_version" => 2,
+        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"),
+        "evaluation_omega" => complex_quantity(omega_eval, "radian / second", "inverse_time"), "coupling" => complex_quantity(coupling, "radian / second", "inverse_time"))))
     scalars = Dict{String,Any}("coupling" => complex_quantity(coupling, "radian / second", "inverse_time"),
         "magnitude" => quantity(abs(coupling), "radian / second", "inverse_time"),
-        "branch_a_residue" => complex_quantity(residue_a, "ohm", "resistance"), "branch_b_residue" => complex_quantity(residue_b, "ohm", "resistance"), "evidence_sha256" => evidence)
+        "branch_a_residue" => complex_quantity(residue_a, "ohm", "resistance"), "branch_b_residue" => complex_quantity(residue_b, "ohm", "resistance"),
+        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"),
+        "evaluation_omega" => complex_quantity(omega_eval, "radian / second", "inverse_time"), "evidence_sha256" => evidence)
     write_success(staging, request, request_sha, attempt_sha, result_envelope("residue_normalized_coupling", request_sha, attempt_sha, scalars, Dict{String,Any}()), Any[])
 end

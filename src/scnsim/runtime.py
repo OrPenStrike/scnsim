@@ -1581,13 +1581,13 @@ class CircuitRun:
                 "operator_element_root": "scnsim.operator_element_root.newton32.v1",
                 "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
                 "transfer_zero": "scnsim.transfer_zero.newton32.v1",
-                "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
+                "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v2",
                 "response_element": "scnsim.response_element.v1",
                 "operator": "scnsim.direct_operator.v1",
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v8"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
             )
         else:
             raise CompilerInvariantError(
@@ -1843,7 +1843,8 @@ class CircuitRun:
         elif isinstance(spec, OperatorSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="operator", field="frequencies"), spec.frequencies, "hertz")
         elif isinstance(spec, ResidueNormalizedCouplingSpec):
-            add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field="frequency"), spec.frequency, "hertz")
+            if not isinstance(spec.frequency, str):
+                add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field="frequency"), spec.frequency, "hertz")
             for branch_name, branch in (("branch_a", spec.branch_a), ("branch_b", spec.branch_b)):
                 if isinstance(branch, DiagonalRootSpec):
                     add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field=f"{branch_name}:root_hint"), branch.root_hint, "hertz")
@@ -1905,7 +1906,8 @@ class CircuitRun:
                     elif isinstance(selected_spec, ResponseElementSpec):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
                     elif isinstance(selected_spec, ResidueNormalizedCouplingSpec):
-                        add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
+                        if not isinstance(selected_spec.frequency, str):
+                            add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
                         for branch_name, branch in (("branch_a", selected_spec.branch_a), ("branch_b", selected_spec.branch_b)):
                             field = "root_hint" if isinstance(branch, DiagonalRootSpec) else "anchor"
                             add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:{branch_name}:{field}"), getattr(branch, field), "hertz")

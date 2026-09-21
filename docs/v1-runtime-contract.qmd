@@ -1640,7 +1640,7 @@ The V1 catalog is intentionally small:
 | `OperatorElementRootSpec` | Complex root of one named row/column element of the complete final View operator | root, real-part frequency, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of the terminal View's complete ordered retained block (at least two coordinates) | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
-| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and either one declared positive real frequency or the exact per-candidate `"complex_root_midpoint"` | complex coupling, its real/imaginary/magnitude projections, and the complex evaluation location |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
 | `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
 
@@ -1666,7 +1666,17 @@ operator = run.evaluate(
 ```
 
 Root-like bundles expose only physically defined typed scalar selectors such as
-`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
+`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. For
+`ResidueNormalizedCouplingSpec`, `.real`, `.imag`, and `.magnitude` are
+nonexecuting selectors of the same complete complex coupling; Pint
+`Quantity.magnitude` remains the numeric payload of an evaluated Quantity and
+`abs(quantity)` remains ordinary Quantity arithmetic. Its `frequency` is
+required and is either a positive real frequency Quantity or the exact literal
+`"complex_root_midpoint"`; no other string, callable, manual complex frequency,
+or implicit default is accepted. The midpoint is recomputed for every
+candidate as `(omega_a + omega_b) / 2` from the complete complex branch roots
+on the selected View. Each branch slope remains evaluated at its own root.
+Their branch,
 branch locator (including `DiagonalRootSpec.root_hint`), continuation,
 local slope/residue evidence, units, ParameterSet, selected Ref boundary, and
 operator identity remain attached. `DiagonalRootSpec` promises the documented
@@ -1754,7 +1764,7 @@ View. Its original one-Port/no-trace restriction belongs only to that slice's
 `solve_direct` response surface. `1.0.0.dev5` reuses the same CMA replay,
 ledger, cache, retry, and winner contract while enabling
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
-`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResidueNormalizedCouplingSpec.real`/`.imag`/`.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. Before its owning slice, each
 selector fails fast with `ScaffoldUnavailableError`; it is not excluded from
 full V1. Closed scalar expressions remain legal only inside a `CostObjective`.
@@ -2021,7 +2031,7 @@ its system math library; candidate mapping and CMA sampling/update remain the
 pinned Julia path.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
@@ -2038,7 +2048,7 @@ evaluation ordinal in baseline, generation, then population-column order.
 These execution controls bound reproducibility but do not decide whether the
 result meets a Design Target.
 
-A closed request envelope bound to the exact known v3, v4, v5, or v6 outer optimization
+A closed request envelope bound to an exact known v3 through v8 outer optimization
 identity raises `UnsupportedEvidenceVersionError` with the operation and exact
 expected/observed algorithm IDs. This identifies the need for its original
 source-bound runtime; it does not claim the historical request's remaining
@@ -2049,6 +2059,12 @@ Version 7 binds the closed scalar-expression tree, its exact per-node unit
 conversion order, and target/at-least comparison semantics. It retains version
 6's Python-owned baseline coordinate bits and the pinned CMA sampling/update
 mathematics.
+
+Version 9 additionally binds candidate-local complex-root-midpoint coupling,
+the complete complex coupling witness retained by every successful coupling
+term, and independent midpoint/projection verification. Version 8 remains a
+known published predecessor and is rejected through the typed unsupported-
+version path rather than being relabelled as current or corrupt evidence.
 
 Every population outcome records both the callback-visible raw CMA sample
 column `optimizer_latent_coordinates_f64` and its transformed unit-box

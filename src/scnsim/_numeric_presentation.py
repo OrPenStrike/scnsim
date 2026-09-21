@@ -741,7 +741,7 @@ def scalar_plot(result: Any, *, theme: Theme = Theme.AUTO) -> Any:
     fields = (
         "root", "frequency", "linewidth", "slope", "value", "magnitude",
         "real", "imag", "zero", "numerator_slope", "denominator", "coupling",
-        "branch_a_residue", "branch_b_residue", "family",
+        "branch_a_residue", "branch_b_residue", "evaluation_omega", "family",
     )
     names = ["definition"]
     values = [type(result).__name__]
@@ -778,6 +778,43 @@ def scalar_plot(result: Any, *, theme: Theme = Theme.AUTO) -> Any:
                     escape(f"F_View[{row}, {column}](omega) = 0"),
                     escape(_quantity_text(spec.get("root_hint"))),
                     "Re(omega) / (2 pi); slope = dF_View[row,column] / d omega",
+                ))
+            elif spec["type"] == "residue_normalized_coupling":
+                branch_a = spec.get("branch_a")
+                branch_b = spec.get("branch_b")
+                if not isinstance(branch_a, Mapping) or not isinstance(branch_b, Mapping):
+                    raise ValueError("Residue coupling branch presentation is malformed")
+
+                def branch_text(branch: Mapping[str, object]) -> str:
+                    if branch.get("type") == "diagonal_root":
+                        return (
+                            f"diagonal coordinate={branch.get('coordinate')}; "
+                            f"root_hint={_quantity_text(branch.get('root_hint'))}"
+                        )
+                    if branch.get("type") == "hybridized_pole":
+                        return (
+                            "hybridized coordinates="
+                            f"{','.join(str(item) for item in branch.get('coordinates', ()))}; "
+                            f"anchor={_quantity_text(branch.get('anchor'))}"
+                        )
+                    raise ValueError("Residue coupling branch presentation is unsupported")
+
+                declared_frequency = spec.get("frequency")
+                names.extend((
+                    "branch_a",
+                    "branch_b",
+                    "evaluation_mode",
+                    "coupling_projection",
+                ))
+                values.extend((
+                    escape(branch_text(branch_a)),
+                    escape(branch_text(branch_b)),
+                    (
+                        "candidate complex-root midpoint"
+                        if declared_frequency == "complex_root_midpoint"
+                        else f"fixed frequency {_quantity_text(declared_frequency)}"
+                    ),
+                    "full complex coupling (Re J, Im J, abs J available separately)",
                 ))
     figure = go.Figure(data=[go.Table(header={"values": ["field", "value"]}, cells={"values": [names, values]})])
     figure.update_layout(meta={"scnsim": {"kind": "scalar_quantity", "fields": names}})
@@ -1376,6 +1413,8 @@ def operator_add_to(
 def _quantity_text(value: object) -> str:
     from ._canonical import float64_from_hex
 
+    if value == "complex_root_midpoint":
+        return "complex_root_midpoint"
     if not isinstance(value, Mapping):
         return "—"
     encoded = value.get("si_value_f64")
@@ -1383,6 +1422,21 @@ def _quantity_text(value: object) -> str:
     if not isinstance(encoded, str) or not isinstance(unit, str):
         return "—"
     return f"{float64_from_hex(encoded):.12g} {escape(unit)}"
+
+
+def _complex_quantity_text(value: object) -> str:
+    from ._canonical import float64_from_hex
+
+    if not isinstance(value, Mapping):
+        return "—"
+    real = value.get("real_si_f64")
+    imag = value.get("imag_si_f64")
+    unit = value.get("si_unit")
+    if not all(isinstance(item, str) for item in (real, imag, unit)):
+        return "—"
+    real_value = float64_from_hex(real)
+    imag_value = float64_from_hex(imag)
+    return f"{real_value:.12g} {imag_value:+.12g}j {escape(unit)}"
 
 
 def _ledger_rows(result: Any) -> tuple[list[int], list[float | None], list[str], list[str]]:
@@ -1988,6 +2042,43 @@ def optimization_comparison_dataset(
             (f"{name} weighted cost", f"{initial_cost:.12g}", f"{best_cost:.12g}"),
             (f"{name} weighted-cost delta (best - initial)", "—", f"{best_cost - initial_cost:.12g}"),
         ))
+        left_terms, right_terms = left.get("terms"), right.get("terms")
+        if isinstance(left_terms, Sequence) and isinstance(right_terms, Sequence):
+            for left_term, right_term in zip(left_terms, right_terms, strict=True):
+                if not isinstance(left_term, Mapping) or not isinstance(right_term, Mapping):
+                    raise ValueError("Optimization term comparison evidence is malformed")
+                selector = left_term.get("selector")
+                if not isinstance(selector, Mapping) or selector.get("type") != "residue_coupling_projection":
+                    continue
+                left_evidence = left_term.get("residue_coupling_evidence")
+                right_evidence = right_term.get("residue_coupling_evidence")
+                if not isinstance(left_evidence, Mapping) or not isinstance(right_evidence, Mapping):
+                    raise ValueError("Optimization coupling evidence is absent")
+                ordinal = left_term.get("term_ordinal")
+                label = f"{name} term {ordinal}"
+                comparison.append((
+                    f"{label} evaluation omega",
+                    _complex_quantity_text(left_evidence.get("evaluation_omega")),
+                    _complex_quantity_text(right_evidence.get("evaluation_omega")),
+                ))
+                for component, title in (("real", "Re J"), ("imag", "Im J"), ("magnitude", "abs J"), ("abs_real", "abs Re J")):
+                    def projected(evidence: Mapping[str, object]) -> str:
+                        coupling = evidence.get("coupling")
+                        if not isinstance(coupling, Mapping):
+                            raise ValueError("Optimization complex coupling evidence is malformed")
+                        from ._canonical import float64_from_hex
+                        real = float64_from_hex(coupling["real_si_f64"])
+                        imag = float64_from_hex(coupling["imag_si_f64"])
+                        value = {
+                            "real": real,
+                            "imag": imag,
+                            "magnitude": abs(complex(real, imag)),
+                            "abs_real": abs(real),
+                        }[component]
+                        return f"{value:.12g} radian / second"
+                    comparison.append((
+                        f"{label} {title}", projected(left_evidence), projected(right_evidence)
+                    ))
         if objective.get("comparison") == "at_least":
             comparison.append((
                 f"{name} at-least condition",

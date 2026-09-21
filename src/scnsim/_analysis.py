@@ -403,8 +403,12 @@ def _encode_direct_quantity(
             "branch_b": _encode_direct_quantity(
                 spec.branch_b, coordinate_bindings=coordinate_bindings
             ),
-            "frequency": quantity_envelope(
-                spec.frequency, si_unit="hertz", registry=units.registry
+            "frequency": (
+                spec.frequency
+                if isinstance(spec.frequency, str)
+                else quantity_envelope(
+                    spec.frequency, si_unit="hertz", registry=units.registry
+                )
             ),
         }
     if isinstance(spec, ResponseElementSpec):

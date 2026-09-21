@@ -301,7 +301,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -318,6 +318,12 @@ complete per-leaf View declarations, multi-View dependency realization,
 View-qualified continuation keys, and per-term evidence. It does not rename or
 change the pinned CMA
 sampling, update, box transform, stop, seed, or winner rule.
+
+Version 7 added the closed scalar-expression tree and ordered per-node unit
+conversion. Version 9 additionally binds candidate-local complex-root-midpoint
+coupling and the full-complex witness carried by every successful coupling
+term. Version 8 remains a known published predecessor and is rejected through
+the typed unsupported-version path.
 
 An aggregation failure is independently reproducible evidence. Population
 candidate records retain the successful terms or objective components needed
@@ -340,7 +346,7 @@ on a supported retained View.
 
 The integrated `dev5` slice adds the schema-backed selectors
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
-`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResidueNormalizedCouplingSpec.real`/`.imag`/`.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. A `CostObjective.quantity`
 may be one selector or a closed ordered tree composed with `QuantitySum`, `-`,
 and `abs(...)`. Expression leaves retain left-to-right depth-first ordinals;
@@ -351,6 +357,16 @@ identical CMA replay, generation-ledger, candidate-cache, winner/tie, and retry
 semantics above and below. Version 7 binds the changed expression/comparison
 request and evidence semantics; it changes no CMA sampling or update
 mathematics.
+
+The candidate-local residue-coupling dependency key binds its selected View,
+ordered branch declarations and anchors, and fixed-frequency or midpoint
+declaration, but not its real/imaginary/magnitude projection. Those leaves
+therefore share the same complete complex roots and coupling within one
+candidate. Different Views, fixed frequencies, or midpoint declarations remain
+distinct. Successful term evidence retains both roots, the actual complex
+evaluation location, and full complex coupling so Python can independently
+reproduce the selected projection, expression, residual, and weighted cost
+without solving.
 
 `CostObjective.comparison` is either `"target"` (the default) or
 `"at_least"`. Target comparison uses `(value - target) / scale`. At-least
