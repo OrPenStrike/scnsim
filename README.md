@@ -4,216 +4,141 @@ output-file: index.html
 
 # SCNSim
 
-**Build one physical circuit, choose the network you want to examine, and
-optimize directly against the quantities that matter.**
-
-![An orca and penguin examining two analysis paths derived from one superconducting circuit network.](docs/assets/readme-hero-orca-penguin.png)
+**Author one superconducting circuit, then ask typed network and quantity
+questions against it.**
 
 SCNSim is a notebook-first Python package for reproducible superconducting
-circuit-network analysis. You author components, physical values, wiring,
-ground, Ports, and reusable Subsystems once. A sealed `CircuitPlan` preserves
-those facts. A `CircuitRun` then asks typed Direct, harmonic-balance, sweep, or
-Optimization questions through explicit Views and returns Results carrying
-their request and evidence identities.
+circuit-network analysis. A `CircuitPlan` owns physical components, wiring,
+ground, Ports, and reusable Subsystems; a `CircuitRun` solves explicit
+requests and returns typed Results with request and evidence identities.
 
-The current research showcase is `1.0.0.dev7`. Its new presentation and
-showcase scope is `CONVERGING`: it is usable research software, not a stable
-release or a claim of Human acceptance.
+The current research showcase is `1.0.0.dev7`. This README and the site theme
+are a `CONVERGING` documentation candidate, not a stable-release or scientific
+validation claim.
 
-## Quantities first, grids when you need them
+## A first Direct S11 result
 
-A conventional response request materializes S, Y, or Z on an exact frequency
-grid. SCNSim also exposes Direct quantities that do not require turning a
-dense transmission trace into an external fit first: loaded root frequency
-and linewidth, coupled poles, transfer zeros, and residue-normalized coupling.
+This Chapter 1 example builds a grounded parallel LC resonator, couples it to
+one terminated 50 Ω measurement Port, and requests a named reflection trace.
+The physical model and 110 fF / 120 fF values follow the Engineer course.
 
 ```python
-root = DiagonalRootSpec(
-    coordinate=resonator_node,
-    root_hint=6.0 * u.GHz,
+import numpy as np
+
+from scnsim import (
+    CircuitPlan,
+    CircuitRun,
+    DirectSolveSpec,
+    ParameterDefinitions,
+    ParameterSet,
+    ParameterSpec,
+    SParameterTrace,
+    components,
+    units as u,
 )
 
-response = run.solve(
+inputs = ParameterDefinitions(id="readme_lc")
+capacitance = inputs.parameter(
+    id="capacitance",
+    baseline=110.0 * u.fF,
+    spec=ParameterSpec(unit=u.fF),
+)
+
+plan = CircuitPlan(id="readme_coupled_lc")
+resonator = plan.subsystem(id="resonator")
+capacitor = resonator.add(
+    components.capacitor(id="capacitor", capacitance=capacitance)
+)
+inductor = resonator.add(
+    components.inductor(id="inductor", inductance=5.8 * u.nH)
+)
+resonator_bus = resonator.bus(id="signal")
+resonator.parallel(
+    id="parallel_lc",
+    start=resonator_bus,
+    branches=((capacitor,), (inductor,)),
+    end=resonator.ground,
+)
+resonator_pin = resonator.expose_pin(id="terminal", at=resonator_bus)
+
+signal_bus = plan.bus(id="signal_boundary")
+coupling = plan.add(
+    components.capacitor(id="coupling_capacitor", capacitance=6.0 * u.fF)
+)
+plan.series(
+    id="coupling", start=signal_bus, elements=(coupling,), end=resonator_pin
+)
+plan.add_port(
+    id="signal_in",
+    at=signal_bus,
+    role="terminated",
+    reference_impedance=50.0 * u.ohm,
+)
+
+run = CircuitRun(plan=plan, workspace="workspaces/readme_lc")
+reflection = SParameterTrace(
+    id="reflection",
+    input_port="signal_in",
+    input_mode=(),
+    output_port="signal_in",
+    output_mode=(),
+)
+direct_spec = DirectSolveSpec(
+    frequencies=np.linspace(5.75, 6.25, 401) * u.GHz,
+    traces=(reflection,),
+)
+baseline = run.solve(run.original, direct_spec, parameters=ParameterSet())
+selected = run.solve(
     run.original,
-    DirectSolveSpec(
-        frequencies=[5.8, 6.0, 6.2] * u.GHz,
-        traces=(SParameterTrace(
-            id="transmission",
-            input_port="signal_in",
-            input_mode=(),
-            output_port="signal_out",
-            output_mode=(),
-        ),),
-    ),
+    direct_spec,
+    parameters=ParameterSet({capacitance: 120.0 * u.fF}),
 )
-loaded_root = run.evaluate(retained_view, root)
+baseline_s11 = baseline.traces["reflection"]
+selected_s11 = selected.traces["reflection"]
+baseline_s11.show(component="magnitude", magnitude="db")
+selected_s11.show(component="magnitude", magnitude="db")
 ```
 
-A visible dip, a fitted resonance, a loaded analytic root, and a
-residue-normalized coupling are different definitions. Fitting remains useful
-for measurements, black-box models, and model identification. It is not a
-mandatory translation layer for every quantity objective.
+The first `run.solve()` may prepare the locked Julia runtime. These are
+previously published Chapter 1 figures—not generated during this README or the
+website build—and show the same model, sample grid, and `signal_in ← signal_in`
+channel. The figures present the complete S11 magnitude and phase; the named
+`reflection` trace above is a typed projection of that Direct result.
 
-## One Plan, explicit Views
+![Certified Chapter 1 authoring projection of the grounded LC, coupler, and terminated Port.](examples/engineer/figures/01-authoring.svg)
 
-Subsystems own reusable physical declarations and expose typed Pins,
-Coordinates, and Parameters. Views do not replace that physical ownership.
-They state which network derived from the same captured Plan answers a
-particular question:
+*Authoring projection of the physical Plan; it is not a numerical result.*
 
-- Port-Termination Compensation (PTC) removes only the named compensable load
-  stamps.
-- A power-conjugate transform changes the selected coordinate basis.
-- `retain(...)` selects a complete-complement boundary while environmental
-  dynamics remain represented through reduction.
+![Previously published baseline S11 for 110 fF on the 401-point 5.75–6.25 GHz grid.](examples/engineer/figures/01-s11-baseline.svg)
 
-The diagram always depicts the physical Plan; a View is analysis lineage, not
-a fictitious `SubsystemView` or a claim that retained coordinates are
-unloaded.
+*Stored Chapter 1 baseline Result: 110 fF. The magnitude axis uses a fixed ±0.05 dB display range; the wrapped phase discontinuity is presentation, not solver failure. [Exact complex samples](examples/engineer/figures/01-s11-data.csv).*
 
-![The Chapter 4 physical capstone Plan.](examples/engineer/figures/04-explicit-capstone.svg)
+![Previously published selected S11 for 120 fF on the same grid.](examples/engineer/figures/01-s11-selected.svg)
 
-The same capstone records separately labeled raw and PTC-selected Direct S21
-Results at three declared samples:
+*Stored Chapter 1 selected Result: 120 fF, with the same 5.8 nH inductor, 6 fF coupler, 50 Ω Port, and 401-point grid. No dip or resonance is inferred from this plot. [Exact complex samples](examples/engineer/figures/01-s11-data.csv).*
 
-| Physical Plan | Raw loaded View | PTC-selected retained View |
-|---|---|---|
-| [certified schematic](examples/engineer/figures/04-explicit-capstone.svg) | [S21 figure](examples/engineer/figures/04-raw-direct-s21.svg) · [exact samples](examples/engineer/figures/04-raw-direct-s21.csv) | [S21 figure](examples/engineer/figures/04-ptc-direct-s21.svg) · [exact samples](examples/engineer/figures/04-ptc-direct-s21.csv) |
+Continue with the [Tutorial — Engineer course](docs/index.qmd).
 
-These assets retain their original source labels and identities; this README
-does not rerun them.
+## What the model can answer
 
-## Optimize one candidate across several Views
+- **Direct responses:** full finite-grid S, Y, and Z matrices, with named
+  channel traces projected from the same Result.
+- **Direct quantities:** loaded roots, coupled poles, transfer zeros, and
+  residue-normalized couplings without requiring a fitted external model.
+- **Views and Optimization:** Views select a derived analysis network without
+  changing physical ownership. Optimization binds declared parameters and
+  compares typed scalar objectives; a lower cost does not guarantee every
+  target, improvement, or a global optimum.
+- **Harmonic balance:** explicit pump, drive, operating-point, and response
+  requests return their own typed outcomes. Direct and HB traces are comparable
+  only when their selected boundary, channel, work point, pump state, and
+  linearization agree.
 
-An `OptimizationSpec` binds physical Parameters once while each scalar leaf
-names its own View. Leaves that request the same root dependency share that
-evaluation; leaves on a distinct PTC or transformed View remain distinct. The
-saved best ordinal is selected from the verified ledger, including the
-baseline when ordinal 0 remains best.
-
-```python
-frequency = root.frequency.on(raw_view)
-linewidth = root.linewidth.on(raw_view)
-ptc_frequency = root.frequency.on(ptc_view)
-
-spec = OptimizationSpec(
-    variables=(OptimizationVariable(
-        parameter=capacitance,
-        bounds=(100 * u.fF, 120 * u.fF),
-        transform="log",
-    ),),
-    objectives=(
-        CostObjective(
-            id="raw_frequency",
-            quantity=frequency,
-            target=6.2 * u.GHz,
-            weight=1 * u.dimensionless,
-        ),
-        CostObjective(
-            id="minimum_view_separation",
-            quantity=abs(frequency - ptc_frequency),
-            comparison="at_least",
-            target=1 * u.MHz,
-            scale=1 * u.MHz,
-            weight=1 * u.dimensionless,
-        ),
-        CostObjective(
-            id="raw_linewidth",
-            quantity=linewidth,
-            target=1 * u.MHz,
-            weight=1 * u.dimensionless,
-        ),
-    ),
-    optimizer=CMAESSpec(seed=17, population_size=2, max_evaluations=3),
-)
-
-result = run.optimize(raw_view, spec)
-result.plot(kind="comparison")
-```
-
-The `at_least` term contributes a soft one-sided penalty below its target.
-Expression grouping is preserved. A lower total cost can improve the chosen
-tradeoff while one component becomes worse; it does not guarantee that every
-objective improves, that a target is attained, or that a global optimum was
-found.
-
-The code above is illustrative. The tables below are a read-only document
-summary from one historical stored request, its sealed baseline checkpoint,
-generation ledger, and saved Result. That request used two objectives rather
-than the three shown above; it ran under optimization protocol v7 with
-source-bound Python and Julia runtime identities.
-
-| Historical setting | Expression or search setting | Target / comparison | Scale | Weight |
-|---|---|---:|---:|---:|
-| Capacitance | log bounds 100–120 fF | — | — | — |
-| Raw root frequency | raw retained View | 6.2 GHz / target | 6.2 GHz | 1 |
-| Root-frequency separation | abs(raw − PTC retained View) | 100 MHz / at least | 100 MHz | 1 |
-| Optimizer | seed 17; population 2; maximum 3 evaluations; initial sigma 0.25 | — | — | — |
-
-| Historical comparison | Initial | Best-found |
-|---|---:|---:|
-| Capacitance | 110 fF | 110 fF |
-| Evaluation ordinal | 0 | 0 |
-| Raw root frequency | 6.13588 GHz | 6.13588 GHz |
-| Raw normalized residual | −0.0103425 | −0.0103425 |
-| Raw weighted cost | 0.000106968 | 0.000106968 |
-| Root-frequency separation | 0.0276500 MHz | 0.0276500 MHz |
-| Separation normalized residual | 0.999723 | 0.999723 |
-| Separation weighted cost | 0.999447 | 0.999447 |
-| Total cost | 0.999554 | 0.999554 |
-
-Ordinal 0 remained the Best-found point, so neither objective improved or
-worsened between the two columns. The at-least separation remained below its
-target and dominated the stored total cost. This is not a target-attainment or
-global-optimum claim. No genuine corrected `Result.plot` visualization is
-available for this historical record, and no substitute was fabricated.
-
-## Reliability and comparison boundaries
-
-The public Direct operator follows the documented convention
-
-$$
-D(\omega)=K-\omega^2C-i\omega G, \qquad
-Y_{\mathrm{circ}}(\omega)=\frac{D(\omega)}{-i\omega}.
-$$
-
-Port-node incidence, declared loads, and the selected View form
-$Y_{\mathrm{net}}$. Scattering then satisfies
-
-$$
-\left(I+\sqrt{R}\,Y_{\mathrm{net}}\sqrt{R}\right)S
-=I-\sqrt{R}\,Y_{\mathrm{net}}\sqrt{R}.
-$$
-
-A loaded-root operator is therefore not the public Y matrix, and a
-retained/reduced network is not generally a submatrix of S.
-
-Direct and harmonic-balance Results share the physical Plan, Port convention,
-and wave normalization. They are comparable only when the selected boundary,
-channel, work point, pump-off state, and linearization agree. Chapter 4's
-Direct and pump-off HB examples use independently declared grids, so they show
-independent responses—not pointwise complex-S agreement or an independent
-backend proof.
-
-See the [Direct/HB realization concept](docs/concepts/direct-and-hb-realizations.qmd),
-the [View concept](docs/concepts/compilation-coordinates-and-network-views.qmd),
-and the [public Contract](docs/contracts/index.qmd) for the exact definitions
-and failure boundaries.
-
-## Reproducibility and ownership
-
-- Specs are immutable declarations; Runs own execution and workspaces; typed
-  Results own verified answers.
-- Plan, request, source, attempt, artifact, and Result identities are checked
-  before retained evidence is reused.
-- Presentation reads verified Results and has no solver callback.
-- The diagram path independently projects and audits the authored Plan; it
-  does not choose an analysis View or establish numerical correctness.
-
-SCNSim owns the circuit-network layer. Physical layout and electromagnetic
-simulation remain SCGSim responsibilities. The implementation does not claim
-universal speed or accuracy, automatic global root search, independent model
-validation, or release readiness.
+These are research-model results, not universal accuracy or performance
+guarantees. Fitting remains useful for measurements and model identification;
+SCNSim does not claim automatic global root search or independent model
+validation. Physical layout and electromagnetic simulation are SCGSim
+responsibilities.
 
 ## Install and learn
 
@@ -224,40 +149,17 @@ uv sync --locked
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
-The Engineer-course generators use repository-local Jupyter tooling and an
-optional static-export extra:
-
-```bash
-uv sync --locked --group course-generation --extra static-export
-```
-
-Start with the [Engineer course](docs/index.qmd). Chapters 1–4 form the
-mainline path from a grounded LC through named two-Port S21 and the four-Port
-capstone. Chapters 5–8 continue through reusable Libraries, diagram
-composition, multi-conductor networks, and restart-safe report/resolve.
-
-For a consuming repository, pin one reviewed SCNSim commit in that
-repository's `pyproject.toml` and lockfile:
+The site uses native Quarto HTML with the vendored, unmodified QDK v0.2.1
+light/dark theme. To build it, use Quarto 1.10.18 or later and run
+`quarto render --no-execute --no-clean`. Start with the
+[Engineer course](docs/index.qmd); its aggregate Chapter notebooks are the
+execution units, while the web lessons are reading pages. For a consuming
+repository, pin one reviewed SCNSim commit in its `pyproject.toml` and lockfile:
 
 ```bash
 uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-sha>"
 ```
 
-## Current limits and status
-
-The agreed multi-View Direct Optimization scope is implemented and usable,
-including per-View lineage, dependency sharing, durable checkpoint reuse, and
-typed Result presentation. The dev7 README and presentation refinements remain
-`CONVERGING`; they do not reopen accepted Direct/HB algorithms or imply a
-stable release. Historical whole-suite fixtures, broader multi-generation and
-all-platform coverage, external publication, and consumer migrations are
-separate work.
-
-See the centralized [implementation and evidence status](docs/contracts/index.qmd#implementation-evidence-status)
-for the exact validation boundary.
-
 ## License
 
-SCNSim is licensed under the [Apache License 2.0](LICENSE). See
-[NOTICE](NOTICE) for attribution and the separate JosephsonCircuits.jl backend
-boundary.
+Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
