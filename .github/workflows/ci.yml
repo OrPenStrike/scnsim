@@ -420,19 +420,49 @@ jobs:
               ["git", "ls-files", "*.md", "*.qmd"],
               text=True,
           ).splitlines()
+
+          def prose_only(text):
+              lines = []
+              fence_char = None
+              fence_length = 0
+              for line in text.splitlines():
+                  marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+                  if fence_char is None:
+                      if marker:
+                          fence_char = marker.group(1)[0]
+                          fence_length = len(marker.group(1))
+                      else:
+                          lines.append(line)
+                  elif (
+                      marker
+                      and marker.group(1)[0] == fence_char
+                      and len(marker.group(1)) >= fence_length
+                      and not marker.group(2).strip()
+                  ):
+                      fence_char = None
+              return "\n".join(lines)
+
+          include_contexts = {}
           for source in map(Path, tracked):
-              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", source.read_text()):
+              for included in re.findall(r"\{\{<\s*include\s+([^\s>]+)\s*>\}\}", prose_only(source.read_text())):
+                  path = (source.parent / included.strip("\"'")).resolve()
+                  assert path.exists(), f"broken local include in {source}: {included}"
+                  include_contexts.setdefault(path, set()).add(source.parent)
+
+          for source in map(Path, tracked):
+              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", prose_only(source.read_text())):
                   if "://" in target or target.startswith(("#", "mailto:")):
                       continue
                   relative = target.split("#", 1)[0].strip("<>")
                   if not relative:
                       continue
-                  path = (
-                      Path(relative.removeprefix("/"))
-                      if relative.startswith("/")
-                      else source.parent / relative
-                  ).resolve()
-                  assert path.exists(), f"broken local link in {source}: {target}"
+                  for context in include_contexts.get(source.resolve(), {source.parent}):
+                      path = (
+                          Path(relative.removeprefix("/"))
+                          if relative.startswith("/")
+                          else context / relative
+                      ).resolve()
+                      assert path.exists(), f"broken local link in {source}: {target}"
           print("verified local links in", len(tracked), "tracked Markdown/QMD files")
           PY
           if git ls-files | grep -Eq '(^|/)(_site|\.quarto|\.venv[^/]*|build|dist)(/|$)|\.quarto_ipynb$'; then
