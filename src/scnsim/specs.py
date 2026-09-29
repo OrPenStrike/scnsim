@@ -630,18 +630,67 @@ class OperatorSpec:
         return {"type": "operator", "frequencies": self.frequencies}
 
 
+class OptimizationDomain(str, Enum):
+    UNBOUNDED = "UNBOUNDED"
+    NONNEGATIVE = "NONNEGATIVE"
+    NONPOSITIVE = "NONPOSITIVE"
+    POSITIVE = "POSITIVE"
+    NEGATIVE = "NEGATIVE"
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationProgress:
+    """Validated, non-durable observation of one optimization request."""
+
+    phase: Literal["initial", "resume", "generation", "complete", "result_reuse"]
+    reused: bool
+    completed_generations: int
+    total_generations: int
+    evaluated_count: int
+    requested_budget: int
+    achievable_evaluations: int
+    best_cost: float
+
+
+_OMITTED_TRANSFORM = object()
+
+
 @dataclass(frozen=True, slots=True)
 class OptimizationVariable:
-    """Bind one public parameter to immutable physical search bounds."""
+    """Bind one public parameter to finite bounds or one open domain."""
 
     parameter: ParameterRef
-    model_default_bounds: tuple[Quantity, Quantity]
+    model_default_bounds: tuple[Quantity, Quantity] | None
     consumer_override_bounds: tuple[Quantity, Quantity] | None = None
     transform: Literal["linear", "log"] = "linear"
+    domain: OptimizationDomain | None = None
+    scale: Quantity | None = None
 
-    def __init__(self, *, parameter: ParameterRef, bounds: tuple[Quantity, Quantity], transform: Literal["linear", "log"] = "linear") -> None:
-        if parameter is None or transform not in {"linear", "log"}:
+    def __init__(self, *, parameter: ParameterRef, bounds: tuple[Quantity, Quantity] | None = None,
+                 domain: OptimizationDomain | None = None, scale: Quantity | None = None,
+                 transform: Literal["linear", "log"] | object = _OMITTED_TRANSFORM) -> None:
+        if parameter is None or (bounds is None) == (domain is None):
             raise InvalidOptimizationSpec("invalid optimization variable", stage="spec_validation")
+        if domain is not None:
+            if not isinstance(domain, OptimizationDomain) or transform is not _OMITTED_TRANSFORM:
+                raise InvalidOptimizationSpec("domain fixes its transform", stage="spec_validation")
+            linear = domain in {OptimizationDomain.UNBOUNDED, OptimizationDomain.NONNEGATIVE, OptimizationDomain.NONPOSITIVE}
+            if linear:
+                _require_quantity(scale, name="domain scale")
+                if float(scale.magnitude) <= 0.0:
+                    raise InvalidOptimizationSpec("linear domain scale must be positive", stage="spec_validation")
+            elif scale is not None:
+                raise InvalidOptimizationSpec("signed log domains do not accept scale", stage="spec_validation")
+            object.__setattr__(self, "parameter", parameter)
+            object.__setattr__(self, "model_default_bounds", None)
+            object.__setattr__(self, "consumer_override_bounds", None)
+            object.__setattr__(self, "transform", "linear" if linear else "log")
+            object.__setattr__(self, "domain", domain)
+            object.__setattr__(self, "scale", None if scale is None else _detached_quantity(scale))
+            return
+        transform = "linear" if transform is _OMITTED_TRANSFORM else transform
+        if transform not in {"linear", "log"} or scale is not None:
+            raise InvalidOptimizationSpec("invalid bounded optimization variable", stage="spec_validation")
         if not isinstance(bounds, tuple) or len(bounds) != 2:
             raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
         for name, value in zip(("lower bound", "upper bound"), bounds):
@@ -650,9 +699,11 @@ class OptimizationVariable:
         object.__setattr__(self, "model_default_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(self, "consumer_override_bounds", None)
         object.__setattr__(self, "transform", transform)
+        object.__setattr__(self, "domain", None)
+        object.__setattr__(self, "scale", None)
 
     @property
-    def bounds(self) -> tuple[Quantity, Quantity]:
+    def bounds(self) -> tuple[Quantity, Quantity] | None:
         """Resolved bounds; the runtime performs Plan/baseline validation."""
 
         return self.consumer_override_bounds or self.model_default_bounds
@@ -660,6 +711,8 @@ class OptimizationVariable:
     def _override(self, bounds: tuple[Quantity, Quantity]) -> OptimizationVariable:
         if not isinstance(bounds, tuple) or len(bounds) != 2:
             raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
+        if self.domain is not None:
+            raise InvalidOptimizationSpec("domain variables cannot receive bounds overrides", stage="spec_validation")
         for name, value in zip(("lower bound", "upper bound"), bounds):
             _require_quantity(value, name=name)
         instance = object.__new__(OptimizationVariable)
@@ -667,9 +720,14 @@ class OptimizationVariable:
         object.__setattr__(instance, "model_default_bounds", self.model_default_bounds)
         object.__setattr__(instance, "consumer_override_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(instance, "transform", self.transform)
+        object.__setattr__(instance, "domain", None)
+        object.__setattr__(instance, "scale", None)
         return instance
 
     def _canonical_record(self) -> Mapping[str, object]:
+        if self.domain is not None:
+            return {"parameter": self.parameter, "domain": self.domain.value,
+                    "transform": self.transform, "scale": self.scale}
         return {
             "parameter": self.parameter, "model_default_bounds": self.model_default_bounds,
             "consumer_override_bounds": self.consumer_override_bounds, "lower": self.bounds[0],
@@ -946,13 +1004,21 @@ class OptimizationSpec:
     def show(self) -> HtmlPresentation:
         """Present model defaults, active overrides, objectives, and CMA controls."""
 
+        def mapping_scale(variable: OptimizationVariable) -> str:
+            if variable.scale is not None:
+                return str(variable.scale)
+            if variable.domain in {OptimizationDomain.POSITIVE, OptimizationDomain.NEGATIVE}:
+                return f"x = x0 * exp(z); x0 = effective request initial ({variable.parameter.spec.unit})"
+            return "—"
+
         rows = "".join(
             "<tr>"
             f"<td>{escape('.'.join(_parameter_key(variable.parameter)))}</td>"
             f"<td>{escape(_quantity_pair_text(variable.model_default_bounds))}</td>"
             f"<td>{escape(_quantity_pair_text(variable.consumer_override_bounds))}</td>"
-            f"<td>{escape(_quantity_pair_text(variable.bounds))}</td>"
+            f"<td>{escape(_quantity_pair_text(variable.bounds) if variable.domain is None else variable.domain.value)}</td>"
             f"<td>{escape(variable.transform)}</td>"
+            f"<td>{escape(mapping_scale(variable))}</td>"
             "</tr>"
             for variable in self.variables
         )
@@ -970,7 +1036,7 @@ class OptimizationSpec:
             f"population_size={self.optimizer.population_size}; initial_sigma={self.optimizer.initial_sigma}"
         )
         return HtmlPresentation(
-            "<table><thead><tr><th>parameter</th><th>model default</th><th>consumer override</th><th>resolved</th><th>transform</th></tr></thead>"
+            "<table><thead><tr><th>parameter</th><th>model default</th><th>consumer override</th><th>resolved bounds / domain</th><th>transform</th><th>mapping scale</th></tr></thead>"
             f"<tbody>{rows}</tbody></table><h3>objectives</h3><ul>{objectives}</ul><h3>optimizer</h3><p>{escape(controls)}</p>"
         )
 

@@ -29,7 +29,7 @@ The Parameter System keeps seven layers distinct:
 | physical binding | one or more registered component fields that consume the ref |
 | `ParameterSet` | one immutable operation-time point |
 | `ParameterSpace` | an ordered Cartesian grid or explicit list of points |
-| `OptimizationVariable` | one scalar ref plus request-local finite bounds and transform |
+| `OptimizationVariable` | one scalar ref plus finite bounds or one named open domain |
 
 The output selected by an objective is a typed quantity, not a `ParameterRef`.
 `root_hint` remains a numerical branch locator, not a parameter value, target,
@@ -135,8 +135,12 @@ Spec is rejected without execution.
 
 ## Optimization uses the same binding boundary
 
-`OptimizationVariable` adds finite bounds and an existing transform to one
-scalar ref. Bounds are not inferred from a parameter-space grid. An
+`OptimizationVariable` adds either finite bounds (linear by default, optionally
+positive log) or one of `UNBOUNDED`, `NONNEGATIVE`, `NONPOSITIVE`, `POSITIVE`,
+and `NEGATIVE` domains to one scalar ref. Linear open domains require a finite,
+positive physical scale; signed log domains use the nonzero effective initial
+value as their scale. Domains fix their transform and cannot be overridden by
+finite bounds. Bounds are not inferred from a parameter-space grid. An
 Optimization request may take a `ParameterSet` for non-active fixed inputs;
 overlap with active variables is rejected, and omitted non-active inputs use
 their sealed baseline.
@@ -145,6 +149,11 @@ Every candidate and the winner record a complete effective `ParameterSet`.
 The winner can therefore be re-evaluated or rendered explicitly without
 changing the Plan baseline. A `ParameterSpace` is not an implicit batch of
 optimizations, and a low cost does not create scientific or Human acceptance.
+
+`OptimizationProgress` is optional, validated process-local telemetry delivered
+through `on_progress`. It reports initial evaluation, resume boundary, each
+new complete generation, completion, and cached-result reuse. It is not a
+Result, calculation identity, scientific Gate, or durability guarantee.
 
 The fully explicit form binds every selector leaf with `.on(view)`. The
 convenience form supplies a default View only for leaves that are still

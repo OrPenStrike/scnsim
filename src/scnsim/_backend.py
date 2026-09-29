@@ -8,6 +8,7 @@ owners so a child process never becomes a second authority for those records.
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import queue
@@ -27,9 +28,12 @@ from typing import Any
 
 from .errors import (
     BackendProtocolError,
+    EvidenceIntegrityError,
+    OptimizationProgressCallbackError,
     RuntimePreparationError,
     UnsupportedRuntimePlatformError,
 )
+from ._canonical import float64_from_hex
 
 
 _EXPECTED_JULIA_VERSION = "1.12.6"
@@ -487,22 +491,34 @@ def _validate_progress(
         "schema_version": 1,
         "request_sha256": request_sha256,
         "attempt_sha256": attempt_sha256,
-        "event": "optimization_generation_complete",
+        "event": frame.get("event"),
     }
+    phase = frame.get("event")
+    fields = {"completed_generations", "total_generations", "evaluated_count",
+              "requested_budget", "achievable_evaluations"}
     if any(frame.get(key) != value for key, value in required.items()) or set(frame) != {
         *required,
-        "completed_generation",
-        "completed_evaluations",
-        "max_evaluations",
-    } or any(
-        not isinstance(frame.get(key), int) or frame[key] < 1
-        for key in ("completed_generation", "completed_evaluations", "max_evaluations")
+        *fields, "reused", "best_cost_f64",
+    } or phase not in {"initial", "resume", "generation", "complete"} or not isinstance(frame.get("reused"), bool) or any(
+        not isinstance(frame.get(key), int) or isinstance(frame.get(key), bool) or frame[key] < (0 if key == "completed_generations" else 1)
+        for key in fields
     ):
         raise BackendProtocolError(
             "child progress frame does not bind the authorized request and attempt",
             stage="progress",
             evidence={"frame": frame},
         )
+    try:
+        best = float64_from_hex(frame["best_cost_f64"])
+    except (TypeError, ValueError, KeyError, EvidenceIntegrityError) as error:
+        raise BackendProtocolError("optimization progress cost is malformed", stage="progress") from error
+    if (not math.isfinite(best) or best < 0.0 or
+        frame["completed_generations"] > frame["total_generations"] or
+        frame["achievable_evaluations"] > frame["requested_budget"] or
+        (phase == "initial" and (frame["completed_generations"] != 0 or frame["evaluated_count"] != 1)) or
+        (phase == "generation" and frame["reused"]) or
+        (phase == "resume" and not frame["reused"])):
+        raise BackendProtocolError("optimization progress counts are inconsistent", stage="progress")
     return frame
 
 
@@ -530,6 +546,20 @@ def _validate_checkpoint_ready(
             stage="optimization_checkpoint",
             evidence={"frame": frame},
         )
+    return frame
+
+
+def _validate_point_ready(raw: str, *, request_sha256: str,
+        attempt_sha256: str) -> Mapping[str, object]:
+    frame = _decode_canonical_line(raw, stage="point_checkpoint")
+    if (set(frame) != {"schema", "schema_version", "request_sha256", "attempt_sha256",
+            "ordinal", "record_sha256", "byte_length"} or
+        frame.get("schema") != "scnsim.point_checkpoint_ready" or frame.get("schema_version") != 1 or
+        frame.get("request_sha256") != request_sha256 or frame.get("attempt_sha256") != attempt_sha256 or
+        not isinstance(frame.get("ordinal"), int) or isinstance(frame.get("ordinal"), bool) or frame["ordinal"] < 0 or
+        not _is_sha256(frame.get("record_sha256")) or
+        not isinstance(frame.get("byte_length"), int) or frame["byte_length"] < 1):
+        raise BackendProtocolError("point checkpoint ready frame is malformed", stage="point_checkpoint")
     return frame
 
 
@@ -658,6 +688,9 @@ def run_terminal(
     authorize: Callable[[BootstrapReady], str],
     checkpoint: Mapping[str, object] | None = None,
     publish_checkpoint: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+    on_progress: Callable[[Mapping[str, object]], object] | None = None,
+    point_recovery: tuple[Mapping[str, object], ...] | None = None,
+    publish_point: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
 ) -> TerminalOutcome:
     """Run exactly one authorized Julia request and return transport evidence.
 
@@ -689,6 +722,9 @@ def run_terminal(
         )
     hb_operation = request_document.get("operation") == "solve_hb"
     optimization_operation = request_document.get("operation") == "optimize_direct"
+    sweep_operation = request_document.get("parameter_source", {}).get("kind") in {"grid", "points"}
+    if sweep_operation != (point_recovery is not None and publish_point is not None):
+        raise BackendProtocolError("sweep launch lacks exact point recovery controls", stage="launch_arguments")
     if (checkpoint is not None or publish_checkpoint is not None) and not optimization_operation:
         raise BackendProtocolError(
             "baseline checkpoint controls are valid only for optimization",
@@ -806,6 +842,12 @@ def run_terminal(
                 process.stdin.flush()
                 process.stdin.close()
                 checkpoint_committed = True
+            elif sweep_operation:
+                recovery = {"schema": "scnsim.point_recovery", "schema_version": 1,
+                    "request_sha256": request_sha256, "attempt_sha256": attempt_sha256,
+                    "entries": list(point_recovery or ())}
+                process.stdin.write(_canonical_json_line(recovery))
+                process.stdin.flush()
             elif not optimization_operation:
                 process.stdin.close()
             progress: list[Mapping[str, object]] = []
@@ -820,6 +862,22 @@ def run_terminal(
                         stdout_log=stdout_log,
                         stderr_log=stderr_log,
                     )
+                if re.search(r'"schema"\s*:\s*"scnsim\.point_checkpoint[^\"]*"', line):
+                    if not sweep_operation:
+                        raise BackendProtocolError("unexpected point checkpoint frame", stage="point_checkpoint")
+                    ready = _validate_point_ready(line, request_sha256=request_sha256,
+                        attempt_sha256=attempt_sha256)
+                    assert publish_point is not None
+                    published = publish_point(ready)
+                    if set(published) != {"record_sha256", "seal_sha256"} or published["record_sha256"] != ready["record_sha256"] or not _is_sha256(published["seal_sha256"]):
+                        raise BackendProtocolError("point publisher returned inconsistent identity", stage="point_checkpoint")
+                    process.stdin.write(_canonical_json_line({
+                        "schema": "scnsim.point_checkpoint_committed", "schema_version": 1,
+                        "request_sha256": request_sha256, "attempt_sha256": attempt_sha256,
+                        "ordinal": ready["ordinal"], "record_sha256": ready["record_sha256"],
+                        "seal_sha256": published["seal_sha256"]}))
+                    process.stdin.flush()
+                    continue
                 if _reserved_optimization_frame(line):
                     if not optimization_operation or checkpoint_committed:
                         raise _protocol_error(
@@ -874,7 +932,24 @@ def run_terminal(
                             stdout_log=stdout_log,
                             stderr_log=stderr_log,
                         )
+                    if optimization_operation:
+                        controls = request_document["spec"]["optimizer"]
+                        if (event["total_generations"] != controls["complete_generations"] or
+                            event["requested_budget"] != controls["max_evaluations"] or
+                            event["achievable_evaluations"] != 1 + controls["complete_generations"] * controls["resolved_population_size"] or
+                            event["evaluated_count"] != 1 + event["completed_generations"] * controls["resolved_population_size"]):
+                            raise BackendProtocolError("optimization progress disagrees with request budget", stage="progress")
                     progress.append(event)
+                    if on_progress is not None:
+                        try:
+                            on_progress(event)
+                        except KeyboardInterrupt:
+                            raise
+                        except Exception as error:
+                            raise OptimizationProgressCallbackError(
+                                "optimization progress callback failed",
+                                stage="progress_callback", evidence={"error_type": type(error).__name__},
+                            ) from error
             returncode = process.wait()
             stderr_reader.join()
             if reader_errors:

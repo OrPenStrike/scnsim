@@ -266,6 +266,13 @@ class BaselineCheckpoint:
     directory: Path
 
 
+@dataclass(frozen=True)
+class PointCheckpoint:
+    record: Mapping[str, object]
+    seal_sha256: str
+    directory: Path
+
+
 class _IncomingCheckpointEvidenceError(EvidenceIntegrityError):
     """Untrusted child checkpoint bytes failed before publication ownership."""
 
@@ -427,6 +434,16 @@ class WorkspaceBinding:
             return directory
         directory.mkdir(parents=True, exist_ok=False)
         _atomic_write(path, request_bytes)
+        if request["parameter_source"]["kind"] in {"grid", "points"}:
+            _atomic_write(directory / "point-checkpoint-anchor.json", _canonical_bytes({
+                "schema": "scnsim.point_checkpoint_anchor", "schema_version": 1,
+                "request_sha256": request_sha256}))
+            point_root = directory / "point-checkpoints"
+            point_root.mkdir()
+            _atomic_write(point_root / "index.json", _canonical_bytes({
+                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
+                "request_sha256": request_sha256, "entries": []}))
+            _fsync_directory(point_root)
         _fsync_directory(directory)
         return directory
 
@@ -443,6 +460,69 @@ class WorkspaceBinding:
             checkpoint_directory, request_sha256=request_sha256,
             request=request, plan=plan,
         )
+
+    def point_checkpoints(self, request_sha256: str) -> tuple[PointCheckpoint, ...]:
+        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
+        return _verify_point_checkpoints(request_directory,
+            _load_canonical(request_directory / "request.json"),
+            _load_canonical(self.leaf / "plan.json"))
+
+    def publish_point_checkpoint(self, request_sha256: str, attempt_sha256: str,
+            staging: Path, ready: Mapping[str, object]) -> PointCheckpoint:
+        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
+        request = _load_canonical(request_directory / "request.json")
+        plan = _load_canonical(self.leaf / "plan.json")
+        previous = _verify_point_checkpoints(request_directory, request, plan)
+        ordinal = len(previous)
+        if ready.get("ordinal") != ordinal:
+            raise _integrity("Point checkpoint publication is not in request order.")
+        ready_path = staging / "point-ready.json"
+        if ready_path.is_symlink() or not ready_path.is_file():
+            raise _integrity("Point checkpoint record is absent from child staging.")
+        raw = ready_path.read_bytes()
+        if len(raw) != ready.get("byte_length") or _sha256(raw) != ready.get("record_sha256"):
+            raise _integrity("Point checkpoint ready frame does not bind its bytes.")
+        record = _decode_bytes(raw, "point checkpoint record")
+        point_root = staging / "artifacts" / "parameter_points" / "points" / f"{ordinal:06d}"
+        attempt_path = staging / "attempt.json"
+        if attempt_path.is_symlink() or not attempt_path.is_file() or _sha256(attempt_path.read_bytes()) != attempt_sha256:
+            raise _integrity("Point checkpoint source attempt is absent or changed.")
+        source_attempt = attempt_path.read_bytes()
+        _verify_point_checkpoint_record(record, point_root, request, plan, ordinal, attempt_sha256)
+        root = request_directory / "point-checkpoints"
+        if not root.exists():
+            root.mkdir()
+            _atomic_write(root / "index.json", _canonical_bytes({
+                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
+                "request_sha256": request_sha256, "entries": []}))
+            _fsync_directory(request_directory)
+        stage = root / f".staging-{uuid.uuid4()}"
+        stage.mkdir()
+        try:
+            _atomic_write(stage / "record.json", raw)
+            _atomic_write(stage / "source-attempt.json", source_attempt)
+            shutil.copytree(point_root, stage / "point")
+            seal = {"schema": "scnsim.point_checkpoint_seal", "schema_version": 1,
+                "request_sha256": request_sha256, "ordinal": ordinal,
+                "record_sha256": _sha256(raw), "source_attempt_sha256": attempt_sha256,
+                "published_at_utc": _utc_now()}
+            _atomic_write(stage / "seal.json", _canonical_bytes(seal))
+            _fsync_tree(stage)
+            final = root / f"{ordinal:06d}"
+            if _path_entry_exists(final):
+                raise _integrity("Point checkpoint publication target already exists.")
+            os.replace(stage, final)
+            _fsync_directory(root)
+            entries = [{"ordinal": index, "seal_sha256": item.seal_sha256}
+                for index, item in enumerate(previous)]
+            entries.append({"ordinal": ordinal, "seal_sha256": _sha256(_canonical_bytes(seal))})
+            _atomic_write(root / "index.json", _canonical_bytes({
+                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
+                "request_sha256": request_sha256, "entries": entries}))
+            return _verify_point_checkpoints(request_directory, request, plan)[-1]
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
 
     def publish_baseline_checkpoint(
         self,
@@ -703,32 +783,43 @@ class WorkspaceBinding:
                 request = _load_canonical(request_path)
                 _verify_request_document(request, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
                 checkpoint = self.baseline_checkpoint(request_sha256)
+                point_checkpoints = (self.point_checkpoints(request_sha256)
+                    if request["parameter_source"]["kind"] in {"grid", "points"} else ())
+                point_counts = None
+                if request["parameter_source"]["kind"] in {"grid", "points"}:
+                    total = len(list(_parameter_source_points(request["parameter_source"])))
+                    point_counts = {"published_points": len(point_checkpoints),
+                        "successful_points": sum(item.record["metadata"]["status"] == "success" for item in point_checkpoints),
+                        "failed_points": sum(item.record["metadata"]["status"] == "failure" for item in point_checkpoints),
+                        "remaining_points": total - len(point_checkpoints)}
                 attempts = request_directory / "attempts"
                 if attempts.is_symlink() or (attempts.exists() and not attempts.is_dir()):
                     raise _integrity("Inventory request attempts path is unsafe.", request_sha256=request_sha256)
                 if not attempts.exists():
-                    if checkpoint is None:
+                    if checkpoint is None and not point_checkpoints:
                         raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
                     rows.append({
                         "request_sha256": request_sha256,
                         "operation": request["operation"],
-                        "status": "partial_baseline",
+                        "status": "partial_points" if point_checkpoints else "partial_baseline",
                         "attempts": [],
-                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
-                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
+                        **({"baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
+                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256} if checkpoint else {}),
+                        **(point_counts or {}),
                     })
                     continue
                 finals = self._final_attempt_directories(attempts)
                 if not finals:
-                    if checkpoint is None:
+                    if checkpoint is None and not point_checkpoints:
                         raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
                     rows.append({
                         "request_sha256": request_sha256,
                         "operation": request["operation"],
-                        "status": "partial_baseline",
+                        "status": "partial_points" if point_checkpoints else "partial_baseline",
                         "attempts": [],
-                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
-                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
+                        **({"baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
+                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256} if checkpoint else {}),
+                        **(point_counts or {}),
                     })
                     continue
                 outcomes: list[str] = []
@@ -754,6 +845,8 @@ class WorkspaceBinding:
                         "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
                         "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
                     })
+                if point_counts is not None:
+                    row.update(point_counts)
                 rows.append(row)
         root_state = _load_canonical(self.root / "workspace.json")
         _assert_root_envelope(root_state)
@@ -816,6 +909,16 @@ class WorkspaceBinding:
             if request.is_symlink() or not request.is_dir() or _SHA256.fullmatch(request.name) is None:
                 raise _integrity("Workspace contains a malformed request directory.", path=str(request))
             attempts = request / "attempts"
+            point_root = request / "point-checkpoints"
+            if point_root.exists():
+                if point_root.is_symlink() or not point_root.is_dir():
+                    raise _integrity("Workspace contains unsafe point checkpoint directory.")
+                for child in point_root.iterdir():
+                    if child.name.startswith(".staging-"):
+                        if child.is_symlink() or not child.is_dir() or _UUID4.fullmatch(child.name[len(".staging-"):]) is None:
+                            raise _integrity("Workspace contains malformed point checkpoint staging.")
+                        shutil.rmtree(child)
+                        _fsync_directory(point_root)
             for child in request.iterdir():
                 if not child.name.startswith(".staging-baseline-checkpoint-"):
                     continue
@@ -1014,7 +1117,14 @@ class WorkspaceBinding:
             if receipt.get("outcome_sha256") is not None:
                 receipt_fields.add("outcome_sha256")
         if set(receipt) != receipt_fields:
-            raise _integrity("Receipt envelope is open or has outcome-incompatible fields.", attempt=str(directory))
+            if not (set(receipt) == receipt_fields | {"point_checkpoint_count"} and
+                    request_document.get("parameter_source", {}).get("kind") in {"grid", "points"}):
+                raise _integrity("Receipt envelope is open or has outcome-incompatible fields.", attempt=str(directory))
+        if "point_checkpoint_count" in receipt:
+            count = receipt["point_checkpoint_count"]
+            checkpoints = self.point_checkpoints(request_sha256)
+            if not isinstance(count, int) or isinstance(count, bool) or count < 0 or count > len(checkpoints):
+                raise _integrity("Sweep receipt references missing point checkpoints.")
         if request_document.get("operation") == "optimize_direct":
             if checkpoint is None:
                 checkpoint = self.baseline_checkpoint(request_sha256)
@@ -1184,7 +1294,7 @@ class WorkspaceBinding:
                 raise _integrity("Interruption evidence is open or malformed.", attempt=str(directory))
         if outcome in {"success", "failure"} and outcome_sha is None:
             failure = receipt.get("failure")
-            if not (outcome == "failure" and isinstance(failure, dict) and failure.get("kind") == "backend_protocol"):
+            if not (outcome == "failure" and isinstance(failure, dict) and failure.get("kind") in {"backend_protocol", "optimization_progress_callback"}):
                 raise _integrity("Completed terminal evidence requires a valid outcome envelope.", attempt=str(directory))
         _verify_attempt_layout(directory, outcome=outcome, has_authoritative_outcome=outcome_sha is not None)
         return attempt, receipt, result
@@ -1895,7 +2005,7 @@ def _verify_request_document(
     elif operation == "evaluate_direct":
         _verify_v1_evaluation_spec(spec, terminal, port_realizable)
     else:
-        _verify_v1_optimization_spec(spec, plan)
+        _verify_v1_optimization_spec(spec, plan, request["parameter_source"].get("parameters"))
         leaves = _optimization_selector_leaves(spec)
         if not leaves or request["view"] != leaves[0].get("view"):
             raise _integrity("Optimization primary View is not its first normalized selector View.")
@@ -2457,17 +2567,43 @@ def _verify_frequency_anchor(value: object) -> None:
         _verify_quantity_role(value, complex_value=True, unit="hertz", dimensionality="inverse_time")
 
 
-def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object]) -> None:
+def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object], initial_parameters: object) -> None:
     if not isinstance(spec, dict) or set(spec) != {"type", "variables", "objectives", "optimizer", "allow_extrapolation"} or spec.get("type") != "optimization":
         raise _integrity("Optimization Spec is malformed.")
     variables, objectives, optimizer, authorizations = spec.get("variables"), spec.get("objectives"), spec.get("optimizer"), spec.get("allow_extrapolation")
     if not isinstance(variables, list) or not variables or not isinstance(objectives, list) or not objectives or not isinstance(optimizer, dict) or not isinstance(authorizations, list):
         raise _integrity("Optimization Spec has malformed collections.")
     variable_keys: list[tuple[tuple[str, ...], str]] = []
+    initial = {_parameter_key_integrity(binding["parameter"]): binding["value"]
+        for binding in initial_parameters.get("bindings", [])} if isinstance(initial_parameters, Mapping) else {}
     for variable in variables:
-        if not isinstance(variable, dict) or set(variable) != {"parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"} or variable.get("transform") not in {"linear", "log"}:
+        if not isinstance(variable, dict):
             raise _integrity("Optimization variable is malformed.")
         key = _parameter_key_integrity(variable.get("parameter")); variable_keys.append(key)
+        if "domain" in variable:
+            domain = variable.get("domain")
+            linear = domain in {"UNBOUNDED", "NONNEGATIVE", "NONPOSITIVE"}
+            signed = domain in {"POSITIVE", "NEGATIVE"}
+            if set(variable) != {"parameter", "domain", "transform", "scale"} or not (linear or signed) or variable.get("transform") != ("linear" if linear else "log"):
+                raise _integrity("Optimization domain variable is malformed.")
+            scale = variable.get("scale")
+            value = initial.get(key)
+            if not isinstance(value, Mapping):
+                raise _integrity("Optimization domain initial parameter is absent.")
+            x0 = _f64_value(value.get("si_value_f64"))
+            if (domain == "POSITIVE" and x0 <= 0.0 or domain == "NEGATIVE" and x0 >= 0.0 or
+                domain == "NONNEGATIVE" and x0 < 0.0 or domain == "NONPOSITIVE" and x0 > 0.0):
+                raise _integrity("Optimization domain initial value is outside its domain.")
+            if linear:
+                _verify_quantity_compatible(scale, value)
+                magnitude = _f64_value(scale["si_value_f64"])
+                if magnitude <= 0.0 or (domain != "UNBOUNDED" and not math.isfinite(x0 / magnitude)):
+                    raise _integrity("Optimization domain scale must be positive.")
+            elif scale is not None:
+                raise _integrity("Signed log domain cannot have physical scale.")
+            continue
+        if set(variable) != {"parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"} or variable.get("transform") not in {"linear", "log"}:
+            raise _integrity("Optimization bounded variable is malformed.")
         for name in ("model_default_bounds", "consumer_override_bounds"):
             bounds = variable.get(name)
             if bounds is None and name == "consumer_override_bounds":
@@ -2503,16 +2639,17 @@ def _verify_v1_optimization_spec(spec: object, plan: Mapping[str, object]) -> No
         ):
             raise _integrity("Optimization objective scale is malformed.")
     required_optimizer = {"type", "seed", "max_evaluations", "population_size", "resolved_population_size", "initial_sigma_f64", "baseline_optimizer_coordinates_f64", "box_transform_id", "complete_generations", "unused_evaluations", "hidden_stops"}
-    if set(optimizer) != required_optimizer or optimizer.get("type") != "cma_es" or optimizer.get("box_transform_id") != "cmaes-jl-0.2.6-linquad-unit-box.v1" or optimizer.get("hidden_stops") != "disabled":
+    expected_map = "cmaes-jl-0.2.6-native-domains.v1" if any("domain" in v for v in variables) else "cmaes-jl-0.2.6-linquad-unit-box.v1"
+    if set(optimizer) != required_optimizer or optimizer.get("type") != "cma_es" or optimizer.get("box_transform_id") != expected_map or optimizer.get("hidden_stops") != "disabled":
         raise _integrity("Optimization controls are malformed.")
     baseline_coordinates = optimizer.get("baseline_optimizer_coordinates_f64")
     if (
         not isinstance(baseline_coordinates, list)
         or len(baseline_coordinates) != len(variables)
-        or any(
-            not _finite_f64(value) or not 0.0 <= _f64_value(value) <= 1.0
-            for value in baseline_coordinates
-        )
+        or any(not _finite_f64(value) or (
+            _f64_value(value) != 0.0 if "domain" in variable
+            else not 0.0 <= _f64_value(value) <= 1.0
+        ) for value, variable in zip(baseline_coordinates, variables))
     ):
         raise _integrity("Optimization baseline coordinates are malformed.")
 
@@ -2884,6 +3021,7 @@ def _verify_failure_document(value: object, operation: object) -> None:
         "numerical_resolution_unresolved": "execution",
         "runtime_preparation": "execution",
         "backend_protocol": "execution",
+        "optimization_progress_callback": "execution",
         "result_unavailable": "evidence",
         "evidence_integrity": "evidence",
     }
@@ -4820,6 +4958,124 @@ def _parameter_source_points(source: Mapping[str, object]) -> Iterator[tuple[obj
         yield list(indices), _merge_parameter_records(source["base_parameters"], overlay)
 
 
+def _verify_point_checkpoint_record(record: Mapping[str, object], point_root: Path,
+        request: Mapping[str, object], plan: Mapping[str, object], ordinal: int,
+        producer_attempt_sha256: str) -> None:
+    from ._canonical import canonical_parameters_sha256
+
+    source = request.get("parameter_source")
+    if not isinstance(source, Mapping) or source.get("kind") not in {"grid", "points"}:
+        raise _integrity("Point checkpoint request is not a parameter sweep.")
+    expected = list(_parameter_source_points(source))
+    if ordinal < 0 or ordinal >= len(expected) or not isinstance(record, Mapping) or set(record) != {
+        "schema", "schema_version", "request_sha256", "metadata", "files"
+    } or record.get("schema") != "scnsim.point_checkpoint_record" or record.get("schema_version") != 1 or record.get("request_sha256") != _sha256(_canonical_bytes(request)):
+        raise _integrity("Point checkpoint record envelope is invalid.")
+    metadata, files = record["metadata"], record["files"]
+    source_index, parameters = expected[ordinal]
+    common = {"ordinal", "source_index", "parameters", "parameters_sha256", "status", "producer_attempt_sha256"}
+    if (not isinstance(metadata, Mapping) or metadata.get("ordinal") != ordinal or
+        metadata.get("source_index") != source_index or metadata.get("parameters") != parameters or
+        metadata.get("parameters_sha256") != canonical_parameters_sha256(parameters) or
+        metadata.get("producer_attempt_sha256") != producer_attempt_sha256 or
+        metadata.get("status") not in {"success", "failure"}):
+        raise _integrity("Point checkpoint changed its exact request point.")
+    _verify_parameter_set_document(parameters)
+    if point_root.is_symlink() or not point_root.is_dir() or not isinstance(files, list):
+        raise _integrity("Point checkpoint payload directory is missing or unsafe.")
+    actual = sorted(path.relative_to(point_root).as_posix() for path in point_root.rglob("*") if path.is_file())
+    if any(path.is_symlink() for path in point_root.rglob("*")) or [row.get("path") if isinstance(row, Mapping) else None for row in files] != actual:
+        raise _integrity("Point checkpoint inventory differs from its payload tree.")
+    for row in files:
+        if not isinstance(row, Mapping) or set(row) != {"path", "sha256", "byte_length"} or not isinstance(row["byte_length"], int) or row["byte_length"] < 1:
+            raise _integrity("Point checkpoint file row is malformed.")
+        path = _inside(point_root, row["path"])
+        if path.stat().st_size != row["byte_length"] or _sha256(path.read_bytes()) != _valid_sha(row["sha256"]):
+            raise _integrity("Point checkpoint file bytes differ from record.")
+    if metadata["status"] == "failure":
+        if set(metadata) not in {frozenset(common | {"failure"}), frozenset(common | {"failure", "ref_lineage"})} or files:
+            raise _integrity("Failed point checkpoint contains success payload.")
+        _verify_failure_document(metadata["failure"], request["operation"])
+        if "ref_lineage" in metadata:
+            _verify_v1_lineage(metadata["ref_lineage"], plan)
+        return
+    if set(metadata) != common | {"ref_lineage", "payload_path"} or metadata["payload_path"] != f"artifacts/parameter_points/points/{ordinal:06d}/payload.json":
+        raise _integrity("Successful point checkpoint metadata is invalid.")
+    payload = _load_canonical(point_root / "payload.json")
+    if payload.get("schema") != "scnsim.parameter_point_payload" or payload.get("schema_version") != 2:
+        raise _integrity("Point checkpoint payload envelope is invalid.")
+    prefix = f"artifacts/parameter_points/points/{ordinal:06d}/"
+    def localize(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {key: (item[len(prefix):] if key in {"path", "file_manifest"} and isinstance(item, str) and item.startswith(prefix) else localize(item)) for key, item in value.items()}
+        if isinstance(value, list):
+            return [localize(item) for item in value]
+        return value
+    point_result = localize(payload)
+    assert isinstance(point_result, dict)
+    point_result.update({"schema": "scnsim.result", "request_sha256": record["request_sha256"],
+        "attempt_sha256": producer_attempt_sha256, "parameters": parameters,
+        "parameters_sha256": metadata["parameters_sha256"], "ref_lineage": metadata["ref_lineage"]})
+    point_request = dict(request)
+    point_request["parameter_source"] = {"kind": "point", "parameters": parameters}
+    _verify_result_document(point_result, point_request, record["request_sha256"],
+        producer_attempt_sha256, plan)
+    for manifest_path in point_root.rglob("*.manifest.json"):
+        manifest = _load_canonical(manifest_path)
+        if manifest.get("schema") == "scnsim.artifact_manifest":
+            artifact_relative = manifest.get("artifact_path")
+            if not isinstance(artifact_relative, str) or not artifact_relative.startswith(prefix):
+                raise _integrity("Point checkpoint artifact manifest path is invalid.")
+            _verify_manifest_tree(_inside(point_root, artifact_relative[len(prefix):]), manifest)
+
+
+def _verify_point_checkpoints(request_directory: Path, request: Mapping[str, object],
+        plan: Mapping[str, object]) -> tuple[PointCheckpoint, ...]:
+    root = request_directory / "point-checkpoints"
+    anchor_path = request_directory / "point-checkpoint-anchor.json"
+    if _path_entry_exists(anchor_path):
+        anchor = _load_canonical(anchor_path)
+        if set(anchor) != {"schema", "schema_version", "request_sha256"} or anchor.get("schema") != "scnsim.point_checkpoint_anchor" or anchor.get("schema_version") != 1 or anchor.get("request_sha256") != _sha256(_canonical_bytes(request)):
+            raise _integrity("Point checkpoint request anchor is invalid.")
+        if not _path_entry_exists(root):
+            raise _integrity("Published point checkpoint index is missing.")
+    if not _path_entry_exists(root):
+        return ()
+    if root.is_symlink() or not root.is_dir():
+        raise _integrity("Point checkpoint directory is unsafe.")
+    index = _load_canonical(root / "index.json")
+    request_sha = _sha256(_canonical_bytes(request))
+    entries = index.get("entries")
+    if set(index) != {"schema", "schema_version", "request_sha256", "entries"} or index.get("schema") != "scnsim.point_checkpoint_index" or index.get("schema_version") != 1 or index.get("request_sha256") != request_sha or not isinstance(entries, list):
+        raise _integrity("Point checkpoint index is invalid.")
+    names = {path.name for path in root.iterdir()}
+    if names != {"index.json", *(f"{i:06d}" for i in range(len(entries)))}:
+        raise _integrity("Point checkpoint index does not cover its directories.")
+    verified = []
+    for ordinal, entry in enumerate(entries):
+        directory = root / f"{ordinal:06d}"
+        if not isinstance(entry, Mapping) or set(entry) != {"ordinal", "seal_sha256"} or entry["ordinal"] != ordinal or directory.is_symlink() or not directory.is_dir() or {p.name for p in directory.iterdir()} != {"record.json", "source-attempt.json", "seal.json", "point"}:
+            raise _integrity("Point checkpoint index entry is invalid.")
+        if any((directory / name).is_symlink() or not (directory / name).is_file() for name in ("record.json", "source-attempt.json", "seal.json")):
+            raise _integrity("Point checkpoint files are unsafe.")
+        seal_bytes = (directory / "seal.json").read_bytes()
+        if _sha256(seal_bytes) != _valid_sha(entry["seal_sha256"]):
+            raise _integrity("Point checkpoint seal differs from index.")
+        seal = _decode_bytes(seal_bytes, "point checkpoint seal")
+        record_bytes = (directory / "record.json").read_bytes()
+        source_bytes = (directory / "source-attempt.json").read_bytes()
+        if set(seal) != {"schema", "schema_version", "request_sha256", "ordinal", "record_sha256", "source_attempt_sha256", "published_at_utc"} or seal.get("schema") != "scnsim.point_checkpoint_seal" or seal.get("schema_version") != 1 or seal.get("request_sha256") != request_sha or seal.get("ordinal") != ordinal or seal.get("record_sha256") != _sha256(record_bytes) or seal.get("source_attempt_sha256") != _sha256(source_bytes) or not _valid_utc_timestamp(seal.get("published_at_utc")):
+            raise _integrity("Point checkpoint seal is invalid.")
+        source_attempt = _decode_bytes(source_bytes, "point source attempt")
+        if source_attempt.get("request_sha256") != request_sha or source_attempt.get("attempt_state") != "launched":
+            raise _integrity("Point checkpoint source attempt is invalid.")
+        record = _decode_bytes(record_bytes, "point checkpoint record")
+        _verify_point_checkpoint_record(record, directory / "point", request, plan,
+            ordinal, seal["source_attempt_sha256"])
+        verified.append(PointCheckpoint(record, entry["seal_sha256"], directory))
+    return tuple(verified)
+
+
 def _verify_parameter_sweep_artifacts(
     directory: Path,
     result: Mapping[str, object],
@@ -4883,6 +5139,9 @@ def _verify_parameter_sweep_artifacts(
     if not isinstance(source, Mapping):
         raise _integrity("Parameter-sweep request source is unavailable.")
     expected_points = list(_parameter_source_points(source))
+    checkpoints = _verify_point_checkpoints(directory.parent.parent, request, plan)
+    if len(checkpoints) != len(expected_points):
+        raise _integrity("Final sweep does not bind every published point checkpoint.")
     point_ordinal = 0
     for chunk_link in result["chunks"]:
         relative = str(chunk_link["path"])[len("artifacts/parameter_points/"):]
@@ -4904,7 +5163,7 @@ def _verify_parameter_sweep_artifacts(
             raise _integrity("Parameter-sweep chunk envelope is malformed.")
         for point in chunk["points"]:
             expected_source_index, expected_parameters = expected_points[point_ordinal]
-            common = {"ordinal", "source_index", "parameters", "parameters_sha256", "status"}
+            common = {"ordinal", "source_index", "parameters", "parameters_sha256", "status", "producer_attempt_sha256", "checkpoint_seal_sha256"}
             if (
                 not isinstance(point, Mapping)
                 or point.get("ordinal") != point_ordinal
@@ -4914,6 +5173,16 @@ def _verify_parameter_sweep_artifacts(
                 or point.get("status") not in {"success", "failure"}
             ):
                 raise _integrity("Parameter-sweep point identity is malformed.")
+            checkpoint = checkpoints[point_ordinal]
+            if (point.get("checkpoint_seal_sha256") != checkpoint.seal_sha256 or
+                {key: value for key, value in point.items() if key != "checkpoint_seal_sha256"} != checkpoint.record["metadata"]):
+                raise _integrity("Final sweep point differs from its original checkpoint record.")
+            point_prefix_relative = f"points/{point_ordinal:06d}/"
+            actual_point_files = {path[len(point_prefix_relative):]: {**row, "path": path[len(point_prefix_relative):]} for path, row in manifest_by_path.items()
+                if path.startswith(point_prefix_relative)}
+            checkpoint_files = {row["path"]: row for row in checkpoint.record["files"]}
+            if actual_point_files != checkpoint_files:
+                raise _integrity("Final sweep point bytes differ from published checkpoint.")
             _verify_parameter_set_document(point["parameters"])
             if point["status"] == "failure":
                 failure_fields = set(point)
@@ -5010,7 +5279,7 @@ def _verify_parameter_sweep_artifacts(
                 point_result = localized
                 point_result["schema"] = "scnsim.result"
                 point_result["request_sha256"] = result["request_sha256"]
-                point_result["attempt_sha256"] = result["attempt_sha256"]
+                point_result["attempt_sha256"] = point["producer_attempt_sha256"]
                 point_result["parameters"] = point["parameters"]
                 point_result["parameters_sha256"] = point["parameters_sha256"]
                 point_result["ref_lineage"] = point["ref_lineage"]
@@ -5018,7 +5287,7 @@ def _verify_parameter_sweep_artifacts(
                     point_result,
                     point_request,
                     result["request_sha256"],
-                    result["attempt_sha256"],
+                    point["producer_attempt_sha256"],
                     plan,
                 )
             point_ordinal += 1
@@ -5219,7 +5488,7 @@ def _verify_generation_ledger(
         expected_ordinal = 1 + (generation - 1) * population_size + (column - 1)
         _verify_candidate_outcome(
             candidate,
-            variables=len(variables),
+            variables=variables,
             objectives=objectives,
             plan=plan,
             optimization_authorizations=spec.get("allow_extrapolation", []),
@@ -5575,7 +5844,7 @@ def _verify_baseline_checkpoint_document(
     baseline = checkpoint.get("baseline")
     _verify_candidate_outcome(
         baseline,
-        variables=len(variables), objectives=objectives, plan=plan,
+        variables=variables, objectives=objectives, plan=plan,
         optimization_authorizations=spec.get("allow_extrapolation", []),
         generation=0, column=None, evaluation_ordinal=0, baseline=True,
     )
@@ -6177,7 +6446,7 @@ def _verify_objective_component(
 def _verify_candidate_outcome(
     value: object,
     *,
-    variables: int,
+    variables: list[object],
     objectives: list[object],
     plan: Mapping[str, object],
     optimization_authorizations: object,
@@ -6205,9 +6474,10 @@ def _verify_candidate_outcome(
         or value.get("population_column") != column
         or not isinstance(value.get("cache_hit"), bool)
         or not isinstance(coordinates, list)
-        or len(coordinates) != variables
-        or any(not _finite_f64(item) or not 0.0 <= _f64_value(item) <= 1.0 for item in coordinates)
-        or (not baseline and (not isinstance(latent, list) or len(latent) != variables or any(not _finite_f64(item) for item in latent)))
+        or len(coordinates) != len(variables)
+        or any(not _finite_f64(item) or ("domain" not in variable and not 0.0 <= _f64_value(item) <= 1.0)
+               for item, variable in zip(coordinates, variables))
+        or (not baseline and (not isinstance(latent, list) or len(latent) != len(variables) or any(not _finite_f64(item) for item in latent)))
     ):
         raise _integrity("Optimization candidate envelope is open or malformed.")
     _verify_parameter_set_document(value.get("parameters"), require_empty_authorization=True)
@@ -6386,7 +6656,7 @@ def _verify_optimization_winner(
     baseline = result.get("baseline")
     _verify_candidate_outcome(
         baseline,
-        variables=len(variables),
+        variables=variables,
         objectives=objectives,
         plan=plan,
         optimization_authorizations=spec.get("allow_extrapolation", []),

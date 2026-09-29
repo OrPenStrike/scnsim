@@ -546,14 +546,36 @@ def _encode_spec(
                 stage="spec_validation",
             )
         parameter_unit = parameter.spec.si_unit
+        baseline_value = float(parameters.values[parameter].to(parameter_unit).magnitude)
+        if variable.domain is not None:
+            domain = variable.domain.value
+            if domain in {"POSITIVE", "NEGATIVE"} and (
+                baseline_value == 0.0 or (baseline_value > 0.0) != (domain == "POSITIVE")
+            ):
+                raise InvalidOptimizationSpec("signed log domain requires a strictly signed initial value", stage="spec_validation")
+            if domain == "NONNEGATIVE" and baseline_value < 0.0 or domain == "NONPOSITIVE" and baseline_value > 0.0:
+                raise InvalidOptimizationSpec("initial value is outside optimization domain", stage="spec_validation")
+            scale = None
+            if variable.scale is not None:
+                try:
+                    scale_value = float(variable.scale.to(parameter_unit).magnitude)
+                except Exception as error:
+                    raise InvalidOptimizationSpec("domain scale must match the parameter unit", stage="spec_validation") from error
+                if not math.isfinite(scale_value) or scale_value <= 0.0 or (
+                    domain != "UNBOUNDED" and not math.isfinite(baseline_value / scale_value)
+                ):
+                    raise InvalidOptimizationSpec("domain scale must be finite, positive, and same-unit", stage="spec_validation")
+                scale = quantity_envelope(variable.scale, si_unit=parameter_unit, registry=units.registry)
+            variables.append({"parameter": parameter._key_record(), "domain": domain,
+                              "transform": variable.transform, "scale": scale})
+            baseline_optimizer_coordinates.append(float64_hex(0.0))
+            continue
+        assert variable.bounds is not None and variable.model_default_bounds is not None
         lower, upper = variable.bounds
         low = quantity_envelope(lower, si_unit=parameter_unit, registry=units.registry)
         high = quantity_envelope(upper, si_unit=parameter_unit, registry=units.registry)
         low_value = float(lower.to(parameter_unit).magnitude)
         high_value = float(upper.to(parameter_unit).magnitude)
-        baseline_value = float(
-            parameters.values[parameter].to(parameter_unit).magnitude
-        )
         if low_value >= high_value:
             raise InvalidOptimizationSpec(
                 "optimization lower bound must be below upper bound",
@@ -670,7 +692,8 @@ def _encode_spec(
             "resolved_population_size": population,
             "initial_sigma_f64": float64_hex(spec.optimizer.initial_sigma),
             "baseline_optimizer_coordinates_f64": baseline_optimizer_coordinates,
-            "box_transform_id": "cmaes-jl-0.2.6-linquad-unit-box.v1",
+            "box_transform_id": ("cmaes-jl-0.2.6-native-domains.v1" if any(v.domain is not None for v in spec.variables)
+                                 else "cmaes-jl-0.2.6-linquad-unit-box.v1"),
             "complete_generations": generations,
             "unused_evaluations": unused,
             "hidden_stops": "disabled",

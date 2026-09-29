@@ -17,6 +17,7 @@ from ._backend import BootstrapReady, prepare_runtime, run_terminal
 from ._canonical import (
     canonical_json_bytes,
     canonical_receipt_document,
+    float64_from_hex,
     sha256_hex,
     zarr_artifact_manifest,
 )
@@ -46,7 +47,9 @@ from .errors import (
     CompilerInvariantError,
     EvidenceIntegrityError,
     SCNSimError,
+    OptimizationProgressCallbackError,
 )
+from .specs import OptimizationProgress
 
 
 def _utc_now() -> str:
@@ -63,6 +66,7 @@ def execute_prepared(
     binding: WorkspaceBinding,
     plan_document: Mapping[str, object],
     prepared_analysis: PreparedAnalysis,
+    on_progress: Callable[[OptimizationProgress], object] | None = None,
 ) -> Iterator[VerifiedSuccess]:
     """Yield verified success while its workspace ownership lock remains held."""
 
@@ -70,9 +74,40 @@ def execute_prepared(
     request = prepared_analysis.request()
     source_units = prepared_analysis.source_units()
     request_sha = prepared_analysis.request_sha256
+    def deliver(frame: Mapping[str, object]) -> None:
+        if on_progress is not None:
+            on_progress(OptimizationProgress(
+                phase=frame["event"], reused=frame["reused"],
+                completed_generations=frame["completed_generations"],
+                total_generations=frame["total_generations"],
+                evaluated_count=frame["evaluated_count"],
+                requested_budget=frame["requested_budget"],
+                achievable_evaluations=frame["achievable_evaluations"],
+                best_cost=float64_from_hex(frame["best_cost_f64"]),
+            ))
+
+    def report_reuse(success: VerifiedSuccess) -> None:
+        if on_progress is None:
+            return
+        controls = request["spec"]["optimizer"]
+        generations = controls["complete_generations"]
+        try:
+            deliver({"event": "result_reuse", "reused": True,
+                "completed_generations": generations, "total_generations": generations,
+                "evaluated_count": 1 + generations * controls["resolved_population_size"],
+                "requested_budget": controls["max_evaluations"],
+                "achievable_evaluations": 1 + generations * controls["resolved_population_size"],
+                "best_cost_f64": success.result["best"]["cost_f64"]})
+        except KeyboardInterrupt:
+            raise
+        except Exception as error:
+            raise OptimizationProgressCallbackError("optimization progress callback failed on result reuse",
+                stage="progress_callback", evidence={"error_type": type(error).__name__}) from error
+
     with binding.reader():
         success = binding.find_success(request_sha)
         if success is not None:
+            report_reuse(success)
             yield success
             return
     prepared_runtime = prepare_runtime()
@@ -81,15 +116,21 @@ def execute_prepared(
     with binding.writer():
         success = binding.find_success(request_sha)
         if success is not None:
+            report_reuse(success)
             yield success
             return
         request_directory = binding.ensure_request(request_sha, request_bytes)
         checkpoint = binding.baseline_checkpoint(request_sha)
+        point_checkpoints = (binding.point_checkpoints(request_sha)
+            if request["parameter_source"]["kind"] in {"grid", "points"} else ())
         resume_ledger_sha = binding.resume_ledger_sha256(request_sha)
         allocation = binding.allocate_attempt(request_sha)
         attempt_sha: str | None = None
 
         def promote(receipt: Mapping[str, object]) -> None:
+            if request["parameter_source"]["kind"] in {"grid", "points"}:
+                receipt = canonical_receipt_document({**receipt,
+                    "point_checkpoint_count": len(binding.point_checkpoints(request_sha))})
             previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
             try:
                 binding.promote_attempt(allocation, receipt)
@@ -97,7 +138,7 @@ def execute_prepared(
                 signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
         def seal_protocol_failure(
-            error: BackendProtocolError,
+            error: BackendProtocolError | OptimizationProgressCallbackError,
             *,
             stdout: Sequence[str] = (),
             stderr: Sequence[str] = (),
@@ -208,6 +249,17 @@ def execute_prepared(
                 "seal_sha256": published.seal_sha256,
             }
 
+        def publish_point(ready: Mapping[str, object]) -> Mapping[str, object]:
+            assert attempt_sha is not None
+            try:
+                published = binding.publish_point_checkpoint(request_sha, attempt_sha,
+                    allocation.staging_directory, ready)
+            except (EvidenceIntegrityError, OSError) as error:
+                raise BackendProtocolError("child point checkpoint failed independent validation",
+                    stage="point_checkpoint") from error
+            return {"record_sha256": ready["record_sha256"],
+                    "seal_sha256": published.seal_sha256}
+
         try:
             checkpoint_control, publisher_control = _optimization_checkpoint_controls(
                 request.get("operation"), checkpoint, publish_checkpoint
@@ -221,6 +273,10 @@ def execute_prepared(
                 authorize=authorize,
                 checkpoint=checkpoint_control,
                 publish_checkpoint=publisher_control,
+                on_progress=deliver if on_progress is not None else None,
+                point_recovery=tuple({"ordinal": index, "seal_sha256": item.seal_sha256}
+                    for index, item in enumerate(point_checkpoints)) if request["parameter_source"]["kind"] in {"grid", "points"} else None,
+                publish_point=publish_point if request["parameter_source"]["kind"] in {"grid", "points"} else None,
             )
         except KeyboardInterrupt as error:
             seal_interruption(error)
@@ -233,6 +289,9 @@ def execute_prepared(
             seal_protocol_failure(protocol)
             raise protocol from error
         except BackendProtocolError as error:
+            seal_protocol_failure(error)
+            raise
+        except OptimizationProgressCallbackError as error:
             seal_protocol_failure(error)
             raise
 

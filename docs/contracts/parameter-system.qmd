@@ -260,12 +260,16 @@ Result. Supplying a `ParameterSpace` always returns
 binds the exact Plan, View, Spec, operation, parameter-space form and order,
 effective points, runtime, and dependency identities.
 
-One sweep or optimization request executes its points in one Julia process.
+One sweep or optimization attempt executes its remaining points in one Julia process.
 SCNSim may reuse compatible topology/index preparation and type
 specializations. It must rebind values and recompute every affected native
 assembly, factorization, transform weight, and reduction at every point. It may
 not reuse a nominal reduced matrix, create per-value generated types, or start
-one Julia process per point.
+one Julia process per point. A point is published atomically under its exact
+request and ordinal before the next point starts. A later attempt verifies and
+reuses published success or permitted numerical-failure evidence without
+recomputing or relabeling it. Missing or corrupt published evidence fails
+closed; partial point evidence is not a successful sweep Result.
 
 `resolve(..., parameters=space)` reconstructs the same request and verifies the
 stored batch. It never solves, retries, searches for a latest result, changes

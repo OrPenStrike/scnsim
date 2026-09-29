@@ -384,16 +384,26 @@
       }
     },
     "runtimeSemantic": { "$ref": "identity-common.schema.json#/$defs/runtimeSemantic" },
-    "optimizationVariableV2": {
-      "type": "object", "additionalProperties": false,
-      "required": ["parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"],
-      "properties": {
-        "parameter": { "$ref": "#/$defs/parameterRef" },
-        "model_default_bounds": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false },
-        "consumer_override_bounds": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false }] },
-        "lower": { "$ref": "#/$defs/quantity" }, "upper": { "$ref": "#/$defs/quantity" }, "transform": { "enum": ["linear", "log"] }
+    "optimizationVariableV2": { "oneOf": [
+      { "type": "object", "additionalProperties": false,
+        "required": ["parameter", "model_default_bounds", "consumer_override_bounds", "lower", "upper", "transform"],
+        "properties": {
+          "parameter": { "$ref": "#/$defs/parameterRef" },
+          "model_default_bounds": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false },
+          "consumer_override_bounds": { "oneOf": [{ "type": "null" }, { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "$ref": "#/$defs/quantity" }, { "$ref": "#/$defs/quantity" }], "items": false }] },
+          "lower": { "$ref": "#/$defs/quantity" }, "upper": { "$ref": "#/$defs/quantity" }, "transform": { "enum": ["linear", "log"] }
+        }
+      },
+      { "type": "object", "additionalProperties": false,
+        "required": ["parameter", "domain", "transform", "scale"],
+        "properties": {
+          "parameter": { "$ref": "#/$defs/parameterRef" },
+          "domain": { "enum": ["UNBOUNDED", "NONNEGATIVE", "NONPOSITIVE", "POSITIVE", "NEGATIVE"] },
+          "transform": { "enum": ["linear", "log"] },
+          "scale": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/quantity" }] }
+        }
       }
-    },
+    ] },
     "optimizationSpecV2": {
       "type": "object", "additionalProperties": false,
       "required": ["type", "variables", "objectives", "optimizer", "allow_extrapolation"],
@@ -435,8 +445,8 @@
     "failure": { "$ref": "identity-common.schema.json#/$defs/failure" },
     "point": {
       "oneOf": [
-        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "ref_lineage", "payload_path"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "success" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "payload_path": { "type": "string", "pattern": "^artifacts/parameter_points/points/[0-9]{6}/payload\\.json$" } } },
-        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "failure"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "failure" }, "failure": { "$ref": "#/$defs/failure" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" } } }
+        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "ref_lineage", "payload_path", "producer_attempt_sha256", "checkpoint_seal_sha256"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "success" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "payload_path": { "type": "string", "pattern": "^artifacts/parameter_points/points/[0-9]{6}/payload\\.json$" }, "producer_attempt_sha256": { "$ref": "#/$defs/sha256" }, "checkpoint_seal_sha256": { "$ref": "#/$defs/sha256" } } },
+        { "type": "object", "additionalProperties": false, "required": ["ordinal", "source_index", "parameters", "parameters_sha256", "status", "failure", "producer_attempt_sha256", "checkpoint_seal_sha256"], "properties": { "ordinal": { "type": "integer", "minimum": 0 }, "source_index": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } }] }, "parameters": { "$ref": "#/$defs/parameterSet" }, "parameters_sha256": { "$ref": "#/$defs/sha256" }, "status": { "const": "failure" }, "failure": { "$ref": "#/$defs/failure" }, "ref_lineage": { "$ref": "identity-common.schema.json#/$defs/refLineage" }, "producer_attempt_sha256": { "$ref": "#/$defs/sha256" }, "checkpoint_seal_sha256": { "$ref": "#/$defs/sha256" } } }
       ]
     },
     "parameterPointChunk": {

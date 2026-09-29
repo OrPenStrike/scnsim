@@ -1975,18 +1975,38 @@ The original winner values remain immutable; candidate and winner
 authorization instead of inheriting the optimizer's approval.
 
 The public `run.evaluate()` contract does not force candidate work back through
-Python. One optimization request launches one Julia process. Parameter binding,
+Python. One optimization attempt launches one Julia process. Parameter binding,
 candidate compilation, Ref-lineage replay, quantity evaluation, shared
 factorization/root work, objective aggregation, and CMA-ES remain inside that
 process. Python submits the sealed request and receives process-local progress
 and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
 daemon. Repeated quantity identities share dependency nodes within a candidate.
 
-The Julia process may emit generation-level JSONL progress for internal
-presentation and diagnostics. Progress records never enter Plan, request,
-optimization, candidate, or Result identity and cannot become a scientific
-Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
-observer, public JobRef, or persistent daemon.
+The Julia process emits validated optimization progress, exposed by the optional
+`on_progress: Callable[[OptimizationProgress], object]` keyword on both
+`run.optimize()` forms. An immutable event has `phase` (`initial`, `resume`,
+`generation`, `complete`, or `result_reuse`), `reused`,
+`completed_generations`, `total_generations`, `evaluated_count`,
+`requested_budget`, `achievable_evaluations`, and finite `best_cost` fields.
+The callback return is ignored. Its exception terminates the child and is
+reported as callback failure, without discarding already-published evidence;
+`KeyboardInterrupt` remains interruption. Progress is process-local telemetry,
+not Plan, request, candidate, or Result identity, verified Result, durability
+promise, or scientific Gate. V1 has no per-candidate observer, public JobRef,
+or persistent daemon.
+
+In a Notebook, a DisplayHandle can update in place without polling:
+
+```python
+from IPython.display import display
+
+handle = display("Optimization starting", display_id=True)
+
+def show_progress(event: OptimizationProgress) -> None:
+    handle.update(f"{event.phase}: {event.completed_generations}/{event.total_generations} generations; best={event.best_cost:.6g}")
+
+result = run.optimize(view, optimization_spec, on_progress=show_progress)
+```
 
 `CMAESSpec` has the fixed public surface
 
@@ -2001,7 +2021,7 @@ CMAESSpec(
 
 For $n$ active variables, `population_size=None` resolves to
 $\lambda=4+\lfloor3\ln n\rfloor$. The sealed baseline must lie inside every
-bound, maps to the initial unit-box mean $m_0$, is evaluated first, consumes one
+resolved finite bound or declared domain, maps to the initial optimizer mean $m_0$, is evaluated first, consumes one
 evaluation, and remains winner-eligible. Baseline evaluation failure fails the
 request. `initial_sigma` is a positive finite unit-coordinate scale. `seed`
 accepts a signed 64-bit integer; an explicit population size is an integer of
@@ -2018,11 +2038,16 @@ C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
 \qquad i=0,\ldots,n-1,
 $$
 
-rather than exact identity. SCNSim maps physical parameters once to
-$z\in[0,1]$, calls `minimize(objective, baseline_z, initial_sigma, ...)`,
-supplies `lower=zeros(n)`, `upper=ones(n)`, and
-lets the package apply its lin-quad unit-box transform. SCNSim does not clip,
-mirror, or apply another physical box transform. The signed Int64 seed is
+rather than exact identity. A finite-bounded variable retains the original
+$z\in[0,1]$ coordinate and package lin-quad bounds. An open linear domain maps
+$x=x_0+s z$ with native full or one-sided CMA bounds; signed log domains map
+$x=x_0\exp(z)$ with native unbounded coordinates. In both cases $z_0=0$ and
+$x_0$ is the effective request Initial Parameters. The physical scale $s$ must
+be finite, positive, and same-unit. `POSITIVE` and `NEGATIVE` require a strictly
+signed nonzero $x_0$ and no physical scale; `NONNEGATIVE` and `NONPOSITIVE`
+include zero but never relax model input legality. Mixed variables share one
+request. SCNSim does not clip, mirror, use epsilon bounds, or apply another
+physical transform. The signed Int64 seed is
 reinterpreted as UInt64 with the same bits. The canonical request carries the
 Python-prepared baseline coordinates as
 `baseline_optimizer_coordinates_f64` in variable order. Julia consumes these
@@ -2032,7 +2057,9 @@ pinned Julia path.
 
 The fixed request identities are
 `algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"` and
-`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"` for all-bounded
+requests or `cmaes-jl-0.2.6-native-domains.v1` when any domain is present.
+The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
 ftol, xtol, stagnation, target, time, and noise controls set to `nothing`. Its
@@ -2067,14 +2094,14 @@ known published predecessor and is rejected through the typed unsupported-
 version path rather than being relabelled as current or corrupt evidence.
 
 Every population outcome records both the callback-visible raw CMA sample
-column `optimizer_latent_coordinates_f64` and its transformed unit-box
+column `optimizer_latent_coordinates_f64` and its transformed optimizer
 `optimizer_coordinates_f64` beside the physical bindings. Both arrays have
 length $n$ in request-variable order. Retry invokes the
 same pinned `minimize()` from the original seed. The batch objective verifies
 the transformed coordinates, generation, and population column before
 returning stored costs; the package callback then verifies the raw sample bits
 before the mean or covariance update. The raw check is mandatory because the
-lin-quad transform is many-to-one. The first unsealed generation resumes
+bounded lin-quad transform is many-to-one. The first unsealed generation resumes
 physical evaluation. SCNSim neither serializes nor restores the package's
 private optimizer object; either replay mismatch is `EvidenceIntegrityError`.
 
@@ -2946,8 +2973,8 @@ overwrite unrelated success receipts.
 - No compatibility alias exists for the legacy Workbench import or bare-float
   physical inputs.
 - No implicit latest-result selector exists.
-- V1 has no public timeout, JobRef, cancellation API, callback progress
-  framework, or persistent Julia daemon.
+- V1 has no public timeout, JobRef, cancellation API, per-candidate observer,
+  polling service, or persistent Julia daemon.
 - Structured authoring, Plan-identity integration, and certified diagrams are
   one `CONVERGING` scope with an integrated implementation baseline, not
   Human acceptance of the contract defined in

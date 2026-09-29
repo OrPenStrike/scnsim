@@ -1974,11 +1974,18 @@ def optimization_comparison_dataset(
         name = f"{ref.get('definitions_id')}.{ref.get('parameter_id')}"
         defaults = variable.get("model_default_bounds")
         override = variable.get("consumer_override_bounds")
-        settings.extend((
-            (f"{name} transform", str(variable.get("transform"))),
-            (f"{name} model-default bounds", bounds_text(defaults)),
-            (f"{name} resolved bounds", bounds_text(override if override is not None else defaults)),
-        ))
+        if "domain" in variable:
+            settings.extend((
+                (f"{name} domain / transform", f"{variable['domain']} / {variable['transform']}"),
+                (f"{name} mapping", (f"x = x0 + {_quantity_text(variable['scale'])} · z"
+                    if variable["transform"] == "linear" else "x = x0 · exp(z)")),
+            ))
+        else:
+            settings.extend((
+                (f"{name} transform", str(variable.get("transform"))),
+                (f"{name} model-default bounds", bounds_text(defaults)),
+                (f"{name} resolved bounds", bounds_text(override if override is not None else defaults)),
+            ))
     for objective in objectives:
         if not isinstance(objective, Mapping):
             raise ValueError("Optimization objective presentation is malformed")

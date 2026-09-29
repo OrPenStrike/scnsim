@@ -1492,7 +1492,7 @@
         "baseline_optimizer_coordinates_f64": {
           "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/f64" }
         },
-        "box_transform_id": { "const": "cmaes-jl-0.2.6-linquad-unit-box.v1" },
+        "box_transform_id": { "enum": ["cmaes-jl-0.2.6-linquad-unit-box.v1", "cmaes-jl-0.2.6-native-domains.v1"] },
         "complete_generations": { "type": "integer", "minimum": 1 },
         "unused_evaluations": { "type": "integer", "minimum": 0 },
         "hidden_stops": { "const": "disabled" }

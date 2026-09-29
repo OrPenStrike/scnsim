@@ -27,6 +27,7 @@ from .errors import (
     InvalidCandidatePhysicalParameter,
     InvalidDiagonalRootHint,
     InvalidOptimizationSpec,
+    OptimizationProgressCallbackError,
     NumericalResolutionUnresolved,
     PortRealizabilityError,
     RootSlopeUnresolved,
@@ -37,6 +38,7 @@ from .errors import (
 
 _FAILURES: dict[str, type[SCNSimError]] = {
     "backend_protocol": BackendProtocolError,
+    "optimization_progress_callback": OptimizationProgressCallbackError,
     "compiler_invariant": CompilerInvariantError,
     "direct_response_formation": DirectResponseFormationError,
     "eliminated_block_solve_failure": EliminatedBlockSolveFailure,

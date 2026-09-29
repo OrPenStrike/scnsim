@@ -115,18 +115,28 @@ function parameter_values_for_z(request, base::Dict{String,Any}, z::AbstractVect
     result = copy(base)
     for (index, variable) in enumerate(variables)
         coordinate = z[index]
-        isfinite(coordinate) && 0.0 <= coordinate <= 1.0 ||
-            fail("execution", "invalid_candidate_physical_parameter", "unit_map", "optimization_candidate", "CMA candidate left the declared unit box")
-        lower = quantity_value(variable["lower"])
-        upper = quantity_value(variable["upper"])
-        value = if variable["transform"] == "linear"
-            lower + coordinate * (upper - lower)
-        elseif variable["transform"] == "log"
-            lower * (upper / lower)^coordinate
+        isfinite(coordinate) ||
+            fail("execution", "invalid_candidate_physical_parameter", "unit_map", "optimization_candidate", "CMA candidate coordinate is non-finite")
+        domain = get(variable, "domain", nothing)
+        x0 = base[ref_key(variable["parameter"])]
+        value = if domain !== nothing
+            if domain in ("UNBOUNDED", "NONNEGATIVE", "NONPOSITIVE")
+                x0 + quantity_value(variable["scale"]) * coordinate
+            else
+                x0 * exp(coordinate)
+            end
         else
-            fail("validation", "invalid_optimization_spec", "unit_map", "optimization_candidate", "unknown optimization transform")
+            0.0 <= coordinate <= 1.0 ||
+                fail("execution", "invalid_candidate_physical_parameter", "unit_map", "optimization_candidate", "CMA candidate left the declared unit box")
+            lower = quantity_value(variable["lower"])
+            upper = quantity_value(variable["upper"])
+            variable["transform"] == "linear" ? lower + coordinate * (upper - lower) :
+                lower * (upper / lower)^coordinate
         end
-        isfinite(value) || fail("execution", "invalid_candidate_physical_parameter", "unit_map", "optimization_candidate", "candidate mapping is non-finite")
+        if !isfinite(value) || (domain in ("POSITIVE", "NEGATIVE") && (value == 0.0 || signbit(value) != signbit(x0))) ||
+                (domain == "NONNEGATIVE" && value < 0.0) || (domain == "NONPOSITIVE" && value > 0.0)
+            fail("execution", "invalid_candidate_physical_parameter", "unit_map", "optimization_candidate", "candidate mapping left its physical domain")
+        end
         result[ref_key(variable["parameter"])] = value
     end
     return result
@@ -144,7 +154,7 @@ function baseline_z(request, values::Dict{String,Any})
     coordinates = Float64[f64_from_hex(value) for value in encoded]
     length(coordinates) == length(variables) ||
         fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline optimizer coordinate count mismatches variables")
-    all(value -> isfinite(value) && 0.0 <= value <= 1.0, coordinates) ||
+    all(index -> isfinite(coordinates[index]) && (haskey(variables[index], "domain") ? coordinates[index] == 0.0 : 0.0 <= coordinates[index] <= 1.0), eachindex(coordinates)) ||
         fail("validation", "invalid_optimization_spec", "baseline", "optimization_candidate", "sealed baseline optimizer coordinates leave the unit box")
     return coordinates
 end
@@ -1311,16 +1321,21 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
     end
 end
 
-function emit_progress(request_sha::String, attempt_sha::String, generation::Int, evaluations::Int, maximum::Int)
+function emit_progress(request_sha::String, attempt_sha::String, phase::String, reused::Bool,
+        generation::Int, total::Int, evaluations::Int, maximum::Int, achievable::Int, best_cost::Float64)
     println(canonical_json(Dict{String,Any}(
         "schema" => "scnsim.progress",
         "schema_version" => 1,
         "request_sha256" => request_sha,
         "attempt_sha256" => attempt_sha,
-        "event" => "optimization_generation_complete",
-        "completed_generation" => generation,
-        "completed_evaluations" => evaluations,
-        "max_evaluations" => maximum,
+        "event" => phase,
+        "reused" => reused,
+        "completed_generations" => generation,
+        "total_generations" => total,
+        "evaluated_count" => evaluations,
+        "requested_budget" => maximum,
+        "achievable_evaluations" => achievable,
+        "best_cost_f64" => f64_hex(best_cost),
     )))
     flush(stdout)
 end
@@ -1522,7 +1537,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
         fail("validation", "invalid_optimization_spec", "controls", "optimization_candidate", "optimization controls do not describe complete CMA generations")
     controls["unused_evaluations"] == budget - (1 + generations * lambda) ||
         fail("validation", "invalid_optimization_spec", "controls", "optimization_candidate", "optimization unused-evaluation evidence is inconsistent")
-    controls["box_transform_id"] == "cmaes-jl-0.2.6-linquad-unit-box.v1" ||
+    controls["box_transform_id"] == (any(v -> haskey(v, "domain"), variables) ? "cmaes-jl-0.2.6-native-domains.v1" : "cmaes-jl-0.2.6-linquad-unit-box.v1") ||
         fail("validation", "invalid_optimization_spec", "controls", "optimization_candidate", "optimization box transform is unsupported")
     controls["hidden_stops"] == "disabled" ||
         fail("validation", "invalid_optimization_spec", "controls", "optimization_candidate", "optimization hidden stops must be disabled")
@@ -1592,6 +1607,12 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
             best = record
             best_cost = cost
         end
+    end
+    emit_progress(request_sha, attempt_sha, "initial", get(attempt, "baseline_checkpoint_sha256", nothing) !== nothing,
+        0, generations, 1, budget, 1 + generations * lambda, baseline_cost)
+    if !isempty(replay_chain)
+        emit_progress(request_sha, attempt_sha, "resume", true, length(replay_chain), generations,
+            1 + length(replay_chain) * lambda, budget, 1 + generations * lambda, best_cost)
     end
     batches = Ref{Any}(nothing)
     pending = Ref{Any}(nothing)
@@ -1689,17 +1710,35 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
                 previous["generation"], prior_ledger[], previous["raw"], previous["transformed"], previous["records"], certificate)
             push!(ledger_artifacts, artifact)
             prior_ledger[] = artifact["sha256"]
-            emit_progress(request_sha, attempt_sha, previous["generation"], 1 + previous["generation"] * lambda, budget)
+            emit_progress(request_sha, attempt_sha, "generation", false, previous["generation"], generations,
+                1 + previous["generation"] * lambda, budget, 1 + generations * lambda, previous["best_cost"])
         end
-        pending[] = Dict("generation" => current["generation"], "raw" => copy(raw), "transformed" => copy(transformed), "records" => records)
+        pending[] = Dict("generation" => current["generation"], "raw" => copy(raw), "transformed" => copy(transformed), "records" => records,
+            "best_cost" => best_cost)
         batches[] = current
     end
 
+    lower_bounds = Float64[]; upper_bounds = Float64[]
+    for variable in variables
+        domain = get(variable, "domain", nothing)
+        x0 = base_values[ref_key(variable["parameter"])]
+        if domain === nothing
+            push!(lower_bounds, 0.0); push!(upper_bounds, 1.0)
+        elseif domain == "NONNEGATIVE"
+            push!(lower_bounds, -x0 / quantity_value(variable["scale"])); push!(upper_bounds, Inf)
+        elseif domain == "NONPOSITIVE"
+            push!(lower_bounds, -Inf); push!(upper_bounds, -x0 / quantity_value(variable["scale"]))
+        else
+            push!(lower_bounds, -Inf); push!(upper_bounds, Inf)
+        end
+    end
+    all(isfinite, z0) && all(i -> lower_bounds[i] <= z0[i] <= upper_bounds[i], eachindex(z0)) ||
+        fail("validation", "invalid_optimization_spec", "unit_map", "optimization_candidate", "initial optimizer coordinate is outside its native bounds")
     optimizer = CMAEvolutionStrategy.minimize(
         objective,
         z0,
         sigma;
-        lower = zeros(n), upper = ones(n), popsize = lambda, maxiter = generations,
+        lower = lower_bounds, upper = upper_bounds, popsize = lambda, maxiter = generations,
         maxfevals = nothing, parallel_evaluation = true, multi_threading = false,
         verbosity = 0, seed = reinterpret(UInt64, seed), callback = callback,
         ftol = nothing, xtol = nothing, stagnation = nothing, ftarget = nothing,
@@ -1724,8 +1763,11 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
             checkpoint_sha, checkpoint_seal_sha,
             terminal["generation"], prior_ledger[], terminal["raw"], terminal["transformed"], terminal["records"], terminal_certificate)
         push!(ledger_artifacts, artifact)
-        emit_progress(request_sha, attempt_sha, terminal["generation"], 1 + terminal["generation"] * lambda, budget)
+        emit_progress(request_sha, attempt_sha, "generation", false, terminal["generation"], generations,
+            1 + terminal["generation"] * lambda, budget, 1 + generations * lambda, terminal["best_cost"])
     end
+    emit_progress(request_sha, attempt_sha, "complete", terminal === nothing, generations, generations,
+        1 + generations * lambda, budget, 1 + generations * lambda, best_cost)
     result = Dict{String,Any}(
         "schema" => "scnsim.result",
         "schema_version" => 1,

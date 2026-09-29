@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from hashlib import sha256
 from os import PathLike
 from pathlib import Path
@@ -98,6 +98,7 @@ from .specs import (
     HybridizedPoleSpec,
     OperatorSpec,
     OptimizationSpec,
+    OptimizationProgress,
     QuantityAbsolute,
     QuantityDifference,
     QuantitySelector,
@@ -765,6 +766,7 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult: ...
 
     @overload
@@ -774,6 +776,7 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult: ...
 
     def optimize(
@@ -782,6 +785,7 @@ class CircuitRun:
         spec: OptimizationSpec | None = None,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
@@ -789,6 +793,8 @@ class CircuitRun:
             raise TypeError(
                 "OptimizationSpec parameters must be a ParameterSet or None"
             )
+        if on_progress is not None and not callable(on_progress):
+            raise TypeError("on_progress must be callable or None")
         default_ref, optimization_spec = self._optimization_arguments(ref_or_spec, spec)
         ref, selector_views = self._optimization_views(
             optimization_spec, default_ref=default_ref
@@ -800,7 +806,7 @@ class CircuitRun:
             parameters,
             selector_views=selector_views,
         )
-        return self._execute(prepared, bound_spec=optimization_spec)
+        return self._execute(prepared, bound_spec=optimization_spec, on_progress=on_progress)
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DirectSolveResult | ParameterSweepResult: ...
@@ -1614,6 +1620,7 @@ class CircuitRun:
         prepared_analysis: PreparedAnalysis,
         *,
         bound_spec: object | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ):
         from ._execution import execute_prepared
 
@@ -1621,6 +1628,7 @@ class CircuitRun:
             binding=self._binding,
             plan_document=self._plan_document,
             prepared_analysis=prepared_analysis,
+            on_progress=on_progress,
         ) as success:
             evidence_lease = _verified_evidence_lease(self._binding, success)
             return self._decode_success(
@@ -1880,6 +1888,10 @@ class CircuitRun:
                         bounds[1],
                         parameter.spec.si_unit,
                     )
+                if variable.scale is not None:
+                    add(_source_unit_identity(scope="request_optimization_variable",
+                        component_path=(definitions_id,), parameter_id=identifier,
+                        field=f"{index}:domain:scale"), variable.scale, parameter.spec.si_unit)
             for index, objective in enumerate(spec.objectives):
                 parameter_id = f"objective:{index}"
                 selectors = _quantity_selectors(objective.quantity)
