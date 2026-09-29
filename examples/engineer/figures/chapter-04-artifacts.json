@@ -256,7 +256,7 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "3fd5aacdc8ea5892a691cfa7aa6692fc48995b3adca1ef9ebd73d47de6cb3e11",
+    "binding_sha256": "2ed0edf7fb01fcb27bd0937549cc38b058b0033ab7ae46eaeeef64bde9e86de1",
     "generator_sha256": "f18c91c8a3ead5ffa2a85bfb9d54a43d63807bfc25f3be4730eae7fe528e0553",
     "source_tree_sha256": "29179e4396b4f19b974e3aa56a87b0b5616700d6edb5e2c68b928d6c68b12b32"
   },
@@ -297,69 +297,33 @@
         "after_sha256": "f18c91c8a3ead5ffa2a85bfb9d54a43d63807bfc25f3be4730eae7fe528e0553",
         "before_sha256": "f18c91c8a3ead5ffa2a85bfb9d54a43d63807bfc25f3be4730eae7fe528e0553"
       },
-      "source_files": {
-        "src/scnsim/__init__.py": {
-          "after_sha256": "429fe041d93e4de0cb08fb8451dba527e9ff5e4d533caef1d47eefacba946ed0",
-          "before_sha256": "181c67ba17a3093308d3dfb98771aed6d63e5f25908dca27c414e6beecc17c5b"
+      "source_files": {},
+      "teaching_sources": {
+        "examples/engineer/chapter-04/01-physical-plan.qmd": {
+          "after_sha256": "76f3ce120b188628bc15d60519eac03d53c811a82341033e1cd633bda5d842f1",
+          "before_sha256": "fe2b9067a8c14a6414ca10996574305b9ed0c9fd5326021fde1f0a7c555c3b52"
         },
-        "src/scnsim/_analysis.py": {
-          "after_sha256": "19751efc8e085ccfa43380e7a2de9f9c9085c7d69b4a62e2ab31d2fe05ba8923",
-          "before_sha256": "4ec2c6214f3df90bfc1cb29aa5af1bb007ee1feeb76887669f47683775eb86b4"
+        "examples/engineer/chapter-04/02-explicit-capstone.qmd": {
+          "after_sha256": "a31df9f779fc87a02e18d4070b28cc4512d8df65fd2abc48092cca2e4120e6b1",
+          "before_sha256": "78c60550ff90234635c7f75feac363077bb0016c2d968133f379b84f344c826e"
         },
-        "src/scnsim/_backend.py": {
-          "after_sha256": "789275c032a6ed896b9866d5714a0331a31b824de19088f94a75f68776329e80",
-          "before_sha256": "e2f42159cb445047f8f57e5025141a452837876fc23fac62137f1cf9057c5717"
+        "examples/engineer/chapter-04/03-ptc-core.qmd": {
+          "after_sha256": "5e023dde6134d3d8b204dde6bf5ebf500fdbf27d0377a743512dda9c906bf585",
+          "before_sha256": "b784dc77c5813ad3d55d16ed4e73af57cebc284b7fef88aca83993d059d94178"
         },
-        "src/scnsim/_evidence.py": {
-          "after_sha256": "9a3b261547aba9f3eb2f1434ff0f8a7e9903a442be2c03fc7b405809bed74e99",
-          "before_sha256": "9198028d532b558d0134724356a1b2b50b123761417a7711f315807155bea4d3"
+        "examples/engineer/chapter-04/04-optional-transform.qmd": {
+          "after_sha256": "a2b037cd55fbfcf01cf22b60c9ddc730c2d4b4c77a35e8fef81b37a9d85dbd0a",
+          "before_sha256": "de8f64bf17d47423df706360bf61d66589d43bcf136854b9fdf15068b42bdef6"
         },
-        "src/scnsim/_execution.py": {
-          "after_sha256": "5f532682d5ac296d4e1bd6a854e1f4b887f4444d59500703f6521a536f4508e1",
-          "before_sha256": "5af3d042ce5d02411b4336fee45d4bd8874f6ab4f55798f045db88bba3e13c49"
+        "examples/engineer/chapter-04/05-optional-quantity.qmd": {
+          "after_sha256": "c0c7f7870bcdf2550443caef35927ea91e873f457d4249bdfdf48c28f4bbdeaa",
+          "before_sha256": "4299624adb940b956b95f54cb4e9c9ae2fb2c5dce00858230c08023e74aeab49"
         },
-        "src/scnsim/_julia/src/batch_v2.jl": {
-          "after_sha256": "e2d4aa0f3b37d72a1b1569273837a7446dfd14f817c3cf72301365d57c4f6938",
-          "before_sha256": "cdbfbf83b00b0ef9f1a0ed4f0d005b73856466abef8014735abcbe6cb251ad22"
-        },
-        "src/scnsim/_julia/src/optimization.jl": {
-          "after_sha256": "0ae1cc0f796a587e7ebde6b9dcf98e250034327cef632829fdc40f2cbe2337bc",
-          "before_sha256": "a5dc50c9bb381521fbe83128df6697214e408e5d8edf2cf3475db1cd6490661d"
-        },
-        "src/scnsim/_julia/src/terminal.jl": {
-          "after_sha256": "ede3357f05d209e2efed7296ec010937c9f89a5d1511ff82f21b04af68beb8f2",
-          "before_sha256": "181d9aa3dd83c955df9a087c6a2c97c87fb2fd128fd39f83616f8dfe10cdd123"
-        },
-        "src/scnsim/_numeric_presentation.py": {
-          "after_sha256": "f6b4217c8a5ac49e063f4182abc21e610eb6848b3858ef7b321ecfbd98532a08",
-          "before_sha256": "9b33a57d5f00e4e3822f07cfce8800140181ad4c709820a8c58e166c74e230d2"
-        },
-        "src/scnsim/_schemas/identity-common.schema.json": {
-          "after_sha256": "975322b3a60e3bd5730792e205aeb1c333a7f5e3747fdac205cba142891fd3a3",
-          "before_sha256": "f1966447eab7fb9cef78d7d00c517e7cbc2f0971c0be0976582f88d095e20208"
-        },
-        "src/scnsim/_schemas/identity-v2.schema.json": {
-          "after_sha256": "e126aa71c82fc4c2e4af8b853dc290458d658f63a9ae0997ed85315edc9c40a7",
-          "before_sha256": "92be09b9f96d57029654d14f315fb8354b71a99e82a8b1715c0022901b986f13"
-        },
-        "src/scnsim/_workspace.py": {
-          "after_sha256": "9a736e7a382d240ffe20bc50450609b9dc46e7d1064915183b4ee7982d328f46",
-          "before_sha256": "6c654b3a91c6a2903a75a1212db7b2f511dcac0b1c573e97d3cecaed736a220a"
-        },
-        "src/scnsim/errors.py": {
-          "after_sha256": "f0b1ac8f9553b94ad9682389441a791435cd9ab6a5d7b8cadc24572807074227",
-          "before_sha256": "0f4ca9e70623dc3d4a55ed4a2f121d9bc0e1b601391974fef78b9555d48c94de"
-        },
-        "src/scnsim/runtime.py": {
-          "after_sha256": "7147fc3b5639e2c92ae47b5cb1963477f2acad676085af24190172263f2672fb",
-          "before_sha256": "4b82e85c4062735b4ab143d96bccd4e2adc733cc57c176de81daed9fce0577f9"
-        },
-        "src/scnsim/specs.py": {
-          "after_sha256": "c58f59f09d0f5eb48e18a2f05acb59422ed30d24fe9a176e53b13827d27a197e",
-          "before_sha256": "559ea22119d7d945f81b728b000cf682e6dd1718c2345ebbdf2c6c7e96b8952a"
+        "examples/engineer/chapter-04/06-optional-hb.qmd": {
+          "after_sha256": "0b30b4e5c20043307bfdebc96d04217d3229193283c730f291c3a5e52d961f27",
+          "before_sha256": "78132a78ccf113817b3a6d3d61489eb11c490cc0b106b2a8fc4e940803581486"
         }
-      },
-      "teaching_sources": {}
+      }
     },
     "execution_identity_retained": true,
     "historical_execution": {
@@ -400,7 +364,7 @@
         "04-response-element.csv": "2edbda6faf88b65032f86c9e1b4607def2a6ccf220bccc1edc7aeb0194ee7fbc",
         "04-response-element.md": "e08691ec17bebb337d3fac8f4b90e2c231daeaad6e562a49e7fa66a153a840bb"
       },
-      "prior_publication_binding_sha256": "43675ed2e935bac7ee7330c405e7103c24ab58ed0906dbf61e199a239c99649d",
+      "prior_publication_binding_sha256": "3fd5aacdc8ea5892a691cfa7aa6692fc48995b3adca1ef9ebd73d47de6cb3e11",
       "prior_redrawn_artifacts": {
         "04-optional-direct-s21.svg": {
           "execution_sha256": "df31bfafd278d05868ab1da7eca073102885324c96fcb4797b59decaaf7a3a4f",
@@ -423,9 +387,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "e7192ee3f1d61d22cf17fbf151fbf55a4d092e6c0d6724a3d5111a751306c71c",
-    "prior_publication_binding_sha256": "43675ed2e935bac7ee7330c405e7103c24ab58ed0906dbf61e199a239c99649d",
-    "prior_publication_rebind_sha256": "c8f6d115c4caf6a5d9bbf50ade067c2ca439a2ea856c3a4d8fb1314d496ff727",
+    "prior_manifest_sha256": "36fd55cad4c591b8f8307a281a951e38e797f05ea5febbf988fb3d0f23cf1581",
+    "prior_publication_binding_sha256": "3fd5aacdc8ea5892a691cfa7aa6692fc48995b3adca1ef9ebd73d47de6cb3e11",
+    "prior_publication_rebind_sha256": "0be7b374744fbbbe3d069d4dbe0afd70c576e4278be58457c7e44b9f3ebb97f8",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "04-explicit-capstone.svg": "2498d1d22975f0260418ce52a77001df685963f70aa60efb66fa52230fcffe35",
@@ -444,10 +408,10 @@
       "04-response-element.csv": "2edbda6faf88b65032f86c9e1b4607def2a6ccf220bccc1edc7aeb0194ee7fbc",
       "04-response-element.md": "e08691ec17bebb337d3fac8f4b90e2c231daeaad6e562a49e7fa66a153a840bb"
     },
-    "publication_binding_sha256": "3fd5aacdc8ea5892a691cfa7aa6692fc48995b3adca1ef9ebd73d47de6cb3e11",
+    "publication_binding_sha256": "2ed0edf7fb01fcb27bd0937549cc38b058b0033ab7ae46eaeeef64bde9e86de1",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.domains_progress_sweep.20260930"
+    "transition_id": "scnsim.askr_030_consumer.20260930"
   },
   "results": {
     "optional_direct": {

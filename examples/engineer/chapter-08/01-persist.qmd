@@ -4,7 +4,6 @@ subtitle: "Report and resolve engineer course"
 jupyter: python3
 execute:
   enabled: false
-format: html
 ---
 
 ::: {.callout-note title="First independent kernel" appearance="simple"}

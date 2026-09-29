@@ -1,7 +1,7 @@
 # Third-party sources and provenance
 
-The Kit is MIT-licensed, but bundled third-party assets retain their own
-licenses. Original license texts are also packaged in `_extensions/qdk/licenses`.
+Askr is MIT-licensed, but bundled third-party assets retain their own
+licenses. Original license texts are also packaged in `_extensions/askr/licenses`.
 
 | Material | Upstream identity and path | SHA-256 | Modification |
 | --- | --- | --- | --- |

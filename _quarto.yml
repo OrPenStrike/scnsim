@@ -295,13 +295,7 @@ website:
               href: docs/implementation/external-inputs-and-delivery.qmd
 
 format:
-  html:
-    quarto-required: ">=1.10.18"
-    theme:
-      light: [default, _extensions/arfiligol/qdk/qdk.scss]
-      dark: [default, _extensions/arfiligol/qdk/qdk.scss, _extensions/arfiligol/qdk/qdk-dark.scss]
-    theme-toggle: true
-    include-in-header: _extensions/arfiligol/qdk/theme-color.html
+  askr-html:
     toc: true
     code-copy: true
     page-layout: article

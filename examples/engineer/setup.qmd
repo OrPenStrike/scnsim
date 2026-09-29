@@ -1,7 +1,6 @@
 ---
 title: "Engineer course setup"
 subtitle: "One locked environment and one clean kernel per Chapter"
-format: html
 ---
 
 Clone the current development course, install its locked environment, and

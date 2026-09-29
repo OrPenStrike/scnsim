@@ -152,8 +152,8 @@ uv sync --locked
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
-The site uses native Quarto HTML with the vendored, unmodified QDK v0.2.1
-light/dark theme. To build it, use Quarto 1.10.18 or later and run
+The site uses the vendored, unmodified Askr v0.3.0 `askr-html` format with
+the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and run
 `quarto render --no-execute --no-clean`. Start with the
 [Engineer course](docs/index.qmd); its aggregate Chapter notebooks are the
 execution units, while the web lessons are reading pages. For a consuming

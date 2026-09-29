@@ -4,7 +4,6 @@ subtitle: "Coupled grounded LC engineer course"
 jupyter: python3
 execute:
   enabled: false
-format: html
 ---
 
 ::: {.callout-note title="Prerequisites: Lessons 1–4" appearance="simple"}
