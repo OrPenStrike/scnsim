@@ -7,6 +7,7 @@ segments, then freeze equivalent literal text as exact Matplotlib glyph paths.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import ceil, cos, isclose, isfinite, pi, radians, sin, tan
 from typing import Literal
 
@@ -25,9 +26,22 @@ from .scene import (
     PortBlock,
     TextRun,
 )
+from .values import format_envelope
 
 NativeKind = Literal["R", "L", "C", "JJ", "G"]
 _NATIVE_WHITELIST = frozenset({"R", "L", "C", "JJ", "G"})
+
+
+def electrical_resolution_label(policy: Mapping[str, object]) -> str:
+    """The exact visible authoring policy; no candidate N is inferred here."""
+
+    if not isinstance(policy, Mapping) or set(policy) != {"kind", "max_frequency", "sections_per_wavelength"} or policy["kind"] != "electrical_resolution":
+        raise ValueError("line resolution policy is malformed")
+    count = policy["sections_per_wavelength"]
+    frequency = policy["max_frequency"]
+    if isinstance(count, bool) or not isinstance(count, int) or count <= 0 or not isinstance(frequency, Mapping):
+        raise ValueError("line resolution policy is malformed")
+    return f"M={count}, fmax={format_envelope(frequency)}"
 
 
 def _literal(text: str, *, controlled_math: bool = False) -> str:
@@ -393,7 +407,7 @@ def native_block(
 
 def _cpw_box(
     *, origin: Point, title: str, conductor: str, length: str | None,
-    n_sections: int, minimum_axis: float, orientation: int,
+    section_text: str, section_role: str, minimum_axis: float, orientation: int,
     metrics: DiagramMetrics, correlation_key: str | None,
 ) -> ElectricalBox:
     """One-conductor line with upright measured facts and two physical leads."""
@@ -401,8 +415,7 @@ def _cpw_box(
               (title, metrics.primary_text_size, "line-title")]
     if length is not None:
         labels.append((length, metrics.secondary_text_size, "line-length"))
-    labels.append((f"{n_sections} section" + ("s" if n_sections != 1 else ""),
-                   metrics.secondary_text_size, "line-sections"))
+    labels.append((section_text, metrics.secondary_text_size, section_role))
     measured = tuple(shape_text(text, at=Point(0.0, 0.0), size=size, role=role)
                      for text, size, role in labels)
     padding = metrics.label_clearance
@@ -443,7 +456,7 @@ def _cpw_box(
         placed.get("line-length"), (), (), None,
         ((f"head.{conductor}", head), (f"tail.{conductor}", tail)),
         outline, paths, _bounds(body, *(path.bounds for path in paths)),
-        correlation_key, section_label=placed["line-sections"],
+        correlation_key, section_label=placed[section_role],
     )
 
 
@@ -456,6 +469,7 @@ def electrical_box(
     reference: str | None = None,
     length: str | None = None,
     n_sections: int | None = None,
+    resolution: Mapping[str, object] | None = None,
     width: float | None = None,
     orientation: Literal[0, 90, 180, 270] = 0,
     metrics: DiagramMetrics = DEFAULT_METRICS,
@@ -479,13 +493,18 @@ def electrical_box(
     minimum_axis = 2 * metrics.native_span if width is None else float(width)
     if not isfinite(minimum_axis) or minimum_axis <= 0:
         raise ValueError("electrical box width must be positive")
+    if (n_sections is None) == (resolution is None):
+        raise ValueError("line box requires exactly one fixed count or resolution policy")
+    policy_text = None if resolution is None else electrical_resolution_label(resolution)
     if kind == "CPW":
         if len(conductors) != 1:
             raise ValueError("CPW boxes require exactly one conductor")
-        if isinstance(n_sections, bool) or not isinstance(n_sections, int) or n_sections <= 0:
+        if n_sections is not None and (isinstance(n_sections, bool) or not isinstance(n_sections, int) or n_sections <= 0):
             raise ValueError("CPW boxes require the captured positive section count")
+        section_text = policy_text if policy_text is not None else f"{n_sections} section" + ("s" if n_sections != 1 else "")
         return _cpw_box(origin=origin, title=title, conductor=conductors[0], length=length,
-                        n_sections=n_sections, minimum_axis=minimum_axis,
+                        section_text=section_text, section_role="line-policy" if policy_text is not None else "line-sections",
+                        minimum_axis=minimum_axis,
                         orientation=orientation, metrics=metrics,
                         correlation_key=correlation_key)
 
@@ -550,6 +569,10 @@ def electrical_box(
         if reference is not None
         else None
     )
+    policy_measure = (
+        _text_centered(policy_text, Point(0.0, 0.0), size=metrics.secondary_text_size, role="line-policy")
+        if policy_text is not None else None
+    )
 
     header_measures = tuple(
         item
@@ -559,16 +582,8 @@ def electrical_box(
     header_width = sum(_extent(item, horizontal=True) for item in header_measures)
     header_width += gap * (len(header_measures) - 1) + 2 * padding
     header_height = max(_extent(item, horizontal=False) for item in header_measures)
-    footer_width = (
-        0.0
-        if reference_measure is None
-        else _extent(reference_measure, horizontal=True) + 2 * padding
-    )
-    footer_height = (
-        0.0
-        if reference_measure is None
-        else _extent(reference_measure, horizontal=False)
-    )
+    footer_width = max((_extent(item, horizontal=True) + 2 * padding for item in (reference_measure, policy_measure) if item is not None), default=0.0)
+    footer_height = sum(_extent(item, horizontal=False) for item in (reference_measure, policy_measure) if item is not None) + (gap if reference_measure is not None and policy_measure is not None else 0.0)
     horizontal = orientation in {0, 180}
     if horizontal:
         row_widths = tuple(
@@ -598,7 +613,7 @@ def electrical_box(
             + gap
             + sum(row_heights)
             + gap * (len(row_heights) - 1)
-            + (gap + footer_height if reference_measure is not None else 0.0)
+            + (gap + footer_height if footer_height else 0.0)
         )
         body_height = max(metrics.native_span, content_height)
     else:
@@ -628,8 +643,8 @@ def electrical_box(
             + header_height
             + endpoint_height
             + row_height
-            + (footer_height if reference_measure is not None else 0.0)
-            + gap * (4 if reference_measure is not None else 3)
+            + footer_height
+            + gap * (4 if footer_height else 3)
         )
         body_height = max(minimum_axis, content_height)
 
@@ -682,9 +697,16 @@ def electrical_box(
         if reference_measure is None
         else _text_centered(
             reference_measure.text,
-            Point((left + right) / 2, bottom + padding + footer_height / 2),
+            Point((left + right) / 2, bottom + padding + _extent(reference_measure, horizontal=False) / 2),
             size=reference_measure.size,
             role=reference_measure.role,
+        )
+    )
+    policy_run = (
+        None if policy_measure is None else _text_centered(
+            policy_measure.text,
+            Point((left + right) / 2, bottom + padding + footer_height - _extent(policy_measure, horizontal=False) / 2),
+            size=policy_measure.size, role=policy_measure.role,
         )
     )
 
@@ -696,8 +718,8 @@ def electrical_box(
     if horizontal:
         available_top = header_y - header_height / 2 - gap
         available_bottom = (
-            reference_run.bounds.ymax + gap
-            if reference_run is not None
+            (policy_run or reference_run).bounds.ymax + gap
+            if policy_run is not None or reference_run is not None
             else bottom + padding
         )
         row_heights = tuple(
@@ -794,7 +816,7 @@ def electrical_box(
             cursor += column_width + gap
 
         footer_top = (
-            reference_run.bounds.ymax if reference_run is not None else bottom + padding
+            (policy_run or reference_run).bounds.ymax if policy_run is not None or reference_run is not None else bottom + padding
         )
         low_height = max(
             _extent(item, horizontal=False)
@@ -878,6 +900,8 @@ def electrical_box(
     ]
     if reference_run is not None:
         visible_bounds.append(reference_run.bounds)
+    if policy_run is not None:
+        visible_bounds.append(policy_run.bounds)
     if length_run is not None:
         visible_bounds.append(length_run.bounds)
     bounds = _bounds(*visible_bounds)
@@ -895,6 +919,7 @@ def electrical_box(
         tuple(paths),
         bounds,
         correlation_key,
+        section_label=policy_run,
     )
 
 

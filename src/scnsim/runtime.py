@@ -2035,7 +2035,7 @@ def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, objec
     required = {
         "schema", "schema_version", "plan_sha256", "parameters_sha256",
         "node_order", "matrix_order", "resolved_bindings",
-        "expanded_branch_rows", "c_matrix", "k_matrix", "g_matrix", "ports",
+        "expanded_branch_rows", "discretization", "c_matrix", "k_matrix", "g_matrix", "ports",
     }
     if (
         set(compiled) != required
@@ -2047,7 +2047,7 @@ def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, objec
         or not isinstance(compiled.get("node_order"), list)
         or not compiled["node_order"]
         or len(set(compiled["node_order"])) != len(compiled["node_order"])
-        or any(not isinstance(compiled.get(field), list) for field in ("resolved_bindings", "expanded_branch_rows"))
+        or any(not isinstance(compiled.get(field), list) for field in ("resolved_bindings", "expanded_branch_rows", "discretization"))
         or any(not isinstance(compiled.get(field), Mapping) for field in ("c_matrix", "k_matrix", "g_matrix", "ports"))
     ):
         raise BackendProtocolError(

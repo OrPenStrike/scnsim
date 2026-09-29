@@ -148,6 +148,32 @@ Public contracts own product semantics. An implementation page may explain a
 mechanism, dependency, data layout, or delivery slice, but it cannot weaken or
 replace a public invariant.
 
+### Electrical resolution candidate (`CONVERGING`)
+
+`ElectricalResolution(max_frequency=10*u.GHz,
+sections_per_wavelength=40)` is an immutable, per-line alternative to
+`n_sections`; exactly one must be supplied. It is available only for a line
+whose declared R and G matrices are explicitly and exactly zero. The Plan
+owns this policy and physical line lengths, while each bound candidate owns
+its realized integer grids. Rebinding length may change a grid, but it never
+changes conductor order, line connectivity, public Pins, or Port identities.
+
+`run.explain()` and verified numerical Results expose the realized line
+inventory in declaration order. Each record provides physical length, N,
+and dx; policy records additionally provide modal velocities and hmax with
+units. Point outcomes and checkpoints retain their own grids, as do the
+Optimization baseline, evaluated candidates, and best point. Fixed-count
+lines report their actual N and dx without a fictional modal calculation.
+Missing or nonzero R/G, invalid policy inputs, invalid modal matrices, and
+non-finite or unrepresentable sections fail closed; the existing fixed-count
+lossy path remains available. A complex root above the saved policy's
+`|ω|/(2π)` envelope is visibly identified, not rejected or remeshed.
+Neither the policy nor any reported refinement difference is an observable
+error bound. The [concept](../concepts/electrical-resolution.qmd) and
+[compiler implementation](../implementation/rlgc-q2d-and-pi-expansion.qmd)
+give the derivation and realization mechanics. Human semantic acceptance,
+tests, and stabilization remain pending for this bounded candidate.
+
 ## Implementation Design {#implementation-design}
 
 Read this collection in order before changing the implementation. Each page

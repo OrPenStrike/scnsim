@@ -811,7 +811,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
             ))
             append!(components, unevaluated_objective_components(request, failure; first_index = objective_index + 1))
             sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-            return Inf, components, extrapolation_evidence, failure
+            return Inf, components, extrapolation_evidence, failure, raw_compiled.discretization
         end
         index = Ref(0)
         value = scalar_expression_value(selector, leaf_values, index)
@@ -838,7 +838,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
             ))
             append!(components, unevaluated_objective_components(request, failure; first_index = objective_index + 1))
             sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-            return Inf, components, extrapolation_evidence, failure
+            return Inf, components, extrapolation_evidence, failure, raw_compiled.discretization
         end
         target = quantity_value(objective["target"])
         scale = quantity_value(objective["resolved_scale"])
@@ -866,7 +866,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
             ))
             append!(components, unevaluated_objective_components(request, failure; first_index = objective_index + 1))
             sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-            return Inf, components, extrapolation_evidence, failure
+            return Inf, components, extrapolation_evidence, failure, raw_compiled.discretization
         end
         total += weighted
         push!(components, Dict{String,Any}(
@@ -890,10 +890,10 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
             aggregation_witness = witness,
         ))
         sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-        return Inf, components, extrapolation_evidence, failure
+        return Inf, components, extrapolation_evidence, failure, raw_compiled.discretization
     end
     sort!(extrapolation_evidence; by = row -> (ref_key(row["parameter"]), consumer_target_key(row["consumer_target"])))
-    return total, components, extrapolation_evidence, nothing
+    return total, components, extrapolation_evidence, nothing, raw_compiled.discretization
 end
 
 function failure_object(request, failure::BackendFailure)
@@ -907,7 +907,7 @@ function failure_object(request, failure::BackendFailure)
 end
 
 function candidate_record(request, ordinal::Int, generation::Int, column, z::Vector{Float64}, latent, parameters, cache_hit::Bool, outcome;
-        extrapolation_evidence::Vector{Any} = Any[])
+        extrapolation_evidence::Vector{Any} = Any[], discretization = nothing)
     record = Dict{String,Any}(
         "evaluation_ordinal" => ordinal,
         "origin" => generation == 0 ? "baseline" : "population",
@@ -920,6 +920,7 @@ function candidate_record(request, ordinal::Int, generation::Int, column, z::Vec
         "outcome" => outcome,
     )
     generation > 0 && latent !== nothing && (record["optimizer_latent_coordinates_f64"] = f64_hex.(latent))
+    discretization === nothing || (record["discretization"] = discretization)
     return record
 end
 
@@ -1194,7 +1195,8 @@ function seed_replay_cache!(cache::Dict{String,Any}, chain)
                 same_cost || fail("evidence", "evidence_integrity", "optimization_replay", "artifact", "replayed candidate cache assigns inconsistent costs")
             else
                 cache[key] = Dict("outcome" => candidate["outcome"], "cost" => cost,
-                    "extrapolation_evidence" => candidate["extrapolation_evidence"])
+                    "extrapolation_evidence" => candidate["extrapolation_evidence"],
+                    "discretization" => get(candidate, "discretization", nothing))
             end
         end
     end
@@ -1269,7 +1271,7 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
         cached = cache[key]
         outcome = rebase_optimization_failure(cached["outcome"], candidate)
         return candidate_record(request, ordinal, generation, column, z, latent, parameters, true, outcome;
-            extrapolation_evidence = cached["extrapolation_evidence"]), cached["cost"]
+            extrapolation_evidence = cached["extrapolation_evidence"], discretization = get(cached, "discretization", nothing)), cached["cost"]
     end
     extrapolation_evidence = Any[]
     try
@@ -1282,7 +1284,7 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
                 "affine input is outside its declared support")
         end
         empty!(extrapolation_evidence)
-        cost, components, extrapolation_evidence, objective_failure = objective_outcome(plan, request, baseline_values, values, baseline_roots;
+        cost, components, extrapolation_evidence, objective_failure, discretization = objective_outcome(plan, request, baseline_values, values, baseline_roots;
             extrapolation_evidence = extrapolation_evidence, candidate = candidate)
         outcome = if objective_failure === nothing
             Dict{String,Any}(
@@ -1298,9 +1300,9 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
                 "objective_components" => components,
             )
         end
-        cache[key] = Dict("outcome" => outcome, "cost" => cost, "extrapolation_evidence" => extrapolation_evidence)
+        cache[key] = Dict("outcome" => outcome, "cost" => cost, "extrapolation_evidence" => extrapolation_evidence, "discretization" => discretization)
         return candidate_record(request, ordinal, generation, column, z, latent, parameters, false, outcome;
-            extrapolation_evidence = extrapolation_evidence), cost
+            extrapolation_evidence = extrapolation_evidence, discretization = discretization), cost
     catch error
         error isa BackendFailure || rethrow()
         contextual = error.optimization_context === nothing ? with_optimization_context(error, optimization_context(
@@ -1564,7 +1566,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
             plan, request, base_values; extrapolation_evidence = baseline_evidence,
         )
         baseline_parameters = candidate_parameter_set(request, base_values)
-        cost, components, baseline_evidence, baseline_failure = objective_outcome(
+        cost, components, baseline_evidence, baseline_failure, baseline_discretization = objective_outcome(
             plan, request, base_values, base_values, roots;
             extrapolation_evidence = baseline_evidence,
             prepared_raw = baseline_raw, prepared_views = baseline_views,
@@ -1578,7 +1580,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
         )
         record = candidate_record(
             request, 0, 0, nothing, z0, nothing, baseline_parameters, false, outcome;
-            extrapolation_evidence = baseline_evidence,
+            extrapolation_evidence = baseline_evidence, discretization = baseline_discretization,
         )
         content_sha, seal_sha = publish_baseline_checkpoint(
             request, request_sha, attempt_sha, staging, record, roots,
@@ -1586,12 +1588,14 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
         (content_sha, seal_sha, record, roots, cost)
     end
     baseline_outcome = baseline["outcome"]
+    haskey(baseline, "discretization") && (request["discretization"] = baseline["discretization"])
     baseline_parameters = baseline["parameters"]
     request["ref_lineage"] = baseline_primary_lineage(request, baseline)
     cache[canonical_json(baseline_parameters)] = Dict(
         "outcome" => baseline_outcome,
         "cost" => baseline_cost,
         "extrapolation_evidence" => baseline["extrapolation_evidence"],
+        "discretization" => get(baseline, "discretization", nothing),
     )
     replay_chain = resume_ledger_sha === nothing ? Dict{String,Any}[] :
         sibling_ledgers(staging, request_sha, attempt_sha, String(resume_ledger_sha),
@@ -1779,6 +1783,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
             "evaluation_ordinal" => best["evaluation_ordinal"],
             "cost_f64" => best["outcome"]["cost_f64"],
             "parameters" => best["parameters"],
+            "discretization" => get(best, "discretization", Any[]),
         ),
         "completed_generations" => generations,
         "unused_evaluations" => controls["unused_evaluations"],

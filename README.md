@@ -156,7 +156,8 @@ The site uses the vendored, unmodified Askr v0.3.0 `askr-html` format with
 the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and run
 `quarto render --no-execute --no-clean`. Start with the
 [Engineer course](docs/index.qmd); its aggregate Chapter notebooks are the
-execution units, while the web lessons are reading pages. For a consuming
+execution units for Lessons 1–4, while Chapter 7 Lesson 5 has its own standalone
+notebook and result artifacts. For a consuming
 repository, pin one reviewed SCNSim commit in its `pyproject.toml` and lockfile:
 
 ```bash

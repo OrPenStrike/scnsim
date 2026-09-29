@@ -12,6 +12,7 @@ from dataclasses import MISSING, FrozenInstanceError, dataclass, field, fields
 from enum import Enum
 from html import escape
 import json
+import math
 from os import O_RDONLY, PathLike, fsync, link, open as os_open
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -22,6 +23,7 @@ import numpy as np
 from pint import Quantity
 
 from . import units
+from ._canonical import float64_from_hex
 from ._immutable_values import immutable_array, immutable_quantity, quantity_view
 from ._scaffold import unavailable
 from .authoring import ParameterRef, ParameterSet
@@ -108,7 +110,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
             object.__setattr__(instance, f"_{name}", _freeze(values[name]))
         return instance
     if cls is HBBatchResult:
-        if set(values) != {"identity", "cases", "topology_evidence", "_presentation"}:
+        if set(values) != {"identity", "discretization", "cases", "topology_evidence", "_presentation"}:
             raise TypeError("verified HBBatchResult fields mismatch")
         identity, cases = values["identity"], values["cases"]
         if not _is_verified_result_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
@@ -124,6 +126,7 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
             raise TypeError("verified HBBatchResult cases are malformed")
         instance = object.__new__(cls)
         object.__setattr__(instance, "identity", identity)
+        object.__setattr__(instance, "discretization", _freeze(values["discretization"]))
         object.__setattr__(instance, "cases", MappingProxyType(materialized))
         object.__setattr__(instance, "topology_evidence", _freeze(values["topology_evidence"]))
         object.__setattr__(instance, "_presentation", _freeze(values["_presentation"]))
@@ -283,10 +286,42 @@ class ParameterPointIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class LineDiscretization:
+    """One verified physical line grid, independent of selected View."""
+
+    component_path: tuple[str, ...]
+    kind: Literal["fixed_count", "electrical_resolution"]
+    length: Quantity
+    n_sections: int
+    dx: Quantity
+    modal_velocities: tuple[Quantity, ...] = ()
+    hmax: Quantity | None = None
+    policy: Mapping[str, object] | None = None
+    _quantity_fields = frozenset({"length", "dx", "hmax"})
+
+    def __post_init__(self) -> None:
+        for name in ("length", "dx", "hmax"):
+            value = object.__getattribute__(self, name)
+            if value is not None:
+                object.__setattr__(self, name, immutable_quantity(value))
+        object.__setattr__(self, "modal_velocities", tuple(
+            immutable_quantity(value) for value in object.__getattribute__(self, "modal_velocities")
+        ))
+        if self.policy is not None:
+            object.__setattr__(self, "policy", _freeze(self.policy))
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "modal_velocities":
+            return tuple(quantity_view(value) for value in object.__getattribute__(self, name))
+        return _fresh_quantity_attribute(self, name)
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisResult(Result):
     """Receipt-backed terminal Result returned by solve, evaluate, or optimize."""
 
     identity: ResultIdentity | ParameterPointIdentity
+    discretization: tuple[LineDiscretization, ...] | None = field(default=None, kw_only=True)
     _verified_result_token: object = field(init=False, repr=False, compare=False)
 
     def __init__(self) -> None:
@@ -310,7 +345,6 @@ class MatrixView:
 
     def __getattribute__(self, name: str) -> object:
         return _fresh_quantity_attribute(self, name)
-
 
 @dataclass(frozen=True, slots=True)
 class MatrixFamilyResult(Result):
@@ -498,6 +532,21 @@ class DirectQuantityResult(AnalysisResult):
     def __getattribute__(self, name: str) -> object:
         return _fresh_quantity_attribute(self, name)
 
+    @property
+    def electrical_resolution_envelope_exceeded(self) -> tuple[tuple[str, ...], ...]:
+        """Policy lines whose saved complex root exceeds |ω|/(2π) ≤ fmax."""
+
+        root = self.root if self.root is not None else self.zero
+        if root is None or self.discretization is None:
+            return ()
+        frequency = abs(complex(root.to("radian / second").magnitude)) / (2 * math.pi)
+        return tuple(
+            row.component_path for row in self.discretization
+            if row.kind == "electrical_resolution"
+            and row.policy is not None
+            and frequency > float64_from_hex(row.policy["max_frequency"]["si_value_f64"])
+        )
+
     def plot(self, *, theme: Theme = Theme.AUTO) -> Figure:
         from ._numeric_presentation import scalar_plot
 
@@ -612,6 +661,7 @@ class OptimizationBest:
 
     parameters: ParameterSet
     cost: float
+    discretization: tuple[LineDiscretization, ...] | None = None
 
     def __init__(self) -> None:
         unavailable("OptimizationBest construction")
@@ -623,6 +673,7 @@ class OptimizationResult(AnalysisResult):
 
     best: OptimizationBest
     ledger: tuple[Mapping[str, object], ...] = ()
+    candidate_discretization: tuple[tuple[LineDiscretization, ...] | None, ...] = ()
     _presentation: Mapping[str, object] = field(
         default_factory=dict, repr=False, compare=False
     )
@@ -1238,6 +1289,7 @@ def _parameter_sweep_result(
         raise TypeError("parameter sweep identity or accessor is unverified")
     result = object.__new__(ParameterSweepResult)
     object.__setattr__(result, "identity", identity)
+    object.__setattr__(result, "discretization", None)
     object.__setattr__(result, "points", points)
     object.__setattr__(result, "_selector_encoder", selector_encoder)
     object.__setattr__(result, "_allowed_selectors", frozenset(allowed_selectors))
@@ -1301,6 +1353,15 @@ class ExplanationResult(Result):
     def __init__(self) -> None:
         unavailable("ExplanationResult construction")
 
+    @property
+    def discretization(self) -> tuple[LineDiscretization, ...]:
+        from ._result_decode import _decode_discretization
+
+        compiled = self.evidence.get("compiled", {})
+        if not isinstance(compiled, Mapping):
+            raise ValueError("explanation has no compiler evidence")
+        return _decode_discretization(compiled.get("discretization")) or ()
+
     def show(self, **presentation: object) -> HtmlPresentation:
         def table(title: str, headers: tuple[str, ...], rows: object) -> str:
             body = "".join(
@@ -1348,6 +1409,18 @@ class ExplanationResult(Result):
                 + (("optimizer", "controls", spec.get("optimizer")),),
             )
         if isinstance(compiled, Mapping):
+            html += table(
+                "Resolved transmission-line grids",
+                ("component", "method", "length", "modal velocities", "hmax", "N", "dx"),
+                (
+                    (
+                        row.component_path, row.kind, row.length,
+                        row.modal_velocities, row.hmax,
+                        row.n_sections, row.dx,
+                    )
+                    for row in self.discretization
+                ),
+            )
             html += table(
                 "Compiler and capability",
                 ("field", "value"),

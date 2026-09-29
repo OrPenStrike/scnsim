@@ -1,0 +1,293 @@
+---
+title: "Chapter 7 · Lesson 5 — Position and electrical resolution"
+subtitle: "Standalone lossless two-conductor tutorial · CONVERGING"
+jupyter: python3
+execute:
+  enabled: false
+---
+
+# Lesson 5 — Position and electrical resolution
+
+[Previous: Lesson 4](04-parameter-points.qmd) ·
+[Chapter 7](chapter.qmd) ·
+[Engineer course](../../../docs/index.qmd) ·
+[Electrical-resolution concept](../../../docs/concepts/electrical-resolution.qmd) ·
+[Download the standalone zero-output notebook](05-position-electrical-resolution.ipynb).
+
+This standalone lesson uses two two-conductor line bodies with a combined
+8 mm physical length, joined
+conductorwise at named middle buses. Moving the one middle shunt changes the
+left and right *physical lengths* (`x` and `8 mm − x`), never the wiring.
+Its explicit R and G are zero; four 50 Ω outer Ports and a 20 fF shunt are
+separate circuit elements. It is not an equivalence claim about D3.
+
+## 1. Topology and assumptions
+
+The ordered conductors are `a` and `b`, with `ground` only as the RLGC
+reference. The middle shunt connects `middle_a` to ground; `middle_b` is an
+ordinary through bus. The two line bodies keep the complete coupled matrices
+L = [[420, 75], [75, 395]] nH/m and C = [[175, −22], [−22, 168]] pF/m.
+Each outer signal endpoint has its own terminated 50 Ω Port. This is a
+finite-Pi model of a synthetic, frequency-independent lossless line, not a
+field-solver extraction or a claim of observable accuracy.
+
+| Physical stage | Conductor a path | Conductor b path |
+|---|---|---|
+| Input | `left_a` Port, 50 Ω | `left_b` Port, 50 Ω |
+| Left coupled line, length x | `left.head.a` → `left.tail.a` | `left.head.b` → `left.tail.b` |
+| Middle bus | `middle_a` → one 20 fF shunt → ground | `middle_b` through |
+| Right coupled line, length 8 mm − x | `right.head.a` → `right.tail.a` | `right.head.b` → `right.tail.b` |
+| Output | `right_a` Port, 50 Ω | `right_b` Port, 50 Ω |
+
+Read downward in either column. Each paired line row is **one coupled
+two-conductor body**, not two independent single-conductor lines.
+
+This is a physical-connectivity teaching table, checked against the Plan
+below, not a certified diagram projection. The current certified layout
+reports a typed `schematic_layout` conflict for this four-Port topology;
+neither an authoring nor compiled diagram is claimed as successful here.
+
+## 2. Choose the resolution
+
+Change `sections_per_wavelength` here before running the notebook. The policy
+uses the slowest mode, so a larger M creates smaller sections, though integer
+ceil changes need not be smooth and doubling M need not double N.
+
+```{python}
+#| id: ch7-position-resolution
+from pathlib import Path
+import csv
+import numpy as np
+from IPython.display import Markdown, display
+from scnsim import (
+    AffineMap, CircuitPlan, CircuitRun, DirectSolveSpec, ElectricalResolution,
+    ParameterDefinitions, ParameterSet, ParameterSpace, ParameterSpec, RLGC,
+    SParameterTrace, components, units as u,
+)
+
+sections_per_wavelength = 40
+maximum_frequency = 10 * u.GHz
+positions = (2 * u.mm, 4 * u.mm, 6 * u.mm)
+workspace_root = Path("workspaces/engineer-position-electrical-resolution")
+```
+
+For lossless lines, the telegrapher equation gives
+V″ = −ω²LC V. With L = AAᵀ (lower Cholesky), B = AᵀCA is symmetric and
+similar to LC. Its positive eigenvalues λm give modal delay per meter
+τm = √λm and velocity vm = 1/τm. The policy computes
+hmax = 1/(M fmax max τm), then N = max(1, ⌈length/hmax⌉) and dx = length/N.
+For real frequencies through fmax, βm dx ≤ 2π/M is a phase-increment
+resolution statement, not an S-parameter error bound.
+
+## 3. Build one position-controlled Plan
+
+The one assembly helper keeps the wiring identical for M=40 and M=80. `x`
+is the left line length; one `AffineMap` supplies `8 mm − x` for the right
+line. Its support is the displayed 2–6 mm range, so both bodies remain
+strictly positive. A new position point changes lengths only.
+
+```{python}
+#| id: ch7-position-build
+def build_position_model(M, workspace):
+    definitions = ParameterDefinitions(id=f"position_m{M}")
+    x = definitions.parameter(
+        id="position", baseline=4*u.mm, spec=ParameterSpec(unit=u.mm),
+    )
+    right_length = AffineMap(
+        input=x, slope=-1*u.dimensionless, intercept=8*u.mm,
+        support=(2*u.mm, 6*u.mm),
+    )
+    rlgc = RLGC(
+        conductors=("a", "b"), reference_conductor="ground",
+        resistance_per_length=[[0, 0], [0, 0]]*u.ohm/u.m,
+        inductance_per_length=[[420, 75], [75, 395]]*u.nH/u.m,
+        conductance_per_length=[[0, 0], [0, 0]]*u.S/u.m,
+        capacitance_per_length=[[175, -22], [-22, 168]]*u.pF/u.m,
+    )
+    policy = ElectricalResolution(
+        max_frequency=maximum_frequency, sections_per_wavelength=M,
+    )
+    plan = CircuitPlan(id=f"positioned_two_conductor_m{M}")
+    left = plan.add(components.transmission_line(
+        id="left", length=x, rlgc=rlgc, discretization=policy,
+    ))
+    right = plan.add(components.transmission_line(
+        id="right", length=right_length, rlgc=rlgc, discretization=policy,
+    ))
+    buses = {name: plan.bus(id=name) for name in (
+        "left_a", "left_b", "middle_a", "middle_b", "right_a", "right_b",
+    )}
+    plan.series(id="left_a_path", start=buses["left_a"], elements=(
+        left.between(left.pin("head", conductor="a"), left.pin("tail", conductor="a")),
+    ), end=buses["middle_a"])
+    plan.series(id="right_a_path", start=buses["middle_a"], elements=(
+        right.between(right.pin("head", conductor="a"), right.pin("tail", conductor="a")),
+    ), end=buses["right_a"])
+    for name, pin in (
+        ("left_b", left.pin("head", conductor="b")),
+        ("middle_b", left.pin("tail", conductor="b")),
+        ("middle_b", right.pin("head", conductor="b")),
+        ("right_b", right.pin("tail", conductor="b")),
+    ):
+        plan.link(
+            id=f"bind_{name}_{pin.component.id}_{pin.name.replace('.', '_')}",
+            endpoints=(buses[name], pin),
+        )
+    shunt = plan.add(components.capacitor(id="middle_shunt", capacitance=20*u.fF))
+    plan.series(id="shunt_path", start=buses["middle_a"], elements=(shunt,), end=plan.ground)
+    for name in ("left_a", "left_b", "right_a", "right_b"):
+        plan.add_port(
+            id=name, at=buses[name], role="terminated",
+            reference_impedance=50*u.ohm,
+        )
+    run = CircuitRun(plan=plan, workspace=workspace, versioned=True)
+    trace = SParameterTrace(
+        id="through_a", input_port="left_a", input_mode=(),
+        output_port="right_a", output_mode=(),
+    )
+    spec = DirectSolveSpec(
+        frequencies=np.linspace(1, 10, 61)*u.GHz, traces=(trace,),
+    )
+    return plan, run, x, spec
+
+plan, run, x, direct_spec = build_position_model(
+    sections_per_wavelength, workspace_root / f"m{sections_per_wavelength}",
+)
+```
+
+## 4. Inspect modal delays and the initial grid
+
+`explain()` compiles the baseline in Julia but creates no numerical solve
+attempt. This is the realized grid for the 4 mm + 4 mm point. The Plan
+still represents two physical lines with a policy; this compiler table is
+the actual N-section evidence for the bound point. Certified diagram layout
+is separate and has the typed limitation noted in Step 1.
+
+```{python}
+#| id: ch7-position-explain
+explanation = run.explain(run.original, direct_spec, parameters=ParameterSet())
+rows = ["| body | length (mm) | modal velocities (m/s) | hmax (mm) | N | dx (mm) |",
+        "|---|---:|---|---:|---:|---:|"]
+for line in explanation.discretization:
+    modal_text = ", ".join(f"{v.to('m/s').magnitude:.6g}" for v in line.modal_velocities)
+    rows.append(
+        f"| {'/'.join(line.component_path)} | {line.length.to('mm').magnitude:.6g} | "
+        f"{modal_text} | "
+        f"{line.hmax.to('mm').magnitude:.6g} | {line.n_sections} | "
+        f"{line.dx.to('mm').magnitude:.6g} |"
+    )
+display(Markdown("\n".join(rows)))
+display(explanation.show())
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include position-figures/07-position-baseline-grid.md >}}
+
+:::
+
+## 5. Solve one three-position ParameterSpace
+
+The 61-point real-frequency grid is inclusive from 1 to 10 GHz. The same
+single request evaluates x = 2, 4, and 6 mm; each point recompiles before
+allocating its internal stations, while the Port names and wiring stay fixed.
+If a previously interrupted batch has a verified completed first-point
+checkpoint, rerunning this same request reuses that completed point and solves
+the remaining points; it does not resume inside a point solve.
+
+```{python}
+#| id: ch7-position-solve
+position_space = ParameterSpace.points(tuple(ParameterSet({x: value}) for value in positions))
+position_points = run.solve(run.original, direct_spec, parameters=position_space)
+```
+
+## 6. Read point outcomes and named complex channels
+
+The named `through_a` channel is `right_a ← left_a`. Its complex samples,
+not only the displayed magnitude/phase, are retained for each successful
+point. A failed point remains a typed failure; the table never substitutes a
+neighbor's response.
+
+```{python}
+#| id: ch7-position-outcomes
+point_rows = ["| x (mm) | status | left N / dx (mm) | right N / dx (mm) |",
+              "|---:|---|---|---|"]
+for position, point in zip(positions, position_points.points, strict=True):
+    if not point.succeeded:
+        point_rows.append(f"| {position.to('mm').magnitude:g} | {point.failure} | — | — |")
+        continue
+    left_grid, right_grid = point.result.discretization
+    point_rows.append(
+        f"| {position.to('mm').magnitude:g} | success | "
+        f"{left_grid.n_sections} / {left_grid.dx.to('mm').magnitude:.6g} | "
+        f"{right_grid.n_sections} / {right_grid.dx.to('mm').magnitude:.6g} |"
+    )
+    display(point.result.traces["through_a"].plot(component="magnitude", magnitude="db"))
+    display(point.result.traces["through_a"].plot(component="phase"))
+display(Markdown("\n".join(point_rows)))
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include position-figures/07-position-point-grids.md >}}
+
+{{< include position-figures/07-position-results.md >}}
+
+:::
+
+## 7. Refine separately and compare exact complex samples
+
+M=80 uses a new Plan, Run, handles and workspace; it is not an in-place
+mutation of the sealed M=40 Plan. At the same three positions and 61
+frequencies, subtract the complex `through_a` samples. The difference is
+*measured refinement sensitivity* for this setup, not a certified error or a
+winner threshold. The raw real and imaginary parts remain downloadable.
+
+```{python}
+#| id: ch7-position-refinement
+refined_plan, refined_run, refined_x, refined_spec = build_position_model(
+    80, workspace_root / "m80",
+)
+refined_space = ParameterSpace.points(tuple(
+    ParameterSet({refined_x: value}) for value in positions
+))
+refined_points = refined_run.solve(
+    refined_run.original, refined_spec, parameters=refined_space,
+)
+output_dir = Path("position-output")
+output_dir.mkdir(exist_ok=True)
+with (output_dir / "07-position-complex.csv").open("w", newline="") as stream:
+    writer = csv.writer(stream)
+    writer.writerow(("x_mm", "frequency_GHz", "m40_real", "m40_imag", "m80_real", "m80_imag", "difference_real", "difference_imag", "difference_abs"))
+    for position, coarse_point, fine_point in zip(
+        positions, position_points.points, refined_points.points, strict=True,
+    ):
+        if not coarse_point.succeeded or not fine_point.succeeded:
+            display({"position": position, "M40": coarse_point.failure, "M80": fine_point.failure})
+            continue
+        coarse = np.asarray(coarse_point.result.traces["through_a"].value.magnitude)
+        fine = np.asarray(fine_point.result.traces["through_a"].value.magnitude)
+        frequencies = np.asarray(coarse_point.result.frequencies.to("GHz").magnitude)
+        differences = fine - coarse
+        for f, c, s, d in zip(frequencies, coarse, fine, differences, strict=True):
+            writer.writerow((float(position.to("mm").magnitude), float(f), float(c.real), float(c.imag), float(s.real), float(s.imag), float(d.real), float(d.imag), float(abs(d))))
+        display(Markdown(
+            f"**x = {position.to('mm').magnitude:g} mm:** "
+            f"M40 grids {[row.n_sections for row in coarse_point.result.discretization]}, "
+            f"M80 grids {[row.n_sections for row in fine_point.result.discretization]}; "
+            f"largest sampled complex difference = {np.max(np.abs(differences)):.6g}."
+        ))
+display(Markdown(f"[Download raw complex samples and differences]({output_dir / '07-position-complex.csv'})"))
+```
+
+::: {.content-visible when-format="html"}
+
+{{< include position-figures/07-position-refinement.md >}}
+
+[Download the exact complex samples](position-figures/07-position-complex.csv).
+
+:::
+
+The source notebook is generated from this QMD. Change positions by creating a
+new ParameterSpace on the same Run. Change resolution by rebuilding the Plan,
+Run and handles in a separate workspace; change wiring by rebuilding the model.

@@ -49,6 +49,7 @@ _UNITS: dict[str, str] = {
     "ampere": "current",
     "volt": "voltage",
     "meter": "length",
+    "meter / second": "velocity",
     "weber": "magnetic_flux",
     "ohm / meter": "resistance_per_length",
     "henry / meter": "inductance_per_length",

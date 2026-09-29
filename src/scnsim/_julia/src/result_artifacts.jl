@@ -268,6 +268,7 @@ function augment_single_result!(result, request)
     result["parameters"] = parameters
     result["parameters_sha256"] = point_parameters_sha(parameters)
     result["ref_lineage"] = request["ref_lineage"]
+    haskey(request, "discretization") && (result["discretization"] = request["discretization"])
     return result
 end
 

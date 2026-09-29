@@ -88,6 +88,39 @@ class RLGCParameterSpec:
         }
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ElectricalResolution:
+    """Length-dependent Pi resolution for an explicitly lossless RLGC line."""
+
+    max_frequency: Quantity = 10 * registry.GHz
+    sections_per_wavelength: int = 40
+
+    def __post_init__(self) -> None:
+        frequency = require_positive_quantity(
+            self.max_frequency, "hertz", name="max_frequency"
+        )
+        count = self.sections_per_wavelength
+        if isinstance(count, bool) or not isinstance(count, int):
+            raise TypeError("sections_per_wavelength must be a positive integer")
+        if count <= 0:
+            raise ValueError("sections_per_wavelength must be a positive integer")
+        object.__setattr__(self, "max_frequency", immutable_quantity(frequency))
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "max_frequency":
+            from ._immutable_values import quantity_view
+
+            return quantity_view(object.__getattribute__(self, name))
+        return object.__getattribute__(self, name)
+
+    def _record(self) -> dict[str, object]:
+        return {
+            "kind": "electrical_resolution",
+            "max_frequency": quantity_record(self.max_frequency, "hertz"),
+            "sections_per_wavelength": self.sections_per_wavelength,
+        }
+
+
 def _matrix(
     value: object, unit: str, n: int, name: str
 ) -> tuple[tuple[float, ...], ...]:

@@ -20,6 +20,7 @@ from ._authoring_snapshot import AuthoringSnapshot, ResolvedPlanPoint, freeze
 from ._immutable_values import immutable_quantity
 from ._physical_values import (
     AffineMap,
+    ElectricalResolution,
     ParameterSpec,
     RLGC,
     RLGCParameterSpec,
@@ -2129,17 +2130,28 @@ class _BuiltinComponents(Library):
         )
 
     def transmission_line(
-        self, *, id: str, length: object, rlgc: object, n_sections: int
+        self, *, id: str, length: object, rlgc: object,
+        n_sections: int | None = None,
+        discretization: ElectricalResolution | None = None,
     ) -> ComponentInstance:
-        if (
-            isinstance(n_sections, bool)
-            or not isinstance(n_sections, int)
-            or n_sections < 1
-        ):
-            raise ValueError("n_sections must be positive integer")
+        if (n_sections is None) == (discretization is None):
+            raise ValueError("exactly one of n_sections and discretization is required")
+        if discretization is None:
+            if isinstance(n_sections, bool) or not isinstance(n_sections, int) or n_sections < 1:
+                raise ValueError("n_sections must be positive integer")
+            metadata = {"n_sections": n_sections}
+        else:
+            if not isinstance(discretization, ElectricalResolution):
+                raise TypeError("discretization must be ElectricalResolution")
+            metadata = {"discretization": discretization._record()}
         b = rlgc.baseline if isinstance(rlgc, ParameterRef) else rlgc
         if not isinstance(b, RLGC):
             raise TypeError("rlgc must be RLGC or ParameterRef")
+        if discretization is not None and (
+            np.any(b.resistance_per_length.magnitude != 0)
+            or np.any(b.conductance_per_length.magnitude != 0)
+        ):
+            raise ValueError("ElectricalResolution requires explicitly zero R and G")
         return ComponentInstance._create(
             id=id,
             factory="transmission_line",
@@ -2147,7 +2159,7 @@ class _BuiltinComponents(Library):
             fields={"length": (length, "meter", True), "rlgc": (rlgc, "rlgc", False)},
             kind="complete_line",
             catalog_source=self._src(),
-            metadata={"n_sections": n_sections},
+            metadata=metadata,
             _token=_component_creation_token,
         )
 

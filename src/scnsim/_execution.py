@@ -800,6 +800,8 @@ def _validate_success_staging(
         if expected_kind == "hb_batch"
         else None
     )
+    if expected_result_fields is not None and expected_kind != "parameter_sweep" and "discretization" in result:
+        expected_result_fields.add("discretization")
     if (
         expected_result_fields is None
         or set(result) != expected_result_fields

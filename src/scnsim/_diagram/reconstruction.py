@@ -249,6 +249,7 @@ class _Body:
     conductors: tuple[str, ...] = ()
     reference_conductor: str | None = None
     n_sections: int | None = None
+    discretization_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -466,14 +467,20 @@ def _body_groups(
         if box.kind_label.text != box.kind:
             raise _fail("line body kind label disagrees with its visible native outline")
         sections = None
+        policy_label = None
         if box.kind == "CPW":
             if rows or box.anchor_labels or box.reference_label is not None or len(box.anchors) != 2:
                 raise _fail("CPW requires exactly two unlabelled visible terminals", body=name)
             label = box.section_label
-            match = None if label is None else re.fullmatch(r"([1-9][0-9]*) (section|sections)", label.text)
-            if match is None or label.role != "line-sections" or (match[1] == "1") != (match[2] == "section"):
-                raise _fail("CPW omits its positive visible section count", body=name)
-            sections = int(match[1])
+            if label is None:
+                raise _fail("CPW omits its visible section count or policy", body=name)
+            if label.role == "line-policy":
+                policy_label = label.text
+            else:
+                match = re.fullmatch(r"([1-9][0-9]*) (section|sections)", label.text)
+                if match is None or label.role != "line-sections" or (match[1] == "1") != (match[2] == "section"):
+                    raise _fail("CPW omits its positive visible section count", body=name)
+                sections = int(match[1])
             # Native anchor names carry source-only head/tail identity. Observe
             # only their actual lead-tip coordinates, then normalize topology.
             pins = tuple((f"terminal_{index}", point) for index, point in enumerate(sorted((point for _, point in box.anchors), key=lambda point: (point.x, point.y)), 1))
@@ -486,6 +493,10 @@ def _body_groups(
                 raise _fail("MTL loses complete ordered head/tail conductor anchors", body=name)
             if box.reference_label is None:
                 raise _fail("MTL omits its visible reference conductor", body=name)
+            if box.section_label is not None:
+                if box.section_label.role != "line-policy":
+                    raise _fail("MTL line policy label is malformed", body=name)
+                policy_label = box.section_label.text
             pins, reference = tuple(box.anchors), box.reference_label.text
         fields: list[dict[str, object]] = [{"id": "rlgc", "unit": "rlgc", "value": None}]
         if show_values and box.length_label is None:
@@ -496,7 +507,7 @@ def _body_groups(
         bodies.append(
             _Body(
                 (*owner, name), owner, "transmission_line", pins, (), box.bounds,
-                box.title.bounds, tuple(fields), (), rows, reference, sections,
+                box.title.bounds, tuple(fields), (), rows, reference, sections, policy_label,
             )
         )
     paths = [body.path for body in bodies]
@@ -1695,9 +1706,11 @@ def reconstruct_authoring(
         if body.model == "transmission_line":
             record["conductors"] = list(body.conductors)
             record["reference_conductor"] = body.reference_conductor
-            record["line_kind"] = "CPW" if body.n_sections is not None else "MTL"
+            record["line_kind"] = "CPW" if body.reference_conductor is None else "MTL"
             if body.n_sections is not None:
                 record["n_sections"] = body.n_sections
+            if body.discretization_label is not None:
+                record["discretization_label"] = body.discretization_label
         body_rows.append(record)
 
     ports: list[dict[str, object]] = []

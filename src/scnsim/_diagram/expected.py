@@ -695,10 +695,18 @@ def _v2_authoring(point: ResolvedPlanPoint) -> _PointExpectedManifest:
             record["conductors"] = list(conductors)
             record["reference_conductor"] = reference
             record["line_kind"] = "CPW" if len(conductors) == 1 else "MTL"
+            metadata = _mapping(leaf.get("model_metadata"), "physical_leaf.model_metadata")
+            if "discretization" in metadata:
+                from .native import electrical_resolution_label
+
+                record["discretization_label"] = electrical_resolution_label(
+                    _mapping(metadata["discretization"], "physical_leaf.model_metadata.discretization")
+                )
             if len(conductors) == 1:
                 record["conductors"] = []
                 record["reference_conductor"] = None
-                record["n_sections"] = _mapping(leaf.get("model_metadata"), "physical_leaf.model_metadata")["n_sections"]
+                if "n_sections" in metadata:
+                    record["n_sections"] = metadata["n_sections"]
         bodies.append(record)
     ports = []
     for raw in _sequence(connectivity.get("ports"), "ports"):

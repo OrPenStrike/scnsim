@@ -161,6 +161,7 @@ function run_terminal(request_path::String, staging::String)
         compile_context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
         raw_compiled = compile_primitive(plan, parameter_values(request); context_kind = compile_context,
             authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
+        request["discretization"] = raw_compiled.discretization
         realized_lineage, view = realized_ref_lineage(raw_compiled, declarative_lineage(plan, request, raw_compiled))
         request["ref_lineage"] = realized_lineage
         compiled = view.compiled
@@ -244,6 +245,7 @@ function compiler_audit(plan_path::String, point_path::String)
         "plan_sha256" => plan_sha, "parameters_sha256" => parameters_sha,
         "node_order" => compiled.nodes, "matrix_order" => "canonical_node_id",
         "resolved_bindings" => rows, "expanded_branch_rows" => compiled.branch_rows,
+        "discretization" => compiled.discretization,
         "c_matrix" => f64_matrix_evidence(compiled.C), "k_matrix" => f64_matrix_evidence(compiled.K),
         "g_matrix" => f64_matrix_evidence(compiled.G),
         "ports" => Dict(
@@ -327,6 +329,7 @@ function preflight(plan_path::String, request_path::String)
         "node_order" => compiled.nodes,
         "matrix_order" => "canonical_node_id",
         "expanded_branch_rows" => compiled.branch_rows,
+        "discretization" => raw_compiled.discretization,
         "c_matrix" => f64_matrix_evidence(compiled.C),
         "k_matrix" => f64_matrix_evidence(compiled.K),
         "g_matrix" => f64_matrix_evidence(compiled.G),

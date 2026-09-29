@@ -176,6 +176,7 @@ function run_parameter_batch(request, plan, request_sha::String, attempt_sha::St
             context = point_request["operation"] == "evaluate_direct" ? "direct_quantity" : "compile"
             raw = compile_primitive(plan, structured_parameter_values(parameters); context_kind = context,
                 authorized = structured_authorizations(parameters), authorization_source = "parameter_set")
+            point_request["discretization"] = raw.discretization
             lineage, view = realized_ref_lineage(raw, declarative_lineage(plan, point_request, raw))
             point_request["ref_lineage"] = lineage; metadata["ref_lineage"] = lineage
             execute_point_operation!(point_request, plan, raw, view, request_sha, attempt_sha, point_root)

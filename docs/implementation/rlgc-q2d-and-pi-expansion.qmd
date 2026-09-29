@@ -117,6 +117,21 @@ half-shunts; an endpoint has exactly one. Length rebinding recomputes
 $\Delta x$ but does not change station count, conductor order, matrix rank, or
 pin identity.
 
+The separate `CONVERGING` electrical-resolution candidate stores a policy
+instead of fixed N. For a bound lossless line, the compiler resolves its
+length and original full RLGC matrices once per candidate before allocating
+any internal stations. It requires explicitly zero R and G, factors the
+original L by lower Cholesky, obtains every positive eigenvalue of
+$A^\mathsf{T}CA$, and uses the slowest modal delay to calculate hmax, N,
+and dx. The resulting N feeds the same station map and complete symmetric
+Pi stamps below; the ordered original L and C matrices are not diagonalized
+for stamping. Policy-line internal station identity includes the resolved N,
+whereas public line Pins and fixed-count station identities retain their
+existing meaning. Every compile product records one realization per declared
+line, including fixed-count lines without invented modal values. See the
+[public candidate contract](../contracts/index.qmd#electrical-resolution-candidate-converging)
+and [concept](../concepts/electrical-resolution.qmd).
+
 The implementation must preserve an explicit station/section record even for
 an exact-zero branch. Lowering may omit a zero-valued physical row, but its
 matrix value, section index, station attachment, and `omitted_as_zero` evidence

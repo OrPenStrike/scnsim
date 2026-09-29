@@ -473,6 +473,7 @@ class StructuredLowerer:
                 reference=rlgc.reference_conductor,
                 length=self._field_text(leaf, "length"),
                 n_sections=leaf.metadata.get("n_sections"),
+                resolution=leaf.metadata.get("discretization"),
             )
             self.builder.boxes.append(box)
             anchors = dict(box.anchors)

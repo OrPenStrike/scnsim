@@ -17,6 +17,7 @@ from . import units
 from .authoring import (
     RLGC,
     AffineMap,
+    ElectricalResolution,
     CircuitPlan,
     ComponentInstance,
     CompositePlan,
@@ -89,6 +90,7 @@ from .results import (
     HBCaseOutcome,
     HBScatteringMatrixResult,
     InventoryResult,
+    LineDiscretization,
     MatrixFamilyResult,
     MatrixView,
     OperatorPointResult,
@@ -178,6 +180,7 @@ __version__ = metadata_version("scnsim")
 __all__ = [
     "RLGC",
     "AffineMap",
+    "ElectricalResolution",
     "AnalysisResult",
     "BackendProtocolError",
     "BiasState",
@@ -224,6 +227,7 @@ __all__ = [
     "InvalidOptimizationSpec",
     "OptimizationProgressCallbackError",
     "InventoryResult",
+    "LineDiscretization",
     "Library",
     "MatrixFamilyResult",
     "MatrixView",

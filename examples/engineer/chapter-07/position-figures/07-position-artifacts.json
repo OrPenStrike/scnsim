@@ -1,0 +1,64 @@
+{
+  "artifacts": {
+    "07-position-2mm-magnitude.svg": "808c15029175d89d55a9c5a66804ca513b4727896a68531819b30b56da1d1206",
+    "07-position-2mm-phase.svg": "43fe1dd80fd948d2b5a1c879e05b39dc6a36c0c3291707267d00c9d1f951b7c6",
+    "07-position-4mm-magnitude.svg": "da1fbbdff1de77ceb75a637d79574f92caca1041c858b3f3c5d11570081b6d2c",
+    "07-position-4mm-phase.svg": "b9d9f8d606d36ebc50f55568ad979a641210d719dc0cf783b37cd4be75559e4c",
+    "07-position-6mm-magnitude.svg": "2767ca62366bdbb79af6c956e6000031077ba78dce983e589ca2c5b49924f1f6",
+    "07-position-6mm-phase.svg": "69835f16e71e87f1a5d4c1f7a530443d37fe203f3ba46ecd59528a348981e822",
+    "07-position-baseline-grid.md": "4ad600395d11acc4fef6b207f69a3dfdee5e99e436faeb24fd956f1fe7fb0c4a",
+    "07-position-complex-difference.svg": "72d673a99d33c4bf6ca1096b7acc884e00336b142441a673665c0968b365cfba",
+    "07-position-complex.csv": "fe02a3c2f7c57c62eb9e7e53e4879056e37b4cea0745351e9ef07f83a23b2f12",
+    "07-position-point-grids.md": "1d4092e914e1b7b6d903891a35933933d13120e29e24bf989a58f53130a802fb",
+    "07-position-refinement.md": "e77495c0ca5f14a8358f274ff0bc6e8a1788b2a2981d5ec1ebe8748e09754b75",
+    "07-position-results.md": "77d9d406b2ef82b78d13952a0dd1e85c22c6db800f097083221a217552e7161b"
+  },
+  "binding": {
+    "cell_ids": [
+      "ch7-position-resolution",
+      "ch7-position-build",
+      "ch7-position-explain",
+      "ch7-position-solve",
+      "ch7-position-outcomes",
+      "ch7-position-refinement"
+    ],
+    "generator_sha256": "006aa4207285e1af43fe0df2ad1a434912d82696598d7529092963243db796eb",
+    "lesson_sha256": "0460174297dfbebe1a019887050cdd1d0ae8d84ddfb85a0f51bf0fae73762fd3",
+    "source_tree_sha256": "1a60a596430ecf785d73c3d9dc9a5512036cb7244e4af58939ef31db81fec9b4"
+  },
+  "environment": {
+    "kaleido": "1.4.0",
+    "numpy": "2.2.6",
+    "plotly": "6.9.0",
+    "python": "3.12.13",
+    "scnsim": "1.0.0.dev6"
+  },
+  "publication_binding": {
+    "cell_ids": [
+      "ch7-position-resolution",
+      "ch7-position-build",
+      "ch7-position-explain",
+      "ch7-position-solve",
+      "ch7-position-outcomes",
+      "ch7-position-refinement"
+    ],
+    "generator_sha256": "8bcfbedb51bc0935820d8c215eb2456cbbaa9a35ae7aaa801f4d7b4b3657f33b",
+    "lesson_sha256": "6822051ff3f0351e914dc4a52df6d7a38044755066f186d49825a4ee3cbc1ce7",
+    "source_tree_sha256": "bc86ab47ceacd832147c5adf98655d3e3c1be35f8b7918a7ee5e7e127b06a134"
+  },
+  "results": {
+    "m40": {
+      "attempt_sha256": "6294eb0a5d14681f366cb27d567d4dd64863887be04b5f76b8dd93b02fa1432f",
+      "plan_sha256": "86d80a296ebdbd11c0ede0b8a59d5b8869c5f0d9847b655eaa8ff3c5e8417a47",
+      "request_sha256": "40ea4e5029b1c9c51c382ba678b87a55c5115f06680b45781093549fbe749b5c",
+      "result_sha256": "6ebc7eb4510a9d41e97ac01dd911b60fe44a895ec85b17b91d6207e944ca4279"
+    },
+    "m80": {
+      "attempt_sha256": "a7412644948c9c983abe99844708905a5ec03391b0c0deceab4098424247b58e",
+      "plan_sha256": "14c24d3cc8555936f8d7edcb296ecb30f0c5134c1e7a4f2a63e0ea9b6f7e2c10",
+      "request_sha256": "394a522ef4a6ed359096d5944b9454f3e4dd2f2d89150005c67e470765fd38e0",
+      "result_sha256": "06e0a378b38432d59dc332735ae5b00d84b467aeb03cecfcbf470693b0672ec3"
+    }
+  },
+  "schema": "scnsim.engineer_chapter7_position_artifacts.v1"
+}

@@ -3055,6 +3055,48 @@ def _verify_failure_document(value: object, operation: object) -> None:
         _verify_optimization_context_shape(context)
 
 
+def _verify_discretization(value: object, plan: Mapping[str, object]) -> None:
+    leaves = [leaf for leaf in plan["physical_leaves"] if leaf["model"] == "transmission_line"]
+    if value is None:
+        if any("discretization" in leaf["model_metadata"] for leaf in leaves):
+            raise _integrity("Electrical-resolution Result has no realized grid.")
+        return  # Pre-policy fixed-count evidence remains readable.
+    if not isinstance(value, list) or len(value) != len(leaves):
+        raise _integrity("Result line-grid inventory disagrees with the Plan.")
+    for row, leaf in zip(value, leaves):
+        if not isinstance(row, dict) or row.get("component_path") != leaf["path"]:
+            raise _integrity("Result line-grid path or order is malformed.")
+        policy = leaf["model_metadata"].get("discretization")
+        expected = {"component_path", "kind", "length", "n_sections", "dx"}
+        expected |= {"policy", "modal_velocities", "hmax"} if policy is not None else set()
+        if set(row) != expected or row.get("kind") != ("electrical_resolution" if policy is not None else "fixed_count"):
+            raise _integrity("Result line-grid fields disagree with its declaration.")
+        n = row.get("n_sections")
+        if not isinstance(n, int) or isinstance(n, bool) or n < 1:
+            raise _integrity("Result line-grid section count is invalid.")
+        _verify_quantity_role(row.get("length"), complex_value=False, unit="meter", dimensionality="length")
+        _verify_quantity_role(row.get("dx"), complex_value=False, unit="meter", dimensionality="length")
+        length = _f64_value(row["length"]["si_value_f64"])
+        dx = _f64_value(row["dx"]["si_value_f64"])
+        if length <= 0 or dx <= 0 or dx != length / n:
+            raise _integrity("Result line-grid length and step disagree.")
+        if policy is None:
+            if n != leaf["model_metadata"].get("n_sections"):
+                raise _integrity("Fixed-count Result grid disagrees with the Plan.")
+            continue
+        if row["policy"] != policy:
+            raise _integrity("Electrical-resolution Result policy disagrees with the Plan.")
+        _verify_quantity_role(row["hmax"], complex_value=False, unit="meter", dimensionality="length")
+        hmax = _f64_value(row["hmax"]["si_value_f64"])
+        velocities = row["modal_velocities"]
+        if not isinstance(velocities, list) or len(velocities) != len(leaf["pin_order"]) // 2 or hmax <= 0:
+            raise _integrity("Electrical-resolution modal inventory is malformed.")
+        for velocity in velocities:
+            _verify_quantity_role(velocity, complex_value=False, unit="meter / second", dimensionality="velocity")
+            if _f64_value(velocity["si_value_f64"]) <= 0:
+                raise _integrity("Electrical-resolution modal velocity is invalid.")
+
+
 def _verify_result_document(
     result: Mapping[str, object],
     request: Mapping[str, object],
@@ -3091,6 +3133,7 @@ def _verify_result_document(
     if not isinstance(source, Mapping) or source.get("kind") != "point" or parameters != source.get("parameters"):
         raise _integrity("Single-point Result does not bind its requested point.")
     _verify_v1_lineage(result.get("ref_lineage"), plan)
+    _verify_discretization(result.get("discretization"), plan)
     if result.get("result_kind") == "optimization":
         if optimization_checkpoint is None:
             raise _integrity("Optimization Result lacks its verified baseline checkpoint.")
@@ -3106,7 +3149,7 @@ def _verify_result_document(
                 "Optimization Result primary lineage differs from its verified checkpoint."
             )
     scientific_result = dict(result)
-    for field in ("parameters", "parameters_sha256", "ref_lineage"):
+    for field in ("parameters", "parameters_sha256", "ref_lineage", "discretization"):
         scientific_result.pop(field)
     scientific_result["schema_version"] = 1
     scientific_request = dict(request)
@@ -3116,7 +3159,8 @@ def _verify_result_document(
     scientific_request.pop("view", None)
     scientific_request.pop("parameter_source", None)
     _verify_single_result_document(
-        scientific_result, scientific_request, request_sha256, attempt_sha256, plan
+        scientific_result, scientific_request, request_sha256, attempt_sha256, plan,
+        discretization=result.get("discretization"),
     )
 
 
@@ -3195,6 +3239,8 @@ def _verify_single_result_document(
     request_sha256: str,
     attempt_sha256: str,
     plan: Mapping[str, object],
+    *,
+    discretization: object = None,
 ) -> None:
     """Verify the unchanged inner scientific result records."""
 
@@ -3216,7 +3262,7 @@ def _verify_single_result_document(
     ):
         raise _integrity("Result envelope does not match its request and attempt.")
     if kind == "hb_batch":
-        _verify_hb_batch_result(result, request, plan)
+        _verify_hb_batch_result(result, request, plan, discretization=discretization)
     elif kind == "direct_response":
         if set(result) != common | {"scalar_catalog", "array_catalog"} or result.get("scalar_catalog") != {}:
             raise _integrity("Direct Result envelope is open or has scalar payloads.")
@@ -3332,11 +3378,16 @@ def _verify_single_result_document(
         )
     elif kind == "optimization":
         expected = common | {"baseline", "best", "completed_generations", "unused_evaluations", "ledger_artifacts"}
-        if set(result) != expected or not isinstance(result.get("baseline"), dict) or not isinstance(result.get("best"), dict):
+        baseline = result.get("baseline")
+        best = result.get("best")
+        if set(result) != expected or not isinstance(baseline, dict) or not isinstance(best, dict):
             raise _integrity("Optimization Result envelope is open or incomplete.")
-        best = result["best"]
+        best_fields = {"evaluation_ordinal", "cost_f64", "parameters"}
+        if "discretization" in best:
+            best_fields.add("discretization")
+            _verify_discretization(best["discretization"], plan)
         if (
-            set(best) != {"evaluation_ordinal", "cost_f64", "parameters"}
+            set(best) != best_fields
             or not isinstance(best.get("evaluation_ordinal"), int)
             or isinstance(best.get("evaluation_ordinal"), bool)
             or best["evaluation_ordinal"] < 0
@@ -3344,12 +3395,14 @@ def _verify_single_result_document(
         ):
             raise _integrity("Optimization winner envelope is open.")
         _verify_parameter_set_document(best["parameters"], require_empty_authorization=True)
-        baseline = result["baseline"]
         expected_baseline = {
             "evaluation_ordinal", "origin", "generation", "population_column",
             "optimizer_coordinates_f64", "parameters", "cache_hit",
             "extrapolation_evidence", "outcome",
         }
+        if "discretization" in baseline:
+            expected_baseline.add("discretization")
+            _verify_discretization(baseline["discretization"], plan)
         baseline_outcome = baseline.get("outcome")
         if (
             set(baseline) != expected_baseline
@@ -3412,10 +3465,58 @@ def _verify_single_result_document(
         raise _integrity("Result operation is outside the supported runtime.")
 
 
+def _hb_compiled_node_order(
+    plan: Mapping[str, object], original_coordinates: list[str], discretization: object,
+) -> list[str]:
+    """Independently reproduce the raw compiler basis for exact HB Port hashes."""
+
+    connectivity = plan.get("connectivity")
+    declared = connectivity.get("node_coordinates") if isinstance(connectivity, Mapping) else None
+    if not isinstance(declared, list) or [row.get("compiler_node_id") for row in declared if isinstance(row, Mapping)] != original_coordinates or len(declared) != len(original_coordinates):
+        raise _integrity("HB public coordinate order disagrees with the sealed Plan.")
+    nodes = list(original_coordinates)
+    seen = set(nodes)
+    leaves = plan.get("physical_leaves")
+    if not isinstance(leaves, list):
+        raise _integrity("HB sealed Plan has no physical leaf inventory.")
+    line_rows = iter(discretization) if isinstance(discretization, list) else None
+    for leaf in leaves:
+        if not isinstance(leaf, Mapping) or leaf.get("model") != "transmission_line":
+            continue
+        metadata = leaf.get("model_metadata")
+        pins = leaf.get("pin_order")
+        path = leaf.get("path")
+        if not isinstance(metadata, Mapping) or not isinstance(pins, list) or not isinstance(path, list) or len(pins) % 2:
+            raise _integrity("HB transmission-line declaration is malformed.")
+        conductors = [pin.removeprefix("head.") for pin in pins[: len(pins) // 2] if isinstance(pin, str) and pin.startswith("head.")]
+        if not conductors or len(conductors) * 2 != len(pins) or pins != [*(f"head.{name}" for name in conductors), *(f"tail.{name}" for name in conductors)]:
+            raise _integrity("HB line conductor order disagrees with its sealed Pins.")
+        row = next(line_rows) if line_rows is not None else None
+        sections = row.get("n_sections") if isinstance(row, Mapping) else metadata.get("n_sections")
+        if not isinstance(sections, int) or isinstance(sections, bool) or sections < 1:
+            raise _integrity("HB line grid has no valid section count.")
+        for station in range(1, sections):
+            for conductor in conductors:
+                identity: dict[str, object] = {
+                    "schema": "scnsim.line_station", "schema_version": 1,
+                    "component_path": path, "station": station, "conductor": conductor,
+                }
+                if "discretization" in metadata:
+                    identity["n_sections"] = sections
+                node = "internal-" + _sha256(_canonical_bytes(identity))
+                if node in seen:
+                    raise _integrity("HB compiled line station identity collides.")
+                seen.add(node)
+                nodes.append(node)
+    return nodes
+
+
 def _verify_hb_batch_result(
     result: Mapping[str, object],
     request: Mapping[str, object],
     plan: Mapping[str, object],
+    *,
+    discretization: object,
 ) -> None:
     """Verify the case-local HB Result catalog before receipt promotion.
 
@@ -3517,6 +3618,7 @@ def _verify_hb_batch_result(
     original_coordinates = _identifiers(
         original.get("coordinate_order"), field="HB original coordinate order"
     ) if isinstance(original, Mapping) else []
+    compiled_nodes = _hb_compiled_node_order(plan, original_coordinates, discretization)
     connectivity = plan.get("connectivity")
     plan_ports = connectivity.get("ports") if isinstance(connectivity, Mapping) else None
     if not isinstance(plan_ports, list):
@@ -3531,8 +3633,8 @@ def _verify_hb_batch_result(
             or port["net"] not in original_coordinates
         ):
             raise _integrity("HB sealed Port cannot reproduce its compiler injection map.")
-        incidence = [0.0] * len(original_coordinates)
-        incidence[original_coordinates.index(port["net"])] = 1.0
+        incidence = [0.0] * len(compiled_nodes)
+        incidence[compiled_nodes.index(port["net"])] = 1.0
         expected_injection_sha256[port["id"]] = _sha256(
             _canonical_bytes(
                 {
@@ -6462,6 +6564,9 @@ def _verify_candidate_outcome(
         "optimizer_coordinates_f64", "parameters", "cache_hit",
         "extrapolation_evidence", "outcome",
     }
+    if "discretization" in value:
+        expected.add("discretization")
+        _verify_discretization(value["discretization"], plan)
     if not baseline:
         expected.add("optimizer_latent_coordinates_f64")
     coordinates = value.get("optimizer_coordinates_f64")

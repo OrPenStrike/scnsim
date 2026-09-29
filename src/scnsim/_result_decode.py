@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
+from typing import Literal, cast
 
 import numpy as np
+from pint import Quantity
 
 from . import units
 from ._analysis import (
@@ -54,6 +56,7 @@ from .results import (
     HBBatchResult,
     HBCaseOutcome,
     HBScatteringMatrixResult,
+    LineDiscretization,
     MatrixFamilyResult,
     MatrixView,
     OperatorPointResult,
@@ -74,6 +77,35 @@ from .results import (
     _verified_result,
 )
 from .specs import QuantitySelector
+
+
+def _decode_discretization(value: object) -> tuple[LineDiscretization, ...] | None:
+    if value is None:
+        return None  # Historical results predate line-grid evidence.
+    # Receipt JSON decodes as a list; ExplanationResult freezes the same
+    # compiler evidence into a tuple before exposing it to callers.
+    if not isinstance(value, (list, tuple)):
+        raise EvidenceIntegrityError("line discretization is malformed", stage="result_decode")
+    rows = []
+    def decoded_quantity(item: object) -> Quantity:
+        return cast(Quantity, quantity_from_envelope(
+            cast(Mapping[str, object], item), registry=units.registry,
+        ))
+
+    for record in value:
+        if not isinstance(record, Mapping):
+            raise EvidenceIntegrityError("line discretization entry is malformed", stage="result_decode")
+        rows.append(LineDiscretization(
+            component_path=tuple(cast(Sequence[str], record["component_path"])),
+            kind=cast(Literal["fixed_count", "electrical_resolution"], record["kind"]),
+            length=decoded_quantity(record["length"]),
+            n_sections=cast(int, record["n_sections"]),
+            dx=decoded_quantity(record["dx"]),
+            modal_velocities=tuple(decoded_quantity(item) for item in cast(Sequence[object], record.get("modal_velocities", ()))),
+            hmax=None if "hmax" not in record else decoded_quantity(record["hmax"]),
+            policy=cast(Mapping[str, object] | None, record.get("policy")),
+        ))
+    return tuple(rows)
 
 
 class VerifiedResultDecoder:
@@ -163,6 +195,7 @@ class VerifiedResultDecoder:
         """Decode one already-verified ordinary scientific payload."""
 
         kind = result["result_kind"]
+        discretization = _decode_discretization(result.get("discretization"))
         if kind == "hb_batch":
             return self._decode_hb_batch(identity, result, request, directory)
         if kind == "direct_response":
@@ -275,6 +308,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DirectSolveResult,
                 identity=identity,
+                discretization=discretization,
                 frequencies=frequencies,
                 s=_verified_result(
                     ScatteringMatrixResult,
@@ -313,6 +347,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DiagonalRootResult if kind == "diagonal_root" else OperatorElementRootResult,
                 identity=identity,
+                discretization=discretization,
                 root=complex_quantity_from_envelope(
                     scalars["root"], registry=units.registry
                 ),
@@ -338,6 +373,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DirectQuantityResult,
                 identity=identity,
+                discretization=discretization,
                 root=complex_quantity_from_envelope(
                     scalars["root"], registry=units.registry
                 ),
@@ -361,6 +397,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DirectQuantityResult,
                 identity=identity,
+                discretization=discretization,
                 zero=complex_quantity_from_envelope(
                     scalars["zero"], registry=units.registry
                 ),
@@ -387,6 +424,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DirectQuantityResult,
                 identity=identity,
+                discretization=discretization,
                 coupling=coupling,
                 magnitude=quantity_from_envelope(
                     scalars["magnitude"], registry=units.registry
@@ -417,6 +455,7 @@ class VerifiedResultDecoder:
             return _verified_result(
                 DirectQuantityResult,
                 identity=identity,
+                discretization=discretization,
                 family=scalars["family"],
                 value=complex_quantity_from_envelope(
                     scalars["value"], registry=units.registry
@@ -465,7 +504,7 @@ class VerifiedResultDecoder:
                 )
                 for index, value in enumerate(frequency)
             )
-            return _verified_result(OperatorResult, identity=identity, points=points)
+            return _verified_result(OperatorResult, identity=identity, points=points, discretization=discretization)
         if kind == "optimization":
             best = result["best"]
             parameters = self._decode_parameter_set(best["parameters"])
@@ -478,12 +517,18 @@ class VerifiedResultDecoder:
             return _verified_result(
                 OptimizationResult,
                 identity=identity,
+                discretization=discretization,
                 best=_verified_result(
                     OptimizationBest,
                     parameters=parameters,
                     cost=float64_from_hex(best["cost_f64"]),
+                    discretization=_decode_discretization(best.get("discretization")),
                 ),
                 ledger=ledger,
+                candidate_discretization=tuple(
+                    _decode_discretization(candidate.get("discretization"))
+                    for generation in ledger for candidate in cast(Sequence[Mapping[str, object]], generation["candidates"])
+                ),
                 _presentation={
                     "initial_parameters": initial_parameters,
                     "initial_candidate": baseline,
@@ -1214,6 +1259,7 @@ class VerifiedResultDecoder:
         return _verified_result(
             HBBatchResult,
             identity=identity,
+            discretization=_decode_discretization(result.get("discretization")),
             cases=outcomes,
             topology_evidence=topology_evidence,
             _presentation={"declared_traces": declared_traces},
