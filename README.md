@@ -1,11 +1,14 @@
----
-output-file: index.html
----
-
 # SCNSim
 
 **Author one superconducting circuit, then ask typed network and quantity
 questions against it.**
+
+[![CI](https://github.com/OrPenStrike/scnsim/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/OrPenStrike/scnsim/actions/workflows/ci.yml?query=branch%3Adevelop)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python requirement: >=3.10](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](pyproject.toml)
+[![Tutorial: Engineer course](https://img.shields.io/badge/tutorial-Engineer%20course-blue.svg)](docs/index.qmd)
+
+![Conceptual SCNSim branding: an orca and penguin beside circuit schematics and network diagrams.](docs/assets/readme-hero-orca-penguin.png)
 
 SCNSim is a notebook-first Python package for reproducible superconducting
 circuit-network analysis. A `CircuitPlan` owns physical components, wiring,
