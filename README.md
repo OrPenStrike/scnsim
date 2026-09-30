@@ -6,7 +6,7 @@ questions against it.**
 [![CI](https://github.com/OrPenStrike/scnsim/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/OrPenStrike/scnsim/actions/workflows/ci.yml?query=branch%3Adevelop)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python requirement: >=3.10](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](pyproject.toml)
-[![Tutorial: Engineer course](https://img.shields.io/badge/tutorial-Engineer%20course-blue.svg)](docs/index.qmd)
+[![Tutorial: Engineer course](https://img.shields.io/badge/tutorial-Engineer%20course-blue.svg)](https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd)
 
 ![Conceptual SCNSim branding: an orca and penguin beside circuit schematics and network diagrams.](docs/assets/readme-hero-orca-penguin.png)
 
@@ -15,9 +15,10 @@ circuit-network analysis. A `CircuitPlan` owns physical components, wiring,
 ground, Ports, and reusable Subsystems; a `CircuitRun` solves explicit
 requests and returns typed Results with request and evidence identities.
 
-The current development checkpoint is `1.0.0.dev8`. This README and the site
-theme remain a `CONVERGING` documentation candidate, not a stable-release or
-scientific validation claim.
+`1.0.0a1` is the first public Alpha for trial use. The package's newer
+semantics and this documentation remain `CONVERGING`; Alpha is neither a
+stable release nor a new scientific-validation claim. Public API and saved
+workspace compatibility may change before a stable release.
 
 ## A first Direct S11 result
 
@@ -120,7 +121,7 @@ channel. The figures present the complete S11 magnitude and phase; the named
 
 *Stored Chapter 1 selected Result: 120 fF, with the same 5.8 nH inductor, 6 fF coupler, 50 Ω Port, and 401-point grid. No dip or resonance is inferred from this plot. [Exact complex samples](examples/engineer/figures/01-s11-data.csv).*
 
-Continue with the [Tutorial — Engineer course](docs/index.qmd).
+Continue with the [Alpha Tutorial — Engineer course](https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd).
 
 ## What the model can answer
 
@@ -145,20 +146,22 @@ responsibilities.
 
 ## Install and learn
 
+In a consuming project, install the exact Alpha tag and retain the resulting
+lockfile and environment for reproducibility:
+
 ```bash
-git clone https://github.com/OrPenStrike/scnsim.git
-cd scnsim
-uv sync --locked
+uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@v1.0.0a1"
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
 The site uses the vendored, unmodified Askr v0.3.0 `askr-html` format with
 the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and run
 `quarto render --no-execute --no-clean`. Start with the
-[Engineer course](docs/index.qmd); its aggregate Chapter notebooks are the
+[Alpha Engineer course](https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd); its aggregate Chapter notebooks are the
 execution units for Lessons 1–4, while Chapter 7 Lesson 5 has its own standalone
 notebook and result artifacts. For a consuming
-repository, pin one reviewed SCNSim commit in its `pyproject.toml` and lockfile:
+repository preferring a reviewed commit over the Alpha tag, pin that commit
+in its `pyproject.toml` and lockfile:
 
 ```bash
 uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@<reviewed-commit-sha>"

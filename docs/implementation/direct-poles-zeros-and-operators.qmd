@@ -391,6 +391,19 @@ $$
 For $q_N>1$, it also requires
 $\sigma_{q_N}/\sigma_1\le\tau(q_N)$ and
 $\sigma_{q_N-1}/\sigma_1>\tau(q_N)$. Both ratios are omitted for $q_N=1$.
+The residual denominator is family-specific: S retains the row-norm product
+above; for Y it is
+$|\det H_{EE}|\lVert B_F[i,:]\rVert_2$, where
+$X=H_{EE}^{-1}H_{ER}$ and
+$B_F=B_{H,RR}+B_{H,RE}|X|$. Here $B_H$ is the complete-node
+absolute-contribution bound from the same intrinsic operator, selected
+source/omitted-load boundary, and frequency conversion used to form $H$.
+For empty $E$, $\det H_{EE}=1$ and $B_F=B_{H,RR}$.
+For Z the denominator is the product of norms of the complete Y rows retained
+by its numerator minor, before the output column is deleted; the one-port
+empty cofactor retains constant one and zero derivative. Positive scales and
+ratios use binary64 mantissa/power-of-two exponent pairs, so product overflow
+or underflow cannot be accepted as a zero certificate.
 Residual `0/0` is zero; nonzero-slope and rank-gap predicates reject a zero
 denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
 denominator determinant stores $\widehat\Delta$; both are canonical
@@ -411,6 +424,11 @@ and denominator is a rejected pole-zero cancellation. Unlike a passive pole,
 a transfer zero is not assigned a damping-sign restriction; it must have a
 finite positive real frequency, while its imaginary part remains part of the
 complex zero evidence.
+Failure stages distinguish frequency, numerator/scale, slope/rank,
+denominator/solve, and final correction. Messages expose only fixed labels and
+bounded residual, scale mantissa/exponent, slope-ratio, correction, and
+applicable-threshold diagnostics; `unavailable` denotes a value not computed
+at the failure point. No candidate receives partial zero evidence.
 
 The anchor again identifies only the baseline Newton basin. The Result never
 substitutes a real-grid minimum, dip, peak, sign crossing, nearest zero, or
@@ -597,7 +615,7 @@ vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 
 The closed algorithm IDs are
 `scnsim.hybridized_pole.newton32.v1`,
-`scnsim.transfer_zero.newton32.v1`,
+`scnsim.transfer_zero.newton32.v2`,
 `scnsim.residue_normalized_coupling.v2`,
 `scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
 formula, derivative, normalization, iteration/subdivision rule, artifact

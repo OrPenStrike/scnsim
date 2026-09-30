@@ -181,8 +181,108 @@ function transfer_family_value(view::RealizedView, family::String, output::Int, 
     return matrices[1][output, input], derivative ? matrices[2][output, input] : nothing, values
 end
 
+function transfer_norm(row, omega::ComplexF64)
+    all(value -> isfinite(real(value)) && isfinite(imag(value)), row) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+    magnitude = norm(row)
+    isfinite(magnitude) || transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+    return magnitude
+end
+
+"""Positive scale as a bounded binary mantissa and exact power-of-two exponent."""
+function transfer_scale(factors, omega::ComplexF64)
+    mantissa, exponent, zero = 1.0, 0, false
+    for factor in factors
+        isfinite(factor) && factor >= 0.0 ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        if factor == 0.0
+            zero = true
+        elseif !zero
+            fm, fe = frexp(factor)
+            mantissa, shift = frexp(mantissa * fm)
+            exponent += fe + shift
+        end
+    end
+    return zero ? (0.0, 0) : (mantissa, exponent)
+end
+
+function transfer_scale_sum(terms, omega::ComplexF64)
+    mantissa, exponent = 0.0, 0
+    for factors in terms
+        term, shift = transfer_scale(factors, omega)
+        term == 0.0 && continue
+        if mantissa == 0.0
+            mantissa, exponent = term, shift
+        else
+            if shift > exponent
+                mantissa, exponent = ldexp(mantissa, exponent - shift), shift
+            else
+                term = ldexp(term, shift - exponent)
+            end
+            mantissa = nextfloat(mantissa + term) # upper bound lost low terms
+            mantissa, shift = frexp(mantissa)
+            exponent += shift
+        end
+    end
+    return mantissa, exponent
+end
+
+function transfer_ratio(value::Float64, scale::Tuple{Float64,Int})
+    scale[1] == 0.0 && return value == 0.0 ? (0.0, 0) : (Inf, 0)
+    value == 0.0 && return (0.0, 0)
+    vm, ve = frexp(value)
+    mantissa, shift = frexp(vm / scale[1])
+    return mantissa, ve - scale[2] + shift
+end
+
+function transfer_ratio_le(ratio::Tuple{Float64,Int}, threshold::Float64)
+    ratio[1] == 0.0 && return true
+    isfinite(ratio[1]) || return false
+    tm, te = frexp(threshold)
+    return ratio[2] < te || (ratio[2] == te && ratio[1] <= tm)
+end
+
+function transfer_failure(kind::String, stage::String, omega::ComplexF64;
+        item::String = "unavailable", eta = nothing, scale = nothing, slope = nothing,
+        rank_min = nothing, rank_gap = nothing, denominator = nothing,
+        correction = nothing, threshold = nothing)
+    diagnostic(value) = value === nothing ? "unavailable" : value isa Tuple ?
+        "$(round(value[1]; sigdigits = 6))*2^$(value[2])" : string(round(value; sigdigits = 6))
+    message = "transfer-zero $(stage) unresolved (omega_re=$(diagnostic(real(omega))), omega_im=$(diagnostic(imag(omega))), " *
+        "item=$(item), residual=$(diagnostic(eta)), scale=$(diagnostic(scale)), slope_ratio=$(diagnostic(slope)), " *
+        "rank_min=$(diagnostic(rank_min)), rank_gap=$(diagnostic(rank_gap)), " *
+        "denominator=$(diagnostic(denominator)), correction=$(diagnostic(correction)), threshold=$(diagnostic(threshold)))"
+    fail("execution", kind, stage, "direct_quantity", message)
+end
+
+function transfer_determinant(A::Matrix{ComplexF64}, omega::ComplexF64, stage::String;
+        derivative::Union{Nothing,Matrix{ComplexF64}} = nothing)
+    try
+        return derivative === nothing ? determinant_value(A) : cofactor_derivative(A, derivative)
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure(error.kind, stage, omega;
+            item = stage == "transfer_denominator" ? "denominator" :
+                stage == "transfer_slope_rank" ? "slope" : "numerator", threshold = tau(size(A, 1)))
+    end
+end
+
+function transfer_solve(A::Matrix{ComplexF64}, B, omega::ComplexF64, stage::String)
+    try
+        return checked_solve(A, B, "numerical_resolution_unresolved", stage, size(A, 1))
+    catch error
+        error isa BackendFailure && error.kind == "numerical_resolution_unresolved" || rethrow()
+        transfer_failure(error.kind, "transfer_denominator", omega; item = "solve", threshold = tau(size(A, 1)))
+    end
+end
+
 function transfer_certificate(view::RealizedView, family::String, output::Int, input::Int, omega::ComplexF64)
-    value, value_p, values = transfer_family_value(view, family, output, input, omega; derivative = true)
+    value, value_p, values = try
+        transfer_family_value(view, family, output, input, omega; derivative = true)
+    catch error
+        error isa BackendFailure && error.kind in ("direct_response_formation", "eliminated_block_solve_failure") || rethrow()
+        transfer_failure(error.kind, "transfer_denominator", omega; item = "solve")
+    end
     S, Y, Z, Sp, Yp, Zp, H = values
     if family == "Y"
         # For retained Y, the denominator is the exact eliminated full-node
@@ -204,8 +304,8 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         selected = selected_coordinate_indices(view.compiled, view.terminal); eliminated = [k for k in eachindex(view.compiled.nodes) if k ∉ selected]
         AD = isempty(eliminated) ? Matrix{ComplexF64}(I, 1, 1) : Hnode[eliminated, eliminated]
         ADp = isempty(eliminated) ? zeros(ComplexF64, 1, 1) : Hpnode[eliminated, eliminated]
-        detd = isempty(eliminated) ? 1.0 + 0.0im : determinant_value(AD)
-        detdp = isempty(eliminated) ? 0.0 + 0.0im : cofactor_derivative(AD, ADp)
+        detd = isempty(eliminated) ? 1.0 + 0.0im : transfer_determinant(AD, omega, "transfer_denominator")
+        detdp = isempty(eliminated) ? 0.0 + 0.0im : transfer_determinant(AD, omega, "transfer_denominator"; derivative = ADp)
         HRR, HRRp = Hnode[selected, selected], Hpnode[selected, selected]
         if isempty(eliminated)
             numerator_matrix, numerator_matrix_p = HRR, HRRp
@@ -216,15 +316,33 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
             # evaluated through the required residual-checked solve rather
             # than an explicit inverse.  Its derivative follows the same
             # analytic A X'=B'-A'X rule as every Direct Schur solve.
-            X = checked_solve(AD, HER, "numerical_resolution_unresolved", "transfer_denominator", size(AD, 1))
-            Xp = checked_solve(AD, HERp - ADp * X, "numerical_resolution_unresolved", "transfer_denominator_derivative", size(AD, 1))
+            X = transfer_solve(AD, HER, omega, "transfer_denominator")
+            Xp = transfer_solve(AD, HERp - ADp * X, omega, "transfer_denominator_derivative")
             numerator_matrix = HRR .* detd - HRE * (detd .* X)
             numerator_matrix_p = HRRp .* detd + HRR .* detdp -
                 HREp * (detd .* X) - HRE * (detdp .* X + detd .* Xp)
         end
         N, Np = numerator_matrix[output, input], numerator_matrix_p[output, input]
+        isfinite(real(N)) && isfinite(imag(N)) && isfinite(real(Np)) && isfinite(imag(Np)) ||
+            transfer_failure("root_slope_unresolved", "transfer_numerator_scale", omega; item = "numerator", threshold = tau(1))
+        absolute_operator = operator_absolute_bound(view.compiled, omega; loaded = !view.port_realizable)
+        all(isfinite, absolute_operator) && isfinite(abs(omega)) && abs(omega) > 0.0 ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        BH = absolute_operator ./ abs(omega)
+        all(isfinite, BH) && !any((absolute_operator .> 0.0) .& (BH .== 0.0)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        if view.port_realizable
+            B = abs.(view.compiled.B)
+            BH .+= B * abs.(selected_boundary(view).Go) * transpose(B)
+        end
+        BF = BH[selected, selected]
+        if !isempty(eliminated)
+            BF .+= BH[selected, eliminated] * abs.(X)
+        end
+        all(isfinite, BF) || transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        scale = transfer_scale((abs(detd), transfer_norm(BF[output, :], omega)), omega)
         return value, value_p, N, Np, detd,
-            reshape(ComplexF64[N], 1, 1), reshape(ComplexF64[Np], 1, 1), AD, ADp
+            reshape(ComplexF64[N], 1, 1), reshape(ComplexF64[Np], 1, 1), AD, ADp, scale
     elseif family == "Z"
         AD, ADp = Y, Yp
         rows = [k for k in 1:size(Y, 1) if k != input]; columns = [k for k in 1:size(Y, 2) if k != output]
@@ -235,7 +353,10 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         # the whole matrix (which changes det by sign^q for q>1).  The same
         # row operation is applied to the analytic derivative.
         sign < 0 && (AN[1, :] .*= -1.0; ANp[1, :] .*= -1.0)
-        return value, value_p, determinant_value(AN), cofactor_derivative(AN, ANp), determinant_value(AD), AN, ANp, AD, ADp
+        scale = transfer_scale((transfer_norm(Y[row, :], omega) for row in rows), omega)
+        return value, value_p, transfer_determinant(AN, omega, "transfer_numerator_scale"),
+            transfer_determinant(AN, omega, "transfer_numerator_scale"; derivative = ANp),
+            transfer_determinant(AD, omega, "transfer_denominator"), AN, ANp, AD, ADp, scale
     elseif family == "S"
         view.port_realizable || fail("validation", "port_realizability", "selected_network", "direct_quantity", "S transfer zero requires a Port-realizable View")
         D = selected_boundary(view).Dk
@@ -244,7 +365,10 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         Pp = complex.(D) * Yp * complex.(D); Np_matrix = -Pp
         qj = Nmatrix[:, input]; AN = [P qj; -reshape([k == output ? 1.0 + 0.0im : 0.0 + 0.0im for k in 1:size(P, 1)], 1, :) zeros(ComplexF64, 1, 1)]
         ANp = [Pp Np_matrix[:, input]; zeros(ComplexF64, 1, size(P, 1) + 1)]
-        return value, value_p, determinant_value(AN), cofactor_derivative(AN, ANp), determinant_value(P), AN, ANp, P, Pp
+        scale = transfer_scale((transfer_norm(AN[row, :], omega) for row in axes(AN, 1)), omega)
+        return value, value_p, transfer_determinant(AN, omega, "transfer_numerator_scale"),
+            transfer_determinant(AN, omega, "transfer_numerator_scale"; derivative = ANp),
+            transfer_determinant(P, omega, "transfer_denominator"), AN, ANp, P, Pp, scale
     end
     fail("validation", "port_realizability", "family", "direct_quantity", "transfer family is invalid")
 end
@@ -253,40 +377,96 @@ function transfer_zero(view::RealizedView, family::String, output::Int, input::I
         start::Union{Nothing,ComplexF64} = nothing)
     omega = start === nothing ? 2.0 * pi * complex_frequency_value(anchor) : start
     isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
-        fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency")
-    last_value, last_slope, last_values = 0.0 + 0.0im, 0.0 + 0.0im, nothing
+        (start === nothing ?
+            fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency") :
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency"))
     for _ in 1:32
-        value, slope, values = transfer_family_value(view, family, output, input, omega; derivative = true)
-        last_value, last_slope, last_values = value, slope, values
-        isfinite(real(value)) && isfinite(imag(value)) && isfinite(real(slope)) && isfinite(imag(slope)) && slope != 0.0 ||
-            fail("execution", "root_slope_unresolved", "transfer_numerator", "direct_quantity", "transfer-zero numerator or analytic slope is unresolved")
+        value, slope, values = try
+            transfer_family_value(view, family, output, input, omega; derivative = true)
+        catch error
+            error isa BackendFailure && error.kind in ("direct_response_formation", "eliminated_block_solve_failure") || rethrow()
+            transfer_failure(error.kind, "transfer_denominator", omega; item = "solve")
+        end
+        isfinite(real(value)) && isfinite(imag(value)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "numerator")
+        isfinite(real(slope)) && isfinite(imag(slope)) && slope != 0.0 ||
+            transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+                item = "slope", slope = abs(slope), threshold = 0.0)
         next = omega - value / slope
+        isfinite(real(next)) && isfinite(imag(next)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", next; item = "frequency")
         if reinterpret(UInt64, real(next)) == reinterpret(UInt64, real(omega)) && reinterpret(UInt64, imag(next)) == reinterpret(UInt64, imag(omega))
             omega = next; break
         end
         omega = next
     end
-    value, slope, _, _, _, AN, ANp, AD, ADp = transfer_certificate(view, family, output, input, omega)
+    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency")
+    value, slope, _, _, _, AN, ANp, AD, ADp, normalizer = transfer_certificate(view, family, output, input, omega)
     # Certificate the declared numerator matrix and its analytic derivative,
     # separately from the transfer Newton ratio.
-    numerator, numerator_slope, ANscaled, ANpscaled, _, _ = scaled_determinant_pair(AN, ANp)
-    denominator, _, ADscaled, _, _, _ = scaled_determinant_pair(AD, ADp)
+    numerator, numerator_slope, ANscaled, ANpscaled = try
+        scaled_determinant_pair(AN, ANp)[1:4]
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure("root_slope_unresolved", "transfer_numerator_scale", omega; item = "numerator", threshold = tau(size(AN, 1)))
+    end
+    denominator = try
+        scaled_determinant_pair(AD, ADp)[1]
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega; item = "denominator", threshold = tau(size(AD, 1)))
+    end
     # AN/AD are coherent-SI equation/unknown numerics, hence dimensionless
     # evidence matrices.  The determinant/cofactor was formed in the bounded
     # power-of-two mantissa matrix and restored with its common exponent;
     # residual/rank use that same unscaled coherent-SI equation.
-    row_product = prod(norm(Base.view(AN, row, :)) for row in axes(AN, 1))
-    eta_n = row_product == 0.0 ? (abs(numerator) == 0.0 ? 0.0 : Inf) : abs(numerator) / row_product
-    slope_scale = sum(abs(((-1)^(a+b) * determinant_value(AN[[k for k in 1:size(AN,1) if k != a], [k for k in 1:size(AN,2) if k != b]]))) * abs(ANp[a,b]) for a in 1:size(AN,1), b in 1:size(AN,2))
-    sv = svd(AN).S
-    rank_ok = length(sv) == 1 || (sv[end] / sv[1] <= tau(length(sv)) && sv[end-1] / sv[1] > tau(length(sv)))
-    inverse = checked_solve(AD, Matrix{ComplexF64}(I, size(AD,1), size(AD,2)), "numerical_resolution_unresolved", "transfer_denominator", size(AD,1))
-    correction = abs(value / slope) / abs(omega)
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 &&
-        isfinite(real(denominator)) && isfinite(imag(denominator)) && denominator != 0.0 &&
-        eta_n <= tau(size(AN,1)) && slope_scale > 0.0 && abs(numerator_slope)/slope_scale > tau(size(AN,1)) && rank_ok && finite_matrix(inverse) &&
-        isfinite(correction) && correction <= tau(size(AN, 1)) ||
-        fail("execution", "numerical_resolution_unresolved", "transfer_denominator", "direct_quantity", "transfer-zero denominator is unresolved")
+    isfinite(abs(numerator)) && isfinite(abs(numerator_slope)) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
+            item = "numerator", scale = normalizer, threshold = tau(size(AN, 1)))
+    eta_n = transfer_ratio(abs(numerator), normalizer)
+    transfer_ratio_le(eta_n, tau(size(AN, 1))) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
+            item = "residual", eta = eta_n, scale = normalizer, threshold = tau(size(AN, 1)))
+    slope_scale = transfer_scale_sum(((abs(transfer_determinant(ANscaled[[k for k in 1:size(AN,1) if k != a], [k for k in 1:size(AN,2) if k != b]], omega, "transfer_slope_rank")), abs(ANpscaled[a,b])) for a in 1:size(AN,1), b in 1:size(AN,2)), omega)
+    scaled_slope = transfer_determinant(ANscaled, omega, "transfer_slope_rank"; derivative = ANpscaled)
+    slope_ratio = transfer_ratio(abs(scaled_slope), slope_scale)
+    sv = try
+        svd(AN).S
+    catch error
+        error isa LinearAlgebra.LAPACKException || rethrow()
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = "rank", eta = eta_n, scale = normalizer, slope = slope_ratio, threshold = tau(size(AN, 1)))
+    end
+    rank_min = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end] / sv[1]
+    rank_gap = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end-1] / sv[1]
+    slope_scale[1] > 0 && !transfer_ratio_le(slope_ratio, tau(size(AN, 1))) &&
+        (length(sv) == 1 || (rank_min !== nothing && rank_min <= tau(length(sv)) && rank_gap > tau(length(sv)))) ||
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = slope_scale[1] == 0 || transfer_ratio_le(slope_ratio, tau(size(AN, 1))) ? "slope" : "rank",
+            eta = eta_n, scale = normalizer, slope = slope_ratio, rank_min = rank_min, rank_gap = rank_gap,
+            threshold = tau(size(AN, 1)))
+    isfinite(real(denominator)) && isfinite(imag(denominator)) && denominator != 0.0 ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+            item = "denominator", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    inverse = try
+        checked_solve(AD, Matrix{ComplexF64}(I, size(AD,1), size(AD,2)), "numerical_resolution_unresolved", "transfer_denominator", size(AD,1))
+    catch error
+        error isa BackendFailure && error.kind == "numerical_resolution_unresolved" || rethrow()
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+            item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    end
+    finite_matrix(inverse) || transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+        item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
+        rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    correction = transfer_ratio(abs(value), transfer_scale((abs(slope), abs(omega)), omega))
+    transfer_ratio_le(correction, tau(size(AN, 1))) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_correction", omega;
+            item = "correction", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator),
+            correction = correction, threshold = tau(size(AN, 1)))
     return omega, numerator_slope, denominator
 end
 

@@ -69,6 +69,12 @@ scope `CONVERGING`; it neither changes the accepted dev1–dev6 runtime slices
 nor represents a stable release. The package metadata and CI version check
 name this one exception directly rather than weakening the general rule.
 
+The package-local `1.0.0a1` Alpha is a trial GitHub pre-release from `develop`,
+not a stable `main` promotion or PyPI publication. It does not change the
+historical dev7 exception or accept the newer CONVERGING semantics; consumers
+should pin the Alpha tag and a fixed environment while public API and saved
+workspace compatibility may change.
+
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
 that row; the current Full V1 acceptance covers their combined public
