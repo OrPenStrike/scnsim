@@ -15,9 +15,9 @@ circuit-network analysis. A `CircuitPlan` owns physical components, wiring,
 ground, Ports, and reusable Subsystems; a `CircuitRun` solves explicit
 requests and returns typed Results with request and evidence identities.
 
-The current research showcase is `1.0.0.dev7`. This README and the site theme
-are a `CONVERGING` documentation candidate, not a stable-release or scientific
-validation claim.
+The current development checkpoint is `1.0.0.dev8`. This README and the site
+theme remain a `CONVERGING` documentation candidate, not a stable-release or
+scientific validation claim.
 
 ## A first Direct S11 result
 
