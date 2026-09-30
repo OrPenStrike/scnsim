@@ -373,36 +373,14 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
     fail("validation", "port_realizability", "family", "direct_quantity", "transfer family is invalid")
 end
 
-function transfer_zero(view::RealizedView, family::String, output::Int, input::Int, anchor;
-        start::Union{Nothing,ComplexF64} = nothing)
-    omega = start === nothing ? 2.0 * pi * complex_frequency_value(anchor) : start
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
-        (start === nothing ?
-            fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency") :
-            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency"))
-    for _ in 1:32
-        value, slope, values = try
-            transfer_family_value(view, family, output, input, omega; derivative = true)
-        catch error
-            error isa BackendFailure && error.kind in ("direct_response_formation", "eliminated_block_solve_failure") || rethrow()
-            transfer_failure(error.kind, "transfer_denominator", omega; item = "solve")
-        end
-        isfinite(real(value)) && isfinite(imag(value)) ||
-            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "numerator")
-        isfinite(real(slope)) && isfinite(imag(slope)) && slope != 0.0 ||
-            transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
-                item = "slope", slope = abs(slope), threshold = 0.0)
-        next = omega - value / slope
-        isfinite(real(next)) && isfinite(imag(next)) ||
-            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", next; item = "frequency")
-        if reinterpret(UInt64, real(next)) == reinterpret(UInt64, real(omega)) && reinterpret(UInt64, imag(next)) == reinterpret(UInt64, imag(omega))
-            omega = next; break
-        end
-        omega = next
-    end
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
-        transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency")
+"""Check every required certificate at one candidate; only finite nonclosure may iterate."""
+function transfer_complete_certificate(view::RealizedView, family::String, output::Int, input::Int,
+        omega::ComplexF64; final::Bool = false)
     value, slope, _, _, _, AN, ANp, AD, ADp, normalizer = transfer_certificate(view, family, output, input, omega)
+    isfinite(real(value)) && isfinite(imag(value)) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "numerator")
+    isfinite(real(slope)) && isfinite(imag(slope)) ||
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega; item = "slope")
     # Certificate the declared numerator matrix and its analytic derivative,
     # separately from the transfer Newton ratio.
     numerator, numerator_slope, ANscaled, ANpscaled = try
@@ -425,9 +403,7 @@ function transfer_zero(view::RealizedView, family::String, output::Int, input::I
         transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
             item = "numerator", scale = normalizer, threshold = tau(size(AN, 1)))
     eta_n = transfer_ratio(abs(numerator), normalizer)
-    transfer_ratio_le(eta_n, tau(size(AN, 1))) ||
-        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
-            item = "residual", eta = eta_n, scale = normalizer, threshold = tau(size(AN, 1)))
+    residual_pass = transfer_ratio_le(eta_n, tau(size(AN, 1)))
     slope_scale = transfer_scale_sum(((abs(transfer_determinant(ANscaled[[k for k in 1:size(AN,1) if k != a], [k for k in 1:size(AN,2) if k != b]], omega, "transfer_slope_rank")), abs(ANpscaled[a,b])) for a in 1:size(AN,1), b in 1:size(AN,2)), omega)
     scaled_slope = transfer_determinant(ANscaled, omega, "transfer_slope_rank"; derivative = ANpscaled)
     slope_ratio = transfer_ratio(abs(scaled_slope), slope_scale)
@@ -440,12 +416,9 @@ function transfer_zero(view::RealizedView, family::String, output::Int, input::I
     end
     rank_min = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end] / sv[1]
     rank_gap = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end-1] / sv[1]
-    slope_scale[1] > 0 && !transfer_ratio_le(slope_ratio, tau(size(AN, 1))) &&
-        (length(sv) == 1 || (rank_min !== nothing && rank_min <= tau(length(sv)) && rank_gap > tau(length(sv)))) ||
-        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
-            item = slope_scale[1] == 0 || transfer_ratio_le(slope_ratio, tau(size(AN, 1))) ? "slope" : "rank",
-            eta = eta_n, scale = normalizer, slope = slope_ratio, rank_min = rank_min, rank_gap = rank_gap,
-            threshold = tau(size(AN, 1)))
+    slope_pass = slope_scale[1] > 0 && !transfer_ratio_le(slope_ratio, tau(size(AN, 1)))
+    rank_pass = length(sv) == 1 ||
+        (rank_min !== nothing && rank_min <= tau(length(sv)) && rank_gap > tau(length(sv)))
     isfinite(real(denominator)) && isfinite(imag(denominator)) && denominator != 0.0 ||
         transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
             item = "denominator", eta = eta_n, scale = normalizer, slope = slope_ratio,
@@ -462,12 +435,59 @@ function transfer_zero(view::RealizedView, family::String, output::Int, input::I
         item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
         rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
     correction = transfer_ratio(abs(value), transfer_scale((abs(slope), abs(omega)), omega))
-    transfer_ratio_le(correction, tau(size(AN, 1))) ||
+    correction_pass = transfer_ratio_le(correction, tau(size(AN, 1)))
+    if final && !(isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0)
+        transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency")
+    end
+    if final && !residual_pass
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
+            item = "residual", eta = eta_n, scale = normalizer, threshold = tau(size(AN, 1)))
+    end
+    if final && !(slope_pass && rank_pass)
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = slope_pass ? "rank" : "slope", eta = eta_n, scale = normalizer,
+            slope = slope_ratio, rank_min = rank_min, rank_gap = rank_gap,
+            threshold = tau(size(AN, 1)))
+    end
+    if final && !correction_pass
         transfer_failure("numerical_resolution_unresolved", "transfer_correction", omega;
             item = "correction", eta = eta_n, scale = normalizer, slope = slope_ratio,
             rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator),
             correction = correction, threshold = tau(size(AN, 1)))
-    return omega, numerator_slope, denominator
+    end
+    return residual_pass && slope_pass && rank_pass && correction_pass, value, slope, numerator_slope, denominator
+end
+
+function transfer_zero(view::RealizedView, family::String, output::Int, input::Int, anchor;
+        start::Union{Nothing,ComplexF64} = nothing)
+    omega = start === nothing ? 2.0 * pi * complex_frequency_value(anchor) : start
+    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
+        (start === nothing ?
+            fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency") :
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency"))
+    for update in 0:32
+        passed, value, slope, numerator_slope, denominator =
+            transfer_complete_certificate(view, family, output, input, omega; final = update == 32)
+        if passed && real(omega) > 0.0
+            return omega, numerator_slope, denominator
+        end
+        update == 32 && fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+            "final transfer certificate returned without a failure")
+        slope != 0.0 || transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = "slope", slope = 0.0, threshold = 0.0)
+        next = omega - value / slope
+        isfinite(real(next)) && isfinite(imag(next)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", next; item = "frequency")
+        if reinterpret(UInt64, real(next)) == reinterpret(UInt64, real(omega)) &&
+                reinterpret(UInt64, imag(next)) == reinterpret(UInt64, imag(omega))
+            transfer_complete_certificate(view, family, output, input, next; final = true)
+            fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+                "stagnant transfer certificate returned without a failure")
+        end
+        omega = next
+    end
+    fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+        "transfer-zero update loop exhausted without final diagnosis")
 end
 
 function evaluate_transfer_zero(request, plan, view::RealizedView, request_sha::String, attempt_sha::String, staging::String)
@@ -487,7 +507,7 @@ function evaluate_transfer_zero(request, plan, view::RealizedView, request_sha::
         selector = Dict{String,Any}("type" => "transfer_zero_projection", "spec" => spec, "projection" => "frequency")
         zero = selector_root_with_continuation(plan, request, baseline_values, candidate_values, base_zero, selector;
             context_kind = "direct_quantity")
-        _, numerator_slope, denominator = transfer_zero(view, String(spec["family"]), output::Int, input::Int, spec["anchor"]; start = zero)
+        zero, numerator_slope, denominator = transfer_zero(view, String(spec["family"]), output::Int, input::Int, spec["anchor"]; start = zero)
     end
     evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.transfer_zero_evidence", "schema_version" => 1, "spec" => spec,
         "zero" => complex_quantity(zero, "radian / second", "inverse_time"))))

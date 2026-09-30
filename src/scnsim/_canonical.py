@@ -68,7 +68,7 @@ _EVALUATION_ALGORITHMS = {
     "diagonal_root": "scnsim.diagonal_root.newton32.v2",
     "operator_element_root": "scnsim.operator_element_root.newton32.v1",
     "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
-    "transfer_zero": "scnsim.transfer_zero.newton32.v2",
+    "transfer_zero": "scnsim.transfer_zero.newton32.v3",
     "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v2",
     "response_element": "scnsim.response_element.v1",
     "operator": "scnsim.direct_operator.v1",
