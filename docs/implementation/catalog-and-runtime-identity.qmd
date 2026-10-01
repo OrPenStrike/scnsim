@@ -106,9 +106,10 @@ those bits rather than independently repeating logarithmic normalization.
 Version 7 adds the closed scalar-expression tree, per-node unit conversion,
 and target/at-least comparison semantics while retaining the pinned CMA
 sampling and update mathematics.
-Version 9 additionally binds candidate-local complex-root-midpoint coupling,
-the full complex coupling witness stored with every successful coupling term,
-and independent midpoint/projection verification. Version 8 remains a known
+Version 9 additionally binds candidate-local complex-root-midpoint coupling
+and the full complex coupling witness stored with every successful coupling
+term. Python verifies the sealed request and evidence identities, not the
+backend's midpoint or magnitude arithmetic. Version 8 remains a known
 published predecessor and is rejected through the typed unsupported-version
 path.
 Version 5 binds generation-ledger v4, its closed optimization failure context,

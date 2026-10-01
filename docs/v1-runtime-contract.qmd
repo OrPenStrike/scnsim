@@ -2087,9 +2087,10 @@ conversion order, and target/at-least comparison semantics. It retains version
 6's Python-owned baseline coordinate bits and the pinned CMA sampling/update
 mathematics.
 
-Version 9 additionally binds candidate-local complex-root-midpoint coupling,
-the complete complex coupling witness retained by every successful coupling
-term, and independent midpoint/projection verification. Version 8 remains a
+Version 9 additionally binds candidate-local complex-root-midpoint coupling
+and the complete complex coupling witness retained by every successful coupling
+term. Python checks its sealed request and evidence identities, not the
+backend's midpoint or magnitude arithmetic. Version 8 remains a
 known published predecessor and is rejected through the typed unsupported-
 version path rather than being relabelled as current or corrupt evidence.
 
@@ -2150,8 +2151,11 @@ not independent observation of the last live child column. Within a failed
 objective, terms before the one failure are successful and later terms are
 not evaluated; an objective-aggregation failure instead retains all of that
 objective's terms as successful.
-The request-owned target, resolved scale/source, and weight must reproduce each
-successful component and total. A candidate-dependent invalid
+The request-owned target, resolved scale/source, and weight bind each
+successful component and total in the sealed request and producer evidence;
+Python checks typed finite, nonnegative successful costs but does not
+recalculate expression, residual, weighted, or total-cost arithmetic. A
+candidate-dependent invalid
 primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,
 local-slope, and Newton/continuation failures retain their corresponding typed
 root errors and tagged positive-infinity penalty. If any of those occurs while
@@ -2186,7 +2190,7 @@ binds its original launched attempt. Reuse avoids repeating baseline work but
 consumes no logical evaluation and changes neither CMA-ES state nor ordering.
 The verifier reconstructs the baseline point and normalized coordinates from
 the sealed request, rejects every incomplete or failed baseline, and binds
-directly reproducible public root projections back to their successful terms.
+root dependencies to their successful terms without recalculating projections.
 The final Result must exactly reproduce the verified baseline and primary View
 lineage. A later attempt that consumes recovery evidence binds the exact
 checkpoint content/seal pair.
@@ -2524,9 +2528,10 @@ $$
 
 Comparable evidence preserves the unreplicated physical $Q_k$ in deterministic
 row-major form and binds it to its Plan/View producer identity. Receipt loading
-reconstructs the lifted projection and independently reproduces the selected S
-matrix and recorded residual; a self-consistent but forged residual string is
-not accepted.
+checks coordinate and matrix shapes, sealed artifact bytes, and the stored
+finite nonnegative residual. Python does not independently reconstruct the
+selected S matrix or recalculate the residual; hash integrity binds producer
+bytes and provenance, not arithmetic correctness.
 
 A plain subset of original Ports is therefore comparable by its principal
 submatrix when every omitted Port retains its native matched load. A PTC or

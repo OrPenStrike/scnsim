@@ -4422,27 +4422,12 @@ def _verify_residue_coupling_evidence(
         for name in fields
     }
     frequency = spec.get("frequency")
-    if frequency == "complex_root_midpoint":
-        expected_omega = (values["branch_a_root"] + values["branch_b_root"]) / 2.0
-    else:
+    if frequency != "complex_root_midpoint":
         _verify_quantity_role(
             frequency, complex_value=False, unit="hertz", dimensionality="inverse_time"
         )
-        assert isinstance(frequency, Mapping)
-        expected_omega = complex(2.0 * math.pi * _f64_value(frequency["si_value_f64"]))
-    actual_omega = values["evaluation_omega"]
-    if (
-        struct.pack(">d", actual_omega.real) != struct.pack(">d", expected_omega.real)
-        or struct.pack(">d", actual_omega.imag) != struct.pack(">d", expected_omega.imag)
-    ):
-        raise _integrity("Residue coupling evaluation location disagrees with its request and roots.")
     if expected_projection is not None:
-        projected = {
-            "real": values["coupling"].real,
-            "imag": values["coupling"].imag,
-            "magnitude": abs(values["coupling"]),
-        }.get(expected_projection)
-        if projected is None:
+        if expected_projection not in {"real", "imag", "magnitude"}:
             raise _integrity("Residue coupling projection is invalid.")
         _verify_quantity_role(
             projected_value,
@@ -4451,8 +4436,13 @@ def _verify_residue_coupling_evidence(
             dimensionality="inverse_time",
         )
         assert isinstance(projected_value, Mapping)
-        if struct.pack(">d", projected) != bytes.fromhex(str(projected_value["si_value_f64"])):
-            raise _integrity("Residue coupling projection disagrees with its full complex evidence.")
+        if expected_projection == "magnitude":
+            if _f64_value(projected_value["si_value_f64"]) < 0.0:
+                raise _integrity("Residue coupling magnitude is negative.")
+        else:
+            projected = getattr(values["coupling"], expected_projection)
+            if struct.pack(">d", projected) != bytes.fromhex(str(projected_value["si_value_f64"])):
+                raise _integrity("Residue coupling projection disagrees with its full complex evidence.")
 
 
 def _verify_quantity_any(value: object) -> None:
@@ -5705,129 +5695,6 @@ def _selector_terms(value: object) -> list[Mapping[str, object]]:
     return [value]
 
 
-def _expression_value(
-    value: Mapping[str, object],
-    leaves: list[tuple[float, str]],
-    index: list[int],
-) -> tuple[float, str]:
-    kind = value.get("type")
-    if kind == "quantity_sum":
-        terms = value["terms"]
-        assert isinstance(terms, list)
-        total, unit = _expression_value(terms[0], leaves, index)
-        for term in terms[1:]:
-            term_value, term_unit = _expression_value(term, leaves, index)
-            total += _convert_selector_value(term_value, term_unit, unit)
-            if not math.isfinite(total):
-                raise _integrity("Optimization sum node is non-finite.")
-        return total, unit
-    if kind == "quantity_difference":
-        left, unit = _expression_value(value["left"], leaves, index)
-        right, right_unit = _expression_value(value["right"], leaves, index)
-        result = left - _convert_selector_value(right, right_unit, unit)
-        if not math.isfinite(result):
-            raise _integrity("Optimization difference node is non-finite.")
-        return result, unit
-    if kind == "quantity_absolute":
-        operand, unit = _expression_value(value["operand"], leaves, index)
-        result = abs(operand)
-        if not math.isfinite(result):
-            raise _integrity("Optimization absolute node is non-finite.")
-        return result, unit
-    if index[0] >= len(leaves):
-        raise _integrity("Optimization expression has incomplete leaf evidence.")
-    result, unit = leaves[index[0]]
-    index[0] += 1
-    if not math.isfinite(result):
-        raise _integrity("Optimization expression leaf is non-finite.")
-    return result, unit
-
-
-def _expression_value_allow_nonfinite(
-    value: Mapping[str, object],
-    leaves: list[tuple[float, str]],
-    index: list[int],
-) -> tuple[float, str]:
-    """Mirror the Julia expression chain while retaining its failure value."""
-
-    kind = value.get("type")
-    if kind == "quantity_sum":
-        terms = value["terms"]
-        assert isinstance(terms, list)
-        total, unit = _expression_value_allow_nonfinite(terms[0], leaves, index)
-        for term in terms[1:]:
-            term_value, term_unit = _expression_value_allow_nonfinite(
-                term, leaves, index
-            )
-            total += _convert_selector_value(term_value, term_unit, unit)
-        return total, unit
-    if kind == "quantity_difference":
-        left, unit = _expression_value_allow_nonfinite(value["left"], leaves, index)
-        right, right_unit = _expression_value_allow_nonfinite(
-            value["right"], leaves, index
-        )
-        return left - _convert_selector_value(right, right_unit, unit), unit
-    if kind == "quantity_absolute":
-        operand, unit = _expression_value_allow_nonfinite(
-            value["operand"], leaves, index
-        )
-        return abs(operand), unit
-    if index[0] >= len(leaves):
-        raise _integrity("Optimization expression has incomplete leaf evidence.")
-    result, unit = leaves[index[0]]
-    index[0] += 1
-    return result, unit
-
-
-def _convert_selector_value(value: float, source_unit: object, target_unit: object) -> float:
-    if source_unit == target_unit:
-        return value
-    if source_unit == "radian / second" and target_unit == "hertz":
-        return value / (2.0 * math.pi)
-    if source_unit == "hertz" and target_unit == "radian / second":
-        return value * (2.0 * math.pi)
-    raise _integrity("Optimization term unit conversion is unsupported.")
-
-
-def _objective_aggregation_is_nonfinite(
-    quantity: Mapping[str, object],
-    leaf_values: list[tuple[float, str]],
-    objective: Mapping[str, object],
-) -> bool:
-    """Reproduce the closed Julia aggregation chain for a failed objective."""
-
-    position = [0]
-    value, unit = _expression_value_allow_nonfinite(quantity, leaf_values, position)
-    if position[0] != len(leaf_values):
-        raise _integrity("Optimization aggregation leaves evidence unused.")
-    target_record = objective.get("target")
-    scale_record = objective.get("resolved_scale")
-    if not isinstance(target_record, Mapping) or not isinstance(scale_record, Mapping):
-        raise _integrity("Optimization aggregation request is malformed.")
-    value = _convert_selector_value(value, unit, target_record.get("si_unit"))
-    if not math.isfinite(value):
-        return True
-    target = _f64_value(target_record["si_value_f64"])
-    scale = _f64_value(scale_record["si_value_f64"])
-    residual = (
-        max(0.0, (target - value) / scale)
-        if objective.get("comparison") == "at_least"
-        else (value - target) / scale
-    )
-    squared = residual * residual
-    weighted = _f64_value(objective["weight_f64"]) * squared
-    return not math.isfinite(residual) or not math.isfinite(weighted)
-
-
-def _total_aggregation_is_nonfinite(components: Sequence[Mapping[str, object]]) -> bool:
-    """Reproduce Julia's ordered successful-component cost accumulation."""
-
-    total = 0.0
-    for component in components:
-        total += _f64_value(component["weighted_cost_f64"])
-    return not math.isfinite(total)
-
-
 def _optimization_failure_context(failure: object) -> Mapping[str, object]:
     if not isinstance(failure, Mapping) or not isinstance(failure.get("evidence"), Mapping):
         raise _integrity("Optimization failure lacks evidence.")
@@ -5981,7 +5848,7 @@ def _verify_baseline_checkpoint_document(
             or not _finite_f64(value.get("imag_f64"))
         ):
             raise _integrity("Optimization baseline root evidence is malformed or out of order.")
-    _verify_checkpoint_root_projections(checkpoint, objectives)
+    _verify_checkpoint_root_references(checkpoint, objectives)
 
 
 def _verify_checkpoint_primary_lineage(
@@ -6049,17 +5916,17 @@ def _verify_checkpoint_baseline_point(
         raise _integrity("Optimization checkpoint baseline coordinates disagree with its request point.")
 
 
-def _verify_checkpoint_root_projections(
+def _verify_checkpoint_root_references(
     checkpoint: Mapping[str, object], objectives: list[object]
 ) -> None:
-    """Bind directly reproducible public root projections to sealed anchors."""
+    """Bind successful root terms to the sealed dependency inventory."""
 
     roots = checkpoint.get("baseline_roots")
     baseline = checkpoint.get("baseline")
     outcome = baseline.get("outcome") if isinstance(baseline, Mapping) else None
     components = outcome.get("objective_components") if isinstance(outcome, Mapping) else None
     if not isinstance(roots, list) or not isinstance(components, list):
-        raise _integrity("Optimization checkpoint root projection evidence is malformed.")
+        raise _integrity("Optimization checkpoint root reference evidence is malformed.")
     by_dependency = {
         row["dependency"]["dependency_sha256"]: row["value"]
         for row in roots
@@ -6074,30 +5941,20 @@ def _verify_checkpoint_root_projections(
             raise _integrity("Optimization checkpoint objective terms are malformed.")
         for selector, term in zip(selectors, terms):
             kind = selector.get("type")
-            projection = selector.get("projection")
             if kind not in {
                 "diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection",
                 "transfer_zero_projection",
             }:
-                # Residue-coupling branch anchors have no public projection
-                # reproducible without the retained operator and residues.
+                # Residue-coupling branch anchors are private dependencies.
                 continue
             dependency = _optimization_dependency(selector)
             value = by_dependency.get(dependency["dependency_sha256"])
             term_value = term.get("value") if isinstance(term, Mapping) else None
             if not isinstance(value, Mapping) or not isinstance(term_value, Mapping):
-                raise _integrity("Optimization checkpoint root has no successful public projection.")
-            root = complex(
-                _f64_value(value.get("real_f64")),
-                _f64_value(value.get("imag_f64")),
+                raise _integrity("Optimization checkpoint root has no successful public term.")
+            _verify_quantity_role(
+                term_value, complex_value=False, unit="hertz", dimensionality="inverse_time"
             )
-            projected = (
-                -2.0 * root.imag / (2.0 * math.pi)
-                if projection == "linewidth"
-                else root.real / (2.0 * math.pi)
-            )
-            if term_value.get("si_unit") != "hertz" or term_value.get("si_value_f64") != struct.pack(">d", projected).hex():
-                raise _integrity("Optimization checkpoint root anchor disagrees with its public term value.")
 
 
 def _verify_baseline_checkpoint_directory(
@@ -6403,10 +6260,6 @@ def _verify_terminal_optimization_failure(
             _verify_objective_component(
                 component, objective, plan, expected_status="success"
             )
-        if not _total_aggregation_is_nonfinite(components):
-            raise _integrity(
-                "Baseline total aggregation failure reproduces a finite cost."
-            )
         expected = ({"kind": "candidate"}, [], None)
     else:
         raise _integrity("Terminal optimization failure uses an invalid baseline phase.")
@@ -6442,8 +6295,6 @@ def _verify_objective_component(
     ):
         raise _integrity("Optimization objective component is open or inconsistent.")
     term_statuses: list[str] = []
-    leaf_values: list[tuple[float, str]] = []
-    target_unit = objective.get("target", {}).get("si_unit") if isinstance(objective.get("target"), Mapping) else None
     for ordinal, (term, selector) in enumerate(zip(terms, expected_terms), 1):
         if not isinstance(term, dict) or term.get("term_ordinal") != ordinal or term.get("selector") != selector:
             raise _integrity("Optimization term evidence is out of order or names another selector.")
@@ -6468,7 +6319,6 @@ def _verify_objective_component(
                     expected_projection=str(selector.get("projection")),
                     projected_value=term.get("value"),
                 )
-            leaf_values.append((_f64_value(term["value"]["si_value_f64"]), role[0]))
         elif status == "failure":
             if set(term) != {"term_ordinal", "selector", "status", "ref_lineage", "failure"}:
                 raise _integrity("Failed optimization term is open or malformed.")
@@ -6483,33 +6333,16 @@ def _verify_objective_component(
     if expected_status == "success":
         if any(status != "success" for status in term_statuses):
             raise _integrity("Successful objective contains an unevaluated term.")
-        position = [0]
-        total, total_unit = _expression_value(quantity, leaf_values, position)
-        total = _convert_selector_value(total, total_unit, target_unit)
-        if position[0] != len(leaf_values) or not math.isfinite(total):
-            raise _integrity("Optimization expression value is non-finite or leaves evidence unused.")
         _verify_quantity_role(
             component.get("value"), complex_value=False,
             unit=objective["target"]["si_unit"], dimensionality=objective["target"]["dimensionality"],
         )
-        if struct.pack(">d", total).hex() != component["value"]["si_value_f64"]:
-            raise _integrity("Optimization objective value does not equal its ordered terms.")
-        target = _f64_value(objective["target"]["si_value_f64"])
-        scale = _f64_value(objective["resolved_scale"]["si_value_f64"])
-        residual = (
-            max(0.0, (target - total) / scale)
-            if objective.get("comparison") == "at_least"
-            else (total - target) / scale
-        )
-        weighted = _f64_value(objective["weight_f64"]) * (residual * residual)
         if (
             not _finite_f64(component.get("normalized_residual_f64"))
             or not _finite_f64(component.get("weighted_cost_f64"))
-            or struct.pack(">d", residual).hex() != component["normalized_residual_f64"]
-            or struct.pack(">d", weighted).hex() != component["weighted_cost_f64"]
-            or weighted < 0.0
+            or _f64_value(component["weighted_cost_f64"]) < 0.0
         ):
-            raise _integrity("Optimization objective normalization does not reproduce.")
+            raise _integrity("Optimization objective numerical evidence is malformed.")
     else:
         _verify_failure_document(component.get("failure"), "optimize_direct")
         if any(
@@ -6532,15 +6365,6 @@ def _verify_objective_component(
             )
             if not ordinary_failure and any(status != "success" for status in term_statuses):
                 raise _integrity("Failed objective term status order is inconsistent.")
-            if (
-                all(status == "success" for status in term_statuses)
-                and not _objective_aggregation_is_nonfinite(
-                    quantity, leaf_values, objective
-                )
-            ):
-                raise _integrity(
-                    "Objective aggregation failure reproduces a finite objective."
-                )
         elif any(status != "not_evaluated" for status in term_statuses):
             raise _integrity("Unevaluated objective contains evaluated terms.")
 
@@ -6609,12 +6433,8 @@ def _verify_candidate_outcome(
             or len(components) != len(objectives)
         ):
             raise _integrity("Successful optimization candidate is malformed.")
-        total = 0.0
         for objective, component in zip(objectives, components):
             _verify_objective_component(component, objective, plan, expected_status="success")
-            total += _f64_value(component["weighted_cost_f64"])
-        if struct.pack(">d", total).hex() != outcome.get("cost_f64"):
-            raise _integrity("Optimization candidate cost does not equal its ordered components.")
     elif outcome.get("status") == "failure":
         components = outcome.get("objective_components")
         if (
@@ -6733,10 +6553,6 @@ def _verify_candidate_outcome(
         elif phase == "total_aggregation":
             if any(status != "success" for status in statuses):
                 raise _integrity("Total aggregation failure does not preserve successful objectives.")
-            if not _total_aggregation_is_nonfinite(components):
-                raise _integrity(
-                    "Total aggregation failure reproduces a finite candidate cost."
-                )
             _verify_candidate_failure_context(
                 outcome["failure"], objectives=objectives, candidate=value,
                 phase=phase, owner={"kind": "candidate"}, affected=[],

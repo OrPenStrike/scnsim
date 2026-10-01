@@ -22,7 +22,6 @@ from ._canonical import (
     canonical_parameters_sha256,
     complex_quantity_from_envelope,
     float64_from_hex,
-    float64_hex,
     quantity_from_envelope,
     sha256_hex,
 )
@@ -1104,7 +1103,7 @@ class VerifiedResultDecoder:
             # only the native scattering view.
             matrix_view("backend_native_z", "ohm")
             recon = _decode_hb_reconciliation(reconciliation)
-            _verify_hb_reconciliation_projection(
+            _verify_hb_reconciliation_shape(
                 reconciliation,
                 selected=np.asarray(selected_s.matrix.magnitude),
                 native=np.asarray(native_s.matrix.magnitude),
@@ -1626,13 +1625,13 @@ def _decode_hb_reconciliation(value: Mapping[str, object]) -> ReconciliationEvid
     )
 
 
-def _verify_hb_reconciliation_projection(
+def _verify_hb_reconciliation_shape(
     evidence: Mapping[str, object],
     *,
     selected: np.ndarray,
     native: np.ndarray,
 ) -> None:
-    """Reproduce the comparable HB projection with a fixed scalar order."""
+    """Check comparable HB evidence against decoded matrix dimensions."""
 
     if evidence.get("comparable") is not True:
         return
@@ -1662,14 +1661,17 @@ def _verify_hb_reconciliation_projection(
             stage="result_decode",
         )
     try:
-        q = np.asarray(
-            [float64_from_hex(value) for value in values], dtype=np.float64
-        ).reshape(tuple(shape))
+        coordinates = [float64_from_hex(value) for value in values]
     except (TypeError, ValueError) as error:
         raise EvidenceIntegrityError(
             "HB reconciliation coordinate projection is malformed",
             stage="result_decode",
         ) from error
+    if any(not math.isfinite(value) for value in coordinates):
+        raise EvidenceIntegrityError(
+            "HB reconciliation coordinate projection is malformed",
+            stage="result_decode",
+        )
     rows, columns = shape
     if (
         selected.ndim != 3
@@ -1683,57 +1685,5 @@ def _verify_hb_reconciliation_projection(
     ):
         raise EvidenceIntegrityError(
             "HB reconciliation matrices disagree with their coordinate projection",
-            stage="result_decode",
-        )
-    mode_count = selected.shape[1] // rows
-    residuals: list[float] = []
-    for frequency in range(selected.shape[0]):
-        projected = np.empty_like(selected[frequency])
-        for output_coordinate in range(rows):
-            for output_mode in range(mode_count):
-                output = output_coordinate * mode_count + output_mode
-                for input_coordinate in range(rows):
-                    for input_mode in range(mode_count):
-                        input_ = input_coordinate * mode_count + input_mode
-                        value = 0.0 + 0.0j
-                        for native_output in range(columns):
-                            for native_input in range(columns):
-                                value += (
-                                    q[output_coordinate, native_output]
-                                    * native[
-                                        frequency,
-                                        native_output * mode_count + output_mode,
-                                        native_input * mode_count + input_mode,
-                                    ]
-                                    * q[input_coordinate, native_input]
-                                )
-                        projected[output, input_] = value
-        numerator = max(
-            sum(
-                abs(selected[frequency, row, column] - projected[row, column])
-                for column in range(projected.shape[1])
-            )
-            for row in range(projected.shape[0])
-        )
-        denominator = max(
-            sum(
-                abs(selected[frequency, row, column]) + abs(projected[row, column])
-                for column in range(projected.shape[1])
-            )
-            for row in range(projected.shape[0])
-        )
-        residuals.append(
-            0.0
-            if denominator == 0.0 and numerator == 0.0
-            else math.inf
-            if denominator == 0.0
-            else numerator / denominator
-        )
-    residual = max(residuals)
-    if not math.isfinite(residual) or float64_hex(residual) != evidence.get(
-        "residual_f64"
-    ):
-        raise EvidenceIntegrityError(
-            "HB reconciliation residual does not reproduce selected S from backend-native S",
             stage="result_decode",
         )

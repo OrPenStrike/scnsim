@@ -240,12 +240,12 @@ the same complete View-and-Spec dependency keys as the request. Publication
 provenance is a separate seal bound to the original attempt. Generation ledgers
 bind both identities. The checkpoint contains no CMA private state, consumes no
 additional logical evaluation, and cannot be resolved as a Result.
-Independent verification reconstructs the baseline ParameterSet and unit-box
+Python verification reconstructs the baseline ParameterSet and unit-box
 coordinates from the sealed request, requires a fresh complete-success outcome,
-and algebraically binds every directly reproducible public root projection to
-its successful term. Private residue-branch anchors remain sealed producer
-values with exact request dependency membership; this boundary does not claim
-an independent residue solve.
+and binds successful terms to the closed selector and root-dependency inventory.
+The backend's root projections and private residue-branch anchors remain sealed
+producer values; Python does not independently recalculate their numerical
+projections or solve the roots.
 The Result envelope's primary View lineage is derived from the successful
 baseline term whose sealed selector View equals the request's primary View;
 multiple such terms must carry the same lineage. Per-candidate term lineages
@@ -328,11 +328,11 @@ coupling and the full-complex witness carried by every successful coupling
 term. Version 8 remains a known published predecessor and is rejected through
 the typed unsupported-version path.
 
-An aggregation failure is independently reproducible evidence. Population
-candidate records retain the successful terms or objective components needed
-to replay the failed expression, normalization, weighted cost, or ordered
-total. A baseline aggregation failure has no checkpoint, so its closed failure
-context carries the same already-computed successful records as a narrow
+An aggregation failure retains closed phase, owner, status order, and completed
+term or objective evidence; Python does not replay the backend's non-finite
+expression or total-cost arithmetic. A baseline aggregation failure has no
+checkpoint, so its closed failure context carries the same already-computed
+successful records as a narrow
 aggregation witness; it never triggers another evaluation.
 
 Only complete generations count:
@@ -367,9 +367,11 @@ declaration, but not its real/imaginary/magnitude projection. Those leaves
 therefore share the same complete complex roots and coupling within one
 candidate. Different Views, fixed frequencies, or midpoint declarations remain
 distinct. Successful term evidence retains both roots, the actual complex
-evaluation location, and full complex coupling so Python can independently
-reproduce the selected projection, expression, residual, and weighted cost
-without solving.
+evaluation location, and full complex coupling. Python checks the direct real
+and imaginary copies of coupling exactly, and verifies types, units, request
+identity, provenance, and sealed bytes; it does not independently recompute the
+midpoint or fixed-frequency location, coupling magnitude, expression,
+residual, or weighted cost.
 
 `CostObjective.comparison` is either `"target"` (the default) or
 `"at_least"`. Target comparison uses `(value - target) / scale`. At-least
@@ -407,9 +409,12 @@ record per selector leaf in declaration order. A successful term binds the
 leaf selector, its realized View lineage, and evaluated Quantity. A failed or
 not-yet-evaluated term carries its exact closed status and typed failure rather
 than an invented value. A successful objective additionally records its
-evaluated Quantity, signed normalized residual, and weighted cost; the
-request-owned target, resolved scale/source, and weight therefore reproduce
-both the component and total cost. A failed candidate still carries one
+evaluated Quantity, signed normalized residual, and weighted cost. Python
+checks the closed fields, typed finite values, nonnegative successful costs,
+request bindings, and hash-linked ledger chain, but does not recalculate these
+numerical outputs from the terms, target, scale, and weight. The hashes bind
+producer bytes and provenance; they do not independently prove the arithmetic.
+A failed candidate still carries one
 component for every request objective, preserving already evaluated terms and
 marking the exact remaining terms without dropping objectives.
 It contains exactly $\lambda$ population outcomes in column order, with their

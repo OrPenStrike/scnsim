@@ -319,9 +319,9 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
+    "binding_sha256": "41bbd6f20e3fe1471cb9209d5a5796d40d16a3a032503ff72ad7d36096848a03",
     "generator_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5",
-    "source_tree_sha256": "782d33dc8f492f2aacd115b07ed51a1b38ebb40e0081c2993bd6511470ec7354"
+    "source_tree_sha256": "2bfb9ebd922ec4406d2279543e4a2d6cf39e7890006fb06f1170ac9be96db1d4"
   },
   "publication_rebind": {
     "deltas": {
@@ -373,9 +373,13 @@
         "before_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5"
       },
       "source_files": {
-        "src/scnsim/_julia/src/quantity_core.jl": {
-          "after_sha256": "0b6f1dbdd53a268db9266e2245426fecaf752038471bf621cc80b26892f752b7",
-          "before_sha256": "2e69d2c5d338b06888a8933ed5196242a32d8b7d88ad21bea69dabafc5a52db6"
+        "src/scnsim/_result_decode.py": {
+          "after_sha256": "c9a23e3bcca1c2e8dcdb2b2957f768d58aed5b0df828c762a5cb707ffc66f2a5",
+          "before_sha256": "edb00c37dd44c81d1f0b38fc71b0cac6de1c126ec63c5a1798b85aa93ec6c5ec"
+        },
+        "src/scnsim/_workspace.py": {
+          "after_sha256": "fd9132d7cad03a6b5d4aedae9029200529e2f800de5d08ef581339e24fbd0074",
+          "before_sha256": "7801e9fe7673b5eb12c0f80e238f9c817a35e574f18342f2734a004b2defc95d"
         }
       },
       "teaching_sources": {}
@@ -407,7 +411,7 @@
         "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
         "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
       },
-      "prior_publication_binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
+      "prior_publication_binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
       "prior_redrawn_artifacts": {
         "02-capacitance-sweep.svg": {
           "execution_sha256": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
@@ -422,9 +426,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "b8add2934afc623c78e3c23f70cea3368899abd38a6af75351a2f7fd74de6c56",
-    "prior_publication_binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
-    "prior_publication_rebind_sha256": "5f4ed526c7cfef49bb15441fb2eba3174abb19b0108f41196d8ed2d70356701e",
+    "prior_manifest_sha256": "c727002e0c470ad8f5e18a863a13625c603d3ef315483447b4934602bd0c0d49",
+    "prior_publication_binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
+    "prior_publication_rebind_sha256": "ea9e574b7eb4c71f1c2e2f482ab8892c675d1bbd68c20492edeb47d586f9df15",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
@@ -437,10 +441,10 @@
       "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
       "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
     },
-    "publication_binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
+    "publication_binding_sha256": "41bbd6f20e3fe1471cb9209d5a5796d40d16a3a032503ff72ad7d36096848a03",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.symmetric_elimination.20261002"
+    "transition_id": "scnsim.backend_numeric_authority.20261002"
   },
   "results": {
     "capacitance_sweep": {
