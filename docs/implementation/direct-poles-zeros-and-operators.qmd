@@ -543,7 +543,10 @@ $$
 {\lVert |Q|+|Q^T|\rVert_\infty}\le\tau(q),
 $$
 
-with residual `0/0` equal to zero. For each branch,
+with residual `0/0` equal to zero. A failed numerical check reports every
+matching branch-root/evaluation location, complex angular frequency, retained
+dimension, asymmetry numerator, scale, ratio, and the same threshold. It does
+not by itself establish physical nonreciprocity. For each branch,
 
 $$
 s_i=-v_i^TQ'(\widetilde\omega_i)v_i,

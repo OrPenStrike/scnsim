@@ -201,7 +201,10 @@ transport failures remain request-level `RuntimePreparationError` or
 An optimization-owned execution failure additionally carries one closed
 `optimization_context`. It binds the logical candidate position, the exact
 execution phase, the owning objective/term or request-derived dependency, and
-the authored-order set of leaves actually affected. Public term locators use
+the authored-order set of leaves actually affected. Terminal failure validation
+uses the sealed Plan and request, including for compiler preflight failures;
+missing or inconsistent Plan identity is not a valid failure record. Public
+term locators use
 `objective_id` plus a one-based `term_ordinal`; internal zero-based prepared
 ordinals never enter evidence. A failed dependency names its triggering leaf
 and blocked consumers of that same dependency, while unrelated leaves remain

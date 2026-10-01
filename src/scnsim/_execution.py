@@ -387,7 +387,8 @@ def execute_prepared(
                         stage="outcome",
                     )
                 failure = _validated_failure_record(
-                    outcome.get("failure"), request["operation"], request=request,
+                    outcome.get("failure"), request["operation"],
+                    request=request, plan=plan_document,
                     require_optimization_context=True,
                     completed_generations=len(verified_links),
                 )

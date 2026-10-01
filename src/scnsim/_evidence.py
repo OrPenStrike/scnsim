@@ -138,11 +138,23 @@ def _validated_failure_record(
     value: object,
     operation: object,
     *,
-    request: Mapping[str, object] | None = None,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
     require_optimization_context: bool = False,
     completed_generations: int = 0,
 ) -> dict[str, object]:
     """Validate a producer failure against the closed public failure taxonomy."""
+
+    if (
+        not isinstance(request, Mapping)
+        or not isinstance(plan, Mapping)
+        or plan.get("schema") != "scnsim.plan"
+        or plan.get("schema_version") != 2
+        or request.get("plan_sha256") != sha256(canonical_json_bytes(plan)).hexdigest()
+    ):
+        raise BackendProtocolError(
+            "failure outcome lacks its exact sealed Plan", stage="outcome"
+        )
 
     if not isinstance(value, Mapping) or set(value) != {
         "category",
@@ -195,13 +207,8 @@ def _validated_failure_record(
             operation == "optimize_direct"
             and isinstance(optimization_context, Mapping)
         ):
-            if request is None:
-                raise BackendProtocolError(
-                    "optimization failure context lacks its sealed request",
-                    stage="outcome",
-                )
             _verify_terminal_optimization_failure(
-                value, request.get("spec"),
+                value, request.get("spec"), plan,
                 completed_generations=completed_generations,
             )
     except EvidenceIntegrityError as error:

@@ -581,8 +581,21 @@ function residue_normalized_coupling_value(compiled::CompiledPrimitive, coordina
     for omega in unique([omega_a, omega_b, omega_eval])
         Fcheck, _ = selected_operator(compiled, omega, coordinates)
         denominator = norm(abs.(Fcheck) + abs.(transpose(Fcheck)), Inf)
-        asym = denominator == 0.0 ? (norm(Fcheck - transpose(Fcheck), Inf) == 0.0 ? 0.0 : Inf) : norm(Fcheck - transpose(Fcheck), Inf) / denominator
-        isfinite(asym) && asym <= tau(length(coordinates)) || fail("execution", "root_slope_unresolved", "reciprocity", "direct_quantity", "selected operator is not reciprocal")
+        numerator = norm(Fcheck - transpose(Fcheck), Inf)
+        asym = denominator == 0.0 ? (numerator == 0.0 ? 0.0 : Inf) : numerator / denominator
+        if !(isfinite(asym) && asym <= tau(length(coordinates)))
+            locations = String[]
+            isequal(omega, omega_a) && push!(locations, "branch_a_root")
+            isequal(omega, omega_b) && push!(locations, "branch_b_root")
+            isequal(omega, omega_eval) && push!(locations, "evaluation")
+            bounded(value) = string(round(value; sigdigits = 6))
+            fail("execution", "root_slope_unresolved", "reciprocity", "direct_quantity",
+                "selected-operator numerical reciprocity check did not close " *
+                "(locations=$(join(locations, "+")), omega_re=$(bounded(real(omega))), " *
+                "omega_im=$(bounded(imag(omega))), retained_dimension=$(length(coordinates)), " *
+                "asymmetry_numerator=$(bounded(numerator)), asymmetry_scale=$(bounded(denominator)), " *
+                "asymmetry_ratio=$(bounded(asym)), threshold=$(bounded(tau(length(coordinates)))))")
+        end
     end
     F, _ = selected_operator(compiled, omega_eval, coordinates)
     coupling = only(transpose(va) * F * vb) / sqrt(sa * sb)

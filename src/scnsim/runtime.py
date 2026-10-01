@@ -1613,7 +1613,7 @@ class CircuitRun:
     def _preflight(self, request: Mapping[str, object]) -> Mapping[str, object]:
         """Run the compiler-only realization boundary without allocating work."""
 
-        return _run_preflight(self._plan_bytes, request)
+        return _run_preflight(self._plan_document, self._plan_bytes, request)
 
     def _execute(
         self,
@@ -1986,6 +1986,7 @@ def _original_lineage_document(
 
 
 def _run_preflight(
+    plan_document: Mapping[str, object],
     plan_bytes: bytes,
     request: Mapping[str, object],
 ) -> Mapping[str, object]:
@@ -2003,7 +2004,8 @@ def _run_preflight(
     if compiled.get("schema") == "scnsim.preflight_failure":
         raise _error_from_record(
             _validated_failure_record(
-                compiled.get("failure"), request["operation"], request=request,
+                compiled.get("failure"), request["operation"],
+                request=request, plan=plan_document,
             )
         )
     return compiled
