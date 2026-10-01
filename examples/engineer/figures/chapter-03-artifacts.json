@@ -203,9 +203,9 @@
     ]
   },
   "publication_binding": {
-    "binding_sha256": "8836349261d1cf0709df1e2f7bd60b130e7ac60c813f1690c78766f070069a5f",
+    "binding_sha256": "d3b0d77862dd4fe20259550fcf2e48e5b336712bab1787a5cd4670e7fff9f0a5",
     "generator_sha256": "fa9579b69358bc95f2879121229b4fb623c07a47fbcbaf8d3b86cf592c4817e3",
-    "source_tree_sha256": "769a05ed1fc7e2a0748073b24d7bbf92a81878672ebdf86d95c7bb5219e04685"
+    "source_tree_sha256": "782d33dc8f492f2aacd115b07ed51a1b38ebb40e0081c2993bd6511470ec7354"
   },
   "publication_rebind": {
     "deltas": {
@@ -239,21 +239,9 @@
         "before_sha256": "fa9579b69358bc95f2879121229b4fb623c07a47fbcbaf8d3b86cf592c4817e3"
       },
       "source_files": {
-        "src/scnsim/_evidence.py": {
-          "after_sha256": "d9800a1cae37f19686ec2eaf47f4ae97d22cab6aed20c87ee3a6b179fa19cc1c",
-          "before_sha256": "9a3b261547aba9f3eb2f1434ff0f8a7e9903a442be2c03fc7b405809bed74e99"
-        },
-        "src/scnsim/_execution.py": {
-          "after_sha256": "3463d1375d623f4b367a91b04a259c3a55fc7e97492bd26c3dbcbaf38d5fae95",
-          "before_sha256": "17ea6d151e2431bfd42846b25dd5e08d6d573c59f11636a10db2bb0c310f41a0"
-        },
-        "src/scnsim/_julia/src/direct_quantities.jl": {
-          "after_sha256": "39cf7c3a92febd2abc811450a60544b685dcc60f4e105900a8355d68c8558029",
-          "before_sha256": "8d930d212fb78deeec24ef9708a34365c54ad24fe905d3551433bcde2bbebc96"
-        },
-        "src/scnsim/runtime.py": {
-          "after_sha256": "5eba804bf247ed69725e6554f78c56949814362a179680947bba97587b8d7519",
-          "before_sha256": "d9c133eea36606738f10490682db8f4abbc870d6b83c8d867ba85fbabfa076b5"
+        "src/scnsim/_julia/src/quantity_core.jl": {
+          "after_sha256": "0b6f1dbdd53a268db9266e2245426fecaf752038471bf621cc80b26892f752b7",
+          "before_sha256": "2e69d2c5d338b06888a8933ed5196242a32d8b7d88ad21bea69dabafc5a52db6"
         }
       },
       "teaching_sources": {}
@@ -277,7 +265,7 @@
         "03-feedline-illustration.svg": "f3591bd6225c9219d3c783c6e91441178bd448d8871366bb97d28c7a316831dd",
         "03-readout-illustration.svg": "24106030b412de3b6c409f33f4bb971a63cd6f5111bf5e7ab2e73a49bd47caa2"
       },
-      "prior_publication_binding_sha256": "4bbe5caa9b294e47f81682fad99a691aff06b04cc7dd4bee28ed96ba66461fde",
+      "prior_publication_binding_sha256": "8836349261d1cf0709df1e2f7bd60b130e7ac60c813f1690c78766f070069a5f",
       "prior_redrawn_artifacts": {
         "03-direct-s21.svg": {
           "execution_sha256": "e14c7d93c455621e51e9c839296154f80b75d0d277c73fc34addd5725c6986a9",
@@ -288,9 +276,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "f50ded1c883a7208bd771337c36106933acb6b79aa4bb19ddef161c6fd800927",
-    "prior_publication_binding_sha256": "4bbe5caa9b294e47f81682fad99a691aff06b04cc7dd4bee28ed96ba66461fde",
-    "prior_publication_rebind_sha256": "03679804e45084f4d9d5c433ea6d4bd72f0c4c0da89cf72d957feabd45ad9023",
+    "prior_manifest_sha256": "eb7e9d4bca3d624ea58582c5ed87f81f65cef4e781a5d69c2f528625723767bd",
+    "prior_publication_binding_sha256": "8836349261d1cf0709df1e2f7bd60b130e7ac60c813f1690c78766f070069a5f",
+    "prior_publication_rebind_sha256": "0b1dd25ced9180a1b028d153f41505675b41ec99debda796833a1cdf6fa2949e",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "03-direct-s21.csv": "d5eebf293f6e25b7a20f41c0ba00bd0315348ab11e1ef4751dcfc44084b2f08d",
@@ -299,10 +287,10 @@
       "03-feedline-illustration.svg": "f3591bd6225c9219d3c783c6e91441178bd448d8871366bb97d28c7a316831dd",
       "03-readout-illustration.svg": "24106030b412de3b6c409f33f4bb971a63cd6f5111bf5e7ab2e73a49bd47caa2"
     },
-    "publication_binding_sha256": "8836349261d1cf0709df1e2f7bd60b130e7ac60c813f1690c78766f070069a5f",
+    "publication_binding_sha256": "d3b0d77862dd4fe20259550fcf2e48e5b336712bab1787a5cd4670e7fff9f0a5",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.failure_diagnostics.20261001"
+    "transition_id": "scnsim.symmetric_elimination.20261002"
   },
   "result": {
     "attempt_sha256": "f8c4d004ed0345b7c79a5bc6fd6208b03855ff716ed6794357f3e14226ab284b",

@@ -319,9 +319,9 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
+    "binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
     "generator_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5",
-    "source_tree_sha256": "769a05ed1fc7e2a0748073b24d7bbf92a81878672ebdf86d95c7bb5219e04685"
+    "source_tree_sha256": "782d33dc8f492f2aacd115b07ed51a1b38ebb40e0081c2993bd6511470ec7354"
   },
   "publication_rebind": {
     "deltas": {
@@ -373,21 +373,9 @@
         "before_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5"
       },
       "source_files": {
-        "src/scnsim/_evidence.py": {
-          "after_sha256": "d9800a1cae37f19686ec2eaf47f4ae97d22cab6aed20c87ee3a6b179fa19cc1c",
-          "before_sha256": "9a3b261547aba9f3eb2f1434ff0f8a7e9903a442be2c03fc7b405809bed74e99"
-        },
-        "src/scnsim/_execution.py": {
-          "after_sha256": "3463d1375d623f4b367a91b04a259c3a55fc7e97492bd26c3dbcbaf38d5fae95",
-          "before_sha256": "17ea6d151e2431bfd42846b25dd5e08d6d573c59f11636a10db2bb0c310f41a0"
-        },
-        "src/scnsim/_julia/src/direct_quantities.jl": {
-          "after_sha256": "39cf7c3a92febd2abc811450a60544b685dcc60f4e105900a8355d68c8558029",
-          "before_sha256": "8d930d212fb78deeec24ef9708a34365c54ad24fe905d3551433bcde2bbebc96"
-        },
-        "src/scnsim/runtime.py": {
-          "after_sha256": "5eba804bf247ed69725e6554f78c56949814362a179680947bba97587b8d7519",
-          "before_sha256": "d9c133eea36606738f10490682db8f4abbc870d6b83c8d867ba85fbabfa076b5"
+        "src/scnsim/_julia/src/quantity_core.jl": {
+          "after_sha256": "0b6f1dbdd53a268db9266e2245426fecaf752038471bf621cc80b26892f752b7",
+          "before_sha256": "2e69d2c5d338b06888a8933ed5196242a32d8b7d88ad21bea69dabafc5a52db6"
         }
       },
       "teaching_sources": {}
@@ -419,7 +407,7 @@
         "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
         "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
       },
-      "prior_publication_binding_sha256": "1098c9cd6c89e1938f4546cf43294dd9ee6c858e9c7bd1a0966901d87f8339f8",
+      "prior_publication_binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
       "prior_redrawn_artifacts": {
         "02-capacitance-sweep.svg": {
           "execution_sha256": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
@@ -434,9 +422,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "4e3cf484f5fb6eab93397de9502ca063d926eba3de3db36660c87a6e389b2c35",
-    "prior_publication_binding_sha256": "1098c9cd6c89e1938f4546cf43294dd9ee6c858e9c7bd1a0966901d87f8339f8",
-    "prior_publication_rebind_sha256": "65b3b2f7973a3beb11e3c7f91e162506baaa245e703880a130f61dab49517746",
+    "prior_manifest_sha256": "b8add2934afc623c78e3c23f70cea3368899abd38a6af75351a2f7fd74de6c56",
+    "prior_publication_binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
+    "prior_publication_rebind_sha256": "5f4ed526c7cfef49bb15441fb2eba3174abb19b0108f41196d8ed2d70356701e",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
@@ -449,10 +437,10 @@
       "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
       "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
     },
-    "publication_binding_sha256": "9ddb28f0a672740b6a59fdd4afb3ef1d606ab08b88a745cf51d95cff2fdbe4bc",
+    "publication_binding_sha256": "2857f43b852467bf40e0626d5be714b7b912bd9ef7fa511d1b26b41d2c10f56f",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.failure_diagnostics.20261001"
+    "transition_id": "scnsim.symmetric_elimination.20261002"
   },
   "results": {
     "capacitance_sweep": {

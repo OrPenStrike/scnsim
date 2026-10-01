@@ -37,7 +37,13 @@ column $j$. Neither selection changes $R$ or requires the full capacitance
 matrix to be positive definite. An unsolvable eliminated block fails closed;
 there is no pseudoinverse or descriptor-mode fallback.
 
-With $E$ the eliminated complement, use checked solves
+With $E$ the eliminated complement, first require finite $Q_{EE}$ and its
+transpose-asymmetry ratio
+$\lVert Q_{EE}-Q_{EE}^T\rVert_\infty/
+\lVert |Q_{EE}|+|Q_{EE}^T|\rVert_\infty\le\tau(|E|)$,
+with the existing zero-denominator convention. Factor the original complex
+symmetric eliminated block once with non-rook Bunch–Kaufman, using its upper
+triangle. Use that one factor for the checked solves
 
 $$
 X=Q_{EE}^{-1}Q_{ER},\qquad
@@ -62,6 +68,13 @@ and evaluate
 $$
 g'_{ij}=Q'_{ij}-Q'_{iE}X_{:j}-Q_{iE}X'_{:j}.
 $$
+
+Both solve residuals are checked against the original, unmodified $Q_{EE}$
+and their respective right-hand sides. No Hermitian interpretation, input or
+output symmetrization, regularization, pseudoinverse, or fallback solve is
+used. A non-finite, asymmetric, singular, or residual-failing eliminated
+block remains a typed eliminated-block failure. The full selected-vector
+certificate uses the same elimination path; empty $E$ remains a no-op.
 
 The baseline starts at real $\omega_0=2\pi\,\texttt{root_hint}$ and performs
 at most 32 analytic complex-Newton updates

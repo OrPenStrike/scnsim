@@ -1,6 +1,38 @@
 # Included into the single SCNSimBackend module.
 # Shared Direct quantity kernels and certified root calculations.
 
+"""Factor a checked complex-symmetric eliminated block without changing its entries."""
+function selected_eliminated_factor(Qee::Matrix{ComplexF64})
+    n = size(Qee, 1)
+    finite_matrix(Qee) || fail("execution", "eliminated_block_solve_failure", "eliminated_block", "direct_response", "non-finite eliminated block")
+    numerator = norm(Qee - transpose(Qee), Inf)
+    denominator = norm(abs.(Qee) + abs.(transpose(Qee)), Inf)
+    asymmetry = denominator == 0.0 ? (numerator == 0.0 ? 0.0 : Inf) : numerator / denominator
+    isfinite(asymmetry) && asymmetry <= tau(n) ||
+        fail("execution", "eliminated_block_solve_failure", "eliminated_block", "direct_response", "eliminated block exceeded transpose-symmetry contract")
+    try
+        return bunchkaufman(Symmetric(Qee, :U), false; check = true)
+    catch error
+        error isa Union{SingularException,ZeroPivotException} || rethrow()
+        fail("execution", "eliminated_block_solve_failure", "eliminated_block", "direct_response", "required eliminated-block factorization is singular")
+    end
+end
+
+"""Check each factored solve against the original eliminated matrix and right-hand side."""
+function selected_eliminated_solve(factor, Qee::Matrix{ComplexF64}, rhs::Matrix{ComplexF64}, stage::String)
+    finite_matrix(rhs) || fail("execution", "eliminated_block_solve_failure", stage, "direct_response", "non-finite eliminated-block right-hand side")
+    X = try
+        factor \ rhs
+    catch error
+        error isa Union{SingularException,ZeroPivotException} || rethrow()
+        fail("execution", "eliminated_block_solve_failure", stage, "direct_response", "required eliminated-block solve is singular")
+    end
+    residual = backward_residual(Qee, X, rhs)
+    isfinite(residual) && residual <= tau(size(Qee, 1)) ||
+        fail("execution", "eliminated_block_solve_failure", stage, "direct_response", "eliminated-block solve exceeded normalized backward-residual contract")
+    return X
+end
+
 """One authority for the complete selected View operator and derivative."""
 function selected_operator_state(compiled::CompiledPrimitive, omega::ComplexF64, coordinates::Vector{String})
     indices = selected_coordinate_indices(compiled, coordinates)
@@ -13,10 +45,11 @@ function selected_operator_state(compiled::CompiledPrimitive, omega::ComplexF64,
             X = X, Xp = Xp, indices = indices, eliminated = eliminated, eta_e = 0.0)
     end
     Qee, Qer = Q[eliminated, eliminated], Q[eliminated, indices]
-    X = checked_solve(Qee, Qer, "eliminated_block_solve_failure", "eliminated_block", length(eliminated))
+    factor = selected_eliminated_factor(Qee)
+    X = selected_eliminated_solve(factor, Qee, Qer, "eliminated_block")
     Qpeer, Qpee = Qp[eliminated, indices], Qp[eliminated, eliminated]
     derivative_rhs = Qpeer - Qpee * X
-    Xp = checked_solve(Qee, derivative_rhs, "eliminated_block_solve_failure", "derivative_eliminated_block", length(eliminated))
+    Xp = selected_eliminated_solve(factor, Qee, derivative_rhs, "derivative_eliminated_block")
     F = Q[indices, indices] - Q[indices, eliminated] * X
     Fp = Qp[indices, indices] - Qp[indices, eliminated] * X - Q[indices, eliminated] * Xp
     return (F = F, Fp = Fp, Q = Q, Qp = Qp, X = X, Xp = Xp,
@@ -186,7 +219,9 @@ function full_selected_certificate(compiled::CompiledPrimitive, omega::ComplexF6
     eliminated = [index for index in eachindex(compiled.nodes) if index ∉ indices]
     x = zeros(ComplexF64, length(compiled.nodes)); x[indices] .= v
     if !isempty(eliminated)
-        X = checked_solve(Q[eliminated, eliminated], Q[eliminated, indices], "eliminated_block_solve_failure", "eliminated_block", length(eliminated))
+        Qee, Qer = Q[eliminated, eliminated], Q[eliminated, indices]
+        factor = selected_eliminated_factor(Qee)
+        X = selected_eliminated_solve(factor, Qee, Qer, "eliminated_block")
         x[eliminated] .= -X * v
     end
     denominator = norm(operator_absolute_bound(compiled, omega; loaded = true) * abs.(x), Inf)

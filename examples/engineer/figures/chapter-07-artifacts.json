@@ -247,9 +247,9 @@
     ]
   },
   "publication_binding": {
-    "binding_sha256": "cb0343c22d19b1695d910e7809d25c22e70e84f81d5654bf47ea97b9b6094263",
+    "binding_sha256": "9a012fd2da65852bf456ba4d95c6df947f47df0adcff622c9ed2ae5ecfee9608",
     "generator_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8",
-    "source_tree_sha256": "769a05ed1fc7e2a0748073b24d7bbf92a81878672ebdf86d95c7bb5219e04685"
+    "source_tree_sha256": "782d33dc8f492f2aacd115b07ed51a1b38ebb40e0081c2993bd6511470ec7354"
   },
   "publication_rebind": {
     "deltas": {
@@ -287,21 +287,9 @@
         "before_sha256": "1572f1db31399e62e199a5ece5c51a3c53c014c0d4615ccf197bee0ad42b8cc8"
       },
       "source_files": {
-        "src/scnsim/_evidence.py": {
-          "after_sha256": "d9800a1cae37f19686ec2eaf47f4ae97d22cab6aed20c87ee3a6b179fa19cc1c",
-          "before_sha256": "9a3b261547aba9f3eb2f1434ff0f8a7e9903a442be2c03fc7b405809bed74e99"
-        },
-        "src/scnsim/_execution.py": {
-          "after_sha256": "3463d1375d623f4b367a91b04a259c3a55fc7e97492bd26c3dbcbaf38d5fae95",
-          "before_sha256": "17ea6d151e2431bfd42846b25dd5e08d6d573c59f11636a10db2bb0c310f41a0"
-        },
-        "src/scnsim/_julia/src/direct_quantities.jl": {
-          "after_sha256": "39cf7c3a92febd2abc811450a60544b685dcc60f4e105900a8355d68c8558029",
-          "before_sha256": "8d930d212fb78deeec24ef9708a34365c54ad24fe905d3551433bcde2bbebc96"
-        },
-        "src/scnsim/runtime.py": {
-          "after_sha256": "5eba804bf247ed69725e6554f78c56949814362a179680947bba97587b8d7519",
-          "before_sha256": "d9c133eea36606738f10490682db8f4abbc870d6b83c8d867ba85fbabfa076b5"
+        "src/scnsim/_julia/src/quantity_core.jl": {
+          "after_sha256": "0b6f1dbdd53a268db9266e2245426fecaf752038471bf621cc80b26892f752b7",
+          "before_sha256": "2e69d2c5d338b06888a8933ed5196242a32d8b7d88ad21bea69dabafc5a52db6"
         }
       },
       "teaching_sources": {}
@@ -329,7 +317,7 @@
         "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
         "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
       },
-      "prior_publication_binding_sha256": "366852ef6b7f018f86d9cce8a34435cca81ee535087d4bd96b76f2b39e67452d",
+      "prior_publication_binding_sha256": "cb0343c22d19b1695d910e7809d25c22e70e84f81d5654bf47ea97b9b6094263",
       "prior_redrawn_artifacts": {
         "07-baseline-reflection.svg": {
           "execution_sha256": "f004c8bb227601a3ee8288f5736c826d5a465ffdeba4c1a9988fd1b312cc4686",
@@ -348,9 +336,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "32fdc6424d00782ebd9759e5db55f4c41779e6364ba76360dca0e609155fd3a6",
-    "prior_publication_binding_sha256": "366852ef6b7f018f86d9cce8a34435cca81ee535087d4bd96b76f2b39e67452d",
-    "prior_publication_rebind_sha256": "92a6ce7265304d446a4d7af107510c90f2ad22d0f611e20967e859ed63026da6",
+    "prior_manifest_sha256": "df4d683dd0f2d325295be30c2cfc5872701d201b08388612c121847e4c17f043",
+    "prior_publication_binding_sha256": "cb0343c22d19b1695d910e7809d25c22e70e84f81d5654bf47ea97b9b6094263",
+    "prior_publication_rebind_sha256": "02f3339751c35f96447ebf776d7178e91007ca2ec460f645daca377cd4d90c19",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "07-baseline-reflection.svg": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018",
@@ -361,10 +349,10 @@
       "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
       "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
     },
-    "publication_binding_sha256": "cb0343c22d19b1695d910e7809d25c22e70e84f81d5654bf47ea97b9b6094263",
+    "publication_binding_sha256": "9a012fd2da65852bf456ba4d95c6df947f47df0adcff622c9ed2ae5ecfee9608",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.failure_diagnostics.20261001"
+    "transition_id": "scnsim.symmetric_elimination.20261002"
   },
   "results": {
     "batch": {
