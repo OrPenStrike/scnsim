@@ -85,6 +85,127 @@
       if (area.contains(event.target) || (areaButton && areaButton.contains(event.target))) return;
       hideShown("#navbarCollapse.show");
     });
+    versions(hideShown);
+  }
+  function versions(hideShown) {
+    var brand = document.querySelector("#quarto-header .navbar-brand");
+    var slot = document.querySelector("#quarto-header .navbar-brand-container");
+    if (!brand || !slot || slot.querySelector(".askr-version")) return;
+    var offset = document.querySelector('meta[name="quarto:offset"]');
+    var manifest = new URL((offset ? offset.getAttribute("content") : "./") + "askr-versions.json", location.href);
+    fetch(manifest.href).then(function (response) {
+      if (!response.ok) throw new Error("missing");
+      return response.json();
+    }).then(function (data) {
+      mountVersions(data, hideShown, brand, slot);
+    }).catch(function () {
+      var dataEl = document.getElementById("askr-versions");
+      if (!dataEl) return;
+      try { mountVersions(JSON.parse(dataEl.textContent), hideShown, brand, slot); } catch (error) { return; }
+    });
+  }
+  function mountVersions(data, hideShown, brand, slot) {
+    if (!data.versions || !data.versions.length || slot.querySelector(".askr-version")) return;
+    var params = new URLSearchParams(location.search);
+    var mode = params.get("askr-version-mode") === "title" ? "title" : (data.mode === "title" ? "title" : "inline");
+    var title = brand.textContent.trim();
+    if (params.get("askr-version-mode") === "title" && data.longTitle) title = data.longTitle;
+    function pathMatches(root) {
+      var path = location.pathname;
+      if (root === "/") return true;
+      var normalized = root.endsWith("/") ? root : root + "/";
+      return path === normalized.slice(0, -1) || path.indexOf(normalized) === 0;
+    }
+    function itemHref(item) {
+      if (item.href) {
+        var fixed = new URL(item.href, location.origin);
+        if (params.get("askr-version-mode")) fixed.searchParams.set("askr-version-mode", params.get("askr-version-mode"));
+        return fixed.pathname + fixed.search + fixed.hash;
+      }
+      var path = location.pathname;
+      var bases = data.versions.filter(function (version) { return version.root; })
+        .sort(function (a, b) { return b.root.length - a.root.length; });
+      var from = bases.filter(function (version) { return pathMatches(version.root); })[0];
+      var fromRoot = !from || from.root === "/" ? "/" : (from.root.endsWith("/") ? from.root : from.root + "/");
+      var rest = fromRoot === "/" ? path.replace(/^\//, "") : path.slice(fromRoot.length);
+      var toRoot = !item.root || item.root === "/" ? "/" : (item.root.endsWith("/") ? item.root : item.root + "/");
+      return toRoot + rest + location.search + location.hash;
+    }
+    var current = data.versions.filter(function (item) { return item.label === params.get("askr-version"); })[0];
+    if (!current) {
+      var rooted = data.versions.filter(function (item) { return item.root && pathMatches(item.root); })
+        .sort(function (a, b) { return b.root.length - a.root.length; });
+      current = rooted[0] || data.versions.filter(function (item) { return item.latest; })[0] || data.versions[0];
+    }
+    var root = document.createElement("div");
+    root.className = "askr-version";
+    root.dataset.mode = mode;
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "askr-version-button";
+    button.setAttribute("aria-haspopup", "listbox");
+    button.setAttribute("aria-expanded", "false");
+    var titleSpan = document.createElement("span");
+    titleSpan.className = "askr-version-title";
+    titleSpan.textContent = title;
+    button.appendChild(titleSpan);
+    if (mode === "inline") {
+      var number = document.createElement("span");
+      number.className = "askr-version-number";
+      number.textContent = current.label;
+      button.appendChild(number);
+    }
+    var chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chevron.setAttribute("class", "askr-version-chevron");
+    chevron.setAttribute("viewBox", "0 0 16 16");
+    chevron.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M4 6l4 4 4-4");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.6");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    chevron.appendChild(path);
+    button.appendChild(chevron);
+    var menu = document.createElement("div");
+    menu.className = "askr-version-menu";
+    menu.hidden = true;
+    menu.setAttribute("role", "listbox");
+    data.versions.forEach(function (item) {
+      var link = document.createElement("a");
+      link.href = itemHref(item);
+      link.setAttribute("role", "option");
+      if (item.label === current.label) link.setAttribute("aria-selected", "true");
+      var label = document.createElement("span");
+      label.textContent = item.label;
+      link.appendChild(label);
+      if (item.latest) {
+        var latest = document.createElement("span");
+        latest.className = "askr-version-latest";
+        latest.textContent = "Latest";
+        link.appendChild(latest);
+      }
+      menu.appendChild(link);
+    });
+    function setOpen(open) {
+      if (open) hideShown(".quarto-sidebar-collapse-item.show, #navbarCollapse.show");
+      menu.hidden = !open;
+      button.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    button.addEventListener("click", function (event) {
+      event.stopPropagation();
+      setOpen(menu.hidden);
+    });
+    document.addEventListener("click", function (event) {
+      if (!root.contains(event.target)) setOpen(false);
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") setOpen(false);
+    });
+    root.appendChild(button);
+    root.appendChild(menu);
+    slot.appendChild(root);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", menus);
   else menus();

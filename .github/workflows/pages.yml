@@ -1,4 +1,4 @@
-name: Dual-branch documentation Pages
+name: Versioned documentation Pages
 
 on:
   push:
@@ -10,8 +10,7 @@ on:
 permissions:
   contents: read
 
-# One lock covers both push sources and manual recovery. Each run snapshots
-# both remote heads only after it has acquired this workflow-level lock.
+# Capture the live develop head and every pinned release after one shared lock.
 concurrency:
   group: scnsim-dual-branch-pages
   cancel-in-progress: false
@@ -20,12 +19,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out workflow authority
+      - name: Check out presentation and deployment authority
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Snapshot both live branches after the shared lock
+      - name: Set up locked Python dependencies
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Snapshot source and verify every catalog tag
         id: sources
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -37,73 +42,98 @@ jobs:
             echo "Pages recovery must be dispatched from main or develop" >&2
             exit 1
           fi
-          main_live=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
-          develop_live=$(git ls-remote --exit-code origin refs/heads/develop | cut -f1)
-          [[ "$main_live" =~ ^[0-9a-f]{40}$ && "$develop_live" =~ ^[0-9a-f]{40}$ ]]
-          git fetch --no-tags --depth=1 origin "$main_live" "$develop_live"
-          main_sha=$main_live
-          develop_sha=$develop_live
-          if [[ "$EVENT_NAME" == pull_request ]]; then
-            candidate_sha=$(git rev-parse HEAD)
-            case "$TARGET_BRANCH" in
-              main) main_sha=$candidate_sha ;;
-              develop) develop_sha=$candidate_sha ;;
-              *) echo "Pages PR target must be main or develop" >&2; exit 1 ;;
-            esac
+          if [[ "$EVENT_NAME" == pull_request && "$TARGET_BRANCH" != main && "$TARGET_BRANCH" != develop ]]; then
+            echo "Pages PR target must be main or develop" >&2
+            exit 1
           fi
-          mkdir -p "$RUNNER_TEMP/scnsim-pages/main" "$RUNNER_TEMP/scnsim-pages/develop"
-          git archive "$main_sha" | tar -xf - -C "$RUNNER_TEMP/scnsim-pages/main"
-          git archive "$develop_sha" | tar -xf - -C "$RUNNER_TEMP/scnsim-pages/develop"
+          python_bin=$(uv python find 3.12)
+          presentation_sha=$(git rev-parse HEAD)
+          develop_live=$(git ls-remote --exit-code origin refs/heads/develop | cut -f1)
+          [[ "$presentation_sha" =~ ^[0-9a-f]{40}$ && "$develop_live" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags --depth=1 origin "$develop_live"
+          develop_sha=$develop_live
+          if [[ "$EVENT_NAME" == pull_request && "$TARGET_BRANCH" == develop ]]; then
+            develop_sha=$presentation_sha
+          fi
+          staging="$RUNNER_TEMP/scnsim-pages"
+          mkdir -p "$staging/presentation" "$staging/sources"
+          git archive "$presentation_sha" | tar -xf - -C "$staging/presentation"
+          plan=$("$python_bin" "$staging/presentation/scripts/pages_site.py" plan --catalog "$staging/presentation/scripts/pages_versions.json")
+          while IFS='|' read -r kind label slug tag commit; do
+            source="$staging/sources/$slug"
+            mkdir -p "$source"
+            if [[ "$kind" == development ]]; then
+              git archive "$develop_sha" | tar -xf - -C "$source"
+            elif [[ "$kind" == pinned-development ]]; then
+              git fetch --no-tags --depth=1 origin "$commit"
+              actual=$(git rev-parse 'FETCH_HEAD^{commit}')
+              if [[ "$actual" != "$commit" ]]; then
+                echo "Pinned development commit $commit is unavailable" >&2
+                exit 1
+              fi
+              git archive "$commit" | tar -xf - -C "$source"
+            else
+              git fetch --no-tags --depth=1 origin "refs/tags/$tag"
+              actual=$(git rev-parse 'FETCH_HEAD^{commit}')
+              if [[ "$actual" != "$commit" ]]; then
+                echo "Pages tag $tag no longer matches its pinned commit" >&2
+                exit 1
+              fi
+              git archive "$commit" | tar -xf - -C "$source"
+            fi
+          done <<< "$plan"
           {
-            echo "main_sha=$main_sha"
             echo "develop_sha=$develop_sha"
-            echo "main_live=$main_live"
             echo "develop_live=$develop_live"
+            echo "presentation_sha=$presentation_sha"
           } >> "$GITHUB_OUTPUT"
-          echo "Live main=$main_live develop=$develop_live; rendered main=$main_sha develop=$develop_sha"
-
-      - name: Set up locked Python dependencies and Quarto
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.6"
-          python-version: "3.12"
+          echo "content develop=$develop_sha; presentation=$presentation_sha; pinned release tags verified"
 
       - name: Set up Quarto 1.10.18
         uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
         with:
           version: "1.10.18"
 
-      - name: Render each branch from its own tracked snapshot
+      - name: Render each exact source with reviewed presentation
         env:
-          MAIN_SHA: ${{ steps.sources.outputs.main_sha }}
           DEVELOP_SHA: ${{ steps.sources.outputs.develop_sha }}
+          PRESENTATION_SHA: ${{ steps.sources.outputs.presentation_sha }}
         run: |
           set -euo pipefail
           python_bin=$(uv python find 3.12)
-          for branch in main develop; do
-            source="$RUNNER_TEMP/scnsim-pages/$branch"
-            if [[ "$branch" == main ]]; then sha=$MAIN_SHA; else sha=$DEVELOP_SHA; fi
-            "$python_bin" "$GITHUB_WORKSPACE/scripts/pages_site.py" prepare --source "$source" --branch "$branch" --sha "$sha"
+          staging="$RUNNER_TEMP/scnsim-pages"
+          authority="$staging/presentation"
+          plan=$("$python_bin" "$authority/scripts/pages_site.py" plan --catalog "$authority/scripts/pages_versions.json")
+          while IFS='|' read -r kind label slug tag commit; do
+            source="$staging/sources/$slug"
+            if [[ "$kind" == development ]]; then source_sha=$DEVELOP_SHA; else source_sha=$commit; fi
+            "$python_bin" "$authority/scripts/pages_site.py" prepare \
+              --catalog "$authority/scripts/pages_versions.json" \
+              --vendor "$authority/_extensions/arfiligol/askr" \
+              --source "$source" --label "$label" \
+              --source-sha "$source_sha" --presentation-sha "$PRESENTATION_SHA"
             (
               cd "$source"
               uv lock --check
-              UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/scnsim-pages/venv-$branch" uv sync --locked
+              UV_PROJECT_ENVIRONMENT="$staging/venv-$slug" uv sync --locked
               quarto render --profile pages --no-execute
             )
-          done
+          done <<< "$plan"
 
       - name: Validate and assemble one Pages tree
         env:
-          MAIN_SHA: ${{ steps.sources.outputs.main_sha }}
           DEVELOP_SHA: ${{ steps.sources.outputs.develop_sha }}
+          PRESENTATION_SHA: ${{ steps.sources.outputs.presentation_sha }}
         run: |
           set -euo pipefail
           python_bin=$(uv python find 3.12)
-          "$python_bin" scripts/pages_site.py assemble \
-            --template scripts/pages_root_template.html \
-            --main "$RUNNER_TEMP/scnsim-pages/main" --main-sha "$MAIN_SHA" \
-            --develop "$RUNNER_TEMP/scnsim-pages/develop" --develop-sha "$DEVELOP_SHA" \
-            --output "$RUNNER_TEMP/scnsim-pages/site"
+          staging="$RUNNER_TEMP/scnsim-pages"
+          authority="$staging/presentation"
+          "$python_bin" "$authority/scripts/pages_site.py" assemble \
+            --catalog "$authority/scripts/pages_versions.json" \
+            --template "$authority/scripts/pages_root_template.html" \
+            --sources "$staging/sources" --develop-sha "$DEVELOP_SHA" \
+            --presentation-sha "$PRESENTATION_SHA" --output "$staging/site"
 
       - name: Upload one Pages artifact
         if: github.event_name != 'pull_request'
