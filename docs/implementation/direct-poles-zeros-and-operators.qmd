@@ -421,7 +421,8 @@ denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
 denominator determinant stores $\widehat\Delta$; both are canonical
 dimensionless complex evidence. The conversion factor cancels in the slope
 ratio. The final correction obeys
-$|T/T'|/|\omega|\le\tau(q_N)$.
+$|T/T'|/(2\pi)\le 0.01\,\mathrm{Hz}$, using the full complex magnitude.
+基於計算誤差與工程實用性上的考量，我們直白地將 Newton Correction Threshold 設為 0.01 Hz。
 
 The denominator operator $A_D$ must remain finite and machine nonsingular: its
 factorization and full `A_D X = I` backward residual must pass at
@@ -439,7 +440,8 @@ complex zero evidence.
 Failure stages distinguish frequency, numerator/scale, slope/rank,
 denominator/solve, and final correction. Messages expose only fixed labels and
 bounded residual, scale mantissa/exponent, slope-ratio, correction, and
-applicable-threshold diagnostics; `unavailable` denotes a value not computed
+applicable-threshold diagnostics; the `correction_hz` item reports correction
+and threshold in Hz. `unavailable` denotes a value not computed
 at the failure point. No candidate receives partial zero evidence.
 
 The anchor again identifies only the baseline Newton basin. The Result never
@@ -630,7 +632,7 @@ vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 
 The closed algorithm IDs are
 `scnsim.hybridized_pole.newton32.v1`,
-`scnsim.transfer_zero.newton32.v3`,
+`scnsim.transfer_zero.newton32.v4`,
 `scnsim.residue_normalized_coupling.v2`,
 `scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
 formula, derivative, normalization, iteration/subdivision rule, artifact

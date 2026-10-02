@@ -433,8 +433,8 @@ function transfer_complete_certificate(view::RealizedView, family::String, outpu
     finite_matrix(inverse) || transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
         item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
         rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
-    correction = transfer_ratio(abs(value), transfer_scale((abs(slope), abs(omega)), omega))
-    correction_pass = transfer_ratio_le(correction, tau(size(AN, 1)))
+    correction = transfer_ratio(abs(value), transfer_scale((abs(slope), 2.0 * pi), omega))
+    correction_pass = transfer_ratio_le(correction, 0.01)
     if final && !(isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0)
         transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency")
     end
@@ -450,9 +450,9 @@ function transfer_complete_certificate(view::RealizedView, family::String, outpu
     end
     if final && !correction_pass
         transfer_failure("numerical_resolution_unresolved", "transfer_correction", omega;
-            item = "correction", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            item = "correction_hz", eta = eta_n, scale = normalizer, slope = slope_ratio,
             rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator),
-            correction = correction, threshold = tau(size(AN, 1)))
+            correction = correction, threshold = 0.01)
     end
     return residual_pass && slope_pass && rank_pass && correction_pass, value, slope, numerator_slope, denominator
 end

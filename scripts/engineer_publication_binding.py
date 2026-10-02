@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Mapping
 
 
-TRANSITION_ID = "scnsim.zarr_chunk_order.20261003"
-PRIOR_PUBLISHED_GIT_COMMIT = "39e887cdf5cc03f9d166b3a98ad06ac23ce3267b"
-TRANSITION_FILE = Path(__file__).with_name("engineer_publication_transitions_zarr_tail_hybridized_assembly.json")
+TRANSITION_ID = "scnsim.transferzero.correction_hz.20261003"
+PRIOR_PUBLISHED_GIT_COMMIT = "b69a4ba12d73b647f60c28c2dc4be764ca8252c0"
+TRANSITION_FILE = Path(__file__).with_name("engineer_publication_transitions_correction_hz.json")
 _TRANSITION_NAMES = {
     f"chapter-{chapter:02d}-artifacts.json" for chapter in range(1, 9)
 }
