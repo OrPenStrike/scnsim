@@ -1,0 +1,92 @@
+<meta name="theme-color" content="#faf8f8">
+<script>
+(function () {
+  var light = "#faf8f8", dark = "#161618";
+  function paint() {
+    var link = document.querySelector("link#quarto-bootstrap.quarto-color-alternate");
+    var on = link && link.getAttribute("rel") === "stylesheet";
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", on ? dark : light);
+    document.documentElement.style.colorScheme = on ? "dark" : "light";
+  }
+  function hook() {
+    paint();
+    var link = document.querySelector("link#quarto-bootstrap.quarto-color-alternate");
+    if (link) new MutationObserver(paint).observe(link, { attributes: true, attributeFilter: ["rel"] });
+    var orig = window.quartoToggleColorScheme;
+    if (!orig || orig.__qdk) return;
+    window.quartoToggleColorScheme = function () {
+      var result = orig.apply(this, arguments);
+      paint();
+      return result;
+    };
+    window.quartoToggleColorScheme.__qdk = true;
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", hook);
+  else hook();
+
+  function hideShown(selector) {
+    document.querySelectorAll(selector).forEach(function (el) {
+      if (!el.classList.contains("show") || !window.bootstrap) return;
+      window.bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide();
+    });
+  }
+  function menus() {
+    if (!document.querySelector("#qdk-area-glass")) {
+      var glass = document.createElement("div");
+      glass.id = "qdk-area-glass";
+      glass.style.position = "fixed";
+      glass.style.inset = "0";
+      document.body.appendChild(glass);
+    }
+    var area = document.querySelector("#navbarCollapse");
+    var pages = document.querySelector("#quarto-sidebar");
+    var areaGlass = document.querySelector("#qdk-area-glass");
+    var pagesGlass = document.querySelector("#quarto-sidebar-glass");
+    if (area) {
+      area.addEventListener("show.bs.collapse", function (event) {
+        if (event.target !== area) return;
+        area.classList.add("qdk-open");
+        areaGlass.classList.add("qdk-glass-in");
+      });
+      area.addEventListener("hide.bs.collapse", function (event) {
+        if (event.target !== area) return;
+        area.classList.remove("qdk-open");
+        areaGlass.classList.remove("qdk-glass-in");
+      });
+    }
+    if (pages && pagesGlass) {
+      pages.addEventListener("show.bs.collapse", function (event) {
+        if (event.target !== pages) return;
+        pages.classList.add("qdk-open");
+        pagesGlass.classList.add("qdk-glass-in");
+      });
+      pages.addEventListener("hide.bs.collapse", function (event) {
+        if (event.target !== pages) return;
+        pages.classList.remove("qdk-open");
+        pagesGlass.classList.remove("qdk-glass-in");
+      });
+      pages.addEventListener("click", function (event) {
+        if (event.target.closest("a, button, .sidebar-item-toggle")) return;
+        hideShown(".quarto-sidebar-collapse-item.show");
+      });
+    }
+    var areaButton = document.querySelector("#quarto-header .navbar-toggler");
+    var pagesButton = document.querySelector("#quarto-header .quarto-btn-toggle");
+    if (areaButton) areaButton.addEventListener("click", function () {
+      hideShown(".quarto-sidebar-collapse-item.show");
+    });
+    if (pagesButton) pagesButton.addEventListener("click", function () {
+      hideShown("#navbarCollapse.show");
+    });
+    document.addEventListener("click", function (event) {
+      var area = document.querySelector("#navbarCollapse");
+      if (!area || !area.classList.contains("show")) return;
+      if (area.contains(event.target) || (areaButton && areaButton.contains(event.target))) return;
+      hideShown("#navbarCollapse.show");
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", menus);
+  else menus();
+})();
+</script>

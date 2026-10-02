@@ -1,0 +1,156 @@
+/* Dark values intentionally live beside the light token authority for native Quarto switching. */
+/*-- scss:defaults --*/
+$body-bg: #161618;
+$body-color: #d4d4d4;
+$link-color: #7b97aa;
+$navbar-bg: #161618;
+$navbar-fg: #ebebec;
+$navbar-hl: #7b97aa;
+$sidebar-bg: #161618;
+$sidebar-fg: #d4d4d4;
+$sidebar-hl: #7b97aa;
+$toc-color: #646464;
+$border-color: #393639;
+$headings-color: #ebebec;
+$table-border-color: #393639;
+$table-striped-bg: rgba(143, 159, 169, .15);
+$code-color: #ebebec;
+$code-block-bg: #1f1f22;
+$pre-color: #ebebec;
+
+/*-- scss:rules --*/
+html { color-scheme: dark; }
+#quarto-appendix.default {
+  background-color: var(--qdk-canvas);
+  border-top-color: var(--qdk-border);
+  color: var(--qdk-text);
+}
+#quarto-appendix.default .quarto-appendix-heading {
+  color: var(--qdk-heading);
+  opacity: 1;
+}
+#quarto-appendix.default .csl-entry {
+  color: var(--qdk-text);
+}
+#quarto-appendix.default .csl-entry a {
+  color: var(--qdk-link);
+}
+#quarto-appendix.default .quarto-appendix-bibtex,
+#quarto-appendix.default .quarto-appendix-citeas {
+  border-color: var(--qdk-border);
+}
+
+:root {
+  --qdk-canvas: #161618;
+  --qdk-text: #d4d4d4;
+  --qdk-heading: #ebebec;
+  --qdk-muted: #646464;
+  --qdk-link: #7b97aa;
+  --qdk-tertiary: #84a59d;
+  --qdk-border: #393639;
+  --qdk-divider-content: rgba(212, 212, 212, .24);
+  --qdk-divider-layout: rgba(212, 212, 212, .10);
+  --qdk-highlight: rgba(143, 159, 169, .15);
+  --qdk-mark: #b3aa0288;
+  --qdk-focus: #7b97aa;
+}
+
+/*
+ * Quarto swaps this stylesheet for the light alternative without changing the
+ * body's theme class. Keep these unprefixed rules in this dark layer so the
+ * light theme retains its native palette while every Pandoc token remains
+ * legible on Quartz's canvas.
+ */
+div.sourceCode,
+pre.sourceCode,
+pre:has(code.sourceCode) {
+  background-color: #1f1f22;
+  background-image: none;
+  border-color: #393639;
+  color: #d4d4d4;
+}
+
+div.sourceCode code,
+pre.sourceCode code,
+pre:has(code.sourceCode) code {
+  background: transparent;
+  color: #d4d4d4;
+}
+
+/* The outer Quarto source wrapper owns the one dark frame. */
+div.sourceCode > pre.sourceCode,
+div.sourceCode > pre.sourceCode > code.sourceCode {
+  background: transparent;
+  background-image: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+pre > code.sourceCode > span,
+code.sourceCode > span,
+div.sourceCode,
+code.sourceCode span {
+  color: #d4d4d4;
+}
+
+/* Pandoc/Quarto syntax classes: GitHub Dark-like hues, no neon fallback. */
+code.sourceCode span.co,
+code.sourceCode span.do {
+  color: #8b949e;
+}
+
+code.sourceCode span.kw,
+code.sourceCode span.cf,
+code.sourceCode span.op {
+  color: #ff7b72;
+}
+
+code.sourceCode span.st,
+code.sourceCode span.ch,
+code.sourceCode span.ss,
+code.sourceCode span.vs,
+code.sourceCode span.dv,
+code.sourceCode span.fl,
+code.sourceCode span.bn,
+code.sourceCode span.cn {
+  color: #a5d6ff;
+}
+
+code.sourceCode span.fu {
+  color: #d2a8ff;
+}
+
+code.sourceCode span.bu,
+code.sourceCode span.dt,
+code.sourceCode span.at,
+code.sourceCode span.ot,
+code.sourceCode span.va,
+code.sourceCode span.ex,
+code.sourceCode span.im {
+  color: #79c0ff;
+}
+
+pre.numberSource,
+code.sourceCode > span > a:first-child {
+  border-color: #393639;
+  color: #8b949e;
+}
+
+.code-copy-button {
+  background-color: #1f1f22;
+  border: 1px solid #393639;
+  color: #d4d4d4;
+}
+
+.code-copy-button > .bi::before {
+  /* Quarto supplies this icon as an embedded SVG; neutralize its source hue. */
+  filter: grayscale(1) brightness(1.3);
+}
+
+.code-copy-button:hover,
+.code-copy-button:focus-visible,
+.code-copy-button-checked {
+  background-color: #393639;
+  color: #e6edf3;
+}

@@ -1,7 +1,3 @@
----
-output-file: index.html
----
-
 # SCNSim
 
 **Build one physical circuit, choose the network you want to examine, and
@@ -235,6 +231,14 @@ Start with the [Engineer course](docs/index.qmd). Chapters 1–4 form the
 mainline path from a grounded LC through named two-Port S21 and the four-Port
 capstone. Chapters 5–8 continue through reusable Libraries, diagram
 composition, multi-conductor networks, and restart-safe report/resolve.
+
+The [documentation version chooser](https://orpenstrike.github.io/scnsim/)
+links the independently rendered [main](https://orpenstrike.github.io/scnsim/main/)
+and [develop](https://orpenstrike.github.io/scnsim/develop/) sites. Each shows
+its package version and rendered commit, keeps search branch-local, and points
+Quarto's View source controls to that commit. The Pages build runs with
+`--no-execute`; it does not run notebooks or solvers. Both branches must have
+their own tracked Askr theme and render successfully before deployment.
 
 For a consuming repository, pin one reviewed SCNSim commit in that
 repository's `pyproject.toml` and lockfile:

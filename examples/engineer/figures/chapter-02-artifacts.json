@@ -319,7 +319,7 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "e27fe050ce7f9cfc0eae07e7591cd3757f4bd1a70548020b9f2095327e462eda",
+    "binding_sha256": "17d27d7f272ee816e092e5b3b3a948f3f5fe047e49489f73a46605f50cff95f8",
     "generator_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5",
     "source_tree_sha256": "a708dd88bdb7fe74e9a2028bbfbe5dc40fa9a183bd23568c38917d2ef928fc9a"
   },
@@ -372,21 +372,25 @@
         "after_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5",
         "before_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5"
       },
-      "source_files": {
-        "src/scnsim/_numeric_presentation.py": {
-          "after_sha256": "222f8d296bd9c31f308e85fcc5dedbed555d3efc1d3df201027be4d6368774ee",
-          "before_sha256": "1b44ad153b11410f5b61b653297a51d07e8ddf09f4dc0847cec148e928b8d515"
+      "source_files": {},
+      "teaching_sources": {
+        "examples/engineer/chapter-02/01-build.qmd": {
+          "after_sha256": "078c257e2a9dc39a7fb1fe05cd82398ab53e299dcb411738fe0ab883b54ce575",
+          "before_sha256": "7f40dfa93e947b808efa0a2d7337913cf2693d5a5fec3b7e18091d048fbb3e2e"
         },
-        "src/scnsim/_report.py": {
-          "after_sha256": "b8053298519076d63b9e478055c9a384f59a62a1128780e23d482fb60eca41f6",
-          "before_sha256": "6ab6d50f77a2854f5e3162411c50ca2d9b98c80358335abe0fe13d43db3c5ba4"
+        "examples/engineer/chapter-02/02-sweep.qmd": {
+          "after_sha256": "e5eb21c17ca71f2ee4d36188859df38e0e8add6b83a43d24fb60ccf819abfdd7",
+          "before_sha256": "e390f9ac68d6bd5d28f27dce0560486c0f546ff39c3feefc9b2e0305f5ac0132"
         },
-        "src/scnsim/specs.py": {
-          "after_sha256": "f45e7d350abd46568d617f8fc6a480f2ba3f23e94b79413397e2abc4c8cfb4a0",
-          "before_sha256": "856059fa45c580be694291002e310d641bcc007d7e3f5c5875a2612bddf6fc52"
+        "examples/engineer/chapter-02/03-optimize.qmd": {
+          "after_sha256": "27f82f06b2318ca5e0e9cfcb325505c29211d2e34e2f574c593370160f1e3524",
+          "before_sha256": "0bb080dfd02e10eb9bd8c8c8916f882027bef2e8e24ffb51100e72035b03ad8a"
+        },
+        "examples/engineer/chapter-02/04-optional-spaces.qmd": {
+          "after_sha256": "737c45d8e6317ac76c98ded27f18a3d6656ee46adef5264d2780663dece0577e",
+          "before_sha256": "91556c4dbe4bf93a56ee6434412ff3c497698ffa7d31e709e4fe5c186d63d48a"
         }
-      },
-      "teaching_sources": {}
+      }
     },
     "execution_identity_retained": true,
     "historical_execution": {
@@ -415,7 +419,7 @@
         "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
         "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
       },
-      "prior_publication_binding_sha256": "6b0ebf2960e5bd762a7f24c33ac4699f1c6b3ee30a16ea04da6c9bc839e7a7ac",
+      "prior_publication_binding_sha256": "e27fe050ce7f9cfc0eae07e7591cd3757f4bd1a70548020b9f2095327e462eda",
       "prior_redrawn_artifacts": {
         "02-capacitance-sweep.svg": {
           "execution_sha256": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
@@ -430,9 +434,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "0e7d0b93119b9bece0d37c8f45657c53da662c522e18f11cb83c4a2d5cc2e2ed",
-    "prior_publication_binding_sha256": "6b0ebf2960e5bd762a7f24c33ac4699f1c6b3ee30a16ea04da6c9bc839e7a7ac",
-    "prior_publication_rebind_sha256": "2934cd5f7dc38f37906f677c5fe68d2589a9570fb373f53dbd988e0ab3b9576e",
+    "prior_manifest_sha256": "af2e3459e133f55f4adc56adfd161c32afaf906e04f9157c45e6cd34e73cad0e",
+    "prior_publication_binding_sha256": "e27fe050ce7f9cfc0eae07e7591cd3757f4bd1a70548020b9f2095327e462eda",
+    "prior_publication_rebind_sha256": "b6a9432092c6b25cfe4983df53c6b151295572da07cbf6157224d7ff526c4dc0",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",
@@ -445,10 +449,10 @@
       "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
       "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
     },
-    "publication_binding_sha256": "e27fe050ce7f9cfc0eae07e7591cd3757f4bd1a70548020b9f2095327e462eda",
+    "publication_binding_sha256": "17d27d7f272ee816e092e5b3b3a948f3f5fe047e49489f73a46605f50cff95f8",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.research_showcase.20260918"
+    "transition_id": "scnsim.pages_main_theme.20261002"
   },
   "results": {
     "capacitance_sweep": {

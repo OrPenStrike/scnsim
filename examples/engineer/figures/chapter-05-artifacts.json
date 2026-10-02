@@ -121,7 +121,7 @@
     "source_receipt_sha256": "ca4bd9f7ca712912fb641fef063636830b9d0e98ba2b31b6f97acf55875326d0"
   },
   "publication_binding": {
-    "binding_sha256": "8a05dcb10c406d887b1bf417d27890d4885814a036a07c88032ccabcdb6d697c",
+    "binding_sha256": "ef4b7e92dcba576209941e5523020ebdd9b21859e027449debe6c4706252e888",
     "generator_sha256": "3eb0cd6a3820e04f99b1fae7c878f7d3156f9d8d46512c83f78115a5d241249a",
     "source_tree_sha256": "a708dd88bdb7fe74e9a2028bbfbe5dc40fa9a183bd23568c38917d2ef928fc9a"
   },
@@ -150,21 +150,21 @@
         "after_sha256": "3eb0cd6a3820e04f99b1fae7c878f7d3156f9d8d46512c83f78115a5d241249a",
         "before_sha256": "3eb0cd6a3820e04f99b1fae7c878f7d3156f9d8d46512c83f78115a5d241249a"
       },
-      "source_files": {
-        "src/scnsim/_numeric_presentation.py": {
-          "after_sha256": "222f8d296bd9c31f308e85fcc5dedbed555d3efc1d3df201027be4d6368774ee",
-          "before_sha256": "1b44ad153b11410f5b61b653297a51d07e8ddf09f4dc0847cec148e928b8d515"
+      "source_files": {},
+      "teaching_sources": {
+        "examples/engineer/chapter-05/01-library.qmd": {
+          "after_sha256": "66fdcca68e269d2a432b09b2ee71203cba7850c6c101673a84627b01544285cb",
+          "before_sha256": "5734b961bc9197202b6c8f0e9985e5c4bf796389c25c579c058eb7d3d3ca944a"
         },
-        "src/scnsim/_report.py": {
-          "after_sha256": "b8053298519076d63b9e478055c9a384f59a62a1128780e23d482fb60eca41f6",
-          "before_sha256": "6ab6d50f77a2854f5e3162411c50ca2d9b98c80358335abe0fe13d43db3c5ba4"
+        "examples/engineer/chapter-05/02-instance.qmd": {
+          "after_sha256": "88b44ff55664a9464fb8baa285ed76318921144e91648463943d4a7d0895701d",
+          "before_sha256": "083dbe6f77c6d832feb05948214a6cef8642167c363b728577d24f881244be20"
         },
-        "src/scnsim/specs.py": {
-          "after_sha256": "f45e7d350abd46568d617f8fc6a480f2ba3f23e94b79413397e2abc4c8cfb4a0",
-          "before_sha256": "856059fa45c580be694291002e310d641bcc007d7e3f5c5875a2612bddf6fc52"
+        "examples/engineer/chapter-05/03-reuse.qmd": {
+          "after_sha256": "fa0edb14f35fc7a2f937f3c5a10e44bfd95e727cd7de9ce5225d2edd25b7d815",
+          "before_sha256": "9a958f376b9c21ec987790c931d58cbf1aebcac8c4f7613e813cda633dd49807"
         }
-      },
-      "teaching_sources": {}
+      }
     },
     "execution_identity_retained": true,
     "historical_execution": {
@@ -177,23 +177,23 @@
       "prior_publication_artifacts": {
         "05-reusable-composite.svg": "fe6a5f108d8bf8a06f8bc92383d57f96fca7358fe948bc32fdfda385d2ef1828"
       },
-      "prior_publication_binding_sha256": "2264de5b2913d4bd5b3fed78008093df451b9562e72948d12423457a3cfb8008",
+      "prior_publication_binding_sha256": "8a05dcb10c406d887b1bf417d27890d4885814a036a07c88032ccabcdb6d697c",
       "prior_redrawn_artifacts": {},
       "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "afc693c4722ca5d98723b9c44bdba072a4665e5e6d266584e2cc0f3d21d0e24f",
-    "prior_publication_binding_sha256": "2264de5b2913d4bd5b3fed78008093df451b9562e72948d12423457a3cfb8008",
-    "prior_publication_rebind_sha256": "6f37921662c31c321290a3d33820f92f66876713e3a5d8d397d9a86edb186849",
+    "prior_manifest_sha256": "ba4a3d25897a5702e216d1f4165c79f35f6c4c3a9fb5205d8971d7a989ee4f0a",
+    "prior_publication_binding_sha256": "8a05dcb10c406d887b1bf417d27890d4885814a036a07c88032ccabcdb6d697c",
+    "prior_publication_rebind_sha256": "8da2ee9e63d7587d57ab3f363e597e58ebb2d8ac8e7c35093084edde27325aa7",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "05-reusable-composite.svg": "fe6a5f108d8bf8a06f8bc92383d57f96fca7358fe948bc32fdfda385d2ef1828"
     },
-    "publication_binding_sha256": "8a05dcb10c406d887b1bf417d27890d4885814a036a07c88032ccabcdb6d697c",
+    "publication_binding_sha256": "ef4b7e92dcba576209941e5523020ebdd9b21859e027449debe6c4706252e888",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.research_showcase.20260918"
+    "transition_id": "scnsim.pages_main_theme.20261002"
   },
   "schema": "scnsim.engineer_chapter5_artifacts.v1"
 }

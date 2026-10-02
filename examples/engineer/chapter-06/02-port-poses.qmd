@@ -4,7 +4,6 @@ subtitle: "Diagram customization engineer course"
 jupyter: python3
 execute:
   enabled: false
-format: html
 ---
 
 ::: {.callout-note title="Prerequisite" appearance="simple"}

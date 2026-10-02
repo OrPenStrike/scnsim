@@ -1,0 +1,129 @@
+name: Dual-branch documentation Pages
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One lock covers both push sources and manual recovery. Each run snapshots
+# both remote heads only after it has acquired this workflow-level lock.
+concurrency:
+  group: scnsim-dual-branch-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out workflow authority
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Snapshot both live branches after the shared lock
+        id: sources
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_BRANCH: ${{ github.base_ref }}
+          REF_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != pull_request && "$REF_BRANCH" != main && "$REF_BRANCH" != develop ]]; then
+            echo "Pages recovery must be dispatched from main or develop" >&2
+            exit 1
+          fi
+          main_live=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
+          develop_live=$(git ls-remote --exit-code origin refs/heads/develop | cut -f1)
+          [[ "$main_live" =~ ^[0-9a-f]{40}$ && "$develop_live" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags --depth=1 origin "$main_live" "$develop_live"
+          main_sha=$main_live
+          develop_sha=$develop_live
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            candidate_sha=$(git rev-parse HEAD)
+            case "$TARGET_BRANCH" in
+              main) main_sha=$candidate_sha ;;
+              develop) develop_sha=$candidate_sha ;;
+              *) echo "Pages PR target must be main or develop" >&2; exit 1 ;;
+            esac
+          fi
+          mkdir -p "$RUNNER_TEMP/scnsim-pages/main" "$RUNNER_TEMP/scnsim-pages/develop"
+          git archive "$main_sha" | tar -xf - -C "$RUNNER_TEMP/scnsim-pages/main"
+          git archive "$develop_sha" | tar -xf - -C "$RUNNER_TEMP/scnsim-pages/develop"
+          {
+            echo "main_sha=$main_sha"
+            echo "develop_sha=$develop_sha"
+            echo "main_live=$main_live"
+            echo "develop_live=$develop_live"
+          } >> "$GITHUB_OUTPUT"
+          echo "Live main=$main_live develop=$develop_live; rendered main=$main_sha develop=$develop_sha"
+
+      - name: Set up locked Python dependencies and Quarto
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.6"
+          python-version: "3.12"
+
+      - name: Set up Quarto 1.10.18
+        uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+        with:
+          version: "1.10.18"
+
+      - name: Render each branch from its own tracked snapshot
+        env:
+          MAIN_SHA: ${{ steps.sources.outputs.main_sha }}
+          DEVELOP_SHA: ${{ steps.sources.outputs.develop_sha }}
+        run: |
+          set -euo pipefail
+          python_bin=$(uv python find 3.12)
+          for branch in main develop; do
+            source="$RUNNER_TEMP/scnsim-pages/$branch"
+            if [[ "$branch" == main ]]; then sha=$MAIN_SHA; else sha=$DEVELOP_SHA; fi
+            "$python_bin" "$GITHUB_WORKSPACE/scripts/pages_site.py" prepare --source "$source" --branch "$branch" --sha "$sha"
+            (
+              cd "$source"
+              uv lock --check
+              UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/scnsim-pages/venv-$branch" uv sync --locked
+              quarto render --profile pages --no-execute
+            )
+          done
+
+      - name: Validate and assemble one Pages tree
+        env:
+          MAIN_SHA: ${{ steps.sources.outputs.main_sha }}
+          DEVELOP_SHA: ${{ steps.sources.outputs.develop_sha }}
+        run: |
+          set -euo pipefail
+          python_bin=$(uv python find 3.12)
+          "$python_bin" scripts/pages_site.py assemble \
+            --template scripts/pages_root_template.html \
+            --main "$RUNNER_TEMP/scnsim-pages/main" --main-sha "$MAIN_SHA" \
+            --develop "$RUNNER_TEMP/scnsim-pages/develop" --develop-sha "$DEVELOP_SHA" \
+            --output "$RUNNER_TEMP/scnsim-pages/site"
+
+      - name: Upload one Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: ${{ runner.temp }}/scnsim-pages/site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - name: Deploy the validated combined artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
