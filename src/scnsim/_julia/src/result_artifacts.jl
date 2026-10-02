@@ -81,7 +81,7 @@ function dataset_entry(path::String, chunks::Vector{String})
     return Dict{String,Any}(
         "path" => path,
         "metadata_path" => path * "/.zarray",
-        "chunk_paths" => chunks,
+        "chunk_paths" => sort(chunks),
     )
 end
 

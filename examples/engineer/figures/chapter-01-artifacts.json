@@ -193,9 +193,9 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "9d7c91c9048f870443cab7bd66512264767b5df3c7291805452ba48c19c0e77d",
+    "binding_sha256": "a61f1ae3cba1d25210804643ed36bd59b87af069cc67914b34898e458741065b",
     "generator_sha256": "13ef4379b045230ad3458359e61a2251302f12881850d4a203f742934e2b9a3f",
-    "source_tree_sha256": "1040eef7fc0203ac2109af1295b7589e04cfe9848296f280d840b5de7b8d9cb7"
+    "source_tree_sha256": "ed3bcaa6bbc5e751f638d207c6796d01ebfa0991804efd5249b8017e06db7011"
   },
   "publication_rebind": {
     "deltas": {
@@ -245,21 +245,9 @@
         "before_sha256": "13ef4379b045230ad3458359e61a2251302f12881850d4a203f742934e2b9a3f"
       },
       "source_files": {
-        "src/scnsim/_canonical.py": {
-          "after_sha256": "66f233f340ec4703166cd89a71311964164557c073d12c20e099bb7238c08fec",
-          "before_sha256": "d6be5c1622a6b9204c914834af071af6d5294fc1ac6e30c47948e9498a5e82b7"
-        },
-        "src/scnsim/_julia/src/direct_quantities.jl": {
-          "after_sha256": "72fb377a51dc5feb32b24a3b9867ac21932c2b22f66ce4f4ed810abee7f66803",
-          "before_sha256": "39cf7c3a92febd2abc811450a60544b685dcc60f4e105900a8355d68c8558029"
-        },
-        "src/scnsim/_julia/src/hb.jl": {
-          "after_sha256": "1eaf2c2bc1209edcd400cc8d89cd618d811af970dd6e2f983e39277c64581f99",
-          "before_sha256": "f5619c01636c2b26475e0e8f72b19b8c834727346834d1d523432304c392c902"
-        },
         "src/scnsim/_julia/src/result_artifacts.jl": {
-          "after_sha256": "263231b562b381b341efbd8ec55fb5a820118152cc5fed27383b74bdbcf47ee6",
-          "before_sha256": "f6d2efe74b77cc43049a9d1a3ac61cd8b260579260eed9fe245c519a20b66972"
+          "after_sha256": "ed21f7eb0796333b16fe4f32ee9664198f96a9d170a5e996386f81d8007e7102",
+          "before_sha256": "263231b562b381b341efbd8ec55fb5a820118152cc5fed27383b74bdbcf47ee6"
         }
       },
       "teaching_sources": {}
@@ -287,7 +275,7 @@
         "01-s11-data.csv": "30fa4cc4ca0baa16b7ce546c232b418749fa4868694a15bd213bf9ba45189c46",
         "01-s11-selected.svg": "0e08b8ee2b8ab23f891780e8c877e48e62ed631ea2b4f5afd8b9d05963fab1f4"
       },
-      "prior_publication_binding_sha256": "87281311f816fe3763d47cfba3fe6e23d8d5c84be33b17062e90658140f73f36",
+      "prior_publication_binding_sha256": "9d7c91c9048f870443cab7bd66512264767b5df3c7291805452ba48c19c0e77d",
       "prior_redrawn_artifacts": {
         "01-s11-baseline.svg": {
           "execution_sha256": "3c8e5cc31c17c6d4e8cdf7925e861a925fc323246816b15898a925dd7b89c525",
@@ -302,9 +290,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "5dc9af3d30e1ff531e94c09b3479723d43b6f0b3f250a74ee49d38dc7f5640be",
-    "prior_publication_binding_sha256": "87281311f816fe3763d47cfba3fe6e23d8d5c84be33b17062e90658140f73f36",
-    "prior_publication_rebind_sha256": "f7529cad069c36e4d5386fa9426c6bae88fc1176584f0dd1e249ab3d8ae42090",
+    "prior_manifest_sha256": "117c6aa61c3e51f3dc12d20ae25b8a6e156e6867740ca2d70ef3b2b2ef0c6c62",
+    "prior_publication_binding_sha256": "9d7c91c9048f870443cab7bd66512264767b5df3c7291805452ba48c19c0e77d",
+    "prior_publication_rebind_sha256": "213fdb1bf02d6a51e1b941fd19bdfd0bbe42eaa32e5bb7dcfb077674dceea281",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "01-authoring.svg": "369b761abdf6fc140af02c4885b2eca45f35b057990eeebaf39299a43d3252b3",
@@ -315,10 +303,10 @@
       "01-s11-data.csv": "30fa4cc4ca0baa16b7ce546c232b418749fa4868694a15bd213bf9ba45189c46",
       "01-s11-selected.svg": "0e08b8ee2b8ab23f891780e8c877e48e62ed631ea2b4f5afd8b9d05963fab1f4"
     },
-    "publication_binding_sha256": "9d7c91c9048f870443cab7bd66512264767b5df3c7291805452ba48c19c0e77d",
+    "publication_binding_sha256": "a61f1ae3cba1d25210804643ed36bd59b87af069cc67914b34898e458741065b",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.zarr_tail_hybridized_assembly.20261002"
+    "transition_id": "scnsim.zarr_chunk_order.20261003"
   },
   "results": {
     "baseline_direct": {
