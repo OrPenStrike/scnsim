@@ -69,6 +69,17 @@ scope `CONVERGING`; it neither changes the accepted dev1–dev6 runtime slices
 nor represents a stable release. The package metadata and CI version check
 name this one exception directly rather than weakening the general rule.
 
+The documentation Pages root chooses between independently rendered `main`
+and `develop` sites. A shared workflow lock precedes the capture of both live
+branch commits. Each render uses its own tracked source, Askr theme, and locked
+dependencies with Quarto 1.10.18 and `--no-execute`; it shows the branch,
+package version, and source commit. Search is branch-local, and Quarto View
+source controls point to the rendered commit. A pull request validates its
+candidate target with the captured other branch but does not deploy. A push
+publishes one validated combined artifact. Missing theme, source, or render
+validation fails before deployment; the build never substitutes one branch's
+theme or executes a solver.
+
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
 that row; the current Full V1 acceptance covers their combined public

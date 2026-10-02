@@ -244,7 +244,7 @@
     "shared_workspace_unchanged_during_resume": true
   },
   "publication_binding": {
-    "binding_sha256": "428cae4befb9db304d7dc937f81fed3b4b8cab0efb76a56dd6c03b872ce4ceb1",
+    "binding_sha256": "16a43e0ed1ff91ad5cdad41563d5791ae6286653c922dc8328a7b1a16f6df93b",
     "generator_sha256": "cd1722f5ac617c6fedf3fbb6e227b06758a4229e95e68364510af78fdb563105",
     "source_tree_sha256": "a708dd88bdb7fe74e9a2028bbfbe5dc40fa9a183bd23568c38917d2ef928fc9a"
   },
@@ -275,21 +275,17 @@
         "after_sha256": "cd1722f5ac617c6fedf3fbb6e227b06758a4229e95e68364510af78fdb563105",
         "before_sha256": "cd1722f5ac617c6fedf3fbb6e227b06758a4229e95e68364510af78fdb563105"
       },
-      "source_files": {
-        "src/scnsim/_numeric_presentation.py": {
-          "after_sha256": "222f8d296bd9c31f308e85fcc5dedbed555d3efc1d3df201027be4d6368774ee",
-          "before_sha256": "1b44ad153b11410f5b61b653297a51d07e8ddf09f4dc0847cec148e928b8d515"
+      "source_files": {},
+      "teaching_sources": {
+        "examples/engineer/chapter-08/01-persist.qmd": {
+          "after_sha256": "902412e591f0120ccd52eb259c35a3e206add9372d34e5fa2d913254338ad150",
+          "before_sha256": "14aa0d8456ed653640e0e1fd195ef78d5814527d619f9ceb292fa7a7288db595"
         },
-        "src/scnsim/_report.py": {
-          "after_sha256": "b8053298519076d63b9e478055c9a384f59a62a1128780e23d482fb60eca41f6",
-          "before_sha256": "6ab6d50f77a2854f5e3162411c50ca2d9b98c80358335abe0fe13d43db3c5ba4"
-        },
-        "src/scnsim/specs.py": {
-          "after_sha256": "f45e7d350abd46568d617f8fc6a480f2ba3f23e94b79413397e2abc4c8cfb4a0",
-          "before_sha256": "856059fa45c580be694291002e310d641bcc007d7e3f5c5875a2612bddf6fc52"
+        "examples/engineer/chapter-08/02-resolve.qmd": {
+          "after_sha256": "a9e8f560e102c187435aaab2fd3a8752e1c5abc5b24f1ff8290a0f2a5d22ceb2",
+          "before_sha256": "62a9b8b94e76627bc1eea8f889848db7d25dfab995d2438f75adf1f32c82431d"
         }
-      },
-      "teaching_sources": {}
+      }
     },
     "execution_identity_retained": true,
     "historical_execution": {
@@ -310,15 +306,15 @@
         "08-report.html": "2a6c6d3f83f02e99340e46b8e51c8f5486e1fa7389de9a99662df6c6c43a2d2f",
         "08-resolve-only.md": "e62658d67ec37759b6412d9eec2378beef7e59c92d6a0edb298772f5ee347dc6"
       },
-      "prior_publication_binding_sha256": "4bdd68d2be74fbcd0fa76a74edc7dbce6cc7ca9c49d2b0a47f67aceab0c2c1cc",
+      "prior_publication_binding_sha256": "428cae4befb9db304d7dc937f81fed3b4b8cab0efb76a56dd6c03b872ce4ceb1",
       "prior_redrawn_artifacts": {},
       "source_tree_sha256": "443f41b701c7478f6825dfba59347a2075c5e02ea036a3b9b4b7b34f345dc2ac"
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "59163c393af57373340c9fa641394101c9eafd329cd6c5f129e9a97d38a04aad",
-    "prior_publication_binding_sha256": "4bdd68d2be74fbcd0fa76a74edc7dbce6cc7ca9c49d2b0a47f67aceab0c2c1cc",
-    "prior_publication_rebind_sha256": "60232b735bc445c0ee20f05d437ae837f1267450208f982e04b9601ff2b8ed95",
+    "prior_manifest_sha256": "0f8f3b24c5b12fc20d0f193e86612293fe60a1f4a52e6f30fc7146bf5470269f",
+    "prior_publication_binding_sha256": "428cae4befb9db304d7dc937f81fed3b4b8cab0efb76a56dd6c03b872ce4ceb1",
+    "prior_publication_rebind_sha256": "3282d522226548ba15955dbf617cdd83e8092e258201a634b2187aeca30f4ec0",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "08-direct-s11.svg": "f0d5c4fb1a3ba4ba2a014f0dbea24bd9a3bf0a2cf80c1505d370ba3daca5ceb0",
@@ -327,10 +323,10 @@
       "08-report.html": "2a6c6d3f83f02e99340e46b8e51c8f5486e1fa7389de9a99662df6c6c43a2d2f",
       "08-resolve-only.md": "e62658d67ec37759b6412d9eec2378beef7e59c92d6a0edb298772f5ee347dc6"
     },
-    "publication_binding_sha256": "428cae4befb9db304d7dc937f81fed3b4b8cab0efb76a56dd6c03b872ce4ceb1",
+    "publication_binding_sha256": "16a43e0ed1ff91ad5cdad41563d5791ae6286653c922dc8328a7b1a16f6df93b",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.research_showcase.20260918"
+    "transition_id": "scnsim.pages_main_theme.20261002"
   },
   "results": {
     "direct_identity": {

@@ -5,7 +5,7 @@ project:
     - src/scnsim/_schemas/identity-v2.schema.json
     - src/scnsim/_schemas/identity-common.schema.json
   render:
-    - README.md
+    - index.qmd
     - examples/README.md
     - docs/index.qmd
     - examples/engineer/setup.qmd
@@ -105,7 +105,7 @@ website:
   navbar:
     left:
       - text: "Overview"
-        href: README.md
+        href: index.qmd
       - text: "Tutorial"
         href: docs/index.qmd
       - text: "Concept"
@@ -119,7 +119,7 @@ website:
       collapse-level: 1
       contents:
         - text: "Repository overview"
-          href: README.md
+          href: index.qmd
     - id: tutorial
       title: "Engineer Course"
       style: "floating"
@@ -295,18 +295,15 @@ website:
               href: docs/implementation/external-inputs-and-delivery.qmd
 
 format:
-  html:
-    theme:
-      light: [cosmo, docs/theme-light.scss]
-      dark: [cosmo, docs/theme-dark.scss]
+  askr-html:
     css: docs/styles.css
     html-math-method: mathjax
     respect-user-color-scheme: true
     toc: true
     page-layout: article
     grid:
-      sidebar-width: 260px
-      body-width: 960px
-      margin-width: 240px
-      gutter-width: 2.5rem
+      sidebar-width: 264px
+      body-width: 630px
+      margin-width: 264px
+      gutter-width: 26px
     code-copy: true
