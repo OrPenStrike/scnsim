@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SCNSim documentation versions</title>
+  <style>
+    :root { color-scheme: light dark; font: 1rem/1.55 system-ui, sans-serif; }
+    body { max-width: 48rem; margin: 4rem auto; padding: 0 1.5rem; }
+    main { display: grid; gap: 1rem; }
+    a { color: #287dbb; }
+    article { border: 1px solid #8886; border-radius: .6rem; padding: 1rem 1.25rem; }
+    h2 { margin: 0; }
+    code { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <header><h1>SCNSim documentation</h1><p>Choose the source line you intend to use. Each site is rendered from its own recorded commit.</p></header>
+  <main>
+    <article><h2><a href="main/">main · {{MAIN_VERSION}}</a></h2><p>Stable-line documentation · commit <code>{{MAIN_SHA}}</code></p></article>
+    <article><h2><a href="develop/">develop · {{DEVELOP_VERSION}}</a></h2><p>Iterative-line documentation · commit <code>{{DEVELOP_SHA}}</code></p></article>
+  </main>
+  <p>Repository: <a href="https://github.com/OrPenStrike/scnsim">OrPenStrike/scnsim</a>.</p>
+</body>
+</html>

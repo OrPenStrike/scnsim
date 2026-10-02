@@ -159,7 +159,14 @@ the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and 
 `quarto render --no-execute --no-clean`. Start with the
 [Alpha Engineer course](https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd); its aggregate Chapter notebooks are the
 execution units for Lessons 1–4, while Chapter 7 Lesson 5 has its own standalone
-notebook and result artifacts. For a consuming
+notebook and result artifacts. The [documentation version chooser](https://orpenstrike.github.io/scnsim/)
+links separately rendered [main](https://orpenstrike.github.io/scnsim/main/)
+and [develop](https://orpenstrike.github.io/scnsim/develop/) sites. Each site
+shows its package version and exact rendered commit, keeps search branch-local,
+and points Quarto's View source controls to that commit. Historical Alpha
+links remain bound to their original tag. The site executes no notebooks or solvers.
+Pages deployment requires both tracked-source renders to validate; a missing
+branch-local Askr theme stops the combined build before publication. For a consuming
 repository preferring a reviewed commit over the Alpha tag, pin that commit
 in its `pyproject.toml` and lockfile:
 

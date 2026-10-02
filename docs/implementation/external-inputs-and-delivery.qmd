@@ -75,6 +75,20 @@ historical dev7 exception or accept the newer CONVERGING semantics; consumers
 should pin the Alpha tag and a fixed environment while public API and saved
 workspace compatibility may change.
 
+The documentation Pages root is a version chooser, with independent `/main/`
+and `/develop/` sites. One shared workflow lock precedes capture of both live
+branch commits; each site then renders its own tracked source, theme, and
+locked dependencies with Quarto 1.10.18 and `--no-execute`. The branch site
+shows its own package version and exact source commit, links back to the
+chooser and sibling home, and uses branch-local search and Quarto View source
+controls bound to its rendered commit. Separately labeled historical Alpha links
+retain their original tag. A
+push to either branch publishes one validated combined artifact; a pull request
+validates the candidate target alongside the other captured branch without
+deploying. Manual dispatch can recover a deployment. Missing source/theme or
+render validation fails before publication; the workflow never substitutes
+another branch's theme, executes a solver, or relabels one branch as another.
+
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
 that row; the current Full V1 acceptance covers their combined public

@@ -72,3 +72,11 @@
     font-size: 1.1rem;
   }
 }
+
+@media (min-width: 1280px) {
+  /* Askr places search and the color controls in one grid track. Give each an edge. */
+  #quarto-header #quarto-search {
+    justify-self: start;
+    margin-right: 0;
+  }
+}
