@@ -75,19 +75,33 @@ historical dev7 exception or accept the newer CONVERGING semantics; consumers
 should pin the Alpha tag and a fixed environment while public API and saved
 workspace compatibility may change.
 
-The documentation Pages root is a version chooser, with independent `/main/`
-and `/develop/` sites. One shared workflow lock precedes capture of both live
-branch commits; each site then renders its own tracked source, theme, and
-locked dependencies with Quarto 1.10.18 and `--no-execute`. The branch site
-shows its own package version and exact source commit, links back to the
-chooser and sibling home, and uses branch-local search and Quarto View source
-controls bound to its rendered commit. Separately labeled historical Alpha links
-retain their original tag. A
-push to either branch publishes one validated combined artifact; a pull request
-validates the candidate target alongside the other captured branch without
-deploying. Manual dispatch can recover a deployment. Missing source/theme or
-render validation fails before publication; the workflow never substitutes
-another branch's theme, executes a solver, or relabels one branch as another.
+**Versioned Pages deployment status:** `CONVERGING`. The Pages root redirects to
+`/1.0.0-dev/`; Askr's native inline menu switches between that tracked develop
+render and the latest published Alpha for each version line, currently the
+exact `v1.0.0a1` tag at `/1.0.0a1/`. One catalog determines both menu copies and
+the Alpha tag/commit pin. A prior development line remains in the menu only
+when its exact content commit is explicitly pinned in that catalog. A final
+release can coexist with the same line's latest Alpha; it does not replace
+that Alpha's content. Replacing an Alpha removes the retired version's
+content directory from the next atomic artifact; its old URL receives an
+explanation and a current-version link, not newer content under the old name.
+Other version lines remain until deliberately changed. Unpublished future
+releases have no menu entry or page. A missing page within a current version
+returns to that version's home. Legacy `/develop/` links redirect to the same
+path under the development version; `/main/` explains the changed URL and is
+not an Alpha alias.
+
+One shared workflow lock precedes capture of the exact develop commit and
+verification of the catalog's pinned Alpha tag. Each clean source archive
+renders with Quarto 1.10.18, locked dependencies, and `--no-execute`; the
+immutable Alpha content receives only the reviewed Askr 0.4.0 presentation
+and Pages profile in isolated build space. Footers distinguish content source
+from presentation revision, and Quarto View source controls target the content
+source. Search stays within each rendered version. A push to main or develop
+publishes one validated combined artifact; a pull request validates without
+deploying, and manual dispatch can recover a deployment. Missing source/theme,
+tag mismatch, or render validation fails before publication. No workflow path
+executes a solver or relabels a Result.
 
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by

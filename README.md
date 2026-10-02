@@ -154,19 +154,23 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@v1.0.0a1"
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
-The site uses the vendored, unmodified Askr v0.3.0 `askr-html` format with
+The site uses the vendored, unmodified Askr v0.4.0 `askr-html` format with
 the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and run
 `quarto render --no-execute --no-clean`. Start with the
 [Alpha Engineer course](https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd); its aggregate Chapter notebooks are the
 execution units for Lessons 1–4, while Chapter 7 Lesson 5 has its own standalone
-notebook and result artifacts. The [documentation version chooser](https://orpenstrike.github.io/scnsim/)
-links separately rendered [main](https://orpenstrike.github.io/scnsim/main/)
-and [develop](https://orpenstrike.github.io/scnsim/develop/) sites. Each site
-shows its package version and exact rendered commit, keeps search branch-local,
-and points Quarto's View source controls to that commit. Historical Alpha
-links remain bound to their original tag. The site executes no notebooks or solvers.
-Pages deployment requires both tracked-source renders to validate; a missing
-branch-local Askr theme stops the combined build before publication. For a consuming
+notebook and result artifacts. The [documentation root](https://orpenstrike.github.io/scnsim/)
+opens the [1.0.0 development site](https://orpenstrike.github.io/scnsim/1.0.0-dev/).
+Askr's version menu switches to the separately rendered
+[1.0.0a1 Alpha site](https://orpenstrike.github.io/scnsim/1.0.0a1/) while
+preserving the page path when it exists. Each site has branch-local search and
+shows its exact content source; the Alpha content comes from the immutable
+`v1.0.0a1` tag, with only the reviewed Askr presentation and Pages profile
+overlaid at render time. Quarto's View source controls point to the content
+source. A missing page in a current version returns to that version's home;
+a retired Alpha URL explains its replacement rather than serving newer content
+under the old version. The site executes no notebooks or solvers. Both source
+renders must validate before one Pages artifact is published. For a consuming
 repository preferring a reviewed commit over the Alpha tag, pin that commit
 in its `pyproject.toml` and lockfile:
 
