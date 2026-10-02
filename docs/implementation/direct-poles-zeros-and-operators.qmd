@@ -284,6 +284,10 @@ The accepted passive pole also has $\operatorname{Re}\omega>0$ and
 $\operatorname{Im}\omega\le0$. Its public root is in `radian / second`,
 frequency is $\operatorname{Re}\omega/(2\pi)$ in hertz, linewidth is
 $-2\operatorname{Im}\omega/(2\pi)$ in hertz, and slope is in siemens.
+After nonbaseline parameter continuation, one hybridized-pole certificate
+evaluation at the continued candidate supplies the returned root, slope, and
+null vector together. The public frequency, linewidth, and root evidence use
+that returned root; no second certificate evaluation supplies another field.
 
 The hybridized-pole `DirectQuantityResult` envelope owns one required complex
 artifact: ID `null_vector`,

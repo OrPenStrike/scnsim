@@ -669,6 +669,7 @@ function hb_write_complex(staging::String, ordinal::Int, role::String, values, a
                     for frequency in start:stop, output in axes(values, 2), input in axes(values, 3)
                         write_c_f64(io, (projection(values[frequency, output, input]),))
                     end
+                    write_c_f64(io, (0.0 for _ in 1:((start + chunks[1] - 1 - stop) * shape[2] * shape[3])))
                 end
                 push!(chunk_paths, name * "/" * chunk)
             end
@@ -687,6 +688,7 @@ function hb_write_complex(staging::String, ordinal::Int, role::String, values, a
                     for index in start:stop
                         write_c_f64(io, (projection(values[index]),))
                     end
+                    write_c_f64(io, (0.0 for _ in 1:(start + chunks[1] - 1 - stop)))
                 end
                 push!(chunk_paths, name * "/" * chunk)
             end

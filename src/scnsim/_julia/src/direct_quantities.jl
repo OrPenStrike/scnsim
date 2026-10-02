@@ -104,8 +104,7 @@ function evaluate_hybridized_pole(request, plan, compiled::CompiledPrimitive, re
         selector = Dict{String,Any}("type" => "hybridized_pole_projection", "spec" => spec, "projection" => "frequency")
         omega = selector_root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root, selector;
             context_kind = "direct_quantity")
-        slope = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)[2]
-        vector = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)[3]
+        omega, slope, vector = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)
     end
     evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.hybridized_pole_evidence", "schema_version" => 1,
         "coordinates" => coordinates, "root" => complex_quantity(omega, "radian / second", "inverse_time"))))

@@ -312,9 +312,13 @@ required dot-separated chunk files below those two datasets. Successful HB
 case S/Y/Z and backend-native-S/Z artifacts use that same root-plus-real/imag
 layout with their flattened three-dimensional shape. `.zattrs`,
 `.zmetadata`, dataset `.zgroup` files, codecs, sidecars, extra files, and extra
-directories are forbidden. Python validates the exact metadata bytes, complete
-tree, chunk names and lengths, manifest, and hashes; it never opens the tree in
-write mode or normalizes Julia's metadata.
+directories are forbidden. Every present chunk stores its full declared chunk
+shape in C order. A final frequency chunk extending beyond the logical array
+shape uses deterministic Float64 positive-zero padding only outside that shape;
+the logical array values and metadata shape exclude the padding. Python
+validates the exact metadata bytes, complete tree, full chunk byte lengths,
+manifest, and hashes; it never opens the tree in write mode or normalizes
+Julia's metadata. Empty arrays have no payload chunks.
 
 An `OperatorResult` requires artifact ID `frequencies` at
 `artifacts/frequencies.zarr` with manifest

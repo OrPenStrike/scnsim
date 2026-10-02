@@ -113,7 +113,9 @@ function write_real_zarr(staging::AbstractString, artifact_id::String, values::V
         chunk_name = string(chunk_index)
         push!(chunks, "values/" * chunk_name)
         open(joinpath(dataset, chunk_name), "w") do io
-            write_c_f64(io, @view values[start:min(start + chunk_size - 1, length(values))])
+            stop = min(start + chunk_size - 1, length(values))
+            write_c_f64(io, @view values[start:stop])
+            write_c_f64(io, (0.0 for _ in 1:(start + chunk_size - 1 - stop)))
         end
     end
     manifest_sha = write_manifest(staging, artifact_id, root_rel, [dataset_entry("values", chunks)])
@@ -169,10 +171,12 @@ function write_complex_matrix_zarr(staging::AbstractString, artifact_id::String,
             open(joinpath(dataset, chunk_name), "w") do io
                 # Zarr C order is frequency, output, input; Julia's normal
                 # iteration is column-major, so write the declared order.
-                for frequency in start:min(start + chunk_shape[1] - 1, shape[1]),
+                stop = min(start + chunk_shape[1] - 1, shape[1])
+                for frequency in start:stop,
                     output in 1:shape[2], input in 1:shape[3]
                     write_c_f64(io, (projection(values[frequency, output, input]),))
                 end
+                write_c_f64(io, (0.0 for _ in 1:((start + chunk_shape[1] - 1 - stop) * shape[2] * shape[3])))
             end
         end
         push!(entries, dataset_entry(name, chunks))

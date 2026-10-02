@@ -1085,13 +1085,9 @@ def _zarr_datasets(files: Mapping[str, Path]) -> list[str]:
             chunk = path.removeprefix(f"{dataset}/")
             if not _CHUNK.fullmatch(chunk):
                 raise _integrity("Zarr chunk name is invalid", path=path)
-            indices = [int(item) for item in chunk.split(".")]
-            elements = math.prod(
-                min(chunk_size, size - index * chunk_size)
-                for size, chunk_size, index in zip(shape, chunks, indices)
-            )
+            elements = math.prod(chunks)
             if files[path].stat().st_size != 8 * elements:
-                raise _integrity("Zarr chunk byte length disagrees with its grid position", path=path)
+                raise _integrity("Zarr chunk byte length disagrees with declared chunk shape", path=path)
     return present
 
 
