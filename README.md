@@ -232,13 +232,21 @@ mainline path from a grounded LC through named two-Port S21 and the four-Port
 capstone. Chapters 5–8 continue through reusable Libraries, diagram
 composition, multi-conductor networks, and restart-safe report/resolve.
 
-The [documentation version chooser](https://orpenstrike.github.io/scnsim/)
-links the independently rendered [main](https://orpenstrike.github.io/scnsim/main/)
-and [develop](https://orpenstrike.github.io/scnsim/develop/) sites. Each shows
-its package version and rendered commit, keeps search branch-local, and points
-Quarto's View source controls to that commit. The Pages build runs with
-`--no-execute`; it does not run notebooks or solvers. Both branches must have
-their own tracked Askr theme and render successfully before deployment.
+The [documentation root](https://orpenstrike.github.io/scnsim/) opens the
+[1.0.0 development site](https://orpenstrike.github.io/scnsim/1.0.0-dev/).
+The native Askr 0.4.0 version menu also offers the separately rendered
+[1.0.0a1 Alpha site](https://orpenstrike.github.io/scnsim/1.0.0a1/) from its
+immutable tag. The Pages build takes develop content and the pinned Alpha
+source, overlays the reviewed presentation in isolated render space, and
+records content and presentation revisions separately. Search stays within
+each version; Quarto's View source controls target its content source. A
+missing current-version page returns to that version's home, while a retired
+Alpha URL explains its replacement rather than serving newer content under
+the old name. The former `/develop/` path redirects to the matching
+development path; `/main/` is not an Alpha alias. Main carries the same
+deployment configuration, not a third content version. Rendering uses
+`--no-execute` and does not run notebooks or solvers; all sources must validate
+before one artifact is published.
 
 For a consuming repository, pin one reviewed SCNSim commit in that
 repository's `pyproject.toml` and lockfile:

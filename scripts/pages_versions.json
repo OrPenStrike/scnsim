@@ -1,0 +1,15 @@
+{
+  "schema": "scnsim.pages_versions.v1",
+  "development": {
+    "label": "1.0.0 dev",
+    "root": "/scnsim/1.0.0-dev/"
+  },
+  "releases": [
+    {
+      "label": "1.0.0a1",
+      "root": "/scnsim/1.0.0a1/",
+      "tag": "v1.0.0a1",
+      "commit": "66053ac315ff4ddc24d15ea4d66d26fe968beed0"
+    }
+  ]
+}
