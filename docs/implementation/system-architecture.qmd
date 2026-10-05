@@ -10,6 +10,164 @@ candidate. The [public contracts](../contracts/index.qmd#public-contracts)
 remain authoritative; this page does not assign one lifecycle state to the
 whole package.
 
+The responsibility-based Python reorganization below is an authorized
+implementation candidate extracted from starting revision
+`b4e13d82bfe53e1e6788cf8eb4cc471f681ab5b8`. The source now uses the responsibility
+packages described here, and its public exports resolve in the development
+checkout. Those observations do not establish installed-wheel coverage, native
+execution, or completed delivery. This maintenance preserves each affected
+scope's existing semantic state; authorization to reorganize code does not
+accept reopened product semantics.
+
+## Organize Python by responsibility
+
+The goal is one understandable implementation with coherent ownership and
+dependencies. Preserve documented public imports, signatures, singleton
+identities, physical and numerical behavior, failure contracts, canonical
+schemas, stored data, and the existing `_julia` and `_schemas` resources.
+Internal modules may move and large modules may be decomposed without adding a
+second implementation or a compatibility fallback.
+
+| Implementation owner | Responsibility and state | Handoff |
+|---|---|---|
+| `authoring/` | Physical value models, independent parameter definitions, mutable assembly, reusable catalog bodies, root Plan lifecycle, normalized capture, and captured-point resolution | Immutable authoring snapshot and resolved parameter point |
+| `execution/` | View realization, prepared analysis, backend preparation, process coordination, and numerical operation orchestration | Finalized request declarations and independently verified execution evidence |
+| `workspace/` | Workspace binding, locks, allocation, publication, receipts, integrity verification, and recovery/checkpoint publication | Verified evidence within the applicable reader or writer lifetime |
+| `results/` | Typed Result reconstruction, retained public values, lazy payload access, and Result identity | Verified typed values and presentation selections |
+| `visualization/` | Diagram specification and realization, numerical presentation, and pure report composition | Derived SVG, Plotly, and HTML artifacts |
+
+Public modules such as `runtime.py` and `specs.py` remain facades with their
+existing imports and interfaces. Converting `authoring.py` and `results.py`
+into packages preserves their existing public module paths through explicit
+package exports. Other existing public entry points continue to expose their
+documented names. Public reexports are legitimate interface boundaries, not
+duplicate production authorities. The public `units.py` retains the one Pint
+registry, and `io.py` retains its bounded external-artifact ingestion interface.
+
+Shared code has a named responsibility rather than a generic `core` owner.
+Root `canonical.py` owns canonical representation and identity primitives;
+workspace artifact verification belongs to `workspace/`, and catalog source
+identity belongs to `authoring/provenance.py` with notebook recovery in
+`authoring/notebook_source.py`. Shared immutable numerical retention lives in
+`value_storage.py`, usable by authoring, Specs, and Results. Moving that helper
+does not merge distinct
+snapshot freezing, parameter copy-on-read, and immutable bytes-backed array
+behaviors. Shared helpers must not acquire a Run, mutable Plan authority,
+workspace lifetime, or presentation dependency.
+
+### Decompose authoring at state and representation boundaries
+
+Authoring separates handles, catalog-created components, catalog factories,
+parameter declarations, physical value models, and captured-point resolution.
+The former large authoring module separates these additional boundaries:
+
+- **Assembly (`authoring/assembly.py`):** shared scope grammar, occurrence overlays, completeness and
+  ownership checks, inline Subsystems, and reusable Composite construction.
+  Operations that maintain the same wire-equivalence, exposure, and consumption
+  invariants remain together.
+- **Root Plan (`authoring/plan.py`):** root Ports, Run-preparation and sealing lifecycle, traversal
+  required by assembly consumers, and convenience delegation to capture,
+  resolution, and rendering.
+- **Capture (`authoring/capture.py`):** deterministic net naming, physical occurrence records,
+  parameter-consumer closure, and source-unit provenance. It consumes the live
+  Plan and produces the immutable handoff; it does not become a second physical
+  authority.
+- **Snapshot models (`authoring/snapshot.py`):** immutable normalized representation, independently
+  consumable without live assembly, execution, or rendering state.
+
+Capture currently completes assembly and establishes the root-owned net
+identity map before constructing records. Extraction preserves that order and
+the root's ownership of the map. It must not silently redefine capture as a
+pure operation. Catalog factory context and construction tokens retain one
+authority across modules. Existing public class module identities and reserved
+builtin catalog provenance remain intact when definitions move; facade exports
+alone do not preserve those identities.
+
+### Preserve dependency direction and lifetimes
+
+Authoring values and immutable handoffs sit below execution and visualization.
+Captured-point resolution consumes shared physical domains without importing
+diagram code. Authoring rendering conveniences delegate lazily; numerical
+imports and execution do not require rendering success. Results consume
+verified evidence, and visualization consumes typed values or captured
+structure. Pure presentation composition does not allocate attempts, run a
+process, mutate a Plan, or publish workspace evidence.
+
+```{mermaid}
+flowchart TD
+    Public["Public facades: authoring, runtime, specs, results"]
+    Plan["Authoring: one physical Plan"]
+    Snapshot["Immutable snapshot and resolved point"]
+    Prepared["Execution: immutable prepared analysis"]
+    Process["Execution: one Julia process"]
+    Evidence["Workspace: verified receipts and artifacts"]
+    Results["Results: typed values and lazy access"]
+    Visual["Visualization: diagrams, plots, reports"]
+    Shared["Shared primitives: units, canonical, value_storage"]
+    Public --> Plan
+    Public --> Prepared
+    Plan --> Snapshot
+    Snapshot --> Prepared
+    Prepared --> Process
+    Process --> Evidence
+    Evidence --> Results
+    Results -. "reacquire and verify original binding" .-> Evidence
+    Results --> Visual
+    Snapshot --> Visual
+    Shared -.-> Plan
+    Shared -.-> Prepared
+    Shared -.-> Evidence
+    Shared -.-> Results
+```
+
+The arrows show runtime handoffs and shared dependencies, not a second
+orchestrator. `execution/compilation.py` owns compiler-only inspection;
+`execution/coordinator.py` owns terminal attempt orchestration and delegates
+transport to `execution/process.py`. Result reconstruction lives in
+`results/decode.py` and its family decoders. Plot selection helpers live in
+`results/selection.py`; they do not import the renderer. Derived numerical
+presentation lives in `visualization/plots/`, while schematic realization
+lives in `visualization/diagram/`. Reports remain pure composition of verified
+typed values.
+
+Runtime coordinates the flow through immutable declarations rather than
+passing a mutable Run as shared context. Workspace verification remains the
+authority for stored evidence, including immediate decode under its owned
+interval and lazy reads after reacquiring the exact original binding. A
+relocated check remains necessary when it protects a distinct lifetime or
+trust boundary. Remove duplicated checking only when the surviving mechanism
+preserves that boundary and its failure behavior; this reorganization does not
+authorize new scientific restrictions or changed failure semantics.
+
+### Review the resulting responsibilities
+
+Review explains concrete dependencies, state lifetimes, and representative
+flows. It assesses responsibility cohesion, understandable dependency
+direction, one state and evidence authority, functional correctness, and
+whether an extension has an understandable home. Decomposition is
+proportionate when it separates responsibilities that change independently
+without scattering one invariant across modules or introducing forwarding
+machinery with no ownership purpose. There are no file-length, module-count,
+score, or numerical-threshold criteria.
+
+Source inspection supports architectural findings; it does not establish
+execution or delivery claims. The authorized implementation checks observe
+installed-wheel imports and resources, recursive source identity, real Direct
+and pump-off HB execution, exact resolve without a new process, existing
+parameter and optimization workflows, checkpoint/recovery and lazy reads, and
+fresh native diagram, numerical-plot, and report artifacts. Required CI,
+privacy review, and exact target reconciliation remain delivery obligations.
+No new durable tests or broader validation workflow are introduced by this
+page. Historical course outputs retain their execution bindings and are not
+fresh execution evidence; their source-tree transition is separate from
+redrawing artifacts.
+
+The requested delivery endpoint is verified synchronization of
+`origin/develop` and the durable SCNSim checkout, with the required CI and
+privacy work complete. Main, release, parent-repository pins, consumer changes,
+new dependencies, numerical algorithms, schemas, and data formats are outside
+this restructuring assignment.
+
 ## Keep the Notebook boundary in Python
 
 Python owns every user-facing object and every trust boundary that benefits
@@ -105,10 +263,10 @@ The reopened [assembly contract](../contracts/circuit-plan-assembly.qmd)
 separates three consumers: Parameter, Calculation, and ASCDLS. Shared immutable
 assembly, units, and physical values sit below them. Diagram public reexports
 and diagram-spec validation load diagram modules lazily without changing public
-names. Pure `_parameter_resolution.py` resolves a frozen snapshot and
-`ParameterSet`; `_physical_values.py` remains the single physical field
-validator. CircuitPlan convenience delegates and Runtime uses its own frozen
-snapshot directly. No numerical operation depends on rendering success, and
+names. Pure `authoring/resolution.py` resolves a frozen snapshot and
+`ParameterSet`, while `authoring/physical_values.py` owns shared physical field
+validation. CircuitPlan convenience delegates and Runtime uses its own
+frozen snapshot directly. No numerical operation depends on rendering success, and
 compiled diagrams remain one-way evidence consumers.
 
 The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Plotly, Matplotlib, and Schemdraw

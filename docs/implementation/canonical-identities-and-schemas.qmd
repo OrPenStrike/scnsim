@@ -33,6 +33,14 @@ still-referenced facts; they are not an alternative target schema.
 
 ## Encode one canonical byte stream
 
+`canonical.py` owns shared canonical bytes, hashes, binary64, quantities, and
+safe relative paths. Domain builders live with their owners:
+`authoring/identity.py` closes normalized Plan and parameter records,
+`execution/request.py` closes finalized request declarations, and
+`workspace/documents.py` closes workspace evidence documents. These modules
+share one encoder and retain the existing schemas; moving implementation files
+does not authorize a new envelope, algorithm identifier, or data format.
+
 Python owns canonical serialization. It converts physical inputs to coherent
 SI and finite IEEE-754 binary64, then writes each physical floating scalar as
 its 16 lowercase big-endian hexadecimal bits. Counts, booleans, identities,

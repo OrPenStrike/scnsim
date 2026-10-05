@@ -8,6 +8,25 @@ toc-depth: 2
 `STABILIZED`; the newer prepared-request and publication-evidence ownership
 paths remain `CONVERGING`.
 
+The responsibility-package reorganization preserves these identity rules, not
+the source digests of the earlier flat package. `authoring/provenance.py` owns
+catalog source proof, `authoring/notebook_source.py` owns notebook declaration
+recovery, and `execution/identity.py` owns the semantic runtime source manifest.
+The runtime manifest discovers Python sources recursively beneath the installed
+package and retains package-relative paths, so nested execution, authoring,
+workspace, Result, and presentation code participates in runtime identity.
+Shared `canonical.py` provides the same encoding primitives to these owners.
+
+Moving source changes source manifests and therefore source-bound Plan/request
+identities even when physical models and algorithms are unchanged. Existing
+classes formerly defined in public root modules retain those public module
+identities through their facades; classes formerly defined in private modules
+use their new concrete definition modules. No old-private module shim or
+additional pickle compatibility contract is introduced. Existing receipts and
+course outputs remain bound to their original executed sources. A reviewed
+source-only publication transition records the new source tree separately;
+it does not turn historical numerical evidence into current execution.
+
 ## Prove a factory when it creates a component
 
 Constructing an empty custom `Library` remains ordinary, inspectable Python.

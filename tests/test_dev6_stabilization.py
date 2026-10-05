@@ -46,7 +46,7 @@ from scnsim import (
     components,
     units as u,
 )
-from scnsim._canonical import sha256_hex
+from scnsim.canonical import sha256_hex
 
 
 def _two_coordinate_plan() -> CircuitPlan:
@@ -388,7 +388,7 @@ class Dev6PreflightTests(unittest.TestCase):
             self.assertEqual(evidence["response_linearization"]["load_state"], "compensated")
 
     def test_hb_numerical_classifier_keeps_linearization_and_response_stages_narrow(self) -> None:
-        from scnsim._backend import _child_environment, packaged_julia_resources, prepare_runtime
+        from scnsim.execution.preparation import _child_environment, packaged_julia_resources, prepare_runtime
 
         prepared = prepare_runtime()
         program = r'''
@@ -461,7 +461,7 @@ class Dev6ComplexAnchorRuntimeTests(unittest.TestCase):
             spec = HybridizedPoleSpec(coordinates=("a", "b"), anchor=(6.0 - 1.0e-12j) * u.GHz)
             request, _ = run._request_declaration("evaluate_direct", view, spec, None)
             encoded = request["spec"]["anchor"]
-            from scnsim._backend import _child_environment, packaged_julia_resources, prepare_runtime
+            from scnsim.execution.preparation import _child_environment, packaged_julia_resources, prepare_runtime
 
             prepared = prepare_runtime()
             program = f'''

@@ -18,7 +18,7 @@ import re
 
 import numpy as np
 
-from .authoring import RLGC, _identifier
+from .authoring.physical_values import RLGC, identifier as _identifier
 from .errors import SCNSimValidationError
 from .units import registry
 

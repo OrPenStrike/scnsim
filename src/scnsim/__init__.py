@@ -145,7 +145,7 @@ from .specs import (
 # import rendering modules.  These explicit type-only reexports keep the
 # documented package names visible to static ``py.typed`` consumers.
 if TYPE_CHECKING:
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
     from .composition import SchematicComposition, SchematicCompositionSnapshot
     from .results import CircuitDiagramAudit, CircuitDiagramResult
     from .schematic import DiagramAxis, SchematicLayout

@@ -20,9 +20,9 @@ import numpy as np
 from pint import Quantity
 
 from . import units
-from ._canonical import _identifier
-from ._immutable_values import immutable_quantity, quantity_view
-from ._scaffold import unavailable
+from .canonical import _identifier
+from .value_storage import immutable_quantity, quantity_view
+from .construction import unavailable
 from .authoring import (
     CoordinateRef,
     ElectricNodeRef,
@@ -44,7 +44,7 @@ from .results import (
 )
 
 if TYPE_CHECKING:
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
     from .runtime import NetworkViewRef
 
 
@@ -1359,7 +1359,7 @@ def _exact_report_channel(
     *,
     role: str,
 ) -> tuple[str, tuple[int, ...]]:
-    from ._numeric_presentation import _channel_index
+    from .results.selection import _channel_index
 
     return channels[_channel_index(channels, selector, role=role, default=False)]
 
@@ -1602,7 +1602,7 @@ class ReportPanel:
             if isinstance(result, DirectSolveResult):
                 family = "S" if family is None else family
                 view = result._family(family).view
-                from ._numeric_presentation import _frequency_index
+                from .results.selection import _frequency_index
 
                 frequency = view.frequencies[_frequency_index(view, frequency)]
             else:
@@ -1641,7 +1641,7 @@ class ReportPanel:
                     raise ValueError("parameter history requires only parameter")
             elif objective is not None or parameter is not None:
                 raise ValueError("cost history accepts neither objective nor parameter")
-            from ._numeric_presentation import _optimization_series
+            from .results.selection import _optimization_series
 
             _optimization_series(
                 result,
@@ -1717,7 +1717,7 @@ def __getattr__(name: str) -> object:
 
     if name != "CircuitDiagramSpec":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
 
     globals()[name] = CircuitDiagramSpec
     return CircuitDiagramSpec

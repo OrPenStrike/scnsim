@@ -7,10 +7,7 @@ and artifact manifests remain the only authority for reconstructing results.
 
 from __future__ import annotations
 
-import json
-import tempfile
 from collections.abc import Callable, Mapping, Sequence
-from hashlib import sha256
 from os import PathLike
 from pathlib import Path
 from types import MappingProxyType
@@ -19,7 +16,9 @@ from typing import overload
 import numpy as np
 
 from . import units
-from ._analysis import (
+from .execution.compilation import _run_preflight
+from .execution.identity import _runtime_identity_base
+from .execution.prepared import (
     BoundOptimization,
     BoundOptimizationLeaf,
     PreparedAnalysis,
@@ -28,36 +27,19 @@ from ._analysis import (
     _encode_spec,
     _quantity_coordinates,
 )
-from ._authoring_snapshot import ResolvedPlanPoint, freeze
-from ._backend import (
-    prepare_runtime,
-    run_compiler_audit,
-    run_preflight,
-)
-from ._canonical import (
+from .canonical import (
     _identifier as _canonical_identifier,
-    canonical_expanded_graph_sha256,
     canonical_json_bytes,
-    canonical_plan_snapshot,
-    canonical_resolved_plan_point,
     complex_quantity_envelope,
     quantity_envelope,
     sha256_hex,
 )
-from ._evidence import (
-    _VerifiedEvidenceLease,
-    _error_from_record,
-    _validated_failure_record,
-    _verified_evidence_lease,
-)
-from ._parameter_resolution import resolve_parameter_point
-from ._physical_values import RLGC, RLGCParameterSpec
-from ._scaffold import unavailable
-from ._workspace import (
-    VerifiedSuccess,
-    _plan_coordinates,
-    bind_workspace,
-)
+from .authoring.identity import canonical_plan_snapshot
+from .workspace.artifacts import _VerifiedEvidenceLease, _verified_evidence_lease
+from .authoring.resolution import resolve_parameter_point
+from .authoring.physical_values import RLGC, RLGCParameterSpec
+from .construction import unavailable
+from .workspace import VerifiedSuccess, _plan_coordinates, bind_workspace
 from .authoring import (
     CircuitPlan,
     CoordinateRef,
@@ -68,7 +50,6 @@ from .authoring import (
     PortRef,
 )
 from .errors import (
-    BackendProtocolError,
     CompilerInvariantError,
     EvidenceIntegrityError,
     InvalidOptimizationSpec,
@@ -1024,7 +1005,7 @@ class CircuitRun:
             or not all(_is_verified_analysis_result(result) for result in spec.inputs)
         ):
             raise TypeError("build_report() requires ReportSpec")
-        from ._report import build_report
+        from .visualization.report import build_report
 
         return build_report(spec)
 
@@ -1622,7 +1603,7 @@ class CircuitRun:
         bound_spec: object | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
     ):
-        from ._execution import execute_prepared
+        from .execution.coordinator import execute_prepared
 
         with execute_prepared(
             binding=self._binding,
@@ -1932,7 +1913,7 @@ class CircuitRun:
         bound_spec: object | None = None,
         evidence_lease: _VerifiedEvidenceLease,
     ):
-        from ._result_decode import VerifiedResultDecoder
+        from .results.decode import VerifiedResultDecoder
 
         decoder = VerifiedResultDecoder(
             plan_sha256=self._plan_sha256,
@@ -1983,116 +1964,3 @@ def _original_lineage_document(
     }
     record["lineage_sha256"] = sha256_hex(record)
     return record
-
-
-def _run_preflight(
-    plan_document: Mapping[str, object],
-    plan_bytes: bytes,
-    request: Mapping[str, object],
-) -> Mapping[str, object]:
-    prepared = prepare_runtime()
-    with tempfile.TemporaryDirectory(prefix="scnsim-preflight-") as temporary:
-        plan_path = Path(temporary) / "plan.json"
-        request_path = Path(temporary) / "request.json"
-        plan_path.write_bytes(plan_bytes)
-        request_path.write_bytes(canonical_json_bytes(request))
-        compiled = run_preflight(
-            prepared,
-            plan_path=plan_path.resolve(),
-            request_path=request_path.resolve(),
-        )
-    if compiled.get("schema") == "scnsim.preflight_failure":
-        raise _error_from_record(
-            _validated_failure_record(
-                compiled.get("failure"), request["operation"],
-                request=request, plan=plan_document,
-            )
-        )
-    return compiled
-
-
-def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, object]:
-    """Compile one immutable point without a Run, View, or analysis workspace."""
-
-    if not isinstance(point, ResolvedPlanPoint):
-        raise TypeError("_compiled_schematic_evidence() requires ResolvedPlanPoint")
-    plan_document = canonical_plan_snapshot(point.snapshot)
-    plan_bytes = canonical_json_bytes(plan_document)
-    plan_sha = sha256_hex(plan_bytes)
-    point_document = canonical_resolved_plan_point(point, plan_sha256=plan_sha)
-    point_bytes = canonical_json_bytes(point_document)
-    prepared = prepare_runtime()
-    with tempfile.TemporaryDirectory(prefix="scnsim-compiler-audit-") as temporary:
-        plan_path = Path(temporary) / "plan.json"
-        point_path = Path(temporary) / "point.json"
-        plan_path.write_bytes(plan_bytes)
-        point_path.write_bytes(point_bytes)
-        compiled = dict(
-            run_compiler_audit(
-                prepared,
-                plan_path=plan_path.resolve(),
-                point_path=point_path.resolve(),
-            )
-        )
-    required = {
-        "schema", "schema_version", "plan_sha256", "parameters_sha256",
-        "node_order", "matrix_order", "resolved_bindings",
-        "expanded_branch_rows", "discretization", "c_matrix", "k_matrix", "g_matrix", "ports",
-    }
-    if (
-        set(compiled) != required
-        or compiled.get("schema") != "scnsim.compiler_audit"
-        or compiled.get("schema_version") != 2
-        or compiled.get("plan_sha256") != plan_sha
-        or compiled.get("parameters_sha256") != point_document["parameters_sha256"]
-        or compiled.get("matrix_order") != "canonical_node_id"
-        or not isinstance(compiled.get("node_order"), list)
-        or not compiled["node_order"]
-        or len(set(compiled["node_order"])) != len(compiled["node_order"])
-        or any(not isinstance(compiled.get(field), list) for field in ("resolved_bindings", "expanded_branch_rows", "discretization"))
-        or any(not isinstance(compiled.get(field), Mapping) for field in ("c_matrix", "k_matrix", "g_matrix", "ports"))
-    ):
-        raise BackendProtocolError(
-            "compiler-audit evidence does not bind the resolved point",
-            stage="compiler_audit",
-        )
-    runtime = _runtime_identity_base()
-    compiled["compiled_graph_sha256"] = sha256_hex({
-        "schema": "scnsim.compiled_graph_identity",
-        "schema_version": 1,
-        "plan_sha256": plan_sha,
-        "julia_source_sha256": runtime["julia_source_sha256"],
-    })
-    compiled["expanded_graph_sha256"] = canonical_expanded_graph_sha256(
-        plan_sha256=plan_sha,
-        node_order=compiled["node_order"],
-        resolved_bindings=compiled["resolved_bindings"],
-        expanded_branch_rows=compiled["expanded_branch_rows"],
-    )
-    return freeze(compiled)
-
-
-def _runtime_identity_base() -> dict[str, object]:
-    package = Path(__file__).resolve().parent
-
-    def manifest(paths: Sequence[Path]) -> str:
-        rows = [
-            {"path": path.relative_to(package).as_posix(), "mode": "100644", "sha256": sha256(path.read_bytes()).hexdigest()}
-            for path in sorted(paths)
-        ]
-        return sha256_hex({"schema": "scnsim.source_manifest", "schema_version": 1, "files": rows})
-
-    python_files = [*package.glob("*.py"), *package.glob("_schemas/*.json"), package / "_julia" / "runtime.json"]
-    julia_files = list((package / "_julia").rglob("*.jl"))
-    project = package / "_julia" / "Project.toml"
-    julia_manifest = package / "_julia" / "Manifest.toml"
-    if not all(path.is_file() for path in (*python_files, *julia_files, project, julia_manifest)):
-        raise RuntimeError("SCNSim packaged runtime resources are incomplete")
-    runtime = json.loads((package / "_julia" / "runtime.json").read_text(encoding="utf-8"))
-    return {
-        "python_source_sha256": manifest(python_files),
-        "julia_source_sha256": manifest(julia_files),
-        "julia_version": runtime["julia_version"],
-        "project_sha256": sha256(project.read_bytes()).hexdigest(),
-        "manifest_sha256": sha256(julia_manifest.read_bytes()).hexdigest(),
-    }

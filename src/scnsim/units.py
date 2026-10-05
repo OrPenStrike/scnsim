@@ -47,7 +47,7 @@ def require_quantity(value: object, unit: str, *, name: str) -> Quantity:
     if not finite:
         raise ValueError(f"{name} must be finite")
     # Retain the caller's spelling for attempt provenance.  Canonical identity
-    # converts it once through `_canonical.quantity_envelope` at its boundary.
+    # converts it once through `canonical.quantity_envelope` at its boundary.
     return value
 
 
