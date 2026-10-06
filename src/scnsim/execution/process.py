@@ -309,7 +309,6 @@ def run_terminal(
                 process.stdin.flush()
             elif not optimization_operation:
                 process.stdin.close()
-            progress: list[Mapping[str, object]] = []
             while True:
                 line = stdout_lines.get()
                 if line is None:
@@ -398,7 +397,6 @@ def run_terminal(
                             event["achievable_evaluations"] != 1 + controls["complete_generations"] * controls["resolved_population_size"] or
                             event["evaluated_count"] != 1 + event["completed_generations"] * controls["resolved_population_size"]):
                             raise BackendProtocolError("optimization progress disagrees with request budget", stage="progress")
-                    progress.append(event)
                     if on_progress is not None:
                         try:
                             on_progress(event)
@@ -441,7 +439,6 @@ def run_terminal(
                 )
             return TerminalOutcome(
                 outcome=outcome,
-                progress=tuple(progress),
                 stdout_log=tuple(stdout_log),
                 stderr_log=tuple(stderr_log),
             )

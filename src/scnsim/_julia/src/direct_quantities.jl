@@ -542,11 +542,6 @@ function residue_branch(compiled::CompiledPrimitive, coordinates::Vector{String}
     return omega, vector, slope, -1.0 / slope
 end
 
-"""One diagonal branch of the common retained operator, not a separately reduced View."""
-function retained_diagonal_state(compiled::CompiledPrimitive, coordinates::Vector{String}, coordinate_index::Int, omega::ComplexF64)
-    return operator_element_state(compiled, omega, coordinates, coordinate_index, coordinate_index)
-end
-
 function retained_diagonal_root(compiled::CompiledPrimitive, coordinates::Vector{String}, index::Int, hint::Float64;
         start::Union{Nothing,ComplexF64} = nothing)::ComplexF64
     coordinate = coordinates[index]

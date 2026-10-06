@@ -46,14 +46,10 @@ from ..specs import (
 
 @dataclass(frozen=True, slots=True)
 class BoundOptimizationLeaf:
-    """One authored objective leaf and its separately shareable dependency."""
+    """One validated objective leaf's position in the ordered declaration."""
 
-    objective_id: str
     objective_ordinal: int
     term_ordinal: int
-    projection: str
-    declaration_bytes: bytes
-    dependency_bytes: bytes
 
     @classmethod
     def create(
@@ -94,31 +90,20 @@ class BoundOptimizationLeaf:
                 "bound optimization leaf declaration is malformed",
                 stage="request_encode",
             )
+        # Preserve declaration encoding failures before optimization Spec lowering.
+        # The final request owns these bytes; leaf ordering needs only positions.
+        canonical_json_bytes(declaration)
         return cls(
-            objective_id=objective_id,
             objective_ordinal=objective_ordinal,
             term_ordinal=term_ordinal,
-            projection=projection,
-            declaration_bytes=canonical_json_bytes(declaration),
-            dependency_bytes=canonical_json_bytes(
-                {"type": selector_type, "spec": spec, "view": view}
-            ),
         )
-
-    def declaration(self) -> dict[str, object]:
-        return json.loads(self.declaration_bytes)
-
-    @property
-    def dependency_sha256(self) -> str:
-        return sha256(self.dependency_bytes).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
 class BoundOptimization:
-    """One completely normalized optimization declaration and ordered leaves."""
+    """One normalized optimization declaration after leaf-order validation."""
 
     spec_bytes: bytes
-    leaves: tuple[BoundOptimizationLeaf, ...]
 
     @classmethod
     def create(
@@ -146,7 +131,7 @@ class BoundOptimization:
                 "bound optimization leaf order is not canonical",
                 stage="request_encode",
             )
-        return cls(canonical_json_bytes(spec), checked)
+        return cls(canonical_json_bytes(spec))
 
     def spec(self) -> dict[str, object]:
         return json.loads(self.spec_bytes)
@@ -158,7 +143,6 @@ class PreparedAnalysis:
 
     request_bytes: bytes
     source_unit_bytes: tuple[bytes, ...]
-    bound_optimization: BoundOptimization | None = None
 
     @classmethod
     def create(
@@ -171,7 +155,6 @@ class PreparedAnalysis:
         parameter_source: Mapping[str, object],
         runtime_semantic: Mapping[str, object],
         source_units: Sequence[Mapping[str, object]],
-        bound_optimization: BoundOptimization | None = None,
     ) -> PreparedAnalysis:
         request = canonical_request_document(
             plan_sha256=plan_sha256,
@@ -186,7 +169,6 @@ class PreparedAnalysis:
             source_unit_bytes=tuple(
                 canonical_json_bytes(record) for record in source_units
             ),
-            bound_optimization=bound_optimization,
         )
 
     def request(self) -> dict[str, object]:

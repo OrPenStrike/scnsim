@@ -634,7 +634,7 @@ the catalog is the semantic dtype/shape authority consumed by resolve()."""
 hb_dataset_entry(path::String, shape::Vector{Int}, chunks::Vector{Int}) =
     Dict{String,Any}("path" => path, "metadata" => dataset_metadata(shape, chunks))
 
-function hb_write_complex(staging::String, ordinal::Int, role::String, values, axis_metadata, unit::String, dimensionality::String; matrix::Bool)
+function hb_write_complex(staging::String, ordinal::Int, role::String, values, axis_metadata, unit::String, dimensionality::String)
     trace = startswith(role, "trace:"); local_role = trace ? role[7:end] : role
     root_rel = "artifacts/cases/" * lpad(string(ordinal), 6, '0') * "/" * (trace ? "traces/" : "") * local_role * ".zarr"
     root = joinpath(staging, root_rel); mkpath(root)
@@ -719,7 +719,7 @@ function hb_matrix_artifact(staging, ordinal, role, values, coordinates, modes, 
     artifact = hb_write_complex(staging, ordinal, role, values,
         [Dict("id" => "frequency", "kind" => "frequency", "request_field" => "spec.frequencies"),
          Dict("id" => "output_channel", "kind" => "output_channel", "values" => channels),
-         Dict("id" => "input_channel", "kind" => "input_channel", "values" => channels)], unit, dimensionality; matrix = true)
+         Dict("id" => "input_channel", "kind" => "input_channel", "values" => channels)], unit, dimensionality)
     artifact["coordinate_ids"] = coordinates; artifact["probe_load_state"] = probe
     artifact["output_channels"] = channels; artifact["input_channels"] = copy(channels)
     return artifact
@@ -1205,8 +1205,8 @@ function solve_hb(request, plan, raw_compiled::CompiledPrimitive, view::Realized
             operating_modes = Tuple[Tuple(Int.(item["mode"])) for item in node_modes]
             source_values = hb_effective_source_vectors(sources, operating_modes, raw_compiled)
             state_axes = [Dict("id" => "pump_mode", "kind" => "pump_mode", "values" => [item["mode"] for item in node_modes]), Dict("id" => "node_coordinate", "kind" => "node_coordinate", "values" => raw_compiled.nodes)]
-            artifacts["states"] = hb_write_complex(staging, ordinal, "states", state_values, state_axes, "weber", "magnetic_flux"; matrix = false)
-            artifacts["effective_source_vectors"] = hb_write_complex(staging, ordinal, "effective_source_vectors", source_values, state_axes, "ampere", "current"; matrix = false)
+            artifacts["states"] = hb_write_complex(staging, ordinal, "states", state_values, state_axes, "weber", "magnetic_flux")
+            artifacts["effective_source_vectors"] = hb_write_complex(staging, ordinal, "effective_source_vectors", source_values, state_axes, "ampere", "current")
             traces = Dict{String,Any}[]
             selected_channels = hb_channels(selected_coordinates, response_modes)
             for trace in spec["traces"]
@@ -1216,7 +1216,7 @@ function solve_hb(request, plan, raw_compiled::CompiledPrimitive, view::Realized
                 output = findfirst(==(Dict("coordinate" => output_coordinate, "mode" => trace["output_mode"])), selected_channels)
                 (input === nothing || output === nothing) && fail("execution", "backend_protocol", "hb_case", "hb_case", "HB trace is absent from selected channel basis")
                 value = vec(selected_s[:, output::Int, input::Int])
-                push!(traces, hb_write_complex(staging, ordinal, "trace:" * String(trace["id"]), value, [Dict("id" => "frequency", "kind" => "frequency", "request_field" => "spec.frequencies")], "dimensionless", "dimensionless"; matrix = false))
+                push!(traces, hb_write_complex(staging, ordinal, "trace:" * String(trace["id"]), value, [Dict("id" => "frequency", "kind" => "frequency", "request_field" => "spec.frequencies")], "dimensionless", "dimensionless"))
             end
             state_map = hb_state_map(plan, raw_compiled)
             reconciliation = hb_reconciliation(request["ref_lineage"], selected_s, native_s, Q, coordinate_q)

@@ -11,7 +11,7 @@ VERSION_PATTERN = re.compile(
     r"(?:(?P<dev>\.dev\d+)|(?P<alpha>a\d+)|(?P<rc>rc\d+))?$"
 )
 
-RESEARCH_MAIN_VERSION = "1.0.0.dev7"
+RESEARCH_MAIN_VERSION = "1.0.0a1"
 
 
 def _quoted_value(section: str, key: str) -> str:
@@ -50,7 +50,7 @@ def version_kind(version: str) -> str:
 
 
 def validate_line(version: str, line: str) -> None:
-    """Validate a repository line, including the bounded dev7 main exception."""
+    """Validate a repository line, including the exact Alpha research exception."""
 
     kind = version_kind(version)
     if line == "develop" and kind == "stable":

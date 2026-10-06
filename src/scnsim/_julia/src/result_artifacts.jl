@@ -25,17 +25,7 @@ function write_c_f64(io, values)
 end
 
 function zarray_metadata(shape::Vector{Int}, chunks::Vector{Int})::String
-    return canonical_json(Dict{String,Any}(
-        "chunks" => chunks,
-        "compressor" => nothing,
-        "dimension_separator" => ".",
-        "dtype" => "<f8",
-        "fill_value" => nothing,
-        "filters" => nothing,
-        "order" => "C",
-        "shape" => shape,
-        "zarr_format" => 2,
-    ))
+    return canonical_json(dataset_metadata(shape, chunks))
 end
 
 function relative_files(root::AbstractString)
@@ -137,15 +127,6 @@ function write_real_zarr(staging::AbstractString, artifact_id::String, values::V
         "dimensionality" => "inverse_time",
         "chunk_policy" => "frequency_capped_1024_v1",
     )
-end
-
-function write_complex_zarr(staging::AbstractString, artifact_id::String, values::Vector{ComplexF64}, port_id::String, unit::String, dimensionality::String)
-    matrix = Array{ComplexF64}(undef, length(values), 1, 1)
-    for index in eachindex(values)
-        matrix[index, 1, 1] = values[index]
-    end
-    return write_complex_matrix_zarr(staging, artifact_id, matrix, [port_id], unit, dimensionality,
-        [Dict("port_id" => port_id, "state" => "raw")])
 end
 
 function write_complex_matrix_zarr(staging::AbstractString, artifact_id::String,

@@ -99,12 +99,14 @@ Standalone diagonal and element-root evaluation follows the same View-qualified
 rule: baseline and each continuation point realize the full declared View
 before selecting an element. There is no second singleton reduction.
 
-Before canonical request encoding, Python normalizes every optimization leaf
-into an immutable `BoundOptimization` declaration. A leaf keeps its authored
-objective ID, objective ordinal, and term ordinal in exact order. That leaf
-identity is not its dependency identity: dependency sharing continues to use
-the complete bound View declaration plus numerical root element and hint (or
-the full non-root quantity declaration), excluding root projection and public
+Before canonical request encoding, Python validates each optimization leaf's
+identity and complete declaration. Transient immutable leaves retain only the
+objective and term ordinals used to verify exact, unique ordering. The final
+`BoundOptimization` retains the encoded specification, including authored
+objective IDs and bound View and quantity declarations. Public leaf identity
+is not dependency identity: native dependency sharing continues to use the
+complete bound View declaration plus numerical root element and hint (or the
+full non-root quantity declaration), excluding root projection and public
 policy.
 Consequently two objective leaves may remain independently auditable while
 sharing one compiled/root dependency.

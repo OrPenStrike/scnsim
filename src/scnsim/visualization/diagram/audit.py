@@ -23,7 +23,6 @@ from ...errors import SCNSimValidationError
 from .scene import (
     COORDINATE_TOLERANCE,
     Bounds,
-    BoundarySite,
     ElectricalBox,
     GuideMark,
     NativeSymbol,
@@ -69,12 +68,6 @@ def _token(kind: str, **fields: object) -> str:
     return canonical_json_bytes({"kind": kind, **fields}).decode("utf-8")
 
 
-
-
-
-
-
-
 def _same(left: float, right: float) -> bool:
     return abs(left - right) <= COORDINATE_TOLERANCE
 
@@ -87,35 +80,8 @@ def _finite_point(point: Point) -> bool:
     return math.isfinite(point.x) and math.isfinite(point.y)
 
 
-def _finite_bounds(bounds: Bounds) -> bool:
-    return all(math.isfinite(value) for value in (bounds.xmin, bounds.ymin, bounds.xmax, bounds.ymax))
-
-
-def _strictly_contains(outer: Bounds, inner: Bounds) -> bool:
-    return outer.contains(inner) and outer != inner
-
-
 def _area(bounds: Bounds) -> float:
     return (bounds.xmax - bounds.xmin) * (bounds.ymax - bounds.ymin)
-
-
-def _point_in_bounds(point: Point, bounds: Bounds) -> bool:
-    return (
-        bounds.xmin - COORDINATE_TOLERANCE <= point.x <= bounds.xmax + COORDINATE_TOLERANCE
-        and bounds.ymin - COORDINATE_TOLERANCE <= point.y <= bounds.ymax + COORDINATE_TOLERANCE
-    )
-
-
-def _point_on_rect_boundary(point: Point, bounds: Bounds) -> bool:
-    horizontal = (
-        bounds.xmin - COORDINATE_TOLERANCE <= point.x <= bounds.xmax + COORDINATE_TOLERANCE
-        and (_same(point.y, bounds.ymin) or _same(point.y, bounds.ymax))
-    )
-    vertical = (
-        bounds.ymin - COORDINATE_TOLERANCE <= point.y <= bounds.ymax + COORDINATE_TOLERANCE
-        and (_same(point.x, bounds.xmin) or _same(point.x, bounds.xmax))
-    )
-    return horizontal or vertical
 
 
 def _point_on_segment(point: Point, left: Point, right: Point) -> bool:
@@ -228,62 +194,6 @@ class _Region:
 
 
 @dataclass(frozen=True, slots=True)
-class _Box:
-    source: ElectricalBox
-    path: _Path
-    parent: _Path
-
-
-@dataclass(frozen=True, slots=True)
-class _ObservedBranch:
-    source: NativeSymbol
-    path: _Path
-    owner: _Path
-    role: str
-    pins: tuple[str, str]
-    points: tuple[Point, Point]
-    nets: tuple[str, str] = ("", "")
-
-    @property
-    def key(self) -> str:
-        return _token(
-            "authoring_branch",
-            component_path=list(self.path),
-            branch_role=self.role,
-        )
-
-    @property
-    def reciprocal(self) -> bool:
-        return self.source.kind in {"R", "C"}
-
-    @property
-    def unordered_nets(self) -> tuple[str, str]:
-        return cast(tuple[str, str], tuple(sorted(self.nets)))
-
-
-@dataclass(frozen=True, slots=True)
-class _ObservedSite:
-    source: BoundarySite
-    path: _Path
-    pin_id: str
-    net: str = ""
-    peer_kind: str = ""
-    peer_id: str = ""
-
-    @property
-    def key(self) -> str:
-        return _token(
-            "boundary_site",
-            component_path=list(self.path),
-            pin_id=self.pin_id,
-        )
-
-    @property
-    def peer_key(self) -> str:
-        return _token("diagram_peer", peer_kind=self.peer_kind, peer_id=self.peer_id)
-
-
-@dataclass(frozen=True, slots=True)
 class DiagramAuditData:
     """Immutable internal certificate data consumed by the public audit facade."""
 
@@ -331,88 +241,6 @@ def _verify_rectangular_frame(path: Path, bounds: Bounds, *, role: str) -> None:
         raise _layout_fail("visible rectangular frame disagrees with its occupied bounds", role=role)
 
 
-def _region_model(scene: NeutralScene) -> tuple[_Region, ...]:
-    if not scene.regions:
-        raise _layout_fail("diagram scene has no root envelope")
-    if any(not _finite_bounds(region.bounds) for region in scene.regions):
-        raise _layout_fail("diagram region contains non-finite bounds")
-    for region in scene.regions:
-        _verify_rectangular_frame(region.boundary, region.bounds, role="region")
-        if not _point_in_bounds(region.identity_anchor, region.bounds):
-            raise _layout_fail("region identity anchor lies outside its visible boundary")
-        if region.header is not None and (
-            not _same_point(region.header.origin, region.identity_anchor)
-            or not region.bounds.contains(region.header.bounds)
-        ):
-            raise _layout_fail("Composite header is not visibly anchored inside its region")
-    outer = [
-        region
-        for region in scene.regions
-        if all(region is other or region.bounds.contains(other.bounds) for other in scene.regions)
-    ]
-    if len(outer) != 1:
-        raise _audit_fail("visible geometry does not establish one unique root region")
-    root = outer[0]
-    if root.kind != "root" or root.header is not None:
-        raise _audit_fail("the root envelope cannot emit a duplicate always-visible identity header")
-    parent_by_source: dict[int, SubsystemRegion] = {}
-    for region in scene.regions:
-        if region is root:
-            continue
-        if region.kind != "composite":
-            raise _audit_fail("a non-root region does not carry the visible Composite role")
-        if region.header is None:
-            raise _audit_fail("every visible Composite region needs an identity header")
-        containers = [
-            candidate
-            for candidate in scene.regions
-            if candidate is not region and _strictly_contains(candidate.bounds, region.bounds)
-        ]
-        if not containers:
-            raise _layout_fail("a Composite region lies outside the root envelope")
-        parent_by_source[id(region)] = min(containers, key=lambda item: _area(item.bounds))
-    paths: dict[int, _Path] = {id(root): ()}
-
-    def resolve(region: SubsystemRegion) -> _Path:
-        existing = paths.get(id(region))
-        if existing is not None:
-            return existing
-        parent = parent_by_source[id(region)]
-        parent_path = resolve(parent)
-        assert region.header is not None
-        local_id = region.header.text
-        if not local_id:
-            raise _audit_fail("Composite region identity is visibly empty")
-        result = (*parent_path, local_id)
-        paths[id(region)] = result
-        return result
-
-    for region in scene.regions:
-        resolve(region)
-    by_parent: dict[_Path, list[str]] = defaultdict(list)
-    for region in scene.regions:
-        if region is not root:
-            path = paths[id(region)]
-            by_parent[path[:-1]].append(path[-1])
-    if any(len(names) != len(set(names)) for names in by_parent.values()):
-        raise _audit_fail("sibling Composite headers do not establish unique local identities")
-    for first_index, first in enumerate(scene.regions):
-        for second in scene.regions[first_index + 1 :]:
-            if first is root or second is root:
-                continue
-            nested = first.bounds.contains(second.bounds) or second.bounds.contains(first.bounds)
-            if not nested and first.bounds.overlaps(second.bounds):
-                raise _layout_fail("sibling Composite regions overlap")
-    return tuple(
-        _Region(
-            region,
-            paths[id(region)],
-            None if region is root else paths[id(parent_by_source[id(region)])],
-        )
-        for region in scene.regions
-    )
-
-
 def _deepest_region(bounds: Bounds, regions: Sequence[_Region]) -> _Region:
     containing = [region for region in regions if region.source.bounds.contains(bounds)]
     if not containing:
@@ -420,8 +248,7 @@ def _deepest_region(bounds: Bounds, regions: Sequence[_Region]) -> _Region:
     return min(containing, key=lambda region: _area(region.source.bounds))
 
 
-def _box_model(scene: NeutralScene, regions: Sequence[_Region]) -> tuple[_Box, ...]:
-    boxes: list[_Box] = []
+def _box_model(scene: NeutralScene, regions: Sequence[_Region]) -> None:
     paths: set[_Path] = set()
     for box in scene.boxes:
         if box.kind not in {"CPW", "MTL"} or box.orientation not in (0, 90, 180, 270):
@@ -457,8 +284,6 @@ def _box_model(scene: NeutralScene, regions: Sequence[_Region]) -> tuple[_Box, .
         if path in paths:
             raise _audit_fail("visible transmission-line IDs are not unique in their owning region")
         paths.add(path)
-        boxes.append(_Box(box, path, owner.path))
-    return tuple(boxes)
 
 
 def _branch_role(symbol: NativeSymbol) -> str:

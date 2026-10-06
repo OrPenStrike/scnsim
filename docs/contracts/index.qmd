@@ -53,7 +53,7 @@ Additional multi-generation exercises, other-platform coverage, historical
 regression stabilization, and release delivery are separate future scopes;
 they are not unfinished CP5 work.
 
-The `1.0.0.dev7` research showcase keeps the new README and presentation
+The historical `1.0.0.dev7` research showcase keeps the new README and presentation
 refinements `CONVERGING`. Optimization declarations and retained-Result labels
 now expose readable scalar-selection and View settings, while comparison
 Figures and reports separate fixed settings from initial/best-found values.

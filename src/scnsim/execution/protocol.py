@@ -36,7 +36,6 @@ class TerminalOutcome:
     """Transport facts returned only after a successful child exit/outcome pair."""
 
     outcome: Mapping[str, object]
-    progress: tuple[Mapping[str, object], ...]
     stdout_log: tuple[str, ...]
     stderr_log: tuple[str, ...]
 
@@ -224,32 +223,11 @@ class _JSONObjectPairs:
     pairs: tuple[tuple[str, object], ...]
 
 
-class _DuplicateJSONKey(ValueError):
-    """One control-looking JSON object repeated a decoded key."""
-
-
 def _decoded_json(raw: str) -> object:
     return json.loads(
         raw,
         object_pairs_hook=lambda pairs: _JSONObjectPairs(tuple(pairs)),
     )
-
-
-def _materialize_closed_json(value: object) -> object:
-    if isinstance(value, _JSONObjectPairs):
-        result: dict[str, object] = {}
-        for key, item in value.pairs:
-            if key in result:
-                raise _DuplicateJSONKey(key)
-            result[key] = _materialize_closed_json(item)
-        return result
-    if isinstance(value, list):
-        return [_materialize_closed_json(item) for item in value]
-    return value
-
-
-def _closed_json_object(raw: str) -> object:
-    return _materialize_closed_json(_decoded_json(raw))
 
 
 def _reserved_optimization_frame(raw: str) -> bool:

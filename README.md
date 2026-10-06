@@ -154,6 +154,13 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@v1.0.0a1"
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
+The Engineer-course generators use repository-local Jupyter tooling and an
+optional static-export extra:
+
+```bash
+uv sync --locked --group course-generation --extra static-export
+```
+
 The site uses the vendored, unmodified Askr v0.4.0 `askr-html` format with
 the Quiet Quartz light/dark theme. To build it, use Quarto 1.10.18 or later and run
 `quarto render --no-execute --no-clean`. Start with the
@@ -169,8 +176,11 @@ shows its exact content source; the Alpha content comes from the immutable
 overlaid at render time. Quarto's View source controls point to the content
 source. A missing page in a current version returns to that version's home;
 a retired Alpha URL explains its replacement rather than serving newer content
-under the old version. The site executes no notebooks or solvers. Both source
-renders must validate before one Pages artifact is published. For a consuming
+under the old version. The former `/develop/` path redirects to the matching
+development path; `/main/` is not an Alpha alias. Main carries the same
+deployment configuration, not a third content version. The site executes no
+notebooks or solvers. Both source renders must validate before one Pages
+artifact is published. For a consuming
 repository preferring a reviewed commit over the Alpha tag, pin that commit
 in its `pyproject.toml` and lockfile:
 

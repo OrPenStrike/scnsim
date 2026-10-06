@@ -162,11 +162,33 @@ page. Historical course outputs retain their execution bindings and are not
 fresh execution evidence; their source-tree transition is separate from
 redrawing artifacts.
 
-The requested delivery endpoint is verified synchronization of
-`origin/develop` and the durable SCNSim checkout, with the required CI and
-privacy work complete. Main, release, parent-repository pins, consumer changes,
-new dependencies, numerical algorithms, schemas, and data formats are outside
-this restructuring assignment.
+The subsequent slimming candidate removes implementation without a current
+consumer and repeated work within existing owners. Parameter resolution
+acquires each detached mapping once, retaining its first-read validation
+order; sweep selection similarly caches requested-value encoding only when
+the comparison is reached. Wire validation compares retained root identities
+without invoking value equality. Preparation retains declaration validation
+and encoded requests without unused bound-object storage. Process callbacks
+remain immediate, while checkpoint and ledger history remain durable;
+discarded volatile progress accumulation is removed. The live JSON pair
+decoder, reserved control recognition, canonical validation, geometry checks,
+coupling reconstruction, certification, and explicit old-guide refusal remain
+their existing authorities. Removed diagram parser islands and discarded box
+records have no role in that current path. Julia artifact metadata uses one
+builder while preserving existing serialization and numerical algorithms.
+
+These are source observations. Final installed-wheel, native, recovery,
+rendering, and independent-review observations remain separate evidence;
+source slimming does not itself establish them. Distinct trust lifetimes,
+public protocol hooks, and failure stages remain necessary even where code
+looks similar.
+
+The current delivery endpoint is a history-preserving develop-to-main PR
+promotion followed by exact main/develop/tracking/checkout synchronization,
+required CI and Pages outcomes, and privacy review. The exact `1.0.0a1`
+research exception does not constitute a stable release. New tags, PyPI,
+parent-repository pins, consumer migrations, dependencies, numerical
+algorithms, schemas, and data formats remain outside this assignment.
 
 ## Keep the Notebook boundary in Python
 

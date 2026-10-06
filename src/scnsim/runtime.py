@@ -144,11 +144,7 @@ def _view_declaration(lineage: Mapping[str, object]) -> dict[str, object]:
 
 
 def _parameter_value_record(parameter: ParameterRef, value: object) -> Mapping[str, object]:
-    record = ParameterSet({parameter: value})._record()
-    bindings = record["bindings"]
-    if len(bindings) != 1:
-        raise CompilerInvariantError("parameter value did not encode uniquely", stage="request_encode")
-    return bindings[0]["value"]
+    return ParameterSet({parameter: value})._record()["bindings"][0]["value"]
 
 
 def _uses_baseline_root(spec: object) -> bool:
@@ -194,16 +190,6 @@ def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
     if not coordinates or len(set(coordinates)) != len(coordinates):
         raise CompilerInvariantError("Plan public coordinate table is malformed", stage="plan_seal")
     return coordinates
-
-
-def _raw_view_lineage(lineage: Mapping[str, object]) -> bool:
-    """Recognize the immutable original View that needs no realization pass."""
-
-    return (
-        lineage.get("ptc") is None
-        and lineage.get("transforms") == []
-        and lineage.get("retain") is None
-    )
 
 
 def _source_unit_identity(
@@ -545,7 +531,6 @@ class CircuitRun:
                 or differential in available
                 or common in self._coordinate_lookup
                 or differential in self._coordinate_lookup
-                or common == differential
             ):
                 raise ValueError("transform_pair generated coordinate collides with the current basis")
             left_state = load_states.get(left, "not-port")
@@ -1588,7 +1573,6 @@ class CircuitRun:
             parameter_source=parameter_source,
             runtime_semantic=semantic,
             source_units=source_units,
-            bound_optimization=bound_optimization,
         )
 
     def _preflight(self, request: Mapping[str, object]) -> Mapping[str, object]:

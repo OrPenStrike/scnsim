@@ -31,15 +31,18 @@ def resolve_parameter_point(
             "snapshot lacks captured parameter bindings", stage="authoring"
         )
     supplied = ParameterSet() if supplied is None else supplied
-    if not isinstance(supplied, ParameterSet) or set(supplied.values) - set(
-        refs.values()
-    ):
+    if not isinstance(supplied, ParameterSet):
+        raise SCNSimValidationError(
+            "invalid ParameterSet for Plan", stage="authoring"
+        )
+    supplied_values = supplied.values
+    if set(supplied_values) - set(refs.values()):
         raise SCNSimValidationError(
             "invalid ParameterSet for Plan", stage="authoring"
         )
     if any(
         refs[ref._key()]._definition_record() != ref._definition_record()
-        for ref in supplied.values
+        for ref in supplied_values
     ):
         raise SCNSimValidationError(
             "ParameterSet definition conflicts with captured Plan",
@@ -55,7 +58,7 @@ def resolve_parameter_point(
             "invalid extrapolation authorization", stage="authoring"
         )
     effective_values = {
-        ref: supplied.values.get(ref, ref.baseline) for ref in refs.values()
+        ref: supplied_values.get(ref, ref.baseline) for ref in refs.values()
     }
     effective_source_units = {
         ref: supplied._source_units.get(ref, ref._source_unit)
@@ -69,6 +72,8 @@ def resolve_parameter_point(
         allow_extrapolation=supplied.allow_extrapolation,
     )
     resolved = {}
+    # Keep first-copy timing after preceding literal/affine validation.
+    effective_values_view = None
     for (path, field), (
         base, binding, ref, unit, positive, nonnegative
     ) in fields.items():
@@ -76,7 +81,9 @@ def resolve_parameter_point(
             value = base
         elif binding["kind"] == "affine":
             slope, intercept, support = binding["_affine_data"]
-            candidate = effective.values[ref]
+            if effective_values_view is None:
+                effective_values_view = effective.values
+            candidate = effective_values_view[ref]
             low, high = support
             if (
                 not low.to(ref.spec.si_unit).magnitude
@@ -89,7 +96,9 @@ def resolve_parameter_point(
                 )
             value = require_quantity(slope * candidate + intercept, unit, name=field)
         else:
-            value = effective.values[ref]
+            if effective_values_view is None:
+                effective_values_view = effective.values
+            value = effective_values_view[ref]
         resolved[(path, field)] = _validate_captured_field(
             value,
             unit,

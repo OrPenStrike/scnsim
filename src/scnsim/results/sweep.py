@@ -240,22 +240,27 @@ class ParameterSweepResult(AnalysisResult):
     def select(self, *, parameters: ParameterSet) -> ParameterSweepSelection:
         if not isinstance(parameters, ParameterSet):
             raise TypeError("parameters must be a ParameterSet")
-        if parameters.values:
+        requested = parameters.values
+        if requested:
             if not len(self.points):
                 raise ValueError("selection contains a parameter outside this sweep")
             available = self.points._loader(0).parameters.values
-            for parameter in parameters.values:
+            for parameter in requested:
                 match = next((current for current in available if current == parameter), None)
                 if match is None or match._definition_record() != parameter._definition_record():
                     raise ValueError("selection contains a parameter outside this sweep")
         ordinals: list[int] = []
+        wanted_bytes_by_parameter: dict[ParameterRef, bytes] = {}
         for ordinal, point in enumerate(self.points):
             available = point.parameters.values
-            for parameter, wanted in parameters.values.items():
+            for parameter, wanted in requested.items():
                 matches = next((current for current in available if current == parameter), None)
                 if matches is None or matches._definition_record() != parameter._definition_record():
                     raise TypeError("verified parameter batch has inconsistent definitions")
-                if _parameter_value_bytes(available[matches], matches) != _parameter_value_bytes(wanted, parameter):
+                available_bytes = _parameter_value_bytes(available[matches], matches)
+                if parameter not in wanted_bytes_by_parameter:
+                    wanted_bytes_by_parameter[parameter] = _parameter_value_bytes(wanted, parameter)
+                if available_bytes != wanted_bytes_by_parameter[parameter]:
                     break
             else:
                 ordinals.append(ordinal)

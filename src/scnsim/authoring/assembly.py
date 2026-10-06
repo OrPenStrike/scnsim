@@ -455,11 +455,7 @@ class _Scope:
                     projected(pin.net) if pin.net is not None else pin
                     for pin in component.pins.values()
                 ]
-                if any(
-                    left is right
-                    for index, left in enumerate(pin_roots)
-                    for right in pin_roots[index + 1 :]
-                ):
+                if len({id(root) for root in pin_roots}) != len(pin_roots):
                     raise SCNSimValidationError(
                         "wire operation shorts physical body terminals",
                         stage="authoring",
@@ -760,11 +756,7 @@ class _Scope:
                     evidence={"component": c.id},
                 )
             roots = [p.net.root() for p in c.pins.values()]
-            if c.kind == "ordinary" and any(
-                root is other
-                for index, root in enumerate(roots)
-                for other in roots[index + 1 :]
-            ):
+            if c.kind == "ordinary" and len({id(root) for root in roots}) != len(roots):
                 raise SCNSimValidationError(
                     "physical body terminals cannot be shorted",
                     stage="authoring",

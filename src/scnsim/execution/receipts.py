@@ -57,7 +57,7 @@ def _attempt_document(
                 "blas_vendor": ready.blas_vendor,
             }
         )
-        fftw_threads = getattr(ready, "fftw_threads", None)
+        fftw_threads = ready.fftw_threads
         if fftw_threads is not None:
             document["fftw_threads"] = fftw_threads
     if resume_ledger_sha is not None:

@@ -84,11 +84,6 @@ class CircuitPlan(_Scope):
         self.ports.append(x)
         return x
 
-    def _seal(self) -> "CircuitPlan":
-        self.complete()
-        self.sealed = True
-        return self
-
     @contextmanager
     def _run_seal_preparation(self) -> Iterator[object | None]:
         """Temporarily own editable state while one Run is prepared."""

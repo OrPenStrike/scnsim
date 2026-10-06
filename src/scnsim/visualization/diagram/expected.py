@@ -147,54 +147,6 @@ def _v2_net_map(semantic: Mapping[str, object]) -> tuple[dict[str, str], tuple[d
     return result, tuple(sorted(rows, key=canonical_json_bytes))
 
 
-def _v2_rebased_path(value: object, field: str, *, basis: _Path) -> _Path:
-    path = _v2_path(value, field)
-    return (*basis, *path) if basis else path
-
-
-def _v2_endpoint(
-    value: object,
-    *,
-    basis: _Path = (),
-    region_paths: frozenset[_Path] = frozenset(),
-) -> dict[str, object]:
-    endpoint = dict(_mapping(value, "structured endpoint"))
-    kind = endpoint.get("kind")
-    if kind == "ground":
-        if set(endpoint) != {"kind"}:
-            raise _fail("ground endpoint has extra fields")
-        return endpoint
-    if kind not in {"bus", "tap", "pin"}:
-        raise _fail("structured endpoint kind is unsupported", kind=kind)
-    scope = _v2_rebased_path(endpoint.get("scope"), "endpoint.scope", basis=basis)
-    identifier = _string(endpoint.get("id"), "endpoint.id")
-    if kind == "tap":
-        _string(endpoint.get("bus"), "endpoint.bus")
-    if kind == "pin":
-        component = _string(endpoint.get("component"), "endpoint.component")
-        if not isinstance(endpoint.get("public"), bool):
-            raise _fail("pin endpoint public flag is malformed")
-        boundary_path = scope if endpoint["public"] is True else (*scope, component)
-        if endpoint["public"] is True or boundary_path in region_paths:
-            return {"kind": "boundary_pin", "scope": list(boundary_path), "id": identifier}
-        return {
-            "kind": "physical_pin",
-            "path": [*scope, component],
-            "pin_id": identifier,
-        }
-    endpoint["scope"] = list(scope)
-    return cast(dict[str, object], _plain(endpoint))
-
-
-def _v2_element(value: object, *, basis: _Path = ()) -> dict[str, object]:
-    row = _mapping(value, "structured element")
-    return {
-        "path": list(_v2_rebased_path(row.get("path"), "element.path", basis=basis)),
-        "pin_1": _string(row.get("pin_1"), "element.pin_1"),
-        "pin_2": _string(row.get("pin_2"), "element.pin_2"),
-    }
-
-
 def _v2_scopes(root: Mapping[str, object]) -> tuple[dict[str, object], ...]:
     records: list[dict[str, object]] = []
 

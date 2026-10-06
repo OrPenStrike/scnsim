@@ -10,9 +10,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from enum import Enum
-from functools import lru_cache
 from hashlib import sha256
-from typing import Any
 
 
 class Theme(str, Enum):
@@ -267,27 +265,6 @@ def _notebook_svg_viewer(svg: str, theme: Theme) -> str:
     )
 
 
-def _html_fragment(fragment: str, theme: Theme) -> str:
-    checked = _require_theme(theme)
-    suffix = sha256(f"{checked.value}\0{fragment}".encode("utf-8")).hexdigest()[:16]
-    class_name = f"scnsim-presentation-{suffix}"
-    selector = f".{class_name}"
-    css = _theme_css(checked, selector=selector)
-    color_scheme = "light dark" if checked is Theme.AUTO else checked.value
-    return (
-        f"<style>{css}"
-        f"{selector}{{box-sizing:border-box;color:var(--scnsim-fg);"
-        f"background:var(--scnsim-bg);color-scheme:{color_scheme};padding:1rem}}"
-        f"{selector} table{{border-collapse:collapse}}"
-        f"{selector} th,{selector} td{{border:1px solid var(--scnsim-grid);"
-        "padding:.35rem .55rem;text-align:left}"
-        f"{selector} th{{color:var(--scnsim-secondary)}}"
-        f"{selector} svg{{display:block;max-width:100%;height:auto}}"
-        "</style>"
-        f'<div class="{class_name}">{fragment}</div>'
-    )
-
-
 def _report_html(
     body: str,
     theme: Theme,
@@ -318,61 +295,6 @@ def _report_html(
         "</style></head>"
         f"<body>{body}</body></html>"
     )
-
-
-@lru_cache(maxsize=1)
-def _themed_drawing_class() -> type[Any]:
-    import schemdraw
-
-    class _ThemedDrawing(schemdraw.Drawing):
-        def __init__(self, *args: object, theme: Theme, **kwargs: object) -> None:
-            self._scnsim_theme = _require_theme(theme)
-            kwargs.setdefault("show", False)
-            kwargs.setdefault("transparent", False)
-            super().__init__(*args, **kwargs)
-
-        def _repr_mimebundle_(
-            self,
-            include: object = None,
-            exclude: object = None,
-        ) -> dict[str, str]:
-            del include, exclude
-            svg = schemdraw.Drawing._repr_svg_(self)
-            adaptive = _adaptive_svg(svg, self._scnsim_theme)
-            return {
-                "text/html": _notebook_svg_viewer(
-                    adaptive,
-                    self._scnsim_theme,
-                )
-            }
-
-        def _ipython_display_(self) -> None:
-            from IPython.display import HTML, display
-
-            svg = schemdraw.Drawing._repr_svg_(self)
-            adaptive = _adaptive_svg(svg, self._scnsim_theme)
-            display(HTML(_notebook_svg_viewer(adaptive, self._scnsim_theme)))
-
-        def _repr_svg_(self) -> None:
-            # Avoid a second static MIME candidate shadowing adaptive HTML.
-            return None
-
-        def _repr_png_(self) -> None:
-            return None
-
-        def save(self, fname: str, transparent: bool = False, dpi: float = 72) -> None:
-            del transparent
-            super().save(fname, transparent=False, dpi=dpi)
-
-    _ThemedDrawing.__module__ = __name__
-    return _ThemedDrawing
-
-
-def _themed_drawing(theme: Theme, **kwargs: object) -> Any:
-    checked = _require_theme(theme)
-    drawing = _themed_drawing_class()(theme=checked, **kwargs)
-    drawing.config(bgcolor=_palette(checked).background)
-    return drawing
 
 
 # Preserve the public enum identity through its root facade.
