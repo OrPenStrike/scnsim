@@ -47,17 +47,17 @@ def require_quantity(value: object, unit: str, *, name: str) -> Quantity:
     if not finite:
         raise ValueError(f"{name} must be finite")
     # Retain the caller's spelling for attempt provenance.  Canonical identity
-    # converts it once through `_canonical.quantity_envelope` at its boundary.
+    # converts it once through `canonical.quantity_envelope` at its boundary.
     return value
 
 
 def require_positive_quantity(value: object, unit: str, *, name: str) -> Quantity:
-    """Return a finite positive physical quantity in the requested unit."""
+    """Validate positivity in the requested unit and retain source spelling."""
 
-    converted = require_quantity(value, unit, name=name)
-    if converted.to(unit).magnitude <= 0:
+    quantity = require_quantity(value, unit, name=name)
+    if quantity.to(unit).magnitude <= 0:
         raise ValueError(f"{name} must be strictly positive")
-    return converted
+    return quantity
 
 
 def __getattr__(name: str) -> Any:

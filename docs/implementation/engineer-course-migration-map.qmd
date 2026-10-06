@@ -122,6 +122,10 @@ Neither Chapter changes renderer behavior or creates a new success condition.
   Every Result records all sixteen labeled four-Port channels; the public plots
   show only the named readout-head reflection example. Authoring and finite-pi
   compiled diagrams both remain typed layout failures, with no substitute SVG.
+- Chapter 7 Lesson 5 is a separate source/notebook execution unit. Its moving
+  middle attachment keeps two line bodies and their wiring fixed while x and
+  8 mm − x produce point-owned electrical-resolution grids. Its three-position
+  Direct sweep and separate M=80 refinement retain named complex response data.
 - Chapter 8 records two independent Jupyter kernel identities in one preserved
   workspace. Kernel 1 persists Direct/root Results and a Report. Kernel 2
   reconstructs the exact Plan/View/Spec and calls only `resolve()`; the Result

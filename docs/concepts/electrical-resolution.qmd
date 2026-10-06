@@ -1,0 +1,32 @@
+---
+title: "Electrical resolution for lossless lines"
+---
+
+# Electrical resolution for lossless lines
+
+`ElectricalResolution(max_frequency=10*u.GHz, sections_per_wavelength=40)` is
+an immutable policy for a transmission line whose declared per-length R and G
+matrices are exactly zero. It is exclusive with fixed `n_sections`. External
+finite resistors and Ports remain ordinary circuit elements. The Plan stores
+the policy, not a mesh; each resolved positive line length produces its own
+integer section count before node allocation and stamping.
+
+For reciprocal positive-definite L and C, factor L = A Aᵀ and diagonalize
+B = Aᵀ C A. Its positive eigenvalues λ give modal delay per meter τ = √λ and
+velocity v = 1/τ. With the slowest delay τmax, frequency fmax and M sections
+per wavelength, hmax = 1/(M fmax τmax), N = max(1, ceil(length/hmax)), and
+dx = length/N. The existing full conductor matrices are stamped in each Pi
+section. Repeated modes are valid; no eigenvector labeling is required.
+
+At real frequencies no higher than fmax, this defines a phase-increment bound
+βm dx ≤ 2π/M. It is a *resolution convention*, not a bound on S-parameter,
+root, or optimization error. Complex-frequency roots outside |ω|/(2π) ≤ fmax
+are reported as outside the policy envelope; they are not automatically
+remeshed or rejected. A different resolved length can cross an integer-N
+boundary, so response derivatives with respect to position need not be smooth.
+
+Both left and right physical lengths must remain strictly positive. Invalid
+policy inputs, nonzero or missing R/G, non-positive modal eigenvalues, or a
+non-finite or unrepresentable realization fail before numerical solution. The
+fixed-count lossy line path is unchanged. This candidate does not add automatic
+root search, topology scanning, accuracy certification, or a zero-length merge.

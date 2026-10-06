@@ -64,7 +64,7 @@ function execute_point_operation!(request, plan, raw_compiled, view, request_sha
         solve_hb(request, plan, raw_compiled, view, request_sha, attempt_sha, staging)
     elseif operation == "evaluate_direct"
         kind = get(request["spec"], "type", nothing)
-        kind == "diagonal_root" ? evaluate_diagonal_root(request, plan, compiled, request_sha, attempt_sha, staging) :
+        kind in ("diagonal_root", "operator_element_root") ? evaluate_element_root(request, plan, compiled, request_sha, attempt_sha, staging) :
         kind == "hybridized_pole" ? evaluate_hybridized_pole(request, plan, compiled, request_sha, attempt_sha, staging) :
         kind == "transfer_zero" ? evaluate_transfer_zero(request, plan, view, request_sha, attempt_sha, staging) :
         kind == "residue_normalized_coupling" ? evaluate_residue_normalized_coupling(request, plan, view, request_sha, attempt_sha, staging) :
@@ -129,7 +129,8 @@ function point_payload!(point_root::String, attempt_prefix::String)
     return payload
 end
 
-function run_parameter_batch(request, plan, request_sha::String, attempt_sha::String, staging::String)
+function run_parameter_batch(request, plan, request_sha::String, attempt_sha::String, staging::String;
+        request_directory::String, recovery)
     source = request["parameter_source"]; count, points = parameter_points(source)
     root_relative = "artifacts/parameter_points/"; root = joinpath(staging, root_relative)
     mkpath(joinpath(root, "chunks")); mkpath(joinpath(root, "points"))
@@ -157,10 +158,25 @@ function run_parameter_batch(request, plan, request_sha::String, attempt_sha::St
             "ordinal" => ordinal, "source_index" => source_index, "parameters" => parameters,
             "parameters_sha256" => point_parameters_sha(parameters),
         )
+        if ordinal < length(recovery)
+            checkpoint = joinpath(request_directory, "point-checkpoints", lpad(string(ordinal), 6, '0'))
+            seal_path = joinpath(checkpoint, "seal.json")
+            isfile(seal_path) && file_sha256(seal_path) == recovery[ordinal + 1]["seal_sha256"] ||
+                fail("evidence", "evidence_integrity", "point_recovery", "artifact", "point checkpoint seal changed after authorization")
+            record = plain(JSON3.read(read(joinpath(checkpoint, "record.json"), String)))
+            record["metadata"]["ordinal"] == ordinal && record["metadata"]["source_index"] == source_index &&
+                record["metadata"]["parameters"] == parameters ||
+                fail("evidence", "evidence_integrity", "point_recovery", "artifact", "point checkpoint changed its source point")
+            rm(point_root; recursive = true); cp(joinpath(checkpoint, "point"), point_root; force = true)
+            metadata = record["metadata"]
+            metadata["checkpoint_seal_sha256"] = recovery[ordinal + 1]["seal_sha256"]
+        else
+        metadata["producer_attempt_sha256"] = attempt_sha
         try
             context = point_request["operation"] == "evaluate_direct" ? "direct_quantity" : "compile"
             raw = compile_primitive(plan, structured_parameter_values(parameters); context_kind = context,
                 authorized = structured_authorizations(parameters), authorization_source = "parameter_set")
+            point_request["discretization"] = raw.discretization
             lineage, view = realized_ref_lineage(raw, declarative_lineage(plan, point_request, raw))
             point_request["ref_lineage"] = lineage; metadata["ref_lineage"] = lineage
             execute_point_operation!(point_request, plan, raw, view, request_sha, attempt_sha, point_root)
@@ -171,6 +187,23 @@ function run_parameter_batch(request, plan, request_sha::String, attempt_sha::St
             error.kind in POINT_NUMERICAL_FAILURES || rethrow()
             rm(point_root; recursive = true); mkpath(point_root)
             metadata["status"] = "failure"; metadata["failure"] = failure_object(point_request, error)
+        end
+        files = Any[Dict("path" => relative, "sha256" => file_sha256(joinpath(point_root, relative)),
+            "byte_length" => filesize(joinpath(point_root, relative))) for relative in relative_files(point_root)]
+        record = Dict{String,Any}(
+            "schema" => "scnsim.point_checkpoint_record", "schema_version" => 1,
+            "request_sha256" => request_sha, "metadata" => metadata, "files" => files,
+        )
+        ready_path = joinpath(staging, "point-ready.json"); write_bytes(ready_path, canonical_bytes(record))
+        record_sha = file_sha256(ready_path)
+        println(canonical_json(Dict{String,Any}(
+            "schema" => "scnsim.point_checkpoint_ready", "schema_version" => 1,
+            "request_sha256" => request_sha, "attempt_sha256" => attempt_sha,
+            "ordinal" => ordinal, "record_sha256" => record_sha,
+            "byte_length" => filesize(ready_path),
+        ))); flush(stdout)
+        metadata["checkpoint_seal_sha256"] = read_point_committed(request_sha, attempt_sha, ordinal, record_sha)
+        rm(ready_path)
         end
         push!(pending, metadata); length(pending) == BATCH_CHUNK_SIZE && flush_chunk!()
     end

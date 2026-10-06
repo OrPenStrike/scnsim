@@ -240,6 +240,7 @@ rewrites the tree through a Zarr library. The root-group/dataset layout and
 exact compact no-newline metadata bytes are fixed in
 [Canonical Identities and Schemas](canonical-identities-and-schemas.qmd); no
 `.zattrs`, `.zmetadata`, sidecar, or other extra is permitted.
+Dataset `chunk_paths` are a new list sorted lexically by full relative path.
 
 The exact envelopes and Result/artifact references are defined by the
 [machine-readable identity schemas](canonical-identities-and-schemas.qmd).

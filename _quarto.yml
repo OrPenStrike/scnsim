@@ -44,6 +44,7 @@ project:
     - examples/engineer/chapter-07/02-ports.qmd
     - examples/engineer/chapter-07/03-diagrams.qmd
     - examples/engineer/chapter-07/04-parameter-points.qmd
+    - examples/engineer/chapter-07/05-position-electrical-resolution.qmd
     - examples/engineer/chapter-07/chapter.qmd
     - examples/engineer/chapter-08/01-persist.qmd
     - examples/engineer/chapter-08/02-resolve.qmd
@@ -69,6 +70,7 @@ project:
     - docs/concepts/requests-execution-and-result-ownership.qmd
     - docs/concepts/direct-and-hb-realizations.qmd
     - docs/concepts/units-parameters-and-optimization.qmd
+    - docs/concepts/electrical-resolution.qmd
     - docs/contracts/index.qmd
     - docs/contracts/circuit-plan-assembly.qmd
     - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
@@ -213,6 +215,8 @@ website:
               href: examples/engineer/chapter-07/03-diagrams.qmd
             - text: "Lesson 4 — Parameter points"
               href: examples/engineer/chapter-07/04-parameter-points.qmd
+            - text: "Lesson 5 — Position and electrical resolution (standalone)"
+              href: examples/engineer/chapter-07/05-position-electrical-resolution.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-07/chapter.qmd
         - section: "Optional Chapter 8 — Report and resolve"
@@ -238,6 +242,8 @@ website:
           href: docs/concepts/direct-and-hb-realizations.qmd
         - text: "Units, parameters, and optimization"
           href: docs/concepts/units-parameters-and-optimization.qmd
+        - text: "Electrical resolution"
+          href: docs/concepts/electrical-resolution.qmd
     - id: contract
       title: "Contract"
       style: "floating"
@@ -296,14 +302,14 @@ website:
 
 format:
   askr-html:
-    css: docs/styles.css
-    html-math-method: mathjax
-    respect-user-color-scheme: true
     toc: true
+    code-copy: true
     page-layout: article
     grid:
       sidebar-width: 264px
       body-width: 630px
       margin-width: 264px
       gutter-width: 26px
-    code-copy: true
+    css: docs/styles.css
+    html-math-method: mathjax
+    respect-user-color-scheme: true

@@ -39,30 +39,33 @@ function solve_direct(request, view::RealizedView, request_sha::String, attempt_
     write_success(staging, request, request_sha, attempt_sha, result, [frequency_artifact, s_artifact, y_artifact, z_artifact])
 end
 
-function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, request_sha::String, attempt_sha::String, staging::String)
+function evaluate_element_root(request, plan, compiled::CompiledPrimitive, request_sha::String, attempt_sha::String, staging::String)
     spec = request["spec"]
-    get(spec, "type", nothing) == "diagonal_root" ||
-        fail("capability", "scaffold_unavailable", "evaluate_direct", "direct_quantity", "operation requires a diagonal-root Spec")
+    kind = get(spec, "type", nothing)
+    kind in ("diagonal_root", "operator_element_root") ||
+        fail("capability", "scaffold_unavailable", "evaluate_direct", "direct_quantity", "operation requires an element-root Spec")
     lineage = request["ref_lineage"]
-    retained = lineage["retain"]
-    retained === nothing && fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec requires a retained one-coordinate View")
-    lineage["terminal_coordinates"] == retained["retained_coordinates"] ||
-        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec terminal coordinates do not match retain()")
-    coordinates = retained["retained_coordinates"]
-    length(coordinates) == 1 && coordinates[1] == spec["coordinate"] ||
-        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "DiagonalRootSpec coordinate must equal the retained View coordinate")
+    coordinates = String.(lineage["terminal_coordinates"])
+    row = String(kind == "diagonal_root" ? spec["coordinate"] : spec["row"])
+    column = String(kind == "diagonal_root" ? spec["coordinate"] : spec["column"])
+    row in coordinates && column in coordinates ||
+        fail("validation", "port_realizability", "evaluate_direct", "direct_quantity", "root element coordinates must belong to the final View")
     hint = quantity_value(spec["root_hint"])
     baseline_values = plan_parameter_values(plan)
     candidate_values = parameter_values(request)
     baseline_raw = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
         authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
     _, baseline_view = realized_ref_lineage(baseline_raw, declarative_lineage(plan, request, baseline_raw))
-    baseline_root, baseline_slope = diagonal_root(baseline_view.compiled, String(spec["coordinate"]), hint)
+    baseline_view.terminal == coordinates ||
+        fail("execution", "compiler_invariant", "root_view", "direct_quantity", "baseline and selected root View bases disagree")
+    baseline_root, baseline_slope = kind == "diagonal_root" ?
+        diagonal_root(baseline_view.compiled, coordinates, row, hint) :
+        operator_element_root(baseline_view.compiled, coordinates, row, column, hint)
     if same_parameter_values(baseline_values, candidate_values)
         omega, slope = baseline_root, baseline_slope
     else
         selector = Dict{String,Any}(
-            "type" => "diagonal_root_projection",
+            "type" => kind == "diagonal_root" ? "diagonal_root_projection" : "operator_element_root_projection",
             "spec" => spec,
             "projection" => "frequency",
         )
@@ -70,15 +73,18 @@ function evaluate_diagonal_root(request, plan, compiled::CompiledPrimitive, requ
             plan, request, baseline_values, candidate_values, baseline_root, selector;
             context_kind = "direct_quantity",
         )
-        slope = root_certificate(compiled, omega, String(spec["coordinate"])).fp
+        slope = operator_element_state(compiled, omega, coordinates,
+            findfirst(==(row), coordinates)::Int, findfirst(==(column), coordinates)::Int).fp
     end
+    kind == "diagonal_root" && imag(omega) > 0.0 &&
+        fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "diagonal root violates the passive imaginary-root policy")
     scalars = Dict{String,Any}(
         "root" => complex_quantity(omega, "radian / second", "inverse_time"),
         "frequency" => quantity(real(omega) / (2.0 * pi), "hertz", "inverse_time"),
-        "linewidth" => quantity(-2.0 * imag(omega) / (2.0 * pi), "hertz", "inverse_time"),
         "slope" => complex_quantity(slope, "siemens", "conductance"),
     )
-    result = result_envelope("diagonal_root", request_sha, attempt_sha, scalars, Dict{String,Any}())
+    kind == "diagonal_root" && (scalars["linewidth"] = quantity(-2.0 * imag(omega) / (2.0 * pi), "hertz", "inverse_time"))
+    result = result_envelope(kind, request_sha, attempt_sha, scalars, Dict{String,Any}())
     write_success(staging, request, request_sha, attempt_sha, result, Any[])
 end
 
@@ -98,8 +104,7 @@ function evaluate_hybridized_pole(request, plan, compiled::CompiledPrimitive, re
         selector = Dict{String,Any}("type" => "hybridized_pole_projection", "spec" => spec, "projection" => "frequency")
         omega = selector_root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root, selector;
             context_kind = "direct_quantity")
-        slope = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)[2]
-        vector = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)[3]
+        omega, slope, vector = hybridized_pole(compiled, coordinates, spec["anchor"]; start = omega)
     end
     evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.hybridized_pole_evidence", "schema_version" => 1,
         "coordinates" => coordinates, "root" => complex_quantity(omega, "radian / second", "inverse_time"))))
@@ -175,8 +180,108 @@ function transfer_family_value(view::RealizedView, family::String, output::Int, 
     return matrices[1][output, input], derivative ? matrices[2][output, input] : nothing, values
 end
 
+function transfer_norm(row, omega::ComplexF64)
+    all(value -> isfinite(real(value)) && isfinite(imag(value)), row) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+    magnitude = norm(row)
+    isfinite(magnitude) || transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+    return magnitude
+end
+
+"""Positive scale as a bounded binary mantissa and exact power-of-two exponent."""
+function transfer_scale(factors, omega::ComplexF64)
+    mantissa, exponent, zero = 1.0, 0, false
+    for factor in factors
+        isfinite(factor) && factor >= 0.0 ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        if factor == 0.0
+            zero = true
+        elseif !zero
+            fm, fe = frexp(factor)
+            mantissa, shift = frexp(mantissa * fm)
+            exponent += fe + shift
+        end
+    end
+    return zero ? (0.0, 0) : (mantissa, exponent)
+end
+
+function transfer_scale_sum(terms, omega::ComplexF64)
+    mantissa, exponent = 0.0, 0
+    for factors in terms
+        term, shift = transfer_scale(factors, omega)
+        term == 0.0 && continue
+        if mantissa == 0.0
+            mantissa, exponent = term, shift
+        else
+            if shift > exponent
+                mantissa, exponent = ldexp(mantissa, exponent - shift), shift
+            else
+                term = ldexp(term, shift - exponent)
+            end
+            mantissa = nextfloat(mantissa + term) # upper bound lost low terms
+            mantissa, shift = frexp(mantissa)
+            exponent += shift
+        end
+    end
+    return mantissa, exponent
+end
+
+function transfer_ratio(value::Float64, scale::Tuple{Float64,Int})
+    scale[1] == 0.0 && return value == 0.0 ? (0.0, 0) : (Inf, 0)
+    value == 0.0 && return (0.0, 0)
+    vm, ve = frexp(value)
+    mantissa, shift = frexp(vm / scale[1])
+    return mantissa, ve - scale[2] + shift
+end
+
+function transfer_ratio_le(ratio::Tuple{Float64,Int}, threshold::Float64)
+    ratio[1] == 0.0 && return true
+    isfinite(ratio[1]) || return false
+    tm, te = frexp(threshold)
+    return ratio[2] < te || (ratio[2] == te && ratio[1] <= tm)
+end
+
+function transfer_failure(kind::String, stage::String, omega::ComplexF64;
+        item::String = "unavailable", eta = nothing, scale = nothing, slope = nothing,
+        rank_min = nothing, rank_gap = nothing, denominator = nothing,
+        correction = nothing, threshold = nothing)
+    diagnostic(value) = value === nothing ? "unavailable" : value isa Tuple ?
+        "$(round(value[1]; sigdigits = 6))*2^$(value[2])" : string(round(value; sigdigits = 6))
+    message = "transfer-zero $(stage) unresolved (omega_re=$(diagnostic(real(omega))), omega_im=$(diagnostic(imag(omega))), " *
+        "item=$(item), residual=$(diagnostic(eta)), scale=$(diagnostic(scale)), slope_ratio=$(diagnostic(slope)), " *
+        "rank_min=$(diagnostic(rank_min)), rank_gap=$(diagnostic(rank_gap)), " *
+        "denominator=$(diagnostic(denominator)), correction=$(diagnostic(correction)), threshold=$(diagnostic(threshold)))"
+    fail("execution", kind, stage, "direct_quantity", message)
+end
+
+function transfer_determinant(A::Matrix{ComplexF64}, omega::ComplexF64, stage::String;
+        derivative::Union{Nothing,Matrix{ComplexF64}} = nothing)
+    try
+        return derivative === nothing ? determinant_value(A) : cofactor_derivative(A, derivative)
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure(error.kind, stage, omega;
+            item = stage == "transfer_denominator" ? "denominator" :
+                stage == "transfer_slope_rank" ? "slope" : "numerator", threshold = tau(size(A, 1)))
+    end
+end
+
+function transfer_solve(A::Matrix{ComplexF64}, B, omega::ComplexF64, stage::String)
+    try
+        return checked_solve(A, B, "numerical_resolution_unresolved", stage, size(A, 1))
+    catch error
+        error isa BackendFailure && error.kind == "numerical_resolution_unresolved" || rethrow()
+        transfer_failure(error.kind, "transfer_denominator", omega; item = "solve", threshold = tau(size(A, 1)))
+    end
+end
+
 function transfer_certificate(view::RealizedView, family::String, output::Int, input::Int, omega::ComplexF64)
-    value, value_p, values = transfer_family_value(view, family, output, input, omega; derivative = true)
+    value, value_p, values = try
+        transfer_family_value(view, family, output, input, omega; derivative = true)
+    catch error
+        error isa BackendFailure && error.kind in ("direct_response_formation", "eliminated_block_solve_failure") || rethrow()
+        transfer_failure(error.kind, "transfer_denominator", omega; item = "solve")
+    end
     S, Y, Z, Sp, Yp, Zp, H = values
     if family == "Y"
         # For retained Y, the denominator is the exact eliminated full-node
@@ -198,8 +303,8 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         selected = selected_coordinate_indices(view.compiled, view.terminal); eliminated = [k for k in eachindex(view.compiled.nodes) if k ∉ selected]
         AD = isempty(eliminated) ? Matrix{ComplexF64}(I, 1, 1) : Hnode[eliminated, eliminated]
         ADp = isempty(eliminated) ? zeros(ComplexF64, 1, 1) : Hpnode[eliminated, eliminated]
-        detd = isempty(eliminated) ? 1.0 + 0.0im : determinant_value(AD)
-        detdp = isempty(eliminated) ? 0.0 + 0.0im : cofactor_derivative(AD, ADp)
+        detd = isempty(eliminated) ? 1.0 + 0.0im : transfer_determinant(AD, omega, "transfer_denominator")
+        detdp = isempty(eliminated) ? 0.0 + 0.0im : transfer_determinant(AD, omega, "transfer_denominator"; derivative = ADp)
         HRR, HRRp = Hnode[selected, selected], Hpnode[selected, selected]
         if isempty(eliminated)
             numerator_matrix, numerator_matrix_p = HRR, HRRp
@@ -210,15 +315,33 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
             # evaluated through the required residual-checked solve rather
             # than an explicit inverse.  Its derivative follows the same
             # analytic A X'=B'-A'X rule as every Direct Schur solve.
-            X = checked_solve(AD, HER, "numerical_resolution_unresolved", "transfer_denominator", size(AD, 1))
-            Xp = checked_solve(AD, HERp - ADp * X, "numerical_resolution_unresolved", "transfer_denominator_derivative", size(AD, 1))
+            X = transfer_solve(AD, HER, omega, "transfer_denominator")
+            Xp = transfer_solve(AD, HERp - ADp * X, omega, "transfer_denominator_derivative")
             numerator_matrix = HRR .* detd - HRE * (detd .* X)
             numerator_matrix_p = HRRp .* detd + HRR .* detdp -
                 HREp * (detd .* X) - HRE * (detdp .* X + detd .* Xp)
         end
         N, Np = numerator_matrix[output, input], numerator_matrix_p[output, input]
+        isfinite(real(N)) && isfinite(imag(N)) && isfinite(real(Np)) && isfinite(imag(Np)) ||
+            transfer_failure("root_slope_unresolved", "transfer_numerator_scale", omega; item = "numerator", threshold = tau(1))
+        absolute_operator = operator_absolute_bound(view.compiled, omega; loaded = !view.port_realizable)
+        all(isfinite, absolute_operator) && isfinite(abs(omega)) && abs(omega) > 0.0 ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        BH = absolute_operator ./ abs(omega)
+        all(isfinite, BH) && !any((absolute_operator .> 0.0) .& (BH .== 0.0)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        if view.port_realizable
+            B = abs.(view.compiled.B)
+            BH .+= B * abs.(selected_boundary(view).Go) * transpose(B)
+        end
+        BF = BH[selected, selected]
+        if !isempty(eliminated)
+            BF .+= BH[selected, eliminated] * abs.(X)
+        end
+        all(isfinite, BF) || transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "scale")
+        scale = transfer_scale((abs(detd), transfer_norm(BF[output, :], omega)), omega)
         return value, value_p, N, Np, detd,
-            reshape(ComplexF64[N], 1, 1), reshape(ComplexF64[Np], 1, 1), AD, ADp
+            reshape(ComplexF64[N], 1, 1), reshape(ComplexF64[Np], 1, 1), AD, ADp, scale
     elseif family == "Z"
         AD, ADp = Y, Yp
         rows = [k for k in 1:size(Y, 1) if k != input]; columns = [k for k in 1:size(Y, 2) if k != output]
@@ -229,7 +352,10 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         # the whole matrix (which changes det by sign^q for q>1).  The same
         # row operation is applied to the analytic derivative.
         sign < 0 && (AN[1, :] .*= -1.0; ANp[1, :] .*= -1.0)
-        return value, value_p, determinant_value(AN), cofactor_derivative(AN, ANp), determinant_value(AD), AN, ANp, AD, ADp
+        scale = transfer_scale((transfer_norm(Y[row, :], omega) for row in rows), omega)
+        return value, value_p, transfer_determinant(AN, omega, "transfer_numerator_scale"),
+            transfer_determinant(AN, omega, "transfer_numerator_scale"; derivative = ANp),
+            transfer_determinant(AD, omega, "transfer_denominator"), AN, ANp, AD, ADp, scale
     elseif family == "S"
         view.port_realizable || fail("validation", "port_realizability", "selected_network", "direct_quantity", "S transfer zero requires a Port-realizable View")
         D = selected_boundary(view).Dk
@@ -238,50 +364,129 @@ function transfer_certificate(view::RealizedView, family::String, output::Int, i
         Pp = complex.(D) * Yp * complex.(D); Np_matrix = -Pp
         qj = Nmatrix[:, input]; AN = [P qj; -reshape([k == output ? 1.0 + 0.0im : 0.0 + 0.0im for k in 1:size(P, 1)], 1, :) zeros(ComplexF64, 1, 1)]
         ANp = [Pp Np_matrix[:, input]; zeros(ComplexF64, 1, size(P, 1) + 1)]
-        return value, value_p, determinant_value(AN), cofactor_derivative(AN, ANp), determinant_value(P), AN, ANp, P, Pp
+        scale = transfer_scale((transfer_norm(AN[row, :], omega) for row in axes(AN, 1)), omega)
+        return value, value_p, transfer_determinant(AN, omega, "transfer_numerator_scale"),
+            transfer_determinant(AN, omega, "transfer_numerator_scale"; derivative = ANp),
+            transfer_determinant(P, omega, "transfer_denominator"), AN, ANp, P, Pp, scale
     end
     fail("validation", "port_realizability", "family", "direct_quantity", "transfer family is invalid")
+end
+
+"""Check every required certificate at one candidate; only finite nonclosure may iterate."""
+function transfer_complete_certificate(view::RealizedView, family::String, output::Int, input::Int,
+        omega::ComplexF64; final::Bool = false)
+    value, slope, _, _, _, AN, ANp, AD, ADp, normalizer = transfer_certificate(view, family, output, input, omega)
+    isfinite(real(value)) && isfinite(imag(value)) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega; item = "numerator")
+    isfinite(real(slope)) && isfinite(imag(slope)) ||
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega; item = "slope")
+    # Certificate the declared numerator matrix and its analytic derivative,
+    # separately from the transfer Newton ratio.
+    numerator, numerator_slope, ANscaled, ANpscaled = try
+        scaled_determinant_pair(AN, ANp)[1:4]
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure("root_slope_unresolved", "transfer_numerator_scale", omega; item = "numerator", threshold = tau(size(AN, 1)))
+    end
+    denominator = try
+        scaled_determinant_pair(AD, ADp)[1]
+    catch error
+        error isa BackendFailure && error.kind == "root_slope_unresolved" || rethrow()
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega; item = "denominator", threshold = tau(size(AD, 1)))
+    end
+    # AN/AD are coherent-SI equation/unknown numerics, hence dimensionless
+    # evidence matrices.  The determinant/cofactor was formed in the bounded
+    # power-of-two mantissa matrix and restored with its common exponent;
+    # residual/rank use that same unscaled coherent-SI equation.
+    isfinite(abs(numerator)) && isfinite(abs(numerator_slope)) ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
+            item = "numerator", scale = normalizer, threshold = tau(size(AN, 1)))
+    eta_n = transfer_ratio(abs(numerator), normalizer)
+    residual_pass = transfer_ratio_le(eta_n, tau(size(AN, 1)))
+    slope_scale = transfer_scale_sum(((abs(transfer_determinant(ANscaled[[k for k in 1:size(AN,1) if k != a], [k for k in 1:size(AN,2) if k != b]], omega, "transfer_slope_rank")), abs(ANpscaled[a,b])) for a in 1:size(AN,1), b in 1:size(AN,2)), omega)
+    scaled_slope = transfer_determinant(ANscaled, omega, "transfer_slope_rank"; derivative = ANpscaled)
+    slope_ratio = transfer_ratio(abs(scaled_slope), slope_scale)
+    sv = try
+        svd(AN).S
+    catch error
+        error isa LinearAlgebra.LAPACKException || rethrow()
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = "rank", eta = eta_n, scale = normalizer, slope = slope_ratio, threshold = tau(size(AN, 1)))
+    end
+    rank_min = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end] / sv[1]
+    rank_gap = length(sv) == 1 || sv[1] == 0 ? nothing : sv[end-1] / sv[1]
+    slope_pass = slope_scale[1] > 0 && !transfer_ratio_le(slope_ratio, tau(size(AN, 1)))
+    rank_pass = length(sv) == 1 ||
+        (rank_min !== nothing && rank_min <= tau(length(sv)) && rank_gap > tau(length(sv)))
+    isfinite(real(denominator)) && isfinite(imag(denominator)) && denominator != 0.0 ||
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+            item = "denominator", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    inverse = try
+        checked_solve(AD, Matrix{ComplexF64}(I, size(AD,1), size(AD,2)), "numerical_resolution_unresolved", "transfer_denominator", size(AD,1))
+    catch error
+        error isa BackendFailure && error.kind == "numerical_resolution_unresolved" || rethrow()
+        transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+            item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    end
+    finite_matrix(inverse) || transfer_failure("numerical_resolution_unresolved", "transfer_denominator", omega;
+        item = "solve", eta = eta_n, scale = normalizer, slope = slope_ratio,
+        rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator), threshold = tau(size(AD, 1)))
+    correction = transfer_ratio(abs(value), transfer_scale((abs(slope), 2.0 * pi), omega))
+    correction_pass = transfer_ratio_le(correction, 0.01)
+    if final && !(isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0)
+        transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency")
+    end
+    if final && !residual_pass
+        transfer_failure("numerical_resolution_unresolved", "transfer_numerator_scale", omega;
+            item = "residual", eta = eta_n, scale = normalizer, threshold = tau(size(AN, 1)))
+    end
+    if final && !(slope_pass && rank_pass)
+        transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = slope_pass ? "rank" : "slope", eta = eta_n, scale = normalizer,
+            slope = slope_ratio, rank_min = rank_min, rank_gap = rank_gap,
+            threshold = tau(size(AN, 1)))
+    end
+    if final && !correction_pass
+        transfer_failure("numerical_resolution_unresolved", "transfer_correction", omega;
+            item = "correction_hz", eta = eta_n, scale = normalizer, slope = slope_ratio,
+            rank_min = rank_min, rank_gap = rank_gap, denominator = abs(denominator),
+            correction = correction, threshold = 0.01)
+    end
+    return residual_pass && slope_pass && rank_pass && correction_pass, value, slope, numerator_slope, denominator
 end
 
 function transfer_zero(view::RealizedView, family::String, output::Int, input::Int, anchor;
         start::Union{Nothing,ComplexF64} = nothing)
     omega = start === nothing ? 2.0 * pi * complex_frequency_value(anchor) : start
     isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 ||
-        fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency")
-    last_value, last_slope, last_values = 0.0 + 0.0im, 0.0 + 0.0im, nothing
-    for _ in 1:32
-        value, slope, values = transfer_family_value(view, family, output, input, omega; derivative = true)
-        last_value, last_slope, last_values = value, slope, values
-        isfinite(real(value)) && isfinite(imag(value)) && isfinite(real(slope)) && isfinite(imag(slope)) && slope != 0.0 ||
-            fail("execution", "root_slope_unresolved", "transfer_numerator", "direct_quantity", "transfer-zero numerator or analytic slope is unresolved")
+        (start === nothing ?
+            fail("validation", "invalid_diagonal_root_hint", "anchor", "direct_quantity", "transfer-zero anchor must have finite positive real frequency") :
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", omega; item = "frequency"))
+    for update in 0:32
+        passed, value, slope, numerator_slope, denominator =
+            transfer_complete_certificate(view, family, output, input, omega; final = update == 32)
+        if passed && real(omega) > 0.0
+            return omega, numerator_slope, denominator
+        end
+        update == 32 && fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+            "final transfer certificate returned without a failure")
+        slope != 0.0 || transfer_failure("root_slope_unresolved", "transfer_slope_rank", omega;
+            item = "slope", slope = 0.0, threshold = 0.0)
         next = omega - value / slope
-        if reinterpret(UInt64, real(next)) == reinterpret(UInt64, real(omega)) && reinterpret(UInt64, imag(next)) == reinterpret(UInt64, imag(omega))
-            omega = next; break
+        isfinite(real(next)) && isfinite(imag(next)) ||
+            transfer_failure("numerical_resolution_unresolved", "transfer_frequency", next; item = "frequency")
+        if reinterpret(UInt64, real(next)) == reinterpret(UInt64, real(omega)) &&
+                reinterpret(UInt64, imag(next)) == reinterpret(UInt64, imag(omega))
+            transfer_complete_certificate(view, family, output, input, next; final = true)
+            fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+                "stagnant transfer certificate returned without a failure")
         end
         omega = next
     end
-    value, slope, _, _, _, AN, ANp, AD, ADp = transfer_certificate(view, family, output, input, omega)
-    # Certificate the declared numerator matrix and its analytic derivative,
-    # separately from the transfer Newton ratio.
-    numerator, numerator_slope, ANscaled, ANpscaled, _, _ = scaled_determinant_pair(AN, ANp)
-    denominator, _, ADscaled, _, _, _ = scaled_determinant_pair(AD, ADp)
-    # AN/AD are coherent-SI equation/unknown numerics, hence dimensionless
-    # evidence matrices.  The determinant/cofactor was formed in the bounded
-    # power-of-two mantissa matrix and restored with its common exponent;
-    # residual/rank use that same unscaled coherent-SI equation.
-    row_product = prod(norm(Base.view(AN, row, :)) for row in axes(AN, 1))
-    eta_n = row_product == 0.0 ? (abs(numerator) == 0.0 ? 0.0 : Inf) : abs(numerator) / row_product
-    slope_scale = sum(abs(((-1)^(a+b) * determinant_value(AN[[k for k in 1:size(AN,1) if k != a], [k for k in 1:size(AN,2) if k != b]]))) * abs(ANp[a,b]) for a in 1:size(AN,1), b in 1:size(AN,2))
-    sv = svd(AN).S
-    rank_ok = length(sv) == 1 || (sv[end] / sv[1] <= tau(length(sv)) && sv[end-1] / sv[1] > tau(length(sv)))
-    inverse = checked_solve(AD, Matrix{ComplexF64}(I, size(AD,1), size(AD,2)), "numerical_resolution_unresolved", "transfer_denominator", size(AD,1))
-    correction = abs(value / slope) / abs(omega)
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 &&
-        isfinite(real(denominator)) && isfinite(imag(denominator)) && denominator != 0.0 &&
-        eta_n <= tau(size(AN,1)) && slope_scale > 0.0 && abs(numerator_slope)/slope_scale > tau(size(AN,1)) && rank_ok && finite_matrix(inverse) &&
-        isfinite(correction) && correction <= tau(size(AN, 1)) ||
-        fail("execution", "numerical_resolution_unresolved", "transfer_denominator", "direct_quantity", "transfer-zero denominator is unresolved")
-    return omega, numerator_slope, denominator
+    fail("execution", "compiler_invariant", "transfer_certificate", "direct_quantity",
+        "transfer-zero update loop exhausted without final diagnosis")
 end
 
 function evaluate_transfer_zero(request, plan, view::RealizedView, request_sha::String, attempt_sha::String, staging::String)
@@ -301,7 +506,7 @@ function evaluate_transfer_zero(request, plan, view::RealizedView, request_sha::
         selector = Dict{String,Any}("type" => "transfer_zero_projection", "spec" => spec, "projection" => "frequency")
         zero = selector_root_with_continuation(plan, request, baseline_values, candidate_values, base_zero, selector;
             context_kind = "direct_quantity")
-        _, numerator_slope, denominator = transfer_zero(view, String(spec["family"]), output::Int, input::Int, spec["anchor"]; start = zero)
+        zero, numerator_slope, denominator = transfer_zero(view, String(spec["family"]), output::Int, input::Int, spec["anchor"]; start = zero)
     end
     evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.transfer_zero_evidence", "schema_version" => 1, "spec" => spec,
         "zero" => complex_quantity(zero, "radian / second", "inverse_time"))))
@@ -319,6 +524,7 @@ function residue_branch(compiled::CompiledPrimitive, coordinates::Vector{String}
         coordinate = String(spec["coordinate"]); index = findfirst(==(coordinate), coordinates)
         index === nothing && fail("validation", "port_realizability", "residue_branch", "direct_quantity", "diagonal branch coordinate is absent from the common retained basis")
         omega = root === nothing ? retained_diagonal_root(compiled, coordinates, index::Int, quantity_value(spec["root_hint"])) : root
+        imag(omega) <= 0.0 || fail("execution", "numerical_resolution_unresolved", "newton_certificate", "direct_quantity", "residue diagonal root violates the passive imaginary-root policy")
         vector = zeros(ComplexF64, length(coordinates)); vector[index::Int] = 1.0 + 0.0im
     elseif kind == "hybridized_pole"
         String.(spec["coordinates"]) == coordinates || fail("validation", "port_realizability", "residue_branch", "direct_quantity", "hybridized branch must name the complete common retained basis")
@@ -336,51 +542,10 @@ function residue_branch(compiled::CompiledPrimitive, coordinates::Vector{String}
     return omega, vector, slope, -1.0 / slope
 end
 
-"""One diagonal branch of the common retained operator, not a separately reduced View."""
-function retained_diagonal_state(compiled::CompiledPrimitive, coordinates::Vector{String}, coordinate_index::Int, omega::ComplexF64)
-    indices = selected_coordinate_indices(compiled, coordinates); n = length(compiled.nodes)
-    Q, Qp = operator_at(compiled, omega; loaded = true), operator_derivative_at(compiled, omega; loaded = true)
-    eliminated = [k for k in 1:n if k ∉ indices]
-    if isempty(eliminated)
-        ri = indices[coordinate_index]
-        f, fp = Q[ri, ri], Qp[ri, ri]
-        x = zeros(ComplexF64, n); x[ri] = 1.0 + 0.0im
-        bound = operator_absolute_bound(compiled, omega; loaded = true) * abs.(x)
-        closure = bound[ri] == 0.0 ? (abs(f) == 0.0 ? 0.0 : Inf) : abs(f) / bound[ri]
-        return (f = f, fp = fp, scale = abs(fp), closure = closure)
-    end
-    X = checked_solve(Q[eliminated, eliminated], Q[eliminated, indices], "eliminated_block_solve_failure", "eliminated_block", length(eliminated))
-    Xp = checked_solve(Q[eliminated, eliminated], Qp[eliminated, indices] - Qp[eliminated, eliminated] * X, "eliminated_block_solve_failure", "derivative_eliminated_block", length(eliminated))
-    F = Q[indices, indices] - Q[indices, eliminated] * X
-    Fp = Qp[indices, indices] - Qp[indices, eliminated] * X - Q[indices, eliminated] * Xp
-    ri = indices[coordinate_index]; col = coordinate_index
-    scale = abs(Qp[ri, ri]) + sum(abs.(Qp[ri, eliminated]) .* abs.(X[:, col])) + sum(abs.(Q[ri, eliminated]) .* abs.(Xp[:, col]))
-    x = zeros(ComplexF64, n); x[ri] = 1.0 + 0.0im; x[eliminated] .= -X[:, col]
-    bound = operator_absolute_bound(compiled, omega; loaded = true) * abs.(x)
-    closure = bound[ri] == 0.0 ? (abs(F[col, col]) == 0.0 ? 0.0 : Inf) : abs(F[col, col]) / bound[ri]
-    return (f = F[col, col], fp = Fp[col, col], scale = scale, closure = closure)
-end
-
 function retained_diagonal_root(compiled::CompiledPrimitive, coordinates::Vector{String}, index::Int, hint::Float64;
         start::Union{Nothing,ComplexF64} = nothing)::ComplexF64
-    isfinite(hint) && hint > 0.0 || fail("validation", "invalid_diagonal_root_hint", "root_hint", "direct_quantity", "retained diagonal root hint is invalid")
-    omega = start === nothing ? complex(2.0 * pi * hint) : start
-    for _ in 1:32
-        state = retained_diagonal_state(compiled, coordinates, index, omega)
-        value, slope = state.f, state.fp
-        slope != 0.0 || fail("execution", "root_slope_unresolved", "retained_diagonal_newton", "direct_quantity", "retained diagonal slope is zero")
-        candidate = omega - value / slope
-        same = reinterpret(UInt64, real(candidate)) == reinterpret(UInt64, real(omega)) && reinterpret(UInt64, imag(candidate)) == reinterpret(UInt64, imag(omega))
-        omega = candidate; same && break
-    end
-    state = retained_diagonal_state(compiled, coordinates, index, omega)
-    value, slope, scale = state.f, state.fp, state.scale
-    correction = slope == 0.0 ? Inf : abs(value / slope) / abs(omega)
-    isfinite(real(omega)) && isfinite(imag(omega)) && real(omega) > 0.0 && imag(omega) <= 0.0 &&
-        isfinite(scale) && scale > 0.0 && abs(slope) / scale > tau(length(compiled.nodes)) && state.closure <= tau(length(compiled.nodes)) &&
-        isfinite(correction) && correction <= tau(length(compiled.nodes)) ||
-        fail("execution", "numerical_resolution_unresolved", "retained_diagonal_newton", "direct_quantity", "retained diagonal root certificate did not close")
-    return omega
+    coordinate = coordinates[index]
+    return diagonal_root(compiled, coordinates, coordinate, hint; start = start)[1]
 end
 
 function residue_normalized_coupling_value(compiled::CompiledPrimitive, coordinates::Vector{String}, spec;
@@ -394,18 +559,42 @@ function residue_normalized_coupling_value(compiled::CompiledPrimitive, coordina
     singular = svd(hcat(va, vb)).S
     length(singular) >= 2 && singular[2] / singular[1] > tau(length(coordinates)) ||
         fail("execution", "root_slope_unresolved", "residue_rank", "direct_quantity", "residue branch vectors are not independent")
-    frequency = quantity_value(spec["frequency"]); isfinite(frequency) && frequency > 0.0 ||
-        fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency must be finite and positive")
-    for omega in unique([omega_a, omega_b, complex(2.0 * pi * frequency)])
+    frequency = spec["frequency"]
+    omega_eval = if frequency == "complex_root_midpoint"
+        (omega_a + omega_b) / 2.0
+    elseif frequency isa AbstractDict
+        value = quantity_value(frequency)
+        isfinite(value) && value > 0.0 ||
+            fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency must be finite and positive")
+        complex(2.0 * pi * value)
+    else
+        fail("validation", "port_realizability", "frequency", "direct_quantity", "residue coupling frequency declaration is invalid")
+    end
+    isfinite(real(omega_eval)) && isfinite(imag(omega_eval)) ||
+        fail("execution", "root_slope_unresolved", "residue_coupling", "direct_quantity", "residue coupling evaluation location is non-finite")
+    for omega in unique([omega_a, omega_b, omega_eval])
         Fcheck, _ = selected_operator(compiled, omega, coordinates)
         denominator = norm(abs.(Fcheck) + abs.(transpose(Fcheck)), Inf)
-        asym = denominator == 0.0 ? (norm(Fcheck - transpose(Fcheck), Inf) == 0.0 ? 0.0 : Inf) : norm(Fcheck - transpose(Fcheck), Inf) / denominator
-        isfinite(asym) && asym <= tau(length(coordinates)) || fail("execution", "root_slope_unresolved", "reciprocity", "direct_quantity", "selected operator is not reciprocal")
+        numerator = norm(Fcheck - transpose(Fcheck), Inf)
+        asym = denominator == 0.0 ? (numerator == 0.0 ? 0.0 : Inf) : numerator / denominator
+        if !(isfinite(asym) && asym <= tau(length(coordinates)))
+            locations = String[]
+            isequal(omega, omega_a) && push!(locations, "branch_a_root")
+            isequal(omega, omega_b) && push!(locations, "branch_b_root")
+            isequal(omega, omega_eval) && push!(locations, "evaluation")
+            bounded(value) = string(round(value; sigdigits = 6))
+            fail("execution", "root_slope_unresolved", "reciprocity", "direct_quantity",
+                "selected-operator numerical reciprocity check did not close " *
+                "(locations=$(join(locations, "+")), omega_re=$(bounded(real(omega))), " *
+                "omega_im=$(bounded(imag(omega))), retained_dimension=$(length(coordinates)), " *
+                "asymmetry_numerator=$(bounded(numerator)), asymmetry_scale=$(bounded(denominator)), " *
+                "asymmetry_ratio=$(bounded(asym)), threshold=$(bounded(tau(length(coordinates)))))")
+        end
     end
-    F, _ = selected_operator(compiled, complex(2.0 * pi * frequency), coordinates)
+    F, _ = selected_operator(compiled, omega_eval, coordinates)
     coupling = only(transpose(va) * F * vb) / sqrt(sa * sb)
     isfinite(real(coupling)) && isfinite(imag(coupling)) || fail("execution", "root_slope_unresolved", "residue_coupling", "direct_quantity", "residue-normalized coupling is non-finite")
-    return coupling, residue_a, residue_b, omega_a, omega_b
+    return coupling, residue_a, residue_b, omega_a, omega_b, omega_eval
 end
 
 function evaluate_residue_normalized_coupling(request, plan, view::RealizedView, request_sha::String, attempt_sha::String, staging::String)
@@ -413,7 +602,7 @@ function evaluate_residue_normalized_coupling(request, plan, view::RealizedView,
     coordinates = copy(view.terminal); compiled = view.compiled
     baseline_values, candidate_values = plan_parameter_values(plan), parameter_values(request)
     if same_parameter_values(baseline_values, candidate_values)
-        coupling, residue_a, residue_b, omega_a, omega_b = residue_normalized_coupling_value(compiled, coordinates, spec)
+        coupling, residue_a, residue_b, omega_a, omega_b, omega_eval = residue_normalized_coupling_value(compiled, coordinates, spec)
     else
         raw_base = compile_primitive(plan, baseline_values; context_kind = "direct_quantity",
             authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
@@ -425,13 +614,16 @@ function evaluate_residue_normalized_coupling(request, plan, view::RealizedView,
             context_kind = "direct_quantity")
         omega_b = selector_root_with_continuation(plan, request, baseline_values, candidate_values, base_b, branch_b_selector;
             context_kind = "direct_quantity")
-        coupling, residue_a, residue_b, omega_a, omega_b = residue_normalized_coupling_value(compiled, coordinates, spec;
+        coupling, residue_a, residue_b, omega_a, omega_b, omega_eval = residue_normalized_coupling_value(compiled, coordinates, spec;
             branch_a_root = omega_a, branch_b_root = omega_b)
     end
-    evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.residue_normalized_coupling_evidence", "schema_version" => 1,
-        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"))))
+    evidence = sha256_hex(canonical_bytes(Dict("schema" => "scnsim.residue_normalized_coupling_evidence", "schema_version" => 2,
+        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"),
+        "evaluation_omega" => complex_quantity(omega_eval, "radian / second", "inverse_time"), "coupling" => complex_quantity(coupling, "radian / second", "inverse_time"))))
     scalars = Dict{String,Any}("coupling" => complex_quantity(coupling, "radian / second", "inverse_time"),
         "magnitude" => quantity(abs(coupling), "radian / second", "inverse_time"),
-        "branch_a_residue" => complex_quantity(residue_a, "ohm", "resistance"), "branch_b_residue" => complex_quantity(residue_b, "ohm", "resistance"), "evidence_sha256" => evidence)
+        "branch_a_residue" => complex_quantity(residue_a, "ohm", "resistance"), "branch_b_residue" => complex_quantity(residue_b, "ohm", "resistance"),
+        "branch_a_root" => complex_quantity(omega_a, "radian / second", "inverse_time"), "branch_b_root" => complex_quantity(omega_b, "radian / second", "inverse_time"),
+        "evaluation_omega" => complex_quantity(omega_eval, "radian / second", "inverse_time"), "evidence_sha256" => evidence)
     write_success(staging, request, request_sha, attempt_sha, result_envelope("residue_normalized_coupling", request_sha, attempt_sha, scalars, Dict{String,Any}()), Any[])
 end

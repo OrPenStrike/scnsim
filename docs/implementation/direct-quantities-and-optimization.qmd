@@ -5,7 +5,8 @@ toc-depth: 2
 ---
 
 **Status:** Accepted Direct quantity formulas and CMA mathematics remain
-`STABILIZED`; the newer preparation, multi-View binding, checkpoint/resume,
+`STABILIZED` outside the `CONVERGING` selected-View element-root extension;
+the newer preparation, multi-View binding, checkpoint/resume,
 and ReportPanel ownership paths remain `CONVERGING`.
 
 The numerical algorithms below remain accepted. The `CONVERGING`
@@ -84,22 +85,29 @@ Plan once and realizes each distinct leaf View from that compiled primitive.
 It does not start a subprocess or recursively invoke Python for a leaf. View
 realization is keyed by its complete canonical declaration.
 
-Each baseline continuation anchor is keyed by canonical View lineage plus the
-root-like quantity Spec. Projection is excluded, so frequency and linewidth of
-the same root reuse one anchor, while the same Spec on different Views cannot
-share an anchor accidentally. Every candidate continues from that baseline
-anchor; candidates do not select branches from one another.
+Each selected-element baseline anchor is keyed by the complete View
+declaration, ordered row/column, and root hint. Projection and the public
+diagonal/generic policy are excluded: a diagonal frequency, linewidth, generic
+diagonal frequency, or coupling diagonal branch may share one numerical root
+while retaining distinct public Result and leaf identities. Different Views,
+elements, or hints do not share. Diagonal passive-imaginary policy is checked
+for each consuming leaf, including a cache hit; it cannot poison the generic
+root dependency. Every candidate continues from the baseline anchor, never
+from the preceding candidate.
 
-Standalone diagonal-root evaluation follows the same View-qualified rule: its
-baseline anchor and each continuation point realize the request's declared
-View before applying the unchanged root procedure.
+Standalone diagonal and element-root evaluation follows the same View-qualified
+rule: baseline and each continuation point realize the full declared View
+before selecting an element. There is no second singleton reduction.
 
-Before canonical request encoding, Python normalizes every optimization leaf
-into an immutable `BoundOptimization` declaration. A leaf keeps its authored
-objective ID, objective ordinal, and term ordinal in exact order. That leaf
-identity is not its dependency identity: dependency sharing continues to use
-the complete bound View declaration plus root/quantity Spec, excluding only
-the selected projection exactly as the execution contract already requires.
+Before canonical request encoding, Python validates each optimization leaf's
+identity and complete declaration. Transient immutable leaves retain only the
+objective and term ordinals used to verify exact, unique ordering. The final
+`BoundOptimization` retains the encoded specification, including authored
+objective IDs and bound View and quantity declarations. Public leaf identity
+is not dependency identity: native dependency sharing continues to use the
+complete bound View declaration plus numerical root element and hint (or the
+full non-root quantity declaration), excluding root projection and public
+policy.
 Consequently two objective leaves may remain independently auditable while
 sharing one compiled/root dependency.
 
@@ -195,7 +203,10 @@ transport failures remain request-level `RuntimePreparationError` or
 An optimization-owned execution failure additionally carries one closed
 `optimization_context`. It binds the logical candidate position, the exact
 execution phase, the owning objective/term or request-derived dependency, and
-the authored-order set of leaves actually affected. Public term locators use
+the authored-order set of leaves actually affected. Terminal failure validation
+uses the sealed Plan and request, including for compiler preflight failures;
+missing or inconsistent Plan identity is not a valid failure record. Public
+term locators use
 `objective_id` plus a one-based `term_ordinal`; internal zero-based prepared
 ordinals never enter evidence. A failed dependency names its triggering leaf
 and blocked consumers of that same dependency, while unrelated leaves remain
@@ -231,12 +242,12 @@ the same complete View-and-Spec dependency keys as the request. Publication
 provenance is a separate seal bound to the original attempt. Generation ledgers
 bind both identities. The checkpoint contains no CMA private state, consumes no
 additional logical evaluation, and cannot be resolved as a Result.
-Independent verification reconstructs the baseline ParameterSet and unit-box
+Python verification reconstructs the baseline ParameterSet and unit-box
 coordinates from the sealed request, requires a fresh complete-success outcome,
-and algebraically binds every directly reproducible public root projection to
-its successful term. Private residue-branch anchors remain sealed producer
-values with exact request dependency membership; this boundary does not claim
-an independent residue solve.
+and binds successful terms to the closed selector and root-dependency inventory.
+The backend's root projections and private residue-branch anchors remain sealed
+producer values; Python does not independently recalculate their numerical
+projections or solve the roots.
 The Result envelope's primary View lineage is derived from the successful
 baseline term whose sealed selector View equals the request's primary View;
 multiple such terms must carry the same lineage. Per-candidate term lineages
@@ -295,7 +306,7 @@ population is an integer of at least two, and `initial_sigma` is positive and
 finite.
 
 The request constants are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"` and
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Reusing either string
 for changed sampling, update, transform, replay, or stop semantics is invalid;
 that change requires a new ID. The outer algorithm ID is a transitive binding:
@@ -313,11 +324,17 @@ View-qualified continuation keys, and per-term evidence. It does not rename or
 change the pinned CMA
 sampling, update, box transform, stop, seed, or winner rule.
 
-An aggregation failure is independently reproducible evidence. Population
-candidate records retain the successful terms or objective components needed
-to replay the failed expression, normalization, weighted cost, or ordered
-total. A baseline aggregation failure has no checkpoint, so its closed failure
-context carries the same already-computed successful records as a narrow
+Version 7 added the closed scalar-expression tree and ordered per-node unit
+conversion. Version 9 additionally binds candidate-local complex-root-midpoint
+coupling and the full-complex witness carried by every successful coupling
+term. Version 8 remains a known published predecessor and is rejected through
+the typed unsupported-version path.
+
+An aggregation failure retains closed phase, owner, status order, and completed
+term or objective evidence; Python does not replay the backend's non-finite
+expression or total-cost arithmetic. A baseline aggregation failure has no
+checkpoint, so its closed failure context carries the same already-computed
+successful records as a narrow
 aggregation witness; it never triggers another evaluation.
 
 Only complete generations count:
@@ -334,7 +351,7 @@ on a supported retained View.
 
 The integrated `dev5` slice adds the schema-backed selectors
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
-`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResidueNormalizedCouplingSpec.real`/`.imag`/`.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. A `CostObjective.quantity`
 may be one selector or a closed ordered tree composed with `QuantitySum`, `-`,
 and `abs(...)`. Expression leaves retain left-to-right depth-first ordinals;
@@ -345,6 +362,18 @@ identical CMA replay, generation-ledger, candidate-cache, winner/tie, and retry
 semantics above and below. Version 7 binds the changed expression/comparison
 request and evidence semantics; it changes no CMA sampling or update
 mathematics.
+
+The candidate-local residue-coupling dependency key binds its selected View,
+ordered branch declarations and anchors, and fixed-frequency or midpoint
+declaration, but not its real/imaginary/magnitude projection. Those leaves
+therefore share the same complete complex roots and coupling within one
+candidate. Different Views, fixed frequencies, or midpoint declarations remain
+distinct. Successful term evidence retains both roots, the actual complex
+evaluation location, and full complex coupling. Python checks the direct real
+and imaginary copies of coupling exactly, and verifies types, units, request
+identity, provenance, and sealed bytes; it does not independently recompute the
+midpoint or fixed-frequency location, coupling magnitude, expression,
+residual, or weighted cost.
 
 `CostObjective.comparison` is either `"target"` (the default) or
 `"at_least"`. Target comparison uses `(value - target) / scale`. At-least
@@ -382,9 +411,12 @@ record per selector leaf in declaration order. A successful term binds the
 leaf selector, its realized View lineage, and evaluated Quantity. A failed or
 not-yet-evaluated term carries its exact closed status and typed failure rather
 than an invented value. A successful objective additionally records its
-evaluated Quantity, signed normalized residual, and weighted cost; the
-request-owned target, resolved scale/source, and weight therefore reproduce
-both the component and total cost. A failed candidate still carries one
+evaluated Quantity, signed normalized residual, and weighted cost. Python
+checks the closed fields, typed finite values, nonnegative successful costs,
+request bindings, and hash-linked ledger chain, but does not recalculate these
+numerical outputs from the terms, target, scale, and weight. The hashes bind
+producer bytes and provenance; they do not independently prove the arithmetic.
+A failed candidate still carries one
 component for every request objective, preserving already evaluated terms and
 marking the exact remaining terms without dropping objectives.
 It contains exactly $\lambda$ population outcomes in column order, with their

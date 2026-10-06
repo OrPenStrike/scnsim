@@ -70,8 +70,9 @@ function read_authorization(request, request_sha::String, staging::String, ordin
     if get(request, "operation", nothing) == "solve_hb"
         get(attempt, "fftw_threads", nothing) == 1 || error("attempt FFTW thread evidence violates HB policy")
     end
-    get(request, "operation", nothing) == "optimize_direct" || eof(stdin) ||
-        error("non-optimization authorization must be followed by EOF")
+    (get(request, "operation", nothing) == "optimize_direct" ||
+        get(request["parameter_source"], "kind", nothing) != "point") || eof(stdin) ||
+        error("single-point authorization must be followed by EOF")
     return attempt_sha, attempt
 end
 
@@ -99,6 +100,35 @@ function read_checkpoint_committed(request_sha::String, attempt_sha::String,
     return String(frame["seal_sha256"])
 end
 
+function read_point_recovery(request_sha::String, attempt_sha::String)
+    eof(stdin) && error("point recovery authorization is absent")
+    payload = readline(stdin; keep = false)
+    frame = plain(JSON3.read(payload))
+    canonical_json(frame) == payload && exact_keys(frame, ("schema", "schema_version", "request_sha256", "attempt_sha256", "entries")) &&
+        frame["schema"] == "scnsim.point_recovery" && frame["schema_version"] == 1 &&
+        frame["request_sha256"] == request_sha && frame["attempt_sha256"] == attempt_sha &&
+        frame["entries"] isa AbstractVector || error("point recovery authorization is invalid")
+    entries = frame["entries"]
+    for (index, entry) in enumerate(entries)
+        exact_keys(entry, ("ordinal", "seal_sha256")) && entry["ordinal"] == index - 1 &&
+            occursin(r"^[0-9a-f]{64}$", String(entry["seal_sha256"])) || error("point recovery entry is invalid")
+    end
+    return entries
+end
+
+function read_point_committed(request_sha::String, attempt_sha::String, ordinal::Int, record_sha::String)
+    eof(stdin) && error("point checkpoint acknowledgement is absent")
+    payload = readline(stdin; keep = false)
+    frame = plain(JSON3.read(payload))
+    canonical_json(frame) == payload && exact_keys(frame, ("schema", "schema_version", "request_sha256", "attempt_sha256", "ordinal", "record_sha256", "seal_sha256")) &&
+        frame["schema"] == "scnsim.point_checkpoint_committed" && frame["schema_version"] == 1 &&
+        frame["request_sha256"] == request_sha && frame["attempt_sha256"] == attempt_sha &&
+        frame["ordinal"] == ordinal && frame["record_sha256"] == record_sha &&
+        occursin(r"^[0-9a-f]{64}$", String(frame["seal_sha256"])) ||
+        error("point checkpoint acknowledgement is invalid")
+    return String(frame["seal_sha256"])
+end
+
 function run_terminal(request_path::String, staging::String)
     request, request_sha, plan = read_request_and_plan(request_path)
     ordinal = staging_ordinal(staging)
@@ -117,7 +147,9 @@ function run_terminal(request_path::String, staging::String)
         source_kind = String(request["parameter_source"]["kind"])
         if source_kind != "point"
             operation == "optimize_direct" && fail("execution", "compiler_invariant", "parameter_source", "compile", "optimization requires one fixed point parameter source")
-            run_parameter_batch(request, plan, request_sha, attempt_sha, staging)
+            recovery = read_point_recovery(request_sha, attempt_sha)
+            run_parameter_batch(request, plan, request_sha, attempt_sha, staging;
+                request_directory = dirname(request_path), recovery = recovery)
             return nothing
         end
         if operation == "optimize_direct"
@@ -129,6 +161,7 @@ function run_terminal(request_path::String, staging::String)
         compile_context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
         raw_compiled = compile_primitive(plan, parameter_values(request); context_kind = compile_context,
             authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
+        request["discretization"] = raw_compiled.discretization
         realized_lineage, view = realized_ref_lineage(raw_compiled, declarative_lineage(plan, request, raw_compiled))
         request["ref_lineage"] = realized_lineage
         compiled = view.compiled
@@ -141,8 +174,8 @@ function run_terminal(request_path::String, staging::String)
             solve_hb(request, plan, raw_compiled, view, request_sha, attempt_sha, staging)
         elseif operation == "evaluate_direct"
             kind = get(request["spec"], "type", nothing)
-            if kind == "diagonal_root"
-                evaluate_diagonal_root(request, plan, compiled, request_sha, attempt_sha, staging)
+            if kind in ("diagonal_root", "operator_element_root")
+                evaluate_element_root(request, plan, compiled, request_sha, attempt_sha, staging)
             elseif kind == "hybridized_pole"
                 evaluate_hybridized_pole(request, plan, compiled, request_sha, attempt_sha, staging)
             elseif kind == "transfer_zero"
@@ -212,6 +245,7 @@ function compiler_audit(plan_path::String, point_path::String)
         "plan_sha256" => plan_sha, "parameters_sha256" => parameters_sha,
         "node_order" => compiled.nodes, "matrix_order" => "canonical_node_id",
         "resolved_bindings" => rows, "expanded_branch_rows" => compiled.branch_rows,
+        "discretization" => compiled.discretization,
         "c_matrix" => f64_matrix_evidence(compiled.C), "k_matrix" => f64_matrix_evidence(compiled.K),
         "g_matrix" => f64_matrix_evidence(compiled.G),
         "ports" => Dict(
@@ -295,6 +329,7 @@ function preflight(plan_path::String, request_path::String)
         "node_order" => compiled.nodes,
         "matrix_order" => "canonical_node_id",
         "expanded_branch_rows" => compiled.branch_rows,
+        "discretization" => raw_compiled.discretization,
         "c_matrix" => f64_matrix_evidence(compiled.C),
         "k_matrix" => f64_matrix_evidence(compiled.K),
         "g_matrix" => f64_matrix_evidence(compiled.G),
@@ -306,7 +341,9 @@ function preflight(plan_path::String, request_path::String)
             "load_stamp" => f64_matrix_evidence(load),
             "selected_network_steps" => ["intrinsic_CKG", "port_load_BY0BT", "source_boundary", "power_wave_deembedding"],
         ),
-        "root_preflight" => Dict("supported" => "single_retained_coordinate", "algorithm_id" => runtime["algorithm_ids"]["diagonal_root"]),
+        "root_preflight" => Dict("supported" => "selected_view_element", "basis" => view.terminal,
+            "selection" => get(realized_request["spec"], "type", nothing) in ("diagonal_root", "operator_element_root") ? realized_request["spec"] : nothing,
+            "algorithm_id" => get(runtime["algorithm_ids"], String(get(realized_request["spec"], "type", "")), runtime["algorithm_ids"]["diagonal_root"])),
         "optimization_preflight" => Dict("supported" => "dev5_full_scalar_selector_catalog", "algorithm_id" => runtime["algorithm_ids"]["optimization"]),
         "direct_hb_capability" => Dict(
             "direct" => "full_rlgc_nport_selected_network",

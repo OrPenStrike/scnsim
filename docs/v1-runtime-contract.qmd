@@ -12,7 +12,8 @@ semantics.
 The accepted Direct/root/CMA execution, physical component models, RLGC and
 N-port selected networks, PTC/transform/retain, typed quantities, workspace
 evidence, and case-oriented JosephsonCircuits HB semantics remain
-`STABILIZED`. This lifecycle state does not imply a release, main promotion,
+`STABILIZED` outside the selected-View element-root extension, which is
+`CONVERGING`. This lifecycle state does not imply a release, main promotion,
 root pin, or consumer migration.
 
 Prepared analysis records, Run commit/maintenance boundaries, multi-View
@@ -415,11 +416,17 @@ that same result. A non-realizable final View fails closed rather than
 returning an incomplete or fabricated wave response.
 
 A Direct quantity Spec instead asks `evaluate()` for one defined physical
-quantity without creating an unrelated response sweep. `DiagonalRootSpec`, for
-example, runs the required-hint deterministic Newton procedure on one physically
-anchored coordinate's operator diagonal and returns its machine-resolved root,
-frequency, linewidth, and local slope evidence. The coordinate owns physical
-identity; `root_hint` only initializes the baseline Newton basin.
+quantity without creating an unrelated response sweep. `DiagonalRootSpec`
+selects one named diagonal of the complete final View operator and returns its
+machine-resolved root, frequency, linewidth, and local slope. The coordinate
+must belong to that View's ordered terminal basis; the basis need not be a
+singleton. `OperatorElementRootSpec(row, column, root_hint)` selects a named
+ordered element of that same operator and returns its locally simple complex
+root, real-part frequency, and slope $dF_{row,column}/d\omega$. Unlike a
+diagonal root, it imposes no passive-imaginary-root policy and has no linewidth
+selector. Neither Spec reduces the final View a second time. Their coordinate
+handles own physical identity; `root_hint` only initializes the baseline Newton
+basin.
 `ResponseElementSpec` may
 evaluate one explicitly selected S/Y/Z scalar at one frequency, but it still
 does not imply a frequency-grid response. `OperatorSpec` is the deliberate
@@ -1581,15 +1588,16 @@ evaluated.linewidth
 evaluated.slope
 ```
 
-For a named retained coordinate $r$, this request solves the defining complex
+For a named coordinate $r$ in the final View basis, this request solves the defining complex
 root problem
 
 $$
 \left[\mathbf D_R^{E\downarrow}(\widetilde\Omega_r)\right]_{rr}=0.
 $$
 
-The selected Ref determines what this diagonal means. Retaining one authored
-node eliminates its complement with `I_external = 0`; logical-Port loads and
+The selected Ref determines what this diagonal means. A final View may retain
+one or several authored coordinates, eliminating only its complement with
+`I_external = 0`; logical-Port loads and
 other uncompensated stamps remain in the effective operator. The resulting
 root is therefore loaded when those attachments are present. It is not the
 uncoupled LC formula, a minimum or dip read from S, or a hybridized pole of a
@@ -1606,11 +1614,12 @@ root is then closest to the original hint or to the preceding CMA-ES candidate.
 Missing or dimensionally invalid hints and detected repeated or
 non-continuable roots fail closed.
 
-The Primitive Direct E2E realization supports one retained coordinate and
-requires the complete compiled capacitance matrix to be positive definite for
-`DiagonalRootSpec`. Singular-C descriptor/infinite-mode handling remains a
-later quantity scope; real-grid Direct S/Y/Z does not inherit this restriction.
-The exact scalar Schur residual, analytic derivative, 32-update complex-Newton
+The selected-element root does not require positive-definite complete
+capacitance. Its eliminated block must instead admit the checked solves used
+to form the selected View operator and derivative at every Newton point.
+Descriptor/infinite-mode interpretation beyond a locally simple root remains
+outside this scope. The exact selected Schur element, analytic derivative,
+32-update complex-Newton
 limit, machine-resolution certificate, and deterministic dyadic continuation
 are fixed in
 [Diagonal-Root Numerical Procedure](implementation/diagonal-root-numerical-procedure.qmd).
@@ -1628,9 +1637,10 @@ The V1 catalog is intentionally small:
 | Spec | Declared operation | Public result |
 |---|---|---|
 | `DiagonalRootSpec` | Complex root of one named diagonal of the selected Direct dynamic operator | root, frequency, linewidth, slope |
+| `OperatorElementRootSpec` | Complex root of one named row/column element of the complete final View operator | root, real-part frequency, slope |
 | `HybridizedPoleSpec` | Complex root of the determinant of the terminal View's complete ordered retained block (at least two coordinates) | pole/root bundle with branch evidence |
 | `TransferZeroSpec` | Complex zero of one ordered S/Y/Z input/output projection whose transfer denominator is finite and nonsingular at the candidate | zero bundle with numerator/denominator evidence; never a sweep minimum or implicit pole-zero cancellation |
-| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and one declared evaluation point | complex coupling and magnitude |
+| `ResidueNormalizedCouplingSpec` | Coupling from two selected machine-resolved branches with local slope/residue evidence and either one declared positive real frequency or the exact per-candidate `"complex_root_midpoint"` | complex coupling, its real/imaginary/magnitude projections, and the complex evaluation location |
 | `ResponseElementSpec` | One S/Y/Z element at a declared frequency and ordered input/output coordinates | complex scalar and applicable real/imaginary/magnitude selectors |
 | `OperatorSpec` | Full Direct dynamic operator on a declared grid | coordinate- and unit-bearing matrix Result |
 
@@ -1656,7 +1666,17 @@ operator = run.evaluate(
 ```
 
 Root-like bundles expose only physically defined typed scalar selectors such as
-`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. Their branch,
+`.frequency`, `.linewidth`, `.magnitude`, `.real`, and `.imag`. For
+`ResidueNormalizedCouplingSpec`, `.real`, `.imag`, and `.magnitude` are
+nonexecuting selectors of the same complete complex coupling; Pint
+`Quantity.magnitude` remains the numeric payload of an evaluated Quantity and
+`abs(quantity)` remains ordinary Quantity arithmetic. Its `frequency` is
+required and is either a positive real frequency Quantity or the exact literal
+`"complex_root_midpoint"`; no other string, callable, manual complex frequency,
+or implicit default is accepted. The midpoint is recomputed for every
+candidate as `(omega_a + omega_b) / 2` from the complete complex branch roots
+on the selected View. Each branch slope remains evaluated at its own root.
+Their branch,
 branch locator (including `DiagonalRootSpec.root_hint`), continuation,
 local slope/residue evidence, units, ParameterSet, selected Ref boundary, and
 operator identity remain attached. `DiagonalRootSpec` promises the documented
@@ -1744,7 +1764,7 @@ View. Its original one-Port/no-trace restriction belongs only to that slice's
 `solve_direct` response surface. `1.0.0.dev5` reuses the same CMA replay,
 ledger, cache, retry, and winner contract while enabling
 `HybridizedPoleSpec.frequency`/`.linewidth`, `TransferZeroSpec.frequency`,
-`ResidueNormalizedCouplingSpec.magnitude`, and
+`ResidueNormalizedCouplingSpec.real`/`.imag`/`.magnitude`, and
 `ResponseElementSpec.magnitude`/`.real`/`.imag`. Before its owning slice, each
 selector fails fast with `ScaffoldUnavailableError`; it is not excluded from
 full V1. Closed scalar expressions remain legal only inside a `CostObjective`.
@@ -1955,18 +1975,38 @@ The original winner values remain immutable; candidate and winner
 authorization instead of inheriting the optimizer's approval.
 
 The public `run.evaluate()` contract does not force candidate work back through
-Python. One optimization request launches one Julia process. Parameter binding,
+Python. One optimization attempt launches one Julia process. Parameter binding,
 candidate compilation, Ref-lineage replay, quantity evaluation, shared
 factorization/root work, objective aggregation, and CMA-ES remain inside that
 process. Python submits the sealed request and receives process-local progress
 and the final receipt; V1 has no per-candidate IPC/callback or persistent Julia
 daemon. Repeated quantity identities share dependency nodes within a candidate.
 
-The Julia process may emit generation-level JSONL progress for internal
-presentation and diagnostics. Progress records never enter Plan, request,
-optimization, candidate, or Result identity and cannot become a scientific
-Gate. V1 exposes no `progress` keyword, callback framework, per-candidate
-observer, public JobRef, or persistent daemon.
+The Julia process emits validated optimization progress, exposed by the optional
+`on_progress: Callable[[OptimizationProgress], object]` keyword on both
+`run.optimize()` forms. An immutable event has `phase` (`initial`, `resume`,
+`generation`, `complete`, or `result_reuse`), `reused`,
+`completed_generations`, `total_generations`, `evaluated_count`,
+`requested_budget`, `achievable_evaluations`, and finite `best_cost` fields.
+The callback return is ignored. Its exception terminates the child and is
+reported as callback failure, without discarding already-published evidence;
+`KeyboardInterrupt` remains interruption. Progress is process-local telemetry,
+not Plan, request, candidate, or Result identity, verified Result, durability
+promise, or scientific Gate. V1 has no per-candidate observer, public JobRef,
+or persistent daemon.
+
+In a Notebook, a DisplayHandle can update in place without polling:
+
+```python
+from IPython.display import display
+
+handle = display("Optimization starting", display_id=True)
+
+def show_progress(event: OptimizationProgress) -> None:
+    handle.update(f"{event.phase}: {event.completed_generations}/{event.total_generations} generations; best={event.best_cost:.6g}")
+
+result = run.optimize(view, optimization_spec, on_progress=show_progress)
+```
 
 `CMAESSpec` has the fixed public surface
 
@@ -1981,7 +2021,7 @@ CMAESSpec(
 
 For $n$ active variables, `population_size=None` resolves to
 $\lambda=4+\lfloor3\ln n\rfloor$. The sealed baseline must lie inside every
-bound, maps to the initial unit-box mean $m_0$, is evaluated first, consumes one
+resolved finite bound or declared domain, maps to the initial optimizer mean $m_0$, is evaluated first, consumes one
 evaluation, and remains winner-eligible. Baseline evaluation failure fails the
 request. `initial_sigma` is a positive finite unit-coordinate scale. `seed`
 accepts a signed 64-bit integer; an explicit population size is an integer of
@@ -1998,11 +2038,16 @@ C_0=\operatorname{diag}\!\left(\exp(10^{-4}i/n)\right),
 \qquad i=0,\ldots,n-1,
 $$
 
-rather than exact identity. SCNSim maps physical parameters once to
-$z\in[0,1]$, calls `minimize(objective, baseline_z, initial_sigma, ...)`,
-supplies `lower=zeros(n)`, `upper=ones(n)`, and
-lets the package apply its lin-quad unit-box transform. SCNSim does not clip,
-mirror, or apply another physical box transform. The signed Int64 seed is
+rather than exact identity. A finite-bounded variable retains the original
+$z\in[0,1]$ coordinate and package lin-quad bounds. An open linear domain maps
+$x=x_0+s z$ with native full or one-sided CMA bounds; signed log domains map
+$x=x_0\exp(z)$ with native unbounded coordinates. In both cases $z_0=0$ and
+$x_0$ is the effective request Initial Parameters. The physical scale $s$ must
+be finite, positive, and same-unit. `POSITIVE` and `NEGATIVE` require a strictly
+signed nonzero $x_0$ and no physical scale; `NONNEGATIVE` and `NONPOSITIVE`
+include zero but never relax model input legality. Mixed variables share one
+request. SCNSim does not clip, mirror, use epsilon bounds, or apply another
+physical transform. The signed Int64 seed is
 reinterpreted as UInt64 with the same bits. The canonical request carries the
 Python-prepared baseline coordinates as
 `baseline_optimizer_coordinates_f64` in variable order. Julia consumes these
@@ -2011,8 +2056,10 @@ its system math library; candidate mapping and CMA sampling/update remain the
 pinned Julia path.
 
 The fixed request identities are
-`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"` and
-`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. The call uses
+`algorithm_id="scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"` and
+`box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"` for all-bounded
+requests or `cmaes-jl-0.2.6-native-domains.v1` when any domain is present.
+The call uses
 `popsize=lambda`, `maxiter=g`, `maxfevals=nothing`,
 `parallel_evaluation=true`, `multi_threading=false`, and `verbosity=0`, with
 ftol, xtol, stagnation, target, time, and noise controls set to `nothing`. Its
@@ -2028,7 +2075,7 @@ evaluation ordinal in baseline, generation, then population-column order.
 These execution controls bound reproducibility but do not decide whether the
 result meets a Design Target.
 
-A closed request envelope bound to the exact known v3, v4, v5, or v6 outer optimization
+A closed request envelope bound to an exact known v3 through v8 outer optimization
 identity raises `UnsupportedEvidenceVersionError` with the operation and exact
 expected/observed algorithm IDs. This identifies the need for its original
 source-bound runtime; it does not claim the historical request's remaining
@@ -2040,15 +2087,22 @@ conversion order, and target/at-least comparison semantics. It retains version
 6's Python-owned baseline coordinate bits and the pinned CMA sampling/update
 mathematics.
 
+Version 9 additionally binds candidate-local complex-root-midpoint coupling
+and the complete complex coupling witness retained by every successful coupling
+term. Python checks its sealed request and evidence identities, not the
+backend's midpoint or magnitude arithmetic. Version 8 remains a
+known published predecessor and is rejected through the typed unsupported-
+version path rather than being relabelled as current or corrupt evidence.
+
 Every population outcome records both the callback-visible raw CMA sample
-column `optimizer_latent_coordinates_f64` and its transformed unit-box
+column `optimizer_latent_coordinates_f64` and its transformed optimizer
 `optimizer_coordinates_f64` beside the physical bindings. Both arrays have
 length $n$ in request-variable order. Retry invokes the
 same pinned `minimize()` from the original seed. The batch objective verifies
 the transformed coordinates, generation, and population column before
 returning stored costs; the package callback then verifies the raw sample bits
 before the mean or covariance update. The raw check is mandatory because the
-lin-quad transform is many-to-one. The first unsealed generation resumes
+bounded lin-quad transform is many-to-one. The first unsealed generation resumes
 physical evaluation. SCNSim neither serializes nor restores the package's
 private optimizer object; either replay mismatch is `EvidenceIntegrityError`.
 
@@ -2097,8 +2151,11 @@ not independent observation of the last live child column. Within a failed
 objective, terms before the one failure are successful and later terms are
 not evaluated; an objective-aggregation failure instead retains all of that
 objective's terms as successful.
-The request-owned target, resolved scale/source, and weight must reproduce each
-successful component and total. A candidate-dependent invalid
+The request-owned target, resolved scale/source, and weight bind each
+successful component and total in the sealed request and producer evidence;
+Python checks typed finite, nonnegative successful costs but does not
+recalculate expression, residual, weighted, or total-cost arithmetic. A
+candidate-dependent invalid
 primitive value is `InvalidCandidatePhysicalParameter`; eliminated-block,
 local-slope, and Newton/continuation failures retain their corresponding typed
 root errors and tagged positive-infinity penalty. If any of those occurs while
@@ -2133,7 +2190,7 @@ binds its original launched attempt. Reuse avoids repeating baseline work but
 consumes no logical evaluation and changes neither CMA-ES state nor ordering.
 The verifier reconstructs the baseline point and normalized coordinates from
 the sealed request, rejects every incomplete or failed baseline, and binds
-directly reproducible public root projections back to their successful terms.
+root dependencies to their successful terms without recalculating projections.
 The final Result must exactly reproduce the verified baseline and primary View
 lineage. A later attempt that consumes recovery evidence binds the exact
 checkpoint content/seal pair.
@@ -2471,9 +2528,10 @@ $$
 
 Comparable evidence preserves the unreplicated physical $Q_k$ in deterministic
 row-major form and binds it to its Plan/View producer identity. Receipt loading
-reconstructs the lifted projection and independently reproduces the selected S
-matrix and recorded residual; a self-consistent but forged residual string is
-not accepted.
+checks coordinate and matrix shapes, sealed artifact bytes, and the stored
+finite nonnegative residual. Python does not independently reconstruct the
+selected S matrix or recalculate the residual; hash integrity binds producer
+bytes and provenance, not arithmetic correctness.
 
 A plain subset of original Ports is therefore comparable by its principal
 submatrix when every omitted Port retains its native matched load. A PTC or
@@ -2831,10 +2889,8 @@ SCNSim fails closed for:
 - a missing, non-finite, non-positive, or dimensionally invalid
   `DiagonalRootSpec.root_hint` (`InvalidDiagonalRootHint`);
 - a sealed `CircuitPlan` authoring mutation;
-- `DiagonalRootSpec` applied to a non-positive-definite complete capacitance
-  matrix in the Primitive Direct V1
-  (`UnsupportedSingularCapacitanceForDiagonalRootV1`), an unsolved eliminated
-  block (`EliminatedBlockSolveFailure`), an unresolved/non-simple slope
+- an unsolved selected-View eliminated block
+  (`EliminatedBlockSolveFailure`), an unresolved/non-simple element slope
   (`RootSlopeUnresolved`), or a complex-Newton machine certificate that does not
   close within 32 updates (`NumericalResolutionUnresolved`);
 - deterministic diagonal-root continuation whose physical path, branch, or
@@ -2893,10 +2949,11 @@ overwrite unrelated success receipts.
 - Composite mapping is limited to identity fan-out and `AffineMap`; arbitrary
   callbacks, expression ASTs, and calibration-table interpolation are not
   included.
-- Primitive Direct `DiagonalRootSpec` supports one retained coordinate with a
-  positive-definite complete capacitance matrix. Singular-C descriptor roots
-  and complete-QEP spectrum enumeration are not included. Deterministic dyadic
-  continuation does not provide a validated global analytic-branch enclosure.
+- Direct element roots require a locally simple machine-resolved selected-View
+  scalar root and solvable eliminated block, but not full-C positive
+  definiteness. Descriptor-mode interpretation and complete-QEP enumeration
+  are not included. Deterministic dyadic continuation does not provide a
+  validated global analytic-branch enclosure.
 - Direct JJ/SQUID behavior is the declared zero-phase, zero-bias `L_J0`
   small-signal realization; arbitrary bias-point linearization is not included.
 - JosephsonCircuits flux-pump and three-wave-mixing behavior retains its
@@ -2921,8 +2978,8 @@ overwrite unrelated success receipts.
 - No compatibility alias exists for the legacy Workbench import or bare-float
   physical inputs.
 - No implicit latest-result selector exists.
-- V1 has no public timeout, JobRef, cancellation API, callback progress
-  framework, or persistent Julia daemon.
+- V1 has no public timeout, JobRef, cancellation API, per-candidate observer,
+  polling service, or persistent Julia daemon.
 - Structured authoring, Plan-identity integration, and certified diagrams are
   one `CONVERGING` scope with an integrated implementation baseline, not
   Human acceptance of the contract defined in

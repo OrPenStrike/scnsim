@@ -20,9 +20,9 @@ import numpy as np
 from pint import Quantity
 
 from . import units
-from ._canonical import _identifier
-from ._immutable_values import immutable_quantity, quantity_view
-from ._scaffold import unavailable
+from .canonical import _identifier
+from .value_storage import immutable_quantity, quantity_view
+from .construction import unavailable
 from .authoring import (
     CoordinateRef,
     ElectricNodeRef,
@@ -44,7 +44,7 @@ from .results import (
 )
 
 if TYPE_CHECKING:
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
     from .runtime import NetworkViewRef
 
 
@@ -131,6 +131,8 @@ def _selector_text(value: object) -> str:
         spec = value.spec
         if isinstance(spec, DiagonalRootSpec):
             selection = f"coordinate={_coordinate_id(spec.coordinate)}; root_hint={spec.root_hint}"
+        elif isinstance(spec, OperatorElementRootSpec):
+            selection = f"row={_coordinate_id(spec.row)}; column={_coordinate_id(spec.column)}; root_hint={spec.root_hint}"
         elif isinstance(spec, HybridizedPoleSpec):
             selection = f"coordinates={','.join(_coordinate_id(item) for item in spec.coordinates)}; anchor={spec.anchor}"
         elif isinstance(spec, TransferZeroSpec):
@@ -268,7 +270,7 @@ def _family(value: str) -> Literal["S", "Y", "Z"]:
 def _selector_unit(value: object) -> str | None:
     if not isinstance(value, QuantitySelector):
         return None
-    if value.type in {"diagonal_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
+    if value.type in {"diagonal_root_projection", "operator_element_root_projection", "hybridized_pole_projection", "transfer_zero_projection"}:
         return "hertz"
     if value.type == "residue_coupling_projection":
         return "radian / second"
@@ -376,7 +378,7 @@ class DiagonalRootSpec:
     """
 
     coordinate: Coordinate
-    root_hint: Quantity
+    _root_hint: Quantity
 
     def __init__(self, *, coordinate: Coordinate, root_hint: Quantity) -> None:
         _coordinate_id(coordinate)
@@ -388,7 +390,11 @@ class DiagonalRootSpec:
                 stage="spec_validation",
             ) from exc
         object.__setattr__(self, "coordinate", coordinate)
-        object.__setattr__(self, "root_hint", _detached_quantity(root_hint))
+        object.__setattr__(self, "_root_hint", _detached_quantity(root_hint))
+
+    @property
+    def root_hint(self) -> Quantity:
+        return quantity_view(self._root_hint)
 
     @property
     def frequency(self) -> QuantitySelector:
@@ -400,6 +406,45 @@ class DiagonalRootSpec:
 
     def _canonical_record(self) -> Mapping[str, object]:
         return {"type": "diagonal_root", "coordinate": _coordinate_id(self.coordinate), "root_hint": self.root_hint}
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorElementRootSpec:
+    """Select one ordered element root of the complete final View operator."""
+
+    row: Coordinate
+    column: Coordinate
+    _root_hint: Quantity
+
+    def __init__(self, *, row: Coordinate, column: Coordinate, root_hint: Quantity) -> None:
+        _coordinate_id(row)
+        _coordinate_id(column)
+        try:
+            units.require_positive_quantity(root_hint, "hertz", name="root_hint")
+        except Exception as exc:
+            raise InvalidDiagonalRootHint(
+                "root_hint must be a finite positive frequency Quantity",
+                stage="spec_validation",
+            ) from exc
+        object.__setattr__(self, "row", row)
+        object.__setattr__(self, "column", column)
+        object.__setattr__(self, "_root_hint", _detached_quantity(root_hint))
+
+    @property
+    def root_hint(self) -> Quantity:
+        return quantity_view(self._root_hint)
+
+    @property
+    def frequency(self) -> QuantitySelector:
+        return QuantitySelector(self, "frequency", "operator_element_root_projection")
+
+    def _canonical_record(self) -> Mapping[str, object]:
+        return {
+            "type": "operator_element_root",
+            "row": _coordinate_id(self.row),
+            "column": _coordinate_id(self.column),
+            "root_hint": self.root_hint,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,15 +533,33 @@ class ResidueNormalizedCouplingSpec:
 
     branch_a: DiagonalRootSpec | HybridizedPoleSpec
     branch_b: DiagonalRootSpec | HybridizedPoleSpec
-    frequency: Quantity
+    _frequency: Quantity | Literal["complex_root_midpoint"]
 
-    def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity) -> None:
+    def __init__(self, *, branch_a: DiagonalRootSpec | HybridizedPoleSpec, branch_b: DiagonalRootSpec | HybridizedPoleSpec, frequency: Quantity | Literal["complex_root_midpoint"]) -> None:
         if not isinstance(branch_a, (DiagonalRootSpec, HybridizedPoleSpec)) or not isinstance(branch_b, (DiagonalRootSpec, HybridizedPoleSpec)):
             raise TypeError("branches must be DiagonalRootSpec or HybridizedPoleSpec")
-        units.require_positive_quantity(frequency, "hertz", name="frequency")
+        if isinstance(frequency, str):
+            if frequency != "complex_root_midpoint":
+                raise ValueError('frequency string must be "complex_root_midpoint"')
+            retained_frequency: Quantity | Literal["complex_root_midpoint"] = frequency
+        else:
+            units.require_positive_quantity(frequency, "hertz", name="frequency")
+            retained_frequency = _detached_quantity(frequency)
         object.__setattr__(self, "branch_a", branch_a)
         object.__setattr__(self, "branch_b", branch_b)
-        object.__setattr__(self, "frequency", _detached_quantity(frequency))
+        object.__setattr__(self, "_frequency", retained_frequency)
+
+    @property
+    def frequency(self) -> Quantity | Literal["complex_root_midpoint"]:
+        return self._frequency if isinstance(self._frequency, str) else quantity_view(self._frequency)
+
+    @property
+    def real(self) -> QuantitySelector:
+        return QuantitySelector(self, "real", "residue_coupling_projection")
+
+    @property
+    def imag(self) -> QuantitySelector:
+        return QuantitySelector(self, "imag", "residue_coupling_projection")
 
     @property
     def magnitude(self) -> QuantitySelector:
@@ -567,18 +630,67 @@ class OperatorSpec:
         return {"type": "operator", "frequencies": self.frequencies}
 
 
+class OptimizationDomain(str, Enum):
+    UNBOUNDED = "UNBOUNDED"
+    NONNEGATIVE = "NONNEGATIVE"
+    NONPOSITIVE = "NONPOSITIVE"
+    POSITIVE = "POSITIVE"
+    NEGATIVE = "NEGATIVE"
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationProgress:
+    """Validated, non-durable observation of one optimization request."""
+
+    phase: Literal["initial", "resume", "generation", "complete", "result_reuse"]
+    reused: bool
+    completed_generations: int
+    total_generations: int
+    evaluated_count: int
+    requested_budget: int
+    achievable_evaluations: int
+    best_cost: float
+
+
+_OMITTED_TRANSFORM = object()
+
+
 @dataclass(frozen=True, slots=True)
 class OptimizationVariable:
-    """Bind one public parameter to immutable physical search bounds."""
+    """Bind one public parameter to finite bounds or one open domain."""
 
     parameter: ParameterRef
-    model_default_bounds: tuple[Quantity, Quantity]
+    model_default_bounds: tuple[Quantity, Quantity] | None
     consumer_override_bounds: tuple[Quantity, Quantity] | None = None
     transform: Literal["linear", "log"] = "linear"
+    domain: OptimizationDomain | None = None
+    scale: Quantity | None = None
 
-    def __init__(self, *, parameter: ParameterRef, bounds: tuple[Quantity, Quantity], transform: Literal["linear", "log"] = "linear") -> None:
-        if parameter is None or transform not in {"linear", "log"}:
+    def __init__(self, *, parameter: ParameterRef, bounds: tuple[Quantity, Quantity] | None = None,
+                 domain: OptimizationDomain | None = None, scale: Quantity | None = None,
+                 transform: Literal["linear", "log"] | object = _OMITTED_TRANSFORM) -> None:
+        if parameter is None or (bounds is None) == (domain is None):
             raise InvalidOptimizationSpec("invalid optimization variable", stage="spec_validation")
+        if domain is not None:
+            if not isinstance(domain, OptimizationDomain) or transform is not _OMITTED_TRANSFORM:
+                raise InvalidOptimizationSpec("domain fixes its transform", stage="spec_validation")
+            linear = domain in {OptimizationDomain.UNBOUNDED, OptimizationDomain.NONNEGATIVE, OptimizationDomain.NONPOSITIVE}
+            if linear:
+                _require_quantity(scale, name="domain scale")
+                if float(scale.magnitude) <= 0.0:
+                    raise InvalidOptimizationSpec("linear domain scale must be positive", stage="spec_validation")
+            elif scale is not None:
+                raise InvalidOptimizationSpec("signed log domains do not accept scale", stage="spec_validation")
+            object.__setattr__(self, "parameter", parameter)
+            object.__setattr__(self, "model_default_bounds", None)
+            object.__setattr__(self, "consumer_override_bounds", None)
+            object.__setattr__(self, "transform", "linear" if linear else "log")
+            object.__setattr__(self, "domain", domain)
+            object.__setattr__(self, "scale", None if scale is None else _detached_quantity(scale))
+            return
+        transform = "linear" if transform is _OMITTED_TRANSFORM else transform
+        if transform not in {"linear", "log"} or scale is not None:
+            raise InvalidOptimizationSpec("invalid bounded optimization variable", stage="spec_validation")
         if not isinstance(bounds, tuple) or len(bounds) != 2:
             raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
         for name, value in zip(("lower bound", "upper bound"), bounds):
@@ -587,9 +699,11 @@ class OptimizationVariable:
         object.__setattr__(self, "model_default_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(self, "consumer_override_bounds", None)
         object.__setattr__(self, "transform", transform)
+        object.__setattr__(self, "domain", None)
+        object.__setattr__(self, "scale", None)
 
     @property
-    def bounds(self) -> tuple[Quantity, Quantity]:
+    def bounds(self) -> tuple[Quantity, Quantity] | None:
         """Resolved bounds; the runtime performs Plan/baseline validation."""
 
         return self.consumer_override_bounds or self.model_default_bounds
@@ -597,6 +711,8 @@ class OptimizationVariable:
     def _override(self, bounds: tuple[Quantity, Quantity]) -> OptimizationVariable:
         if not isinstance(bounds, tuple) or len(bounds) != 2:
             raise InvalidOptimizationSpec("bounds must be a pair", stage="spec_validation")
+        if self.domain is not None:
+            raise InvalidOptimizationSpec("domain variables cannot receive bounds overrides", stage="spec_validation")
         for name, value in zip(("lower bound", "upper bound"), bounds):
             _require_quantity(value, name=name)
         instance = object.__new__(OptimizationVariable)
@@ -604,9 +720,14 @@ class OptimizationVariable:
         object.__setattr__(instance, "model_default_bounds", self.model_default_bounds)
         object.__setattr__(instance, "consumer_override_bounds", tuple(_detached_quantity(value) for value in bounds))
         object.__setattr__(instance, "transform", self.transform)
+        object.__setattr__(instance, "domain", None)
+        object.__setattr__(instance, "scale", None)
         return instance
 
     def _canonical_record(self) -> Mapping[str, object]:
+        if self.domain is not None:
+            return {"parameter": self.parameter, "domain": self.domain.value,
+                    "transform": self.transform, "scale": self.scale}
         return {
             "parameter": self.parameter, "model_default_bounds": self.model_default_bounds,
             "consumer_override_bounds": self.consumer_override_bounds, "lower": self.bounds[0],
@@ -883,13 +1004,21 @@ class OptimizationSpec:
     def show(self) -> HtmlPresentation:
         """Present model defaults, active overrides, objectives, and CMA controls."""
 
+        def mapping_scale(variable: OptimizationVariable) -> str:
+            if variable.scale is not None:
+                return str(variable.scale)
+            if variable.domain in {OptimizationDomain.POSITIVE, OptimizationDomain.NEGATIVE}:
+                return f"x = x0 * exp(z); x0 = effective request initial ({variable.parameter.spec.unit})"
+            return "—"
+
         rows = "".join(
             "<tr>"
             f"<td>{escape('.'.join(_parameter_key(variable.parameter)))}</td>"
             f"<td>{escape(_quantity_pair_text(variable.model_default_bounds))}</td>"
             f"<td>{escape(_quantity_pair_text(variable.consumer_override_bounds))}</td>"
-            f"<td>{escape(_quantity_pair_text(variable.bounds))}</td>"
+            f"<td>{escape(_quantity_pair_text(variable.bounds) if variable.domain is None else variable.domain.value)}</td>"
             f"<td>{escape(variable.transform)}</td>"
+            f"<td>{escape(mapping_scale(variable))}</td>"
             "</tr>"
             for variable in self.variables
         )
@@ -907,7 +1036,7 @@ class OptimizationSpec:
             f"population_size={self.optimizer.population_size}; initial_sigma={self.optimizer.initial_sigma}"
         )
         return HtmlPresentation(
-            "<table><thead><tr><th>parameter</th><th>model default</th><th>consumer override</th><th>resolved</th><th>transform</th></tr></thead>"
+            "<table><thead><tr><th>parameter</th><th>model default</th><th>consumer override</th><th>resolved bounds / domain</th><th>transform</th><th>mapping scale</th></tr></thead>"
             f"<tbody>{rows}</tbody></table><h3>objectives</h3><ul>{objectives}</ul><h3>optimizer</h3><p>{escape(controls)}</p>"
         )
 
@@ -1230,7 +1359,7 @@ def _exact_report_channel(
     *,
     role: str,
 ) -> tuple[str, tuple[int, ...]]:
-    from ._numeric_presentation import _channel_index
+    from .results.selection import _channel_index
 
     return channels[_channel_index(channels, selector, role=role, default=False)]
 
@@ -1473,7 +1602,7 @@ class ReportPanel:
             if isinstance(result, DirectSolveResult):
                 family = "S" if family is None else family
                 view = result._family(family).view
-                from ._numeric_presentation import _frequency_index
+                from .results.selection import _frequency_index
 
                 frequency = view.frequencies[_frequency_index(view, frequency)]
             else:
@@ -1512,7 +1641,7 @@ class ReportPanel:
                     raise ValueError("parameter history requires only parameter")
             elif objective is not None or parameter is not None:
                 raise ValueError("cost history accepts neither objective nor parameter")
-            from ._numeric_presentation import _optimization_series
+            from .results.selection import _optimization_series
 
             _optimization_series(
                 result,
@@ -1588,7 +1717,7 @@ def __getattr__(name: str) -> object:
 
     if name != "CircuitDiagramSpec":
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
 
     globals()[name] = CircuitDiagramSpec
     return CircuitDiagramSpec

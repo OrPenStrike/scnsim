@@ -18,7 +18,7 @@ import re
 
 import numpy as np
 
-from .authoring import RLGC, _identifier
+from .authoring.physical_values import RLGC, identifier as _identifier
 from .errors import SCNSimValidationError
 from .units import registry
 
@@ -147,7 +147,7 @@ def _q2d_primary_blocks(records: list[str]) -> tuple[tuple[str, ...], dict[str, 
             index = _skip_supplemental_block(records, index)
             continue
         code, _ = primary
-        if expected >= len(_PRIMARY_TITLES) or code != _PRIMARY_TITLES[expected][1] or code in found:
+        if expected >= len(_PRIMARY_TITLES) or code != _PRIMARY_TITLES[expected][1]:
             raise SCNSimValidationError("Q2D primary C/G/L/R blocks must occur exactly once in order", stage="q2d_load")
         labels, matrix, index = _q2d_matrix_block(records, index + 1, code)
         found[code] = (labels, matrix)
@@ -171,7 +171,7 @@ def _q2d_matrix_block(
 ) -> tuple[tuple[str, ...], tuple[tuple[float, ...], ...], int]:
     while index < len(records) and records[index] == "":
         index += 1
-    if index >= len(records) or records[index] == "":
+    if index >= len(records):
         raise SCNSimValidationError(f"Q2D {code} primary block lacks its CSV header", stage="q2d_load")
     header = _csv_fields(records[index], field=f"{code} matrix header")
     if not header or header[0] != "" or len(header) < 2:

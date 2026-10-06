@@ -142,7 +142,9 @@ jobs:
           probe = r'''
           import json
           from scnsim import CircuitPlan, components, units as u
-          from scnsim._canonical import canonical_plan_document, catalog_source_record, sha256_hex
+          from scnsim.canonical import sha256_hex
+          from scnsim.authoring.identity import canonical_plan_document
+          from scnsim.authoring.provenance import catalog_source_record
 
           plan = CircuitPlan(id="portable-wheel")
           capacitor = plan.add(components.capacitor(id="c", capacitance=1.0 * u.pF))
@@ -420,19 +422,49 @@ jobs:
               ["git", "ls-files", "*.md", "*.qmd"],
               text=True,
           ).splitlines()
+
+          def prose_only(text):
+              lines = []
+              fence_char = None
+              fence_length = 0
+              for line in text.splitlines():
+                  marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+                  if fence_char is None:
+                      if marker:
+                          fence_char = marker.group(1)[0]
+                          fence_length = len(marker.group(1))
+                      else:
+                          lines.append(line)
+                  elif (
+                      marker
+                      and marker.group(1)[0] == fence_char
+                      and len(marker.group(1)) >= fence_length
+                      and not marker.group(2).strip()
+                  ):
+                      fence_char = None
+              return "\n".join(lines)
+
+          include_contexts = {}
           for source in map(Path, tracked):
-              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", source.read_text()):
+              for included in re.findall(r"\{\{<\s*include\s+([^\s>]+)\s*>\}\}", prose_only(source.read_text())):
+                  path = (source.parent / included.strip("\"'")).resolve()
+                  assert path.exists(), f"broken local include in {source}: {included}"
+                  include_contexts.setdefault(path, set()).add(source.parent)
+
+          for source in map(Path, tracked):
+              for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", prose_only(source.read_text())):
                   if "://" in target or target.startswith(("#", "mailto:")):
                       continue
                   relative = target.split("#", 1)[0].strip("<>")
                   if not relative:
                       continue
-                  path = (
-                      Path(relative.removeprefix("/"))
-                      if relative.startswith("/")
-                      else source.parent / relative
-                  ).resolve()
-                  assert path.exists(), f"broken local link in {source}: {target}"
+                  for context in include_contexts.get(source.resolve(), {source.parent}):
+                      path = (
+                          Path(relative.removeprefix("/"))
+                          if relative.startswith("/")
+                          else context / relative
+                      ).resolve()
+                      assert path.exists(), f"broken local link in {source}: {target}"
           print("verified local links in", len(tracked), "tracked Markdown/QMD files")
           PY
           if git ls-files | grep -Eq '(^|/)(_site|\.quarto|\.venv[^/]*|build|dist)(/|$)|\.quarto_ipynb$'; then
@@ -464,7 +496,7 @@ jobs:
           uv venv --clear --python 3.12 .venv-wheel
           uv pip install --python .venv-wheel/bin/python dist/*.whl
           .venv-wheel/bin/python - <<'PY'
-          from scnsim._backend import prepare_runtime
+          from scnsim.execution.preparation import prepare_runtime
 
           runtime = prepare_runtime()
           assert runtime.julia_version == "1.12.6"
@@ -511,7 +543,7 @@ jobs:
                   assert run.resolve(run.original, direct_spec).identity == direct.identity
                   assert run.resolve(run.original, hb_spec).identity == hb.identity
               assert not any(
-                  name == "scnsim._diagram" or name.startswith("scnsim._diagram.")
+                  name == "scnsim.visualization.diagram" or name.startswith("scnsim.visualization.diagram.")
                   or name in {"scnsim.schematic", "scnsim.composition"}
                   for name in sys.modules
               ), "numerical smoke imported the renderer"

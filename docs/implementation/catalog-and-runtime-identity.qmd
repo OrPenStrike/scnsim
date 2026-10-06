@@ -8,6 +8,25 @@ toc-depth: 2
 `STABILIZED`; the newer prepared-request and publication-evidence ownership
 paths remain `CONVERGING`.
 
+The responsibility-package reorganization preserves these identity rules, not
+the source digests of the earlier flat package. `authoring/provenance.py` owns
+catalog source proof, `authoring/notebook_source.py` owns notebook declaration
+recovery, and `execution/identity.py` owns the semantic runtime source manifest.
+The runtime manifest discovers Python sources recursively beneath the installed
+package and retains package-relative paths, so nested execution, authoring,
+workspace, Result, and presentation code participates in runtime identity.
+Shared `canonical.py` provides the same encoding primitives to these owners.
+
+Moving source changes source manifests and therefore source-bound Plan/request
+identities even when physical models and algorithms are unchanged. Existing
+classes formerly defined in public root modules retain those public module
+identities through their facades; classes formerly defined in private modules
+use their new concrete definition modules. No old-private module shim or
+additional pickle compatibility contract is introduced. Existing receipts and
+course outputs remain bound to their original executed sources. A reviewed
+source-only publication transition records the new source tree separately;
+it does not turn historical numerical evidence into current execution.
+
 ## Prove a factory when it creates a component
 
 Constructing an empty custom `Library` remains ordinary, inspectable Python.
@@ -98,7 +117,7 @@ semantic runtime.
 
 An operation-level algorithm ID is transitive, not a label for only the outer
 driver. In particular,
-`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7` binds the exact CMA,
+`scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9` binds the exact CMA,
 unit-box transform, Direct operator, selected quantity, continuation, and
 replay-certificate algorithms it invokes. Version 6 additionally binds the
 Python-normalized sealed baseline optimizer-coordinate bits; Julia consumes
@@ -106,6 +125,12 @@ those bits rather than independently repeating logarithmic normalization.
 Version 7 adds the closed scalar-expression tree, per-node unit conversion,
 and target/at-least comparison semantics while retaining the pinned CMA
 sampling and update mathematics.
+Version 9 additionally binds candidate-local complex-root-midpoint coupling
+and the full complex coupling witness stored with every successful coupling
+term. Python verifies the sealed request and evidence identities, not the
+backend's midpoint or magnitude arithmetic. Version 8 remains a known
+published predecessor and is rejected through the typed unsupported-version
+path.
 Version 5 binds generation-ledger v4, its closed optimization failure context,
 and the baseline-checkpoint content/seal protocol. Changing any
 dependency requires a new outer ID even when the `OptimizationSpec` bytes are

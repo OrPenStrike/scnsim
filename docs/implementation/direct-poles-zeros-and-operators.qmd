@@ -4,9 +4,12 @@ subtitle: "How does each typed Direct quantity bind one selected network and clo
 toc-depth: 3
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** the first-complete-certificate TransferZero stopping behavior is
+`CONVERGING`; other existing pole, coupling, and operator meanings remain
+`STABILIZED`. Selected-View element roots are `CONVERGING` and specified in
+the [root procedure](diagonal-root-numerical-procedure.qmd).
 
-This page realizes the full public Direct quantity catalog. It does not change
+This page realizes the previously accepted Direct quantity catalog. It does not change
 the definitions in the
 [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog),
 and it does not infer a pole or zero from a sampled response. The fixed
@@ -281,6 +284,10 @@ The accepted passive pole also has $\operatorname{Re}\omega>0$ and
 $\operatorname{Im}\omega\le0$. Its public root is in `radian / second`,
 frequency is $\operatorname{Re}\omega/(2\pi)$ in hertz, linewidth is
 $-2\operatorname{Im}\omega/(2\pi)$ in hertz, and slope is in siemens.
+After nonbaseline parameter continuation, one hybridized-pole certificate
+evaluation at the continued candidate supplies the returned root, slope, and
+null vector together. The public frequency, linewidth, and root evidence use
+that returned root; no second certificate evaluation supplies another field.
 
 The hybridized-pole `DirectQuantityResult` envelope owns one required complex
 artifact: ID `null_vector`,
@@ -306,8 +313,15 @@ $$
 $$
 
 for at most 32 updates. The anchor candidate is checked before update one;
-bitwise stagnation succeeds only when the complete certificate passes. Finite
-analytic $T/T'$ pairs are checked during execution but are not persisted. All Schur and
+the first candidate satisfying the complete certificate is returned, including
+the anchor or the candidate after update 32. A finite, evaluable candidate
+whose residual, slope/rank, or correction does not close may take another
+Newton update; a cheap correction check alone cannot authorize success.
+Bitwise stagnation or update-budget exhaustion checks the complete certificate
+of the current candidate for a typed failure diagnosis. Non-finite quantities,
+invalid scales, failed required solves, and undefined Newton steps remain
+failures rather than recoverable nonclosure. Finite analytic $T/T'$ pairs are
+checked during execution but are not persisted. All Schur and
 family-formation derivatives come from the analytic solve rule
 
 $$
@@ -389,12 +403,26 @@ $$
 For $q_N>1$, it also requires
 $\sigma_{q_N}/\sigma_1\le\tau(q_N)$ and
 $\sigma_{q_N-1}/\sigma_1>\tau(q_N)$. Both ratios are omitted for $q_N=1$.
+The residual denominator is family-specific: S retains the row-norm product
+above; for Y it is
+$|\det H_{EE}|\lVert B_F[i,:]\rVert_2$, where
+$X=H_{EE}^{-1}H_{ER}$ and
+$B_F=B_{H,RR}+B_{H,RE}|X|$. Here $B_H$ is the complete-node
+absolute-contribution bound from the same intrinsic operator, selected
+source/omitted-load boundary, and frequency conversion used to form $H$.
+For empty $E$, $\det H_{EE}=1$ and $B_F=B_{H,RR}$.
+For Z the denominator is the product of norms of the complete Y rows retained
+by its numerator minor, before the output column is deleted; the one-port
+empty cofactor retains constant one and zero derivative. Positive scales and
+ratios use binary64 mantissa/power-of-two exponent pairs, so product overflow
+or underflow cannot be accepted as a zero certificate.
 Residual `0/0` is zero; nonzero-slope and rank-gap predicates reject a zero
 denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
 denominator determinant stores $\widehat\Delta$; both are canonical
 dimensionless complex evidence. The conversion factor cancels in the slope
 ratio. The final correction obeys
-$|T/T'|/|\omega|\le\tau(q_N)$.
+$|T/T'|/(2\pi)\le 0.01\,\mathrm{Hz}$, using the full complex magnitude.
+基於計算誤差與工程實用性上的考量，我們直白地將 Newton Correction Threshold 設為 0.01 Hz。
 
 The denominator operator $A_D$ must remain finite and machine nonsingular: its
 factorization and full `A_D X = I` backward residual must pass at
@@ -409,12 +437,18 @@ and denominator is a rejected pole-zero cancellation. Unlike a passive pole,
 a transfer zero is not assigned a damping-sign restriction; it must have a
 finite positive real frequency, while its imaginary part remains part of the
 complex zero evidence.
+Failure stages distinguish frequency, numerator/scale, slope/rank,
+denominator/solve, and final correction. Messages expose only fixed labels and
+bounded residual, scale mantissa/exponent, slope-ratio, correction, and
+applicable-threshold diagnostics; the `correction_hz` item reports correction
+and threshold in Hz. `unavailable` denotes a value not computed
+at the failure point. No candidate receives partial zero evidence.
 
 The anchor again identifies only the baseline Newton basin. The Result never
 substitutes a real-grid minimum, dip, peak, sign crossing, nearest zero, or
 globally unique zero.
 
-The Result stores the converged complex `zero` $\omega_z$ in
+The Result stores the first completely certified complex `zero` $\omega_z$ in
 `radian / second`, `frequency=\operatorname{Re}(\omega_z)/(2\pi)` in hertz,
 and no linewidth field. Its `numerator_slope` and `denominator` are the
 dimensionless complex evidence defined above.
@@ -428,6 +462,30 @@ space, phasor convention, and reciprocal basis. A diagonal branch contributes
 its positive-oriented coordinate vector. A hybridized branch contributes its
 phase-canonical right null vector. Mismatched reductions are not silently
 embedded or frequency-sorted.
+
+Its required `frequency` declaration is either a positive real frequency
+Quantity or the exact literal `"complex_root_midpoint"`. In fixed mode,
+`omega_eval = 2*pi*frequency`. In midpoint mode, each candidate owns
+
+$$
+\omega_{\mathrm{eval}}=\frac{\omega_a+\omega_b}{2},
+$$
+
+using the complete complex roots of that candidate and selected View. This
+does not freeze the baseline midpoint or move either branch slope away from its
+own root. The coupling is always formed from the complete complex operator,
+
+$$
+J=\frac{v_a^T F_V(\omega_{\mathrm{eval}})v_b}{\sqrt{s_a s_b}},
+\qquad
+s_i=-v_i^T F'_V(\omega_i)v_i,
+$$
+
+with transpose rather than conjugate transpose and the existing principal
+square-root, reciprocity, orientation, and finite-value rules. The full complex
+`J`, both complex roots, and `omega_eval` are evidence before any `.real`,
+`.imag`, or `.magnitude` projection. A non-finite hidden component therefore
+cannot pass through a finite-looking scalar projection.
 
 For this full-V1 coupling operation, a `DiagonalRootSpec` branch names one
 diagonal of the common multi-coordinate $Q_R^{E\downarrow}$; the other retained
@@ -491,7 +549,10 @@ $$
 {\lVert |Q|+|Q^T|\rVert_\infty}\le\tau(q),
 $$
 
-with residual `0/0` equal to zero. For each branch,
+with residual `0/0` equal to zero. A failed numerical check reports every
+matching branch-root/evaluation location, complex angular frequency, retained
+dimension, asymmetry numerator, scale, ratio, and the same threshold. It does
+not by itself establish physical nonreciprocity. For each branch,
 
 $$
 s_i=-v_i^TQ'(\widetilde\omega_i)v_i,
@@ -571,8 +632,8 @@ vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 
 The closed algorithm IDs are
 `scnsim.hybridized_pole.newton32.v1`,
-`scnsim.transfer_zero.newton32.v1`,
-`scnsim.residue_normalized_coupling.v1`,
+`scnsim.transfer_zero.newton32.v4`,
+`scnsim.residue_normalized_coupling.v2`,
 `scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
 formula, derivative, normalization, iteration/subdivision rule, artifact
 layout, or branch policy requires a new runtime algorithm identity.

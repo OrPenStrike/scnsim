@@ -231,6 +231,10 @@ and whole-C-matrix ×170/175 points on one three-frequency Direct request.
 - [Lesson 4 — Parameter points](../examples/engineer/chapter-07/04-parameter-points.qmd)
 - [Complete Chapter source](../examples/engineer/chapter-07/chapter.qmd) and
   [zero-output Notebook](../examples/engineer/chapter-07/chapter.ipynb)
+- [Lesson 5 — Position and electrical resolution](../examples/engineer/chapter-07/05-position-electrical-resolution.qmd)
+  is a separate, runnable extension with its own
+  [zero-output Notebook](../examples/engineer/chapter-07/05-position-electrical-resolution.ipynb).
+  It does not change the original four-lesson aggregate.
 
 The current deterministic renderer reports a typed fixed-connector collision
 for the exact four-Port authoring layout. That presentation limitation does not

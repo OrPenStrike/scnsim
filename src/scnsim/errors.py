@@ -206,6 +206,12 @@ class BackendProtocolError(SCNSimExecutionError):
     kind = "backend_protocol"
 
 
+class OptimizationProgressCallbackError(SCNSimExecutionError):
+    """An observer callback failed after validated optimization progress."""
+
+    kind = "optimization_progress_callback"
+
+
 class ResultUnavailableError(SCNSimEvidenceError):
     """No verified success exists for the exact request being resolved."""
 

@@ -169,7 +169,96 @@ function structured_endpoint_map(plan)
     return result, ground
 end
 
-function structured_node_basis(plan, resolved)
+function structured_line_realizations(plan, resolved, context_kind)
+    realizations = Dict{String,Dict{String,Any}}()
+    for leaf in plan["physical_leaves"]
+        String(leaf["model"]) == "transmission_line" || continue
+        path = structured_path(leaf["path"])
+        length_value = resolved[structured_field_key(path, "length")]
+        length_value isa Float64 && isfinite(length_value) && length_value > 0.0 ||
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "transmission-line length must be finite and positive")
+        rlgc = resolved[structured_field_key(path, "rlgc")]
+        conductors = String.(rlgc["conductors"])
+        R = rlgc_matrix(rlgc["resistance_per_length"], "R")
+        L = rlgc_matrix(rlgc["inductance_per_length"], "L")
+        G = rlgc_matrix(rlgc["conductance_per_length"], "G")
+        C = rlgc_matrix(rlgc["capacitance_per_length"], "C")
+        size(R, 1) == length(conductors) && size(L) == size(R) && size(G) == size(R) && size(C) == size(R) ||
+            fail("execution", "compiler_invariant", "compile", "compile", "RLGC matrix dimension disagrees with line conductors")
+        factor = try
+            cholesky(Symmetric(L); check = true)
+        catch
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "RLGC inductance matrix is not positive definite")
+        end
+        try
+            cholesky(Symmetric(C); check = true)
+            minimum(eigvals(Symmetric(R))) >= 0.0 && minimum(eigvals(Symmetric(G))) >= 0.0 || error("non-PSD")
+        catch
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "RLGC physical matrix validation failed")
+        end
+        metadata = plain(leaf["model_metadata"])
+        fixed = haskey(metadata, "n_sections")
+        policy = haskey(metadata, "discretization")
+        fixed != policy || fail("execution", "compiler_invariant", "compile", "compile", "line must declare exactly one discretization")
+        record = Dict{String,Any}(
+            "component_path" => path,
+            "length" => quantity(length_value, "meter", "length"),
+        )
+        sections = if fixed
+            value = metadata["n_sections"]
+            value isa Integer && !(value isa Bool) && value > 0 ||
+                fail("execution", "compiler_invariant", "compile", "compile", "fixed section count is invalid")
+            record["kind"] = "fixed_count"
+            Int(value)
+        else
+            item = plain(metadata["discretization"])
+            exact_keys(item, ("kind", "max_frequency", "sections_per_wavelength")) && item["kind"] == "electrical_resolution" ||
+                fail("execution", "compiler_invariant", "compile", "compile", "electrical resolution policy is malformed")
+            all(iszero, R) && all(iszero, G) ||
+                fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "ElectricalResolution requires explicitly zero R and G")
+            frequency = quantity_value(item["max_frequency"])
+            M = item["sections_per_wavelength"]
+            isfinite(frequency) && frequency > 0.0 && M isa Integer && !(M isa Bool) && M > 0 ||
+                fail("execution", "compiler_invariant", "compile", "compile", "electrical resolution values are invalid")
+            B = transpose(factor.L) * C * factor.L
+            eigenvalues = try
+                eigvals(Symmetric(B))
+            catch
+                fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "lossless modal decomposition failed")
+            end
+            all(isfinite, eigenvalues) && all(>(0.0), eigenvalues) ||
+                fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "lossless modal delays are not finite and positive")
+            delays = sqrt.(eigenvalues)
+            velocities = 1.0 ./ delays
+            hmax = 1.0 / (Float64(M) * frequency * maximum(delays))
+            ratio = length_value / hmax
+            all(isfinite, velocities) && all(>(0.0), velocities) && isfinite(hmax) && hmax > 0.0 &&
+                isfinite(ratio) && ratio <= typemax(Int) ||
+                fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "electrical resolution is not representable")
+            record["kind"] = "electrical_resolution"
+            record["policy"] = item
+            record["modal_velocities"] = [quantity(v, "meter / second", "velocity") for v in velocities]
+            record["hmax"] = quantity(hmax, "meter", "length")
+            max(1, ceil(Int, ratio))
+        end
+        dx = length_value / sections
+        isfinite(dx) && dx > 0.0 && all(isfinite, R .* dx) && all(isfinite, L .* dx) &&
+            all(isfinite, G .* dx) && all(isfinite, C .* dx) ||
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "line section realization is not finite")
+        try
+            cholesky(Symmetric(L .* dx); check = true)
+            cholesky(Symmetric(C .* dx); check = true)
+        catch
+            fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "RLGC section physical matrix validation failed")
+        end
+        record["n_sections"] = sections
+        record["dx"] = quantity(dx, "meter", "length")
+        realizations[structured_path_key(path)] = record
+    end
+    return realizations
+end
+
+function structured_node_basis(plan, resolved, realizations)
     nodes = String[]; seen = Set{String}(); ground = String(plan["connectivity"]["canonical_ground"])
     for row in plan["connectivity"]["node_coordinates"]
         final_net, compiler_id = String(row["final_net"]), String(row["compiler_node_id"])
@@ -181,12 +270,9 @@ function structured_node_basis(plan, resolved)
     for leaf in plan["physical_leaves"]
         String(leaf["model"]) == "transmission_line" || continue
         rlgc = resolved[structured_field_key(leaf["path"], "rlgc")]
-        conductors = String.(rlgc["conductors"]); sections = Int(leaf["model_metadata"]["n_sections"])
+        conductors = String.(rlgc["conductors"]); sections = realizations[structured_path_key(leaf["path"])]["n_sections"]
         for station in 1:(sections - 1), conductor in conductors
-            id = "internal-" * sha256_hex(canonical_bytes(Dict(
-                "schema" => "scnsim.line_station", "schema_version" => 1,
-                "component_path" => structured_path(leaf["path"]), "station" => station, "conductor" => conductor,
-            )))
+            id = structured_line_internal_id(leaf, sections, station, conductor)
             id in seen && fail("execution", "compiler_invariant", "compile", "compile", "transmission-line station node collides")
             push!(seen, id); push!(nodes, id)
         end
@@ -206,24 +292,30 @@ function structured_endpoint_incidences(leaf, endpoint_to_node, node_index, grou
     return positive, negative
 end
 
-function structured_line_station_node(leaf, station::Int, conductor::String, endpoint_to_node, ground)::String
-    sections = Int(leaf["model_metadata"]["n_sections"]); path = structured_path(leaf["path"])
+function structured_line_internal_id(leaf, sections::Int, station::Int, conductor::String)::String
+    identity = Dict{String,Any}(
+        "schema" => "scnsim.line_station", "schema_version" => 1,
+        "component_path" => structured_path(leaf["path"]), "station" => station, "conductor" => conductor,
+    )
+    haskey(leaf["model_metadata"], "discretization") && (identity["n_sections"] = sections)
+    return "internal-" * sha256_hex(canonical_bytes(identity))
+end
+
+function structured_line_station_node(leaf, sections::Int, station::Int, conductor::String, endpoint_to_node, ground)::String
+    path = structured_path(leaf["path"])
     if station == 0 || station == sections
         pin = (station == 0 ? "head." : "tail.") * conductor
         key = structured_endpoint_key(path, pin)
         haskey(endpoint_to_node, key) || fail("execution", "compiler_invariant", "compile", "compile", "transmission-line endpoint is unbound")
         return endpoint_to_node[key]
     end
-    return "internal-" * sha256_hex(canonical_bytes(Dict(
-        "schema" => "scnsim.line_station", "schema_version" => 1,
-        "component_path" => path, "station" => station, "conductor" => conductor,
-    )))
+    return structured_line_internal_id(leaf, sections, station, conductor)
 end
 
-function structured_line_incidence(leaf, station, conductors, endpoint_to_node, node_index, ground)
+function structured_line_incidence(leaf, sections, station, conductors, endpoint_to_node, node_index, ground)
     B = zeros(Float64, length(node_index), length(conductors))
     for (column, conductor) in enumerate(conductors)
-        node = structured_line_station_node(leaf, station, conductor, endpoint_to_node, ground)
+        node = structured_line_station_node(leaf, sections, station, conductor, endpoint_to_node, ground)
         node != ground && (B[node_index[node], column] = 1.0)
     end
     return B
@@ -242,7 +334,8 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
         structured_resolve_fields(plan, values; context_kind = context_kind, authorized = authorized,
             extrapolation_evidence = extrapolation_evidence, authorization_source = authorization_source,
             fail_unauthorized = fail_unauthorized) : structured_resolved_rows(plan, resolved_rows)
-    nodes = structured_node_basis(plan, resolved); node_index = Dict(node => index for (index, node) in enumerate(nodes))
+    realizations = structured_line_realizations(plan, resolved, context_kind)
+    nodes = structured_node_basis(plan, resolved, realizations); node_index = Dict(node => index for (index, node) in enumerate(nodes))
     endpoint_to_node, ground = structured_endpoint_map(plan)
     valid_nets = Set(vcat(nodes, [ground]))
     all(net in valid_nets for net in Base.values(endpoint_to_node)) || fail("execution", "compiler_invariant", "compile", "compile", "physical endpoint targets an unknown canonical net")
@@ -255,7 +348,7 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
         if model == "transmission_line"
             rlgc = field("rlgc"); length_value = field("length")
             length_value isa Float64 && isfinite(length_value) && length_value > 0.0 || fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "transmission-line length must be finite and positive")
-            conductors = String.(rlgc["conductors"]); sections = Int(leaf["model_metadata"]["n_sections"])
+            conductors = String.(rlgc["conductors"]); realization = realizations[structured_path_key(path)]; sections = realization["n_sections"]
             length(pins) == 2 * length(conductors) && sections >= 1 || fail("execution", "compiler_invariant", "compile", "compile", "transmission-line declaration is malformed")
             pins == vcat(["head." * conductor for conductor in conductors], ["tail." * conductor for conductor in conductors]) || fail("execution", "compiler_invariant", "compile", "compile", "transmission-line pin order disagrees with RLGC conductor order")
             dx = length_value / sections
@@ -264,19 +357,13 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
             G = rlgc_matrix(rlgc["conductance_per_length"], "G") .* dx
             C = rlgc_matrix(rlgc["capacitance_per_length"], "C") .* dx
             size(R, 1) == length(conductors) && size(L) == size(R) && size(G) == size(R) && size(C) == size(R) || fail("execution", "compiler_invariant", "compile", "compile", "RLGC matrix dimension disagrees with line conductors")
-            try
-                cholesky(Symmetric(L); check = true); cholesky(Symmetric(C); check = true)
-                minimum(eigvals(Symmetric(R))) >= 0.0 && minimum(eigvals(Symmetric(G))) >= 0.0 || error("non-PSD")
-            catch
-                fail("execution", "invalid_candidate_physical_parameter", "physical_validation", context_kind, "RLGC physical matrix validation failed")
-            end
             if emit_audit
                 stations = Dict{String,Any}[]
                 for station in 0:sections, conductor in conductors
                     total_factor = station == 0 || station == sections ? 0.5 : 1.0
                     push!(stations, Dict{String,Any}(
                         "station" => station, "conductor" => conductor,
-                        "compiled_node_id" => structured_line_station_node(leaf, station, conductor, endpoint_to_node, ground),
+                        "compiled_node_id" => structured_line_station_node(leaf, sections, station, conductor, endpoint_to_node, ground),
                         "attachment" => station == 0 ? "head" : station == sections ? "tail" : "interior",
                         "left_half_shunt" => station == 0 ? nothing : Dict("section" => station, "end" => "right"),
                         "right_half_shunt" => station == sections ? nothing : Dict("section" => station + 1, "end" => "left"),
@@ -289,15 +376,16 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
                     "conductors" => conductors, "reference_conductor" => String(rlgc["reference_conductor"]),
                     "n_sections" => sections, "length" => quantity(length_value, "meter", "length"),
                     "dx" => quantity(dx, "meter", "length"), "orientation" => String(rlgc["orientation"]),
+                    "discretization" => realization,
                     "rlgc_source" => plain(rlgc["source"]), "stations" => stations,
                 ))
             end
             for section in 1:sections
-                left = structured_line_incidence(leaf, section - 1, conductors, endpoint_to_node, node_index, ground)
-                right = structured_line_incidence(leaf, section, conductors, endpoint_to_node, node_index, ground)
+                left = structured_line_incidence(leaf, sections, section - 1, conductors, endpoint_to_node, node_index, ground)
+                right = structured_line_incidence(leaf, sections, section, conductors, endpoint_to_node, node_index, ground)
                 push!(series_rl, SeriesRLBlock(structured_path_key(path) * "\u001esection-" * string(section), left - right, R, L))
                 for station in (section - 1, section)
-                    Bshunt = structured_line_incidence(leaf, station, conductors, endpoint_to_node, node_index, ground)
+                    Bshunt = structured_line_incidence(leaf, sections, station, conductors, endpoint_to_node, node_index, ground)
                     push!(capacitance_blocks, (Bshunt, C ./ 2.0)); push!(conductance_blocks, (Bshunt, G ./ 2.0))
                 end
                 for (row_index, conductor_a) in enumerate(conductors), (column_index, conductor_b) in enumerate(conductors)
@@ -308,7 +396,7 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
                             "value" => quantity(value, unit, dimensionality), "omitted_as_zero" => value == 0.0))
                     end
                     for (station, end_label) in ((section - 1, "left"), (section, "right"))
-                        Bstation = structured_line_incidence(leaf, station, conductors, endpoint_to_node, node_index, ground)
+                        Bstation = structured_line_incidence(leaf, sections, station, conductors, endpoint_to_node, node_index, ground)
                         for (label, matrix, unit, dimensionality) in (("shunt_conductance_half", G / 2.0, "siemens", "conductance"), ("shunt_capacitance_half", C / 2.0, "farad", "capacitance"))
                             value = matrix[row_index, column_index]
                             push!(rows, Dict{String,Any}("component_path" => path, "kind" => label, "section" => section,
@@ -413,6 +501,10 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
         impedance = quantity_value(port["reference_impedance"]); isfinite(impedance) && impedance > 0.0 || fail("execution", "compiler_invariant", "compile", "compile", "Port impedance must be finite and positive")
         push!(port_ids, id); B[node_index[net], column] = 1.0; R[column, column] = impedance
     end
-    compiled = CompiledPrimitive(nodes, C, K, G, Any[series_rl...], rows, port_ids, B, R, M)
+    discretization = Dict{String,Any}[
+        realizations[structured_path_key(leaf["path"])] for leaf in plan["physical_leaves"]
+        if String(leaf["model"]) == "transmission_line"
+    ]
+    compiled = CompiledPrimitive(nodes, C, K, G, Any[series_rl...], rows, discretization, port_ids, B, R, M)
     return compiled, evidence_rows
 end

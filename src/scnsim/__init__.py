@@ -17,6 +17,7 @@ from . import units
 from .authoring import (
     RLGC,
     AffineMap,
+    ElectricalResolution,
     CircuitPlan,
     ComponentInstance,
     CompositePlan,
@@ -54,6 +55,7 @@ from .errors import (
     InvalidCandidatePhysicalParameter,
     InvalidDiagonalRootHint,
     InvalidOptimizationSpec,
+    OptimizationProgressCallbackError,
     NumericalResolutionUnresolved,
     PlanSealedError,
     PortRealizabilityError,
@@ -80,6 +82,7 @@ from .results import (
     AnalysisResult,
     BiasState,
     DiagonalRootResult,
+    OperatorElementRootResult,
     DirectQuantityResult,
     DirectSolveResult,
     ExplanationResult,
@@ -87,6 +90,7 @@ from .results import (
     HBCaseOutcome,
     HBScatteringMatrixResult,
     InventoryResult,
+    LineDiscretization,
     MatrixFamilyResult,
     MatrixView,
     OperatorPointResult,
@@ -113,6 +117,7 @@ from .specs import (
     CostObjective,
     CurrentDrive,
     DiagonalRootSpec,
+    OperatorElementRootSpec,
     DirectSolveSpec,
     HBCaseSpec,
     HBSolveSpec,
@@ -120,6 +125,8 @@ from .specs import (
     HybridizedPoleSpec,
     OperatorSpec,
     OptimizationSpec,
+    OptimizationDomain,
+    OptimizationProgress,
     OptimizationVariable,
     PumpAxis,
     QuantityAbsolute,
@@ -138,7 +145,7 @@ from .specs import (
 # import rendering modules.  These explicit type-only reexports keep the
 # documented package names visible to static ``py.typed`` consumers.
 if TYPE_CHECKING:
-    from ._diagram_spec import CircuitDiagramSpec
+    from .visualization.diagram.spec import CircuitDiagramSpec
     from .composition import SchematicComposition, SchematicCompositionSnapshot
     from .results import CircuitDiagramAudit, CircuitDiagramResult
     from .schematic import DiagramAxis, SchematicLayout
@@ -173,6 +180,7 @@ __version__ = metadata_version("scnsim")
 __all__ = [
     "RLGC",
     "AffineMap",
+    "ElectricalResolution",
     "AnalysisResult",
     "BackendProtocolError",
     "BiasState",
@@ -193,6 +201,8 @@ __all__ = [
     "CurrentDrive",
     "DiagonalRootResult",
     "DiagonalRootSpec",
+    "OperatorElementRootResult",
+    "OperatorElementRootSpec",
     "DirectQuantityResult",
     "DirectResponseFormationError",
     "DirectSolveResult",
@@ -215,7 +225,9 @@ __all__ = [
     "InvalidCandidatePhysicalParameter",
     "InvalidDiagonalRootHint",
     "InvalidOptimizationSpec",
+    "OptimizationProgressCallbackError",
     "InventoryResult",
+    "LineDiscretization",
     "Library",
     "MatrixFamilyResult",
     "MatrixView",
@@ -227,6 +239,8 @@ __all__ = [
     "OptimizationBest",
     "OptimizationResult",
     "OptimizationSpec",
+    "OptimizationDomain",
+    "OptimizationProgress",
     "OptimizationVariable",
     "ParameterField",
     "ParameterRef",

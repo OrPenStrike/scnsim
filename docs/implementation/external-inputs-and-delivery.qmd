@@ -63,37 +63,53 @@ does not claim whole-course execution. This does not retroactively
 change the historical slice identities below. Full V1 is `STABILIZED`;
 acceptance, stabilization, and integration do not imply release.
 
-The `1.0.0.dev7` research showcase is an explicit local exception to the
-usual stable-version-on-`main` rule. It keeps the new README and presentation
-scope `CONVERGING`; it neither changes the accepted dev1–dev6 runtime slices
-nor represents a stable release. The package metadata and CI version check
-name this one exception directly rather than weakening the general rule.
+The earlier `1.0.0.dev7` research showcase is a historical exception to the
+usual stable-version-on-`main` rule. Its README and presentation refinements
+remain classified by their recorded semantic state; that checkpoint did not
+change the accepted dev1–dev6 runtime slices or represent a stable release.
+
+The current Human-authorized research promotion names exactly `1.0.0a1` as
+the main-line exception, replacing dev7 as the active exception in the version
+check. Other prereleases receive no exception. The package and lockfile keep
+that Alpha version. This promotion does not create a stable release, new tag,
+PyPI publication, consumer migration, or acceptance of newer `CONVERGING`
+semantics. The existing Alpha tag remains an immutable trial snapshot;
+consumers should pin a tag or reviewed commit and a fixed environment while
+public API and saved workspace compatibility may change.
 
 **Versioned Pages deployment status:** `CONVERGING`. The Pages root redirects to
-`/1.0.0-dev/`, rendered from captured develop source. Askr's native inline
-menu also offers the exact `v1.0.0a1` tag at `/1.0.0a1/`; one catalog pins its
-commit and generates both menu copies. A prior development line stays only if
-its source commit is explicitly pinned. A final release may coexist with its
-line's latest Alpha. Replacing an Alpha removes the old version's content
-from the next atomic artifact; the retired URL explains its replacement
-instead of impersonating the newer version. Other version lines remain until
-deliberately changed. A missing page in a current version returns to its
-version home. Legacy `/develop/` links retain their path under the current
-development version; `/main/` explains the former branch URL and is not an
-Alpha alias.
+`/1.0.0-dev/`; Askr's native inline menu switches between that tracked develop
+render and the latest published Alpha for each version line, currently the
+exact `v1.0.0a1` tag at `/1.0.0a1/`. One catalog determines both menu copies and
+the Alpha tag/commit pin. A prior development line remains in the menu only
+when its exact content commit is explicitly pinned in that catalog. A final
+release can coexist with the same line's latest Alpha; it does not replace
+that Alpha's content. Replacing an Alpha removes the retired version's
+content directory from the next atomic artifact; its old URL receives an
+explanation and a current-version link, not newer content under the old name.
+Other version lines remain until deliberately changed. Unpublished future
+releases have no menu entry or page. A missing page within a current version
+returns to that version's home. Legacy `/develop/` links redirect to the same
+path under the development version; `/main/` explains the changed URL and is
+not an Alpha alias.
 
-One shared workflow lock precedes capture of develop's exact commit and
-verification of the catalog's pinned Alpha tag. Clean source archives render
-with Quarto 1.10.18, locked dependencies, and `--no-execute`. The immutable
-Alpha content receives only reviewed Askr 0.4.0 presentation and a Pages
-profile in isolated build space. Footers distinguish content source from
-presentation revision, Quarto View source targets the content source, and
-search stays within each version. Main carries deployment configuration, not a
-third content version; its `1.0.0.dev7` showcase remains as described above.
-A push to main or develop publishes one validated artifact; a pull request
-validates without deployment, and manual dispatch supports recovery. A
-missing source/theme, tag mismatch, or failed render stops publication.
-No workflow path executes a solver or relabels a Result.
+The catalog retains representative snapshots: at least the newest published
+snapshot for each X.Y family and meaningful milestones. Historical receipts,
+outputs, tags, and Git ancestry retain their original identities. The current
+two-entry catalog needs no deletion or new entry for this maintenance.
+
+One shared workflow lock precedes capture of the exact develop commit and
+verification of the catalog's pinned Alpha tag. Each clean source archive
+renders with Quarto 1.10.18, locked dependencies, and `--no-execute`; the
+immutable Alpha content receives only the reviewed Askr 0.4.0 presentation
+and Pages profile in isolated build space. Footers distinguish content source
+from presentation revision, and Quarto View source controls target the content
+source. Search stays within each rendered version. Main carries deployment
+configuration, not a third content version. A push to main or develop
+publishes one validated combined artifact; a pull request validates without
+deploying, and manual dispatch can recover a deployment. Missing source/theme,
+tag mismatch, or render validation fails before publication. No workflow path
+executes a solver or relabels a Result.
 
 Runtime implementation followed four independently reviewed and integrated
 slices. Each development version identifies the implementation introduced by
@@ -135,7 +151,7 @@ than introducing a fallback runtime.
 
 The final row has no postponed behavior inside the accepted Full V1 scope.
 Explicit limitations such as HB optimization, implicit grid interpolation,
-public numerical knobs, release delivery, and the SCQGate quantization handoff
+public numerical knobs, release delivery, and the SCQSim quantization handoff
 remain outside it. Durable stabilization tests freeze only the accepted
 behavior above.
 

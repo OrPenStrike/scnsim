@@ -8,6 +8,7 @@ struct CompiledPrimitive
     G::Matrix{Float64}
     series_rl::Vector{Any}
     branch_rows::Vector{Dict{String,Any}}
+    discretization::Vector{Dict{String,Any}}
     # Logical ports are a boundary, not intrinsic graph elements.  Keep the
     # ordered selector/reference/mask together so every Direct operation uses
     # the same N-port realization rather than accumulating one-Port fields.
@@ -74,7 +75,7 @@ function apply_lineage_load_mask(compiled::CompiledPrimitive, lineage)::Compiled
         end
     end
     isempty(ids) || fail("validation", "port_realizability", "ptc", "compile", "PTC references a Port outside the sealed Plan")
-    return CompiledPrimitive(compiled.nodes, compiled.C, compiled.K, compiled.G, compiled.series_rl, compiled.branch_rows,
+    return CompiledPrimitive(compiled.nodes, compiled.C, compiled.K, compiled.G, compiled.series_rl, compiled.branch_rows, compiled.discretization,
         compiled.port_ids, compiled.B, compiled.R, mask)
 end
 
@@ -154,7 +155,7 @@ function apply_lineage_transforms(compiled::CompiledPrimitive, lineage)::Compile
             push!(transformed_rows, row)
         end
         current = CompiledPrimitive(new_names, transpose(T) * current.C * T, transpose(T) * current.K * T,
-            transpose(T) * current.G * T, transformed_blocks, transformed_rows, current.port_ids,
+            transpose(T) * current.G * T, transformed_blocks, transformed_rows, current.discretization, current.port_ids,
             transpose(T) * current.B, current.R, current.M)
     end
     return current

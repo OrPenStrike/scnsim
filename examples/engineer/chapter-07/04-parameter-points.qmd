@@ -14,5 +14,6 @@ Complete [Lessons 1–3](01-rlgc.qmd), then use the
 {{< include _04-parameter-points.qmd >}}
 
 [Previous: Lesson 3 — Diagrams](03-diagrams.qmd) ·
+[Next: standalone Lesson 5 — Position and electrical resolution](05-position-electrical-resolution.qmd) ·
 [Course map](../../../docs/index.qmd) ·
 [Download the complete Chapter Notebook](chapter.ipynb)

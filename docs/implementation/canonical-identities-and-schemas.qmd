@@ -33,6 +33,14 @@ still-referenced facts; they are not an alternative target schema.
 
 ## Encode one canonical byte stream
 
+`canonical.py` owns shared canonical bytes, hashes, binary64, quantities, and
+safe relative paths. Domain builders live with their owners:
+`authoring/identity.py` closes normalized Plan and parameter records,
+`execution/request.py` closes finalized request declarations, and
+`workspace/documents.py` closes workspace evidence documents. These modules
+share one encoder and retain the existing schemas; moving implementation files
+does not authorize a new envelope, algorithm identifier, or data format.
+
 Python owns canonical serialization. It converts physical inputs to coherent
 SI and finite IEEE-754 binary64, then writes each physical floating scalar as
 its 16 lowercase big-endian hexadecimal bits. Counts, booleans, identities,
@@ -113,12 +121,12 @@ Runtime algorithms are likewise closed for full V1:
 | Direct S/Y/Z | `scnsim.direct_response.v1` |
 | diagonal root | `scnsim.diagonal_root.newton32.v1` |
 | hybridized pole | `scnsim.hybridized_pole.newton32.v1` |
-| transfer zero | `scnsim.transfer_zero.newton32.v1` |
-| residue-normalized coupling | `scnsim.residue_normalized_coupling.v1` |
+| transfer zero | `scnsim.transfer_zero.newton32.v4` |
+| residue-normalized coupling | `scnsim.residue_normalized_coupling.v2` |
 | response element | `scnsim.response_element.v1` |
 | Direct operator | `scnsim.direct_operator.v1` |
 | full HB response | `scnsim.hb_response.josephsoncircuits.v1` |
-| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7` |
+| Direct CMA-ES | `scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9` |
 
 The CMA request additionally fixes
 `box_transform_id="cmaes-jl-0.2.6-linquad-unit-box.v1"`. Changed numerical or
@@ -312,9 +320,13 @@ required dot-separated chunk files below those two datasets. Successful HB
 case S/Y/Z and backend-native-S/Z artifacts use that same root-plus-real/imag
 layout with their flattened three-dimensional shape. `.zattrs`,
 `.zmetadata`, dataset `.zgroup` files, codecs, sidecars, extra files, and extra
-directories are forbidden. Python validates the exact metadata bytes, complete
-tree, chunk names and lengths, manifest, and hashes; it never opens the tree in
-write mode or normalizes Julia's metadata.
+directories are forbidden. Every present chunk stores its full declared chunk
+shape in C order. A final frequency chunk extending beyond the logical array
+shape uses deterministic Float64 positive-zero padding only outside that shape;
+the logical array values and metadata shape exclude the padding. Python
+validates the exact metadata bytes, complete tree, full chunk byte lengths,
+manifest, and hashes; it never opens the tree in write mode or normalizes
+Julia's metadata. Empty arrays have no payload chunks.
 
 An `OperatorResult` requires artifact ID `frequencies` at
 `artifacts/frequencies.zarr` with manifest

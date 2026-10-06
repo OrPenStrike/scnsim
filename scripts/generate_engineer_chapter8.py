@@ -38,20 +38,25 @@ FAILED_GENERATOR_SHA256 = "033f58db9acd7631226682e5188b8f23f48762afe1117ee353706
 FAILED_RECEIPT_SCHEMA = "scnsim.private_chapter8_failed_run_capture"
 ORIGINAL_FAILED_RUN_SCHEMA = "scnsim.engineer_chapter8_original_failed_run.v1"
 NO_EXECUTION_GUARD_CODE = '''
-import scnsim._backend as _receipt_backend
-import scnsim._execution as _receipt_execution
-import scnsim.runtime as _receipt_runtime
+import scnsim.execution.preparation as _receipt_preparation
+import scnsim.execution.process as _receipt_process
+import scnsim.execution.coordinator as _receipt_coordinator
+import scnsim.execution.compilation as _receipt_compilation
 _forbidden_execution_calls = []
 def _forbid_execution(name):
     def reject(*args, **kwargs):
         _forbidden_execution_calls.append(name)
         raise RuntimeError(f"receipt-bound resume forbids {name}")
     return reject
-_receipt_backend.prepare_runtime = _forbid_execution("backend.prepare_runtime")
-_receipt_backend.run_terminal = _forbid_execution("backend.run_terminal")
-_receipt_execution.prepare_runtime = _forbid_execution("execution.prepare_runtime")
-_receipt_execution.run_terminal = _forbid_execution("execution.run_terminal")
-_receipt_runtime.prepare_runtime = _forbid_execution("runtime.prepare_runtime")
+_receipt_preparation.prepare_runtime = _forbid_execution("preparation.prepare_runtime")
+_receipt_process.run_terminal = _forbid_execution("process.run_terminal")
+_receipt_process.run_preflight = _forbid_execution("process.run_preflight")
+_receipt_process.run_compiler_audit = _forbid_execution("process.run_compiler_audit")
+_receipt_coordinator.prepare_runtime = _forbid_execution("coordinator.prepare_runtime")
+_receipt_coordinator.run_terminal = _forbid_execution("coordinator.run_terminal")
+_receipt_compilation.prepare_runtime = _forbid_execution("compilation.prepare_runtime")
+_receipt_compilation.run_preflight = _forbid_execution("compilation.run_preflight")
+_receipt_compilation.run_compiler_audit = _forbid_execution("compilation.run_compiler_audit")
 '''
 
 
@@ -159,7 +164,8 @@ def _preparation_without_explain(code: str) -> str:
 
 
 def _unbound_plan_sha256(build_code: str) -> str:
-    from scnsim._canonical import canonical_json_bytes, canonical_plan_snapshot, sha256_hex
+    from scnsim.canonical import canonical_json_bytes, sha256_hex
+    from scnsim.authoring.identity import canonical_plan_snapshot
 
     namespace: dict[str, object] = {}
     exec(build_code, namespace)

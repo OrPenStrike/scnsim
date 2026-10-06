@@ -190,8 +190,11 @@ reconstruction, with the maximum retained across the HB grid. It is diagnostic
 evidence, not an acceptance or solver gate, and is never a Direct/HB comparison
 residual. The record also carries the exact row-major physical-coordinate
 projection and the identity of the Plan/View producer from which it came;
-receipt verification reproduces the selected S matrix and residual from that
-projection and the backend-native artifact. Different Direct and HB grids
+receipt verification binds the projection shape, coordinates, artifact bytes,
+and stored finite nonnegative residual to the request and View lineage. Python
+does not independently reconstruct selected S or recalculate that residual;
+the hashes bind producer bytes and provenance, not numerical arithmetic.
+Different Direct and HB grids
 remain independently declared and are shown side by side without interpolation.
 
 ## Normalize operating-point state evidence

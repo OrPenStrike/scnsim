@@ -7,10 +7,7 @@ and artifact manifests remain the only authority for reconstructing results.
 
 from __future__ import annotations
 
-import json
-import tempfile
-from collections.abc import Mapping, Sequence
-from hashlib import sha256
+from collections.abc import Callable, Mapping, Sequence
 from os import PathLike
 from pathlib import Path
 from types import MappingProxyType
@@ -19,7 +16,9 @@ from typing import overload
 import numpy as np
 
 from . import units
-from ._analysis import (
+from .execution.compilation import _run_preflight
+from .execution.identity import _runtime_identity_base
+from .execution.prepared import (
     BoundOptimization,
     BoundOptimizationLeaf,
     PreparedAnalysis,
@@ -28,36 +27,19 @@ from ._analysis import (
     _encode_spec,
     _quantity_coordinates,
 )
-from ._authoring_snapshot import ResolvedPlanPoint, freeze
-from ._backend import (
-    prepare_runtime,
-    run_compiler_audit,
-    run_preflight,
-)
-from ._canonical import (
+from .canonical import (
     _identifier as _canonical_identifier,
-    canonical_expanded_graph_sha256,
     canonical_json_bytes,
-    canonical_plan_snapshot,
-    canonical_resolved_plan_point,
     complex_quantity_envelope,
     quantity_envelope,
     sha256_hex,
 )
-from ._evidence import (
-    _VerifiedEvidenceLease,
-    _error_from_record,
-    _validated_failure_record,
-    _verified_evidence_lease,
-)
-from ._parameter_resolution import resolve_parameter_point
-from ._physical_values import RLGC, RLGCParameterSpec
-from ._scaffold import unavailable
-from ._workspace import (
-    VerifiedSuccess,
-    _plan_coordinates,
-    bind_workspace,
-)
+from .authoring.identity import canonical_plan_snapshot
+from .workspace.artifacts import _VerifiedEvidenceLease, _verified_evidence_lease
+from .authoring.resolution import resolve_parameter_point
+from .authoring.physical_values import RLGC, RLGCParameterSpec
+from .construction import unavailable
+from .workspace import VerifiedSuccess, _plan_coordinates, bind_workspace
 from .authoring import (
     CircuitPlan,
     CoordinateRef,
@@ -68,7 +50,6 @@ from .authoring import (
     PortRef,
 )
 from .errors import (
-    BackendProtocolError,
     CompilerInvariantError,
     EvidenceIntegrityError,
     InvalidOptimizationSpec,
@@ -77,6 +58,7 @@ from .errors import (
 )
 from .results import (
     DiagonalRootResult,
+    OperatorElementRootResult,
     DirectQuantityResult,
     DirectSolveResult,
     ExplanationResult,
@@ -91,11 +73,13 @@ from .results import (
 )
 from .specs import (
     DiagonalRootSpec,
+    OperatorElementRootSpec,
     DirectSolveSpec,
     HBSolveSpec,
     HybridizedPoleSpec,
     OperatorSpec,
     OptimizationSpec,
+    OptimizationProgress,
     QuantityAbsolute,
     QuantityDifference,
     QuantitySelector,
@@ -160,17 +144,13 @@ def _view_declaration(lineage: Mapping[str, object]) -> dict[str, object]:
 
 
 def _parameter_value_record(parameter: ParameterRef, value: object) -> Mapping[str, object]:
-    record = ParameterSet({parameter: value})._record()
-    bindings = record["bindings"]
-    if len(bindings) != 1:
-        raise CompilerInvariantError("parameter value did not encode uniquely", stage="request_encode")
-    return bindings[0]["value"]
+    return ParameterSet({parameter: value})._record()["bindings"][0]["value"]
 
 
 def _uses_baseline_root(spec: object) -> bool:
     """Return whether a Spec owns baseline-root continuation."""
 
-    if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec)):
+    if isinstance(spec, (DiagonalRootSpec, OperatorElementRootSpec, HybridizedPoleSpec, TransferZeroSpec)):
         return True
     if isinstance(spec, ResidueNormalizedCouplingSpec):
         return True
@@ -210,16 +190,6 @@ def _plan_public_coordinates(plan: Mapping[str, object]) -> tuple[str, ...]:
     if not coordinates or len(set(coordinates)) != len(coordinates):
         raise CompilerInvariantError("Plan public coordinate table is malformed", stage="plan_seal")
     return coordinates
-
-
-def _raw_view_lineage(lineage: Mapping[str, object]) -> bool:
-    """Recognize the immutable original View that needs no realization pass."""
-
-    return (
-        lineage.get("ptc") is None
-        and lineage.get("transforms") == []
-        and lineage.get("retain") is None
-    )
 
 
 def _source_unit_identity(
@@ -561,7 +531,6 @@ class CircuitRun:
                 or differential in available
                 or common in self._coordinate_lookup
                 or differential in self._coordinate_lookup
-                or common == differential
             ):
                 raise ValueError("transform_pair generated coordinate collides with the current basis")
             left_state = load_states.get(left, "not-port")
@@ -700,6 +669,15 @@ class CircuitRun:
     def evaluate(
         self,
         ref: NetworkViewRef,
+        spec: OperatorElementRootSpec,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> OperatorElementRootResult: ...
+
+    @overload
+    def evaluate(
+        self,
+        ref: NetworkViewRef,
         spec: OperatorSpec,
         *,
         parameters: ParameterSet | None = None,
@@ -718,7 +696,7 @@ class CircuitRun:
     def evaluate(
         self,
         ref: NetworkViewRef,
-        spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
+        spec: DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
         parameters: ParameterSpace,
     ) -> ParameterSweepResult: ...
@@ -727,6 +705,7 @@ class CircuitRun:
         self,
         ref: NetworkViewRef,
         spec: DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -736,6 +715,7 @@ class CircuitRun:
         parameters: ParameterSet | ParameterSpace | None = None,
     ) -> (
         DiagonalRootResult
+        | OperatorElementRootResult
         | DirectQuantityResult
         | OperatorResult
         | ParameterSweepResult
@@ -752,6 +732,7 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult: ...
 
     @overload
@@ -761,6 +742,7 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult: ...
 
     def optimize(
@@ -769,6 +751,7 @@ class CircuitRun:
         spec: OptimizationSpec | None = None,
         *,
         parameters: ParameterSet | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
@@ -776,6 +759,8 @@ class CircuitRun:
             raise TypeError(
                 "OptimizationSpec parameters must be a ParameterSet or None"
             )
+        if on_progress is not None and not callable(on_progress):
+            raise TypeError("on_progress must be callable or None")
         default_ref, optimization_spec = self._optimization_arguments(ref_or_spec, spec)
         ref, selector_views = self._optimization_views(
             optimization_spec, default_ref=default_ref
@@ -787,13 +772,16 @@ class CircuitRun:
             parameters,
             selector_views=selector_views,
         )
-        return self._execute(prepared, bound_spec=optimization_spec)
+        return self._execute(prepared, bound_spec=optimization_spec, on_progress=on_progress)
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DirectSolveResult | ParameterSweepResult: ...
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DiagonalRootResult | ParameterSweepResult: ...
+
+    @overload
+    def resolve(self, ref: NetworkViewRef, spec: OperatorElementRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> OperatorElementRootResult | ParameterSweepResult: ...
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec, *, parameters: ParameterSet | None = None) -> OptimizationResult: ...
@@ -819,6 +807,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -831,6 +820,7 @@ class CircuitRun:
         DirectSolveResult
         | HBBatchResult
         | DiagonalRootResult
+        | OperatorElementRootResult
         | DirectQuantityResult
         | OperatorResult
         | OptimizationResult
@@ -847,6 +837,7 @@ class CircuitRun:
             spec,
             (
                 DiagonalRootSpec,
+                OperatorElementRootSpec,
                 HybridizedPoleSpec,
                 TransferZeroSpec,
                 ResidueNormalizedCouplingSpec,
@@ -888,6 +879,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -906,6 +898,7 @@ class CircuitRun:
                 DirectSolveSpec,
                 HBSolveSpec,
                 DiagonalRootSpec,
+                OperatorElementRootSpec,
                 HybridizedPoleSpec,
                 TransferZeroSpec,
                 ResidueNormalizedCouplingSpec,
@@ -925,6 +918,7 @@ class CircuitRun:
                 spec,
                 (
                     DiagonalRootSpec,
+                    OperatorElementRootSpec,
                     HybridizedPoleSpec,
                     TransferZeroSpec,
                     ResidueNormalizedCouplingSpec,
@@ -996,7 +990,7 @@ class CircuitRun:
             or not all(_is_verified_analysis_result(result) for result in spec.inputs)
         ):
             raise TypeError("build_report() requires ReportSpec")
-        from ._report import build_report
+        from .visualization.report import build_report
 
         return build_report(spec)
 
@@ -1064,7 +1058,10 @@ class CircuitRun:
         ref: NetworkViewRef,
         value: str | ElectricNodeRef | CoordinateRef,
     ) -> str:
-        if isinstance(value, str) and value in ref._available_coordinates:
+        if isinstance(value, str) and (
+            value in ref._available_coordinates
+            or value in ref._lineage["terminal_coordinates"]
+        ):
             return value
         return self._coordinate_id(value)
 
@@ -1072,7 +1069,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DirectSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         *,
         selector_views: Mapping[int, NetworkViewRef] | None = None,
     ) -> None:
@@ -1099,7 +1096,7 @@ class CircuitRun:
                 if trace.input_mode or trace.output_mode:
                     raise ValueError("Direct traces require empty mode tuples")
             return
-        if isinstance(spec, (DiagonalRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
+        if isinstance(spec, (DiagonalRootSpec, OperatorElementRootSpec, HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec, ResponseElementSpec, OperatorSpec)):
             self._validate_direct_quantity_spec(operation, ref, spec)
             return
         active = {
@@ -1135,7 +1132,7 @@ class CircuitRun:
         self,
         operation: str,
         ref: NetworkViewRef,
-        spec: DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
+        spec: DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
         residue_branch: bool = False,
     ) -> None:
@@ -1143,14 +1140,20 @@ class CircuitRun:
 
         if isinstance(spec, DiagonalRootSpec):
             coordinate = self._view_coordinate_id(ref, spec.coordinate)
-            invalid = (
-                coordinate not in ref._retained or len(ref._retained) < 2
-                if residue_branch
-                else len(ref._retained) != 1 or ref._retained[0] != coordinate
-            )
+            channels = tuple(ref._lineage["terminal_coordinates"])
+            invalid = coordinate not in channels or (residue_branch and len(channels) < 2)
             if invalid:
                 raise SCNSimValidationError(
-                    "DiagonalRootSpec coordinate is incompatible with the retained View",
+                    "DiagonalRootSpec coordinate is absent from the final View basis",
+                    stage="preflight",
+                    evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_quantity"},
+                )
+            return
+        if isinstance(spec, OperatorElementRootSpec):
+            channels = frozenset(ref._lineage["terminal_coordinates"])
+            if self._view_coordinate_id(ref, spec.row) not in channels or self._view_coordinate_id(ref, spec.column) not in channels:
+                raise SCNSimValidationError(
+                    "OperatorElementRootSpec row and column must belong to the final View basis",
                     stage="preflight",
                     evidence={"type": "failure_evidence", "operation": operation, "context_kind": "direct_quantity"},
                 )
@@ -1440,6 +1443,7 @@ class CircuitRun:
         spec: DirectSolveSpec
         | HBSolveSpec
         | DiagonalRootSpec
+        | OperatorElementRootSpec
         | HybridizedPoleSpec
         | TransferZeroSpec
         | ResidueNormalizedCouplingSpec
@@ -1545,16 +1549,17 @@ class CircuitRun:
             semantic["algorithm_id"] = "scnsim.hb_response.josephsoncircuits.v1"
         elif operation == "evaluate_direct":
             semantic["algorithm_id"] = {
-                "diagonal_root": "scnsim.diagonal_root.newton32.v1",
+                "diagonal_root": "scnsim.diagonal_root.newton32.v2",
+                "operator_element_root": "scnsim.operator_element_root.newton32.v1",
                 "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
-                "transfer_zero": "scnsim.transfer_zero.newton32.v1",
-                "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v1",
+                "transfer_zero": "scnsim.transfer_zero.newton32.v4",
+                "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v2",
                 "response_element": "scnsim.response_element.v1",
                 "operator": "scnsim.direct_operator.v1",
             }[encoded_spec["type"]]
         elif operation == "optimize_direct":
             semantic["algorithm_id"] = (
-                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v7"
+                "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
             )
         else:
             raise CompilerInvariantError(
@@ -1568,26 +1573,27 @@ class CircuitRun:
             parameter_source=parameter_source,
             runtime_semantic=semantic,
             source_units=source_units,
-            bound_optimization=bound_optimization,
         )
 
     def _preflight(self, request: Mapping[str, object]) -> Mapping[str, object]:
         """Run the compiler-only realization boundary without allocating work."""
 
-        return _run_preflight(self._plan_bytes, request)
+        return _run_preflight(self._plan_document, self._plan_bytes, request)
 
     def _execute(
         self,
         prepared_analysis: PreparedAnalysis,
         *,
         bound_spec: object | None = None,
+        on_progress: Callable[[OptimizationProgress], object] | None = None,
     ):
-        from ._execution import execute_prepared
+        from .execution.coordinator import execute_prepared
 
         with execute_prepared(
             binding=self._binding,
             plan_document=self._plan_document,
             prepared_analysis=prepared_analysis,
+            on_progress=on_progress,
         ) as success:
             evidence_lease = _verified_evidence_lease(self._binding, success)
             return self._decode_success(
@@ -1598,7 +1604,7 @@ class CircuitRun:
 
     def _source_units(
         self,
-        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
+        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | OptimizationSpec,
         parameters: ParameterSet,
         *,
         parameter_space: ParameterSet | ParameterSpace | None,
@@ -1799,6 +1805,8 @@ class CircuitRun:
                         )
         elif isinstance(spec, DiagonalRootSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
+        elif isinstance(spec, OperatorElementRootSpec):
+            add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
         elif isinstance(spec, HybridizedPoleSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="hybridized_pole", field="anchor"), spec.anchor, "hertz")
         elif isinstance(spec, TransferZeroSpec):
@@ -1808,7 +1816,8 @@ class CircuitRun:
         elif isinstance(spec, OperatorSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="operator", field="frequencies"), spec.frequencies, "hertz")
         elif isinstance(spec, ResidueNormalizedCouplingSpec):
-            add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field="frequency"), spec.frequency, "hertz")
+            if not isinstance(spec.frequency, str):
+                add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field="frequency"), spec.frequency, "hertz")
             for branch_name, branch in (("branch_a", spec.branch_a), ("branch_b", spec.branch_b)):
                 if isinstance(branch, DiagonalRootSpec):
                     add(_source_unit_identity(scope="request_spec", parameter_id="residue_normalized_coupling", field=f"{branch_name}:root_hint"), branch.root_hint, "hertz")
@@ -1844,6 +1853,10 @@ class CircuitRun:
                         bounds[1],
                         parameter.spec.si_unit,
                     )
+                if variable.scale is not None:
+                    add(_source_unit_identity(scope="request_optimization_variable",
+                        component_path=(definitions_id,), parameter_id=identifier,
+                        field=f"{index}:domain:scale"), variable.scale, parameter.spec.si_unit)
             for index, objective in enumerate(spec.objectives):
                 parameter_id = f"objective:{index}"
                 selectors = _quantity_selectors(objective.quantity)
@@ -1861,7 +1874,7 @@ class CircuitRun:
                 for term_index, term in enumerate(selectors):
                     selected_spec = term.spec
                     prefix = f"selector:{term_index}"
-                    if isinstance(selected_spec, DiagonalRootSpec):
+                    if isinstance(selected_spec, (DiagonalRootSpec, OperatorElementRootSpec)):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:root_hint"), selected_spec.root_hint, "hertz")
                     elif isinstance(selected_spec, HybridizedPoleSpec):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:anchor"), selected_spec.anchor, "hertz")
@@ -1870,7 +1883,8 @@ class CircuitRun:
                     elif isinstance(selected_spec, ResponseElementSpec):
                         add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
                     elif isinstance(selected_spec, ResidueNormalizedCouplingSpec):
-                        add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
+                        if not isinstance(selected_spec.frequency, str):
+                            add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:frequency"), selected_spec.frequency, "hertz")
                         for branch_name, branch in (("branch_a", selected_spec.branch_a), ("branch_b", selected_spec.branch_b)):
                             field = "root_hint" if isinstance(branch, DiagonalRootSpec) else "anchor"
                             add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:{branch_name}:{field}"), getattr(branch, field), "hertz")
@@ -1883,7 +1897,7 @@ class CircuitRun:
         bound_spec: object | None = None,
         evidence_lease: _VerifiedEvidenceLease,
     ):
-        from ._result_decode import VerifiedResultDecoder
+        from .results.decode import VerifiedResultDecoder
 
         decoder = VerifiedResultDecoder(
             plan_sha256=self._plan_sha256,
@@ -1934,114 +1948,3 @@ def _original_lineage_document(
     }
     record["lineage_sha256"] = sha256_hex(record)
     return record
-
-
-def _run_preflight(
-    plan_bytes: bytes,
-    request: Mapping[str, object],
-) -> Mapping[str, object]:
-    prepared = prepare_runtime()
-    with tempfile.TemporaryDirectory(prefix="scnsim-preflight-") as temporary:
-        plan_path = Path(temporary) / "plan.json"
-        request_path = Path(temporary) / "request.json"
-        plan_path.write_bytes(plan_bytes)
-        request_path.write_bytes(canonical_json_bytes(request))
-        compiled = run_preflight(
-            prepared,
-            plan_path=plan_path.resolve(),
-            request_path=request_path.resolve(),
-        )
-    if compiled.get("schema") == "scnsim.preflight_failure":
-        raise _error_from_record(
-            _validated_failure_record(
-                compiled.get("failure"), request["operation"], request=request,
-            )
-        )
-    return compiled
-
-
-def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, object]:
-    """Compile one immutable point without a Run, View, or analysis workspace."""
-
-    if not isinstance(point, ResolvedPlanPoint):
-        raise TypeError("_compiled_schematic_evidence() requires ResolvedPlanPoint")
-    plan_document = canonical_plan_snapshot(point.snapshot)
-    plan_bytes = canonical_json_bytes(plan_document)
-    plan_sha = sha256_hex(plan_bytes)
-    point_document = canonical_resolved_plan_point(point, plan_sha256=plan_sha)
-    point_bytes = canonical_json_bytes(point_document)
-    prepared = prepare_runtime()
-    with tempfile.TemporaryDirectory(prefix="scnsim-compiler-audit-") as temporary:
-        plan_path = Path(temporary) / "plan.json"
-        point_path = Path(temporary) / "point.json"
-        plan_path.write_bytes(plan_bytes)
-        point_path.write_bytes(point_bytes)
-        compiled = dict(
-            run_compiler_audit(
-                prepared,
-                plan_path=plan_path.resolve(),
-                point_path=point_path.resolve(),
-            )
-        )
-    required = {
-        "schema", "schema_version", "plan_sha256", "parameters_sha256",
-        "node_order", "matrix_order", "resolved_bindings",
-        "expanded_branch_rows", "c_matrix", "k_matrix", "g_matrix", "ports",
-    }
-    if (
-        set(compiled) != required
-        or compiled.get("schema") != "scnsim.compiler_audit"
-        or compiled.get("schema_version") != 2
-        or compiled.get("plan_sha256") != plan_sha
-        or compiled.get("parameters_sha256") != point_document["parameters_sha256"]
-        or compiled.get("matrix_order") != "canonical_node_id"
-        or not isinstance(compiled.get("node_order"), list)
-        or not compiled["node_order"]
-        or len(set(compiled["node_order"])) != len(compiled["node_order"])
-        or any(not isinstance(compiled.get(field), list) for field in ("resolved_bindings", "expanded_branch_rows"))
-        or any(not isinstance(compiled.get(field), Mapping) for field in ("c_matrix", "k_matrix", "g_matrix", "ports"))
-    ):
-        raise BackendProtocolError(
-            "compiler-audit evidence does not bind the resolved point",
-            stage="compiler_audit",
-        )
-    runtime = _runtime_identity_base()
-    compiled["compiled_graph_sha256"] = sha256_hex({
-        "schema": "scnsim.compiled_graph_identity",
-        "schema_version": 1,
-        "plan_sha256": plan_sha,
-        "julia_source_sha256": runtime["julia_source_sha256"],
-    })
-    compiled["expanded_graph_sha256"] = canonical_expanded_graph_sha256(
-        plan_sha256=plan_sha,
-        node_order=compiled["node_order"],
-        resolved_bindings=compiled["resolved_bindings"],
-        expanded_branch_rows=compiled["expanded_branch_rows"],
-    )
-    return freeze(compiled)
-
-
-def _runtime_identity_base() -> dict[str, object]:
-    package = Path(__file__).resolve().parent
-
-    def manifest(paths: Sequence[Path]) -> str:
-        rows = [
-            {"path": path.relative_to(package).as_posix(), "mode": "100644", "sha256": sha256(path.read_bytes()).hexdigest()}
-            for path in sorted(paths)
-        ]
-        return sha256_hex({"schema": "scnsim.source_manifest", "schema_version": 1, "files": rows})
-
-    python_files = [*package.glob("*.py"), *package.glob("_schemas/*.json"), package / "_julia" / "runtime.json"]
-    julia_files = list((package / "_julia").rglob("*.jl"))
-    project = package / "_julia" / "Project.toml"
-    julia_manifest = package / "_julia" / "Manifest.toml"
-    if not all(path.is_file() for path in (*python_files, *julia_files, project, julia_manifest)):
-        raise RuntimeError("SCNSim packaged runtime resources are incomplete")
-    runtime = json.loads((package / "_julia" / "runtime.json").read_text(encoding="utf-8"))
-    return {
-        "python_source_sha256": manifest(python_files),
-        "julia_source_sha256": manifest(julia_files),
-        "julia_version": runtime["julia_version"],
-        "project_sha256": sha256(project.read_bytes()).hexdigest(),
-        "manifest_sha256": sha256(julia_manifest.read_bytes()).hexdigest(),
-    }
