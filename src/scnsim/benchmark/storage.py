@@ -1,4 +1,9 @@
-"""Durable benchmark observations over immutable task and global journals."""
+"""Operation storage facade and historical readonly file projections.
+
+Current writes belong to sqlite_storage.py. File-journal helpers below exist
+only to read immutable historical records; they never migrate or publish them.
+Domain expansion is shared so reference storage does not change numerical meaning.
+"""
 
 from __future__ import annotations
 
@@ -17,8 +22,8 @@ if sys.platform in {"linux", "darwin"}:
 
 from ..errors import EvidenceIntegrityError
 from ..workspace.primitives import _inside
-from ..workspace.storage import _atomic_write, _load_canonical
-from ..workspace.store import _require_platform, _workspace_lock
+from ..workspace.storage import _load_canonical
+from ..workspace.store import _require_platform
 from . import journal
 from .identity import checkpoint_seal
 from .models import BenchmarkResult, Measurement
@@ -134,30 +139,6 @@ def _require_v2(root: Path) -> dict[str, Any]:
     return document
 
 
-def _empty_task_head(task_id: str, request_sha256: str) -> dict[str, object]:
-    return {
-        "schema": journal._TASK_HEAD,
-        "schema_version": _V2,
-        "task_id": task_id,
-        "request_sha256": request_sha256,
-        "commit": None,
-        "commit_sequence": 0,
-        "event_sequence": 0,
-        "last_attempt_id": None,
-        "attempts": [],
-    }
-
-
-def _empty_global_head(benchmark_sha256: str | None) -> dict[str, object]:
-    return {
-        "schema": journal._GLOBAL_HEAD,
-        "schema_version": _V2,
-        "benchmark_sha256": benchmark_sha256,
-        "commit": None,
-        "commit_sequence": 0,
-    }
-
-
 def _task_binding(document: Mapping[str, object], task_id: str) -> dict[str, Any]:
     tasks = document.get("tasks")
     if not isinstance(tasks, list):
@@ -230,85 +211,9 @@ def _validate_head_tip(
         return
     if not isinstance(reference, Mapping) or sequence == 0:
         raise _integrity("Benchmark journal head predecessor is malformed.")
-    commit = journal.read_document(root, reference, schema=schema, role=role, bind=bind)
+    commit = _read_domain_document(root, reference, schema=schema, role=role, bind=bind)
     if commit.get("commit_sequence") != sequence:
         raise _integrity("Benchmark journal head does not identify its committed predecessor.")
-
-
-def _commit_ref(
-    root: Path,
-    *,
-    scope: str,
-    identity: str,
-    body: Mapping[str, object],
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> dict[str, object]:
-    payload = _record_bytes(body)
-    digest = sha256(payload).hexdigest()
-    if scope == "task":
-        relative = f"tasks/{identity}/journal/commits/{digest}.json"
-        role = "benchmark_task_commit"
-    else:
-        relative = f"journal/global/commits/{digest}.json"
-        role = "benchmark_global_commit"
-    return journal.write_immutable(
-        root, relative, payload, role=role,
-        durability_witness=durability_witness,
-    )
-
-
-def _append_task_commit(
-    root: Path,
-    binding: Mapping[str, object],
-    head: dict[str, Any],
-    *,
-    operation: Mapping[str, object],
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> dict[str, object]:
-    sequence = int(head["commit_sequence"]) + 1
-    body = {
-        "schema": journal._TASK_COMMIT,
-        "schema_version": _V2,
-        "task_id": binding["task_id"],
-        "request_sha256": binding["request_sha256"],
-        "commit_sequence": sequence,
-        "previous": head["commit"],
-        "operation": dict(operation),
-    }
-    reference = _commit_ref(
-        root, scope="task", identity=str(binding["task_id"]), body=body,
-        durability_witness=durability_witness,
-    )
-    head["commit"] = reference
-    head["commit_sequence"] = sequence
-    return reference
-
-
-def _append_global_commit(
-    root: Path,
-    manifest: Mapping[str, object],
-    head: dict[str, Any],
-    *,
-    changes: Sequence[Mapping[str, object]],
-) -> dict[str, object]:
-    sequence = int(head["commit_sequence"]) + 1
-    body = {
-        "schema": journal._GLOBAL_COMMIT,
-        "schema_version": _V2,
-        "benchmark_sha256": manifest.get("benchmark_sha256"),
-        "commit_sequence": sequence,
-        "previous": head["commit"],
-        "changes": [dict(change) for change in changes],
-    }
-    reference = _commit_ref(
-        root,
-        scope="global",
-        identity="global",
-        body=body,
-    )
-    head["commit"] = reference
-    head["commit_sequence"] = sequence
-    return reference
 
 
 def _task_chain(root: Path, binding: Mapping[str, object], head: Mapping[str, object]) -> list[dict[str, Any]]:
@@ -331,63 +236,8 @@ def _global_chain(root: Path, manifest: Mapping[str, object], head: Mapping[str,
     )
 
 
-def _value_reference(
-    root: Path,
-    task_id: str,
-    value: Mapping[str, object],
-    *,
-    attempt_id: str,
-    event_sequence: int,
-    suffix: str = "",
-    inherited: Mapping[str, Mapping[str, object]] | None = None,
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    """Store one actual numerical body and return its ref and occurrence context."""
-    occurrence = {key: value[key] for key in _OCCURRENCE_FIELDS if key in value}
-    body = {str(key): item for key, item in value.items() if key not in _OCCURRENCE_FIELDS}
-    if isinstance(value.get("candidate_key"), str):
-        key_kind = "candidate_key"
-        key_value = str(value["candidate_key"])
-        inherited_ref = None if inherited is None else inherited.get(key_value)
-        if inherited_ref is not None:
-            stored = journal.read_document(
-                root, inherited_ref,
-                schema="scnsim.benchmark_value", role="benchmark_value",
-                bind={"task_id": task_id},
-            )
-            if stored.get("key_kind") != key_kind or stored.get("key") != key_value:
-                raise _integrity("Inherited optimizer value does not bind its cache key.", task_id=task_id)
-            return dict(inherited_ref), occurrence, dict(stored["value"])
-        token = sha256(key_value.encode("utf-8")).hexdigest()
-        relative = f"tasks/{task_id}/attempts/{attempt_id}/values/keys/{token}.json"
-    elif isinstance(value.get("numerical_source_id"), str):
-        key_kind = "numerical_source_id"
-        key_value = str(value["numerical_source_id"])
-        token = sha256(key_value.encode("utf-8")).hexdigest()
-        relative = f"tasks/{task_id}/attempts/{attempt_id}/values/sources/{token}.json"
-    else:
-        key_kind = "event"
-        key_value = f"{event_sequence}:{suffix}"
-        token = sha256(key_value.encode("utf-8")).hexdigest()
-        relative = f"tasks/{task_id}/attempts/{attempt_id}/values/events/{token}.json"
-    document = {
-        "schema": "scnsim.benchmark_value",
-        "schema_version": _V2,
-        "task_id": task_id,
-        "attempt_id": attempt_id,
-        "key_kind": key_kind,
-        "key": key_value,
-        "value": body,
-    }
-    reference = journal.write_document(
-        root, relative, document, role="benchmark_value",
-        durability_witness=durability_witness,
-    )
-    return reference, occurrence, body
-
-
 def _read_value(root: Path, task_id: str, reference: Mapping[str, object]) -> dict[str, Any]:
-    document = journal.read_document(
+    document = _read_domain_document(
         root,
         reference,
         schema="scnsim.benchmark_value",
@@ -397,76 +247,6 @@ def _read_value(root: Path, task_id: str, reference: Mapping[str, object]) -> di
     value = document.get("value")
     if not isinstance(value, dict):
         raise _integrity("Benchmark numerical value block is malformed.", path=reference.get("path"))
-    return value
-
-
-def _compact_value_event(
-    root: Path,
-    task_id: str,
-    payload: Mapping[str, object],
-    *,
-    attempt_id: str,
-    event_sequence: int,
-    suffix: str = "",
-    inherited: Mapping[str, Mapping[str, object]] | None = None,
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> dict[str, object]:
-    reference, occurrence, _ = _value_reference(
-        root, task_id, payload, attempt_id=attempt_id,
-        event_sequence=event_sequence, suffix=suffix, inherited=inherited,
-        durability_witness=durability_witness,
-    )
-    retained = {key: value for key, value in payload.items() if key in {"attempt_id"} and key not in occurrence}
-    retained[_JOURNAL_MARKER] = {
-        "kind": "value",
-        "reference": reference,
-        "occurrence": occurrence,
-    }
-    return retained
-
-
-def _compact_observations(
-    root: Path,
-    task_id: str,
-    observations: Mapping[str, object],
-    *,
-    attempt_id: str,
-    event_sequence: int,
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> dict[str, object]:
-    value = dict(observations)
-    records_value = value.get("records", ())
-    compact_records: list[dict[str, object]] = []
-    if isinstance(records_value, Sequence) and not isinstance(records_value, (str, bytes)):
-        for index, raw in enumerate(records_value):
-            if not isinstance(raw, Mapping) or not isinstance(raw.get("value"), Mapping):
-                compact_records.append(dict(raw) if isinstance(raw, Mapping) else {"record": raw})
-                continue
-            record = dict(raw)
-            reference, occurrence, _ = _value_reference(
-                root, task_id, record["value"], attempt_id=attempt_id, event_sequence=event_sequence,
-                suffix=f"observation-{index}",
-                durability_witness=durability_witness,
-            )
-            record.pop("value")
-            record[_JOURNAL_MARKER] = {
-                "kind": "value", "reference": reference, "occurrence": occurrence,
-            }
-            compact_records.append(record)
-    value["records"] = compact_records
-    winner = value.get("winner")
-    if isinstance(winner, Mapping) and isinstance(winner.get("value"), Mapping):
-        winner_doc = dict(winner)
-        reference, occurrence, _ = _value_reference(
-            root, task_id, winner_doc["value"], attempt_id=attempt_id, event_sequence=event_sequence,
-            suffix="observation-winner",
-            durability_witness=durability_witness,
-        )
-        winner_doc.pop("value")
-        winner_doc[_JOURNAL_MARKER] = {
-            "kind": "value", "reference": reference, "occurrence": occurrence,
-        }
-        value["winner"] = winner_doc
     return value
 
 
@@ -490,8 +270,8 @@ def _verify_checkpoint_file(
     seal_ref = reference.get("seal")
     if not isinstance(checkpoint_ref, Mapping) or not isinstance(seal_ref, Mapping):
         raise _integrity("Checkpoint artifact references are malformed.")
-    checkpoint_bytes = journal.read_immutable(root, checkpoint_ref, role="checkpoint")
-    seal_bytes = journal.read_immutable(root, seal_ref, role="checkpoint_seal")
+    checkpoint_bytes = _read_immutable(root, checkpoint_ref, role="checkpoint")
+    seal_bytes = _read_immutable(root, seal_ref, role="checkpoint_seal")
     checkpoint = record_document(checkpoint_bytes)
     seal = record_document(seal_bytes)
     if not isinstance(checkpoint, dict) or not isinstance(seal, dict):
@@ -577,7 +357,7 @@ def _read_evidence_block(
     schema: str,
     role: str,
 ) -> dict[str, Any]:
-    return journal.read_document(
+    return _read_domain_document(
         root,
         reference,
         schema=schema,
@@ -831,7 +611,7 @@ def _project_python_observations(
     if isinstance(result_ref, Mapping) and result_ref.get("role") in {
         "python_task_result", "operation_result",
     }:
-        result_bytes = journal.read_immutable(root, result_ref, role=str(result_ref["role"]))
+        result_bytes = _read_immutable(root, result_ref, role=str(result_ref["role"]))
         result_document = record_document(result_bytes)
         if record_bytes(result_document) != result_bytes:
             raise _integrity("Python benchmark result artifact is not canonical.", task_id=task["task_id"])
@@ -1059,7 +839,7 @@ def _materialize_document(root: Path, manifest: Mapping[str, object]) -> dict[st
     return materialized
 
 
-def open_record(workspace: str | os.PathLike[str]) -> BenchmarkResult:
+def _legacy_open_record(workspace: str | os.PathLike[str]) -> BenchmarkResult:
     """Read a complete or partial record without binding or cleaning a workspace."""
     root = _root_path(workspace)
     if root.is_symlink() or not root.is_dir():
@@ -1080,7 +860,7 @@ def open_record(workspace: str | os.PathLike[str]) -> BenchmarkResult:
     return BenchmarkResult.from_document(root, document)
 
 
-def materialize_task(workspace: str | os.PathLike[str], task_id: str) -> dict[str, Any]:
+def _legacy_materialize_task(workspace: str | os.PathLike[str], task_id: str) -> dict[str, Any]:
     """Return one verified detached legacy task projection from its journal."""
     root = _root_path(workspace)
     with _benchmark_reader_lock(root):
@@ -1096,231 +876,16 @@ def materialize_task(workspace: str | os.PathLike[str], task_id: str) -> dict[st
     return task
 
 
-def _publish_task_head(root: Path, head: Mapping[str, object]) -> None:
-    journal.publish_head(
-        root,
-        f"tasks/{head['task_id']}/journal/HEAD.json",
-        head,
-    )
-
-
-def _ensure_global_head(root: Path, benchmark_sha256: str | None) -> None:
-    path = _inside(root, "journal/global/HEAD.json")
-    if path.exists():
-        journal.read_head(
-            root, "journal/global/HEAD.json", schema=journal._GLOBAL_HEAD,
-            bind={"benchmark_sha256": benchmark_sha256},
-        )
-        return
-    journal.publish_head(root, "journal/global/HEAD.json", _empty_global_head(benchmark_sha256))
-
-
-def initialize_record(
-    workspace: str | os.PathLike[str],
-    *,
-    prepared: object,
-    clock_binding: Mapping[str, object],
-) -> Path:
-    """Create or reopen the one writable v2 benchmark journal."""
-    root = _root_path(workspace)
-    root.mkdir(parents=True, exist_ok=True)
-    declaration = prepared.declaration()  # type: ignore[attr-defined]
-    benchmark_sha = prepared.request_sha256  # type: ignore[attr-defined]
-    record = {
-        "schema": _RECORD_SCHEMA,
-        "schema_version": _V2,
-        "benchmark_sha256": benchmark_sha,
-        "declaration": declaration,
-        "plan_sha256": declaration["plan_sha256"],
-        "source_analysis_sha256": declaration["source_analysis_sha256"],
-        "clock": dict(clock_binding),
-        "tasks": [],
-    }
-    target = _inside(root, _RECORD_NAME)
-    with _workspace_lock(root, exclusive=True):
-        if target.is_symlink():
-            raise _integrity("Benchmark record path must not be a symlink.", path=str(target))
-        if target.exists():
-            existing = _read_document(root)
-            if existing.get("schema_version") != _V2:
-                raise _integrity("Historical benchmark records are read-only.", path=str(target))
-            if existing.get("benchmark_sha256") != benchmark_sha:
-                raise _integrity(
-                    "Benchmark workspace is already bound to a different declaration.",
-                    expected=existing.get("benchmark_sha256"), supplied=benchmark_sha,
-                )
-            _ensure_global_head(root, benchmark_sha)
-            return root
-        _ensure_global_head(root, benchmark_sha)
-        _atomic_write(target, _record_bytes(record))
-    return root
-
-
 def operation_workspace(binding: object) -> Path:
     """Return the operation journal path below one bound Plan leaf."""
     leaf = Path(getattr(binding, "leaf"))
     return _inside(leaf, "operations")
 
 
-def initialize_operation_record(
-    binding: object,
-    *,
-    clock_binding: Mapping[str, object],
-) -> Path:
-    """Create or verify the one Plan-bound ordinary-operation journal.
-
-    This declaration is independent of any numerical request.  Each task in
-    the shared journal carries its own exact prepared-request SHA and runtime
-    identity; the journal header only binds the collection to its Plan leaf.
-    """
-    operation_path = operation_workspace(binding)
-    operation_path.mkdir(parents=True, exist_ok=True)
-    root = _root_path(operation_path)
-    plan_sha256 = getattr(binding, "plan_sha256")
-    workspace_instance_id = getattr(binding, "workspace_instance_id")
-    declaration = {
-        "schema": "scnsim.operation_trace",
-        "schema_version": 1,
-        "plan_sha256": plan_sha256,
-        "workspace_instance_id": workspace_instance_id,
-    }
-    trace_sha256 = sha256(_record_bytes(declaration)).hexdigest()
-    target = _inside(root, _RECORD_NAME)
-    with _workspace_lock(root, exclusive=True):
-        if target.is_symlink():
-            raise _integrity("Operation record path must not be a symlink.", path=str(target))
-        if target.exists():
-            existing = _read_document(root)
-            if (
-                existing.get("schema_version") != _V2
-                or existing.get("benchmark_sha256") != trace_sha256
-                or existing.get("declaration") != declaration
-            ):
-                raise _integrity(
-                    "Operation journal belongs to another Plan leaf.",
-                    expected_plan_sha256=plan_sha256,
-                )
-            _ensure_global_head(root, trace_sha256)
-            return root
-        record = {
-            "schema": _RECORD_SCHEMA,
-            "schema_version": _V2,
-            "benchmark_sha256": trace_sha256,
-            "declaration": declaration,
-            "plan_sha256": plan_sha256,
-            "workspace_instance_id": workspace_instance_id,
-            "clock": dict(clock_binding),
-            "tasks": [],
-        }
-        _ensure_global_head(root, trace_sha256)
-        _atomic_write(target, _record_bytes(record))
-    return root
-
-
-def start_operation(binding: object, row: Mapping[str, object]) -> None:
-    """Durably publish a truthful running root before request preparation."""
-    root = operation_workspace(binding)
-    if not (root / _RECORD_NAME).is_file():
-        raise _integrity("Operation journal was not initialized before recording.")
-    _append_global_changes(
-        root,
-        ({"field": "operation_events", "value": {"event": "started", "row": dict(row)}},),
-    )
-
-
-def bind_operation(
-    binding: object,
-    *,
-    operation_id: str,
-    operation: str,
-    request_sha256: str,
-    task_id: str | None,
-    environment_sha256: str | None,
-    attempt_id: str | None,
-) -> None:
-    """Record identities known so far without making an attempt."""
-    root = operation_workspace(binding)
-    _append_global_changes(
-        root,
-        ({
-            "field": "operation_events",
-            "value": {
-                "event": "bound",
-                "operation_id": operation_id,
-                "operation": operation,
-                "request_sha256": request_sha256,
-                "task_id": task_id,
-                "environment_sha256": environment_sha256,
-                "attempt_id": attempt_id,
-            },
-        },),
-    )
-
-
-def bind_operation_attempt(
-    binding: object,
-    *,
-    operation_id: str,
-    attempt_id: str,
-) -> None:
-    """Record the concrete attempt allocated for one operation invocation."""
-    root = operation_workspace(binding)
-    _append_global_changes(
-        root,
-        ({
-            "field": "operation_events",
-            "value": {
-                "event": "attempt_bound",
-                "operation_id": operation_id,
-                "attempt_id": attempt_id,
-            },
-        },),
-    )
-
-
-def record_operation_event(
-    binding: object,
-    value: Mapping[str, object],
-) -> None:
-    """Append one small operation lifecycle fact to the shared global journal."""
-    root = operation_workspace(binding)
-    _append_global_changes(
-        root,
-        ({"field": "operation_events", "value": dict(value)},),
-    )
-
-
-def finish_operation(
-    binding: object,
-    row: Mapping[str, object],
-    *,
-    failure: Mapping[str, object] | None,
-    spans: Sequence[Mapping[str, object]] = (),
-) -> None:
-    """Append the closed root and original failure classification, if any."""
-    root = operation_workspace(binding)
-    value: dict[str, object] = {"event": "finished", "row": dict(row)}
-    if spans:
-        value["spans"] = [dict(item) for item in spans]
-    if failure is not None:
-        value["failure"] = _error_evidence(dict(failure))  # type: ignore[assignment]
-    _append_global_changes(
-        root, ({"field": "operation_events", "value": value},),
-    )
-
-
-def ensure_operation_task(
-    binding: object,
-    task: Mapping[str, object],
-) -> dict[str, Any]:
-    """Register or reopen the exact request/environment-bound task journal."""
-    return ensure_task(operation_workspace(binding), task)
-
-
-def operation_task_record(binding: object, task_id: str) -> dict[str, Any]:
+def _legacy_operation_task_record(binding: object, task_id: str) -> dict[str, Any]:
     """Materialize one verified operation task without choosing another task."""
     root = operation_workspace(binding)
-    task = task_record(root, task_id)
+    task = _legacy_task_record(root, task_id)
     request_sha256 = task.get("request_sha256")
     references = task.get("artifacts", ())
     if not isinstance(request_sha256, str) or not isinstance(references, Sequence):
@@ -1331,32 +896,13 @@ def operation_task_record(binding: object, task_id: str) -> dict[str, Any]:
     ), None)
     if not isinstance(request_reference, Mapping) or request_reference.get("sha256") != request_sha256:
         raise _integrity("Operation task lacks its exact canonical request artifact.", task_id=task_id)
-    request_bytes = journal.read_immutable(root, request_reference, role="operation_request")
+    request_bytes = _read_immutable(root, request_reference, role="operation_request")
     if sha256(request_bytes).hexdigest() != request_sha256:
         raise _integrity("Operation request artifact does not match its task identity.", task_id=task_id)
     return task
 
 
-def store_operation_request(
-    binding: object,
-    *,
-    request_sha256: str,
-    request_bytes: bytes,
-) -> dict[str, object]:
-    """Archive exact canonical request bytes once for all policy task variants."""
-    if sha256(request_bytes).hexdigest() != request_sha256:
-        raise _integrity("Prepared operation request bytes do not match their identity.")
-    root = operation_workspace(binding)
-    with _workspace_lock(root, exclusive=True):
-        return journal.write_immutable(
-            root,
-            f"requests/{request_sha256}/request.json",
-            request_bytes,
-            role="operation_request",
-        )
-
-
-def open_operation_record(binding: object) -> BenchmarkResult | None:
+def _legacy_open_operation_record(binding: object) -> BenchmarkResult | None:
     """Materialize the verified raw operation journal for internal readers."""
     root = operation_workspace(binding)
     source = _operation_record_source(binding)
@@ -1519,7 +1065,7 @@ def _operation_success_from_task(
     return successes[0] if successes else None
 
 
-def find_operation_success(
+def _legacy_find_operation_success(
     binding: object,
     request_sha256: str,
 ) -> dict[str, object] | None:
@@ -1536,7 +1082,7 @@ def find_operation_success(
     return None if selected is None else _resolve_operation_success_selection(binding, selected)
 
 
-def read_operation_success(
+def _legacy_read_operation_success(
     binding: object,
     task_id: str,
     *,
@@ -1553,7 +1099,7 @@ def read_operation_success(
     ), None) if isinstance(descriptors, Sequence) else None
     if descriptor is None:
         return None
-    task = operation_task_record(binding, task_id)
+    task = _legacy_operation_task_record(binding, task_id)
     return _operation_success_from_task(task, attempt_id=attempt_id)
 
 
@@ -1587,7 +1133,7 @@ def _resolve_operation_success_selection(
     request_sha256 = selected.get("request_sha256")
     if not all(isinstance(value, str) for value in (task_id, attempt_id, request_sha256)):
         raise _integrity("Selected operation result reference is malformed.")
-    task = operation_task_record(binding, str(task_id))
+    task = _legacy_operation_task_record(binding, str(task_id))
     if task.get("request_sha256") != request_sha256:
         raise _integrity("Selected operation result belongs to another request.", task_id=task_id)
     success = _operation_success_from_task(task, attempt_id=str(attempt_id))
@@ -1600,64 +1146,6 @@ def _resolve_operation_success_selection(
             raise _integrity("Selected operation result reference does not match its task evidence.",
                              task_id=task_id, field=key)
     return success
-
-
-def select_operation_success(
-    binding: object,
-    task_id: str,
-    attempt_id: str,
-) -> dict[str, object]:
-    """Commit the first verified success reference for this numerical request."""
-    root = operation_workspace(binding)
-    task = operation_task_record(binding, task_id)
-    success = _operation_success_from_task(task, attempt_id=attempt_id)
-    if success is None:
-        raise _integrity("Cannot select an operation attempt without a completed result.",
-                         task_id=task_id, attempt_id=attempt_id)
-    request_sha256 = task.get("request_sha256")
-    assert isinstance(request_sha256, str)
-    candidate: dict[str, object] = {
-        "event": "request_success_selected",
-        "request_sha256": request_sha256,
-        "task_id": task_id,
-        "attempt_id": attempt_id,
-        "environment_sha256": success["environment_sha256"],
-        "attempt_sha256": success["attempt_sha256"],
-        "result_sha256": success["result_sha256"],
-        "result_ref": success["result_ref"],
-    }
-    with _workspace_lock(root, exclusive=True):
-        manifest = _operation_manifest(binding, root=root)
-        if manifest is None:
-            raise _integrity("Operation journal disappeared before success selection.")
-        descriptor = _task_binding(manifest, task_id)
-        if descriptor.get("request_sha256") != request_sha256:
-            raise _integrity("Operation task identity changed before success selection.", task_id=task_id)
-        existing = _operation_success_selection(root, manifest, request_sha256)
-        if existing is not None:
-            return existing
-        head = _global_head(root, manifest.get("benchmark_sha256"))
-        _append_global_commit(
-            root, manifest, head,
-            changes=({"field": "operation_events", "value": candidate},),
-        )
-        journal.publish_head(root, "journal/global/HEAD.json", head)
-    return candidate
-
-
-def write_artifact(
-    workspace: str | os.PathLike[str],
-    relative_path: str | os.PathLike[str],
-    payload: bytes,
-    *,
-    role: str,
-) -> dict[str, object]:
-    """Publish immutable bytes below the benchmark workspace."""
-    root = _root_path(workspace)
-    relative = Path(relative_path)
-    if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
-        raise _integrity("Benchmark artifact path must be workspace-relative.", path=str(relative))
-    return journal.write_immutable(root, relative.as_posix(), payload, role=role)
 
 
 def _new_task_descriptor(task: Mapping[str, object]) -> dict[str, object]:
@@ -1676,785 +1164,13 @@ def _new_task_descriptor(task: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-def _register_descriptor_locked(root: Path, manifest: dict[str, Any], descriptor: Mapping[str, object]) -> None:
-    task_id = str(descriptor["task_id"])
-    existing = next((item for item in manifest["tasks"] if item.get("task_id") == task_id), None)
-    head_path = _inside(root, f"tasks/{task_id}/journal/HEAD.json")
-    if existing is not None:
-        if existing != dict(descriptor):
-            raise _integrity("Benchmark task identity was rebound.", task_id=task_id)
-        _task_head(root, existing)
-        return
-    if head_path.exists():
-        raise _integrity("Unreferenced benchmark task head cannot be promoted.", task_id=task_id)
-    head = _empty_task_head(task_id, str(descriptor["request_sha256"]))
-    _publish_task_head(root, head)
-    manifest["tasks"].append(dict(descriptor))
-    _atomic_write(_inside(root, _RECORD_NAME), _record_bytes(manifest))
-
-
-def register_task(
-    workspace: str | os.PathLike[str],
-    task: Mapping[str, object],
-) -> None:
-    """Append one compact task binding; task history lives only in its journal."""
-    root = _root_path(workspace)
-    descriptor = _new_task_descriptor(task)
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        _register_descriptor_locked(root, manifest, descriptor)
-
-
-def ensure_task(
-    workspace: str | os.PathLike[str],
-    task: Mapping[str, object],
-) -> dict[str, Any]:
-    """Register a task once, or return its verified existing detached record."""
-    root = _root_path(workspace)
-    descriptor = _new_task_descriptor(task)
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        task_id = str(descriptor["task_id"])
-        prior = next((item for item in manifest["tasks"] if item.get("task_id") == task_id), None)
-        if prior is None:
-            _register_descriptor_locked(root, manifest, descriptor)
-        else:
-            stable_prior = {key: prior[key] for key in ("task_id", "request_sha256", "arm", "sample")}
-            stable_value = {key: descriptor[key] for key in ("task_id", "request_sha256", "arm", "sample")}
-            if stable_prior != stable_value or prior["environment"].get("environment_sha256") != descriptor["environment"].get("environment_sha256"):
-                raise _integrity("Benchmark task identity was rebound to another environment.", task_id=task_id)
-            _task_head(root, prior)
-    return materialize_task(root, str(descriptor["task_id"]))
-
-
-def _update_head_attempt(
-    head: dict[str, Any],
-    *,
-    attempt_id: str,
-    status: str | None = None,
-    failure: Mapping[str, object] | None = None,
-    interruption: Mapping[str, object] | None = None,
-    checkpoint: Mapping[str, object] | None = None,
-) -> dict[str, object]:
-    attempts = head["attempts"]
-    attempt = next((item for item in attempts if item.get("attempt_id") == attempt_id), None)
-    if attempt is None:
-        raise _integrity("Benchmark attempt is not recorded.", task_id=head["task_id"], attempt_id=attempt_id)
-    if status is not None:
-        attempt["status"] = status
-        attempt["failure"] = None if failure is None else json.loads(_record_bytes(failure))
-        attempt["interruption"] = None if interruption is None else json.loads(_record_bytes(interruption))
-    if checkpoint is not None:
-        attempt["checkpoint"] = json.loads(_record_bytes(checkpoint))
-    return attempt
-
-
-def _attempt_change_operation(
-    *,
-    attempt_id: str,
-    status: str | None = None,
-    failure: Mapping[str, object] | None = None,
-    interruption: Mapping[str, object] | None = None,
-    checkpoint: Mapping[str, object] | None = None,
-    artifacts: Sequence[Mapping[str, object]] = (),
-) -> dict[str, object]:
-    return {
-        "kind": "attempt_update",
-        "attempt_id": attempt_id,
-        "status": status,
-        "failure": None if failure is None else json.loads(_record_bytes(failure)),
-        "interruption": None if interruption is None else json.loads(_record_bytes(interruption)),
-        "checkpoint": None if checkpoint is None else json.loads(_record_bytes(checkpoint)),
-        "artifacts": [json.loads(_record_bytes(item)) for item in artifacts],
-    }
-
-
-def begin_attempt(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    attempt_id: str,
-    resume_from: Mapping[str, object] | None = None,
-) -> None:
-    """Persist an allocated attempt before the child is authorized to advance."""
-    root = _root_path(workspace)
-    resume = None if resume_from is None else json.loads(_record_bytes(resume_from))
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        binding = _task_binding(manifest, task_id)
-        head = _task_head(root, binding)
-        if any(item["attempt_id"] == attempt_id for item in head["attempts"]):
-            raise _integrity("Benchmark attempt identifier is already recorded.", attempt_id=attempt_id)
-        attempt = {
-            "attempt_id": attempt_id,
-            "status": "allocated",
-            "resume_from": resume,
-            "artifacts": [],
-            "failure": None,
-            "interruption": None,
-        }
-        _append_task_commit(root, binding, head, operation={"kind": "attempt_begin", "attempt": attempt})
-        head["attempts"].append({key: value for key, value in attempt.items() if key != "artifacts"})
-        head["last_attempt_id"] = attempt_id
-        _publish_task_head(root, head)
-
-
-def update_attempt(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    attempt_id: str,
-    status: str,
-    failure: Mapping[str, object] | None = None,
-    interruption: Mapping[str, object] | None = None,
-    artifacts: tuple[Mapping[str, object], ...] = (),
-    checkpoint: Mapping[str, object] | None = None,
-) -> None:
-    """Publish an attempt transition and artifact additions to its task head."""
-    root = _root_path(workspace)
-    operation = _attempt_change_operation(
-        attempt_id=attempt_id, status=status, failure=failure, interruption=interruption,
-        checkpoint=checkpoint, artifacts=artifacts,
-    )
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        binding = _task_binding(manifest, task_id)
-        head = _task_head(root, binding)
-        _update_head_attempt(
-            head, attempt_id=attempt_id, status=status, failure=failure,
-            interruption=interruption, checkpoint=checkpoint,
-        )
-        _append_task_commit(root, binding, head, operation=operation)
-        _publish_task_head(root, head)
-
-
-def _barrier_block_locked(
-    root: Path,
-    binding: Mapping[str, object],
-    head: Mapping[str, object],
-    *,
-    kind: str,
-    payload: Mapping[str, object],
-    event_sequence: int,
-    evaluation_rows: Sequence[Mapping[str, object]],
-    baseline_block: Mapping[str, object] | None,
-    generation_block: Mapping[str, object] | None,
-    inherited_value_refs: Mapping[str, Mapping[str, object]] | None,
-    durability_witness: journal._DurabilityWitness | None = None,
-    phase_scope: Callable[[str, Mapping[str, Any]], Any] | None = None,
-) -> tuple[dict[str, object], dict[str, object] | None, dict[str, object], tuple[dict[str, object], ...]]:
-    task_id = str(binding["task_id"])
-    attempt_id = str(payload.get("attempt_id", ""))
-    if kind == "baseline_ready":
-        baseline_value = payload.get("baseline")
-        if not isinstance(baseline_value, Mapping):
-            raise _integrity("Benchmark baseline barrier lacks its exact baseline record.", task_id=task_id)
-        baseline_ref, baseline_occurrence, _ = _value_reference(
-            root, task_id, baseline_value, attempt_id=attempt_id,
-            event_sequence=event_sequence, suffix="baseline", inherited=inherited_value_refs,
-            durability_witness=durability_witness,
-        )
-        anchors_ref = None
-        if isinstance(payload.get("anchors"), Mapping):
-            anchors = {
-                "schema": "scnsim.benchmark_anchor_values",
-                "schema_version": _V2,
-                "task_id": task_id,
-                "anchors": dict(payload["anchors"]),
-            }
-            anchor_bytes = _record_bytes(anchors)
-            anchor_sha = sha256(anchor_bytes).hexdigest()
-            anchors_ref = journal.write_immutable(
-                root,
-                f"tasks/{task_id}/evidence/anchors/{anchor_sha}.json",
-                anchor_bytes,
-                role="benchmark_anchor_values",
-                durability_witness=durability_witness,
-            )
-        attributes = {
-            key: value for key, value in payload.items()
-            if key not in {"attempt_id", "baseline", "anchors", "resume_state"}
-        }
-        block = {
-            "schema": "scnsim.benchmark_baseline_evidence",
-            "schema_version": _V2,
-            "task_id": task_id,
-            "attempt_id": attempt_id,
-            "baseline": baseline_ref,
-            "baseline_occurrence": baseline_occurrence,
-            "anchors": anchors_ref,
-            "attributes": attributes,
-        }
-        raw = _record_bytes(block)
-        digest = sha256(raw).hexdigest()
-        evidence_ref = journal.write_immutable(
-            root,
-            f"tasks/{task_id}/evidence/baseline/{digest}.json",
-            raw,
-            role="benchmark_baseline_evidence",
-            durability_witness=durability_witness,
-        )
-        next_generation_block = None
-        checkpoint_generation = int(baseline_value.get("generation", 0))
-        next_ordinal = int(baseline_value.get("evaluation_ordinal", 0)) + 1
-        best_ordinal = int(baseline_value.get("evaluation_ordinal", 0))
-        evidence_for_checkpoint = {"baseline": evidence_ref, "generation": None}
-    elif kind == "generation_ready":
-        baseline_ref = baseline_block
-        if not isinstance(baseline_ref, Mapping):
-            raise _integrity("Generation barrier has no committed baseline evidence.", task_id=task_id)
-        rows: list[dict[str, object]] = []
-        for index, row in enumerate(evaluation_rows):
-            value_ref, occurrence, _ = _value_reference(
-                root, task_id, row, attempt_id=attempt_id, event_sequence=event_sequence,
-                suffix=f"generation-{payload.get('generation')}-{index}",
-                inherited=inherited_value_refs,
-                durability_witness=durability_witness,
-            )
-            rows.append({"value": value_ref, "occurrence": occurrence})
-        attributes = {
-            key: value for key, value in payload.items()
-            if key not in {"attempt_id", "resume_state"}
-        }
-        block = {
-            "schema": "scnsim.benchmark_generation_evidence",
-            "schema_version": _V2,
-            "task_id": task_id,
-            "attempt_id": attempt_id,
-            "baseline": dict(baseline_ref),
-            "previous": None if generation_block is None else dict(generation_block),
-            "rows": rows,
-            "attributes": attributes,
-        }
-        raw = _record_bytes(block)
-        digest = sha256(raw).hexdigest()
-        evidence_ref = journal.write_immutable(
-            root,
-            f"tasks/{task_id}/evidence/generations/{digest}.json",
-            raw,
-            role="benchmark_generation_evidence",
-            durability_witness=durability_witness,
-        )
-        next_generation_block = evidence_ref
-        checkpoint_generation = int(payload["generation"])
-        next_ordinal = int(payload["next_ordinal"])
-        best_ordinal = int(payload["best_ordinal"])
-        evidence_for_checkpoint = {"baseline": dict(baseline_ref), "generation": evidence_ref}
-    else:
-        raise _integrity("Unsupported benchmark evidence barrier.", kind=kind)
-
-    resume_state = payload.get("resume_state")
-    checkpoint_ref = None
-    checkpoint_artifacts: tuple[dict[str, object], ...] = ()
-    if isinstance(resume_state, Mapping):
-        cma = resume_state.get("cma")
-        checkpoint = {
-            "schema": "scnsim.benchmark_cma_checkpoint",
-            "schema_version": _V2,
-            "task_id": task_id,
-            "request_sha256": binding["request_sha256"],
-            "arm": binding["arm"],
-            "sample": binding["sample"],
-            "environment_sha256": binding["environment"]["environment_sha256"],
-            "attempt_id": attempt_id,
-            "generation": checkpoint_generation,
-            "next_ordinal": next_ordinal,
-            "best_ordinal": best_ordinal,
-            "baseline_evidence": evidence_for_checkpoint["baseline"],
-            "generation_evidence": evidence_for_checkpoint["generation"],
-            "cma": cma,
-        }
-        if phase_scope is None:
-            checkpoint_bytes = _record_bytes(checkpoint)
-            checkpoint_ref, checkpoint_artifacts = _save_checkpoint_locked(
-                root, binding, attempt_id, checkpoint_bytes,
-                durability_witness=durability_witness,
-            )
-        else:
-            details: dict[str, Any] = {
-                "generation": checkpoint_generation,
-                "checkpoint_policy": str(binding["arm"]).rsplit("/", 1)[-1],
-            }
-            with phase_scope("checkpoint_state_publish", details):
-                checkpoint_bytes = _record_bytes(checkpoint)
-                details["checkpoint_bytes"] = len(checkpoint_bytes)
-                checkpoint_ref, checkpoint_artifacts = _save_checkpoint_locked(
-                    root, binding, attempt_id, checkpoint_bytes,
-                    durability_witness=durability_witness,
-                )
-    event_payload: dict[str, object] = {
-        key: value for key, value in payload.items() if key == "attempt_id"
-    }
-    event_payload[_JOURNAL_MARKER] = {
-        "kind": "barrier",
-        "evidence": evidence_ref,
-        "checkpoint": checkpoint_ref,
-    }
-    return evidence_ref, checkpoint_ref, event_payload, checkpoint_artifacts
-
-
-def _commit_task_events(
-    root: Path,
-    task_id: str,
-    events: Sequence[tuple[str, Mapping[str, object]]],
-    *,
-    barrier: tuple[str, Mapping[str, object], Sequence[Mapping[str, object]], Mapping[str, object] | None, Mapping[str, object] | None] | None = None,
-    inherited_value_refs: Mapping[str, Mapping[str, object]] | None = None,
-    publication_state: dict[str, object] | None = None,
-    phase_scope: Callable[[str, Mapping[str, Any]], Any] | None = None,
-) -> tuple[list[dict[str, object]], dict[str, object] | None]:
-    saved_events: list[dict[str, object]] = []
-    acknowledgment: dict[str, object] | None = None
-    if publication_state is not None:
-        publication_state.clear()
-        publication_state.update({"phase": "before_lock", "path": f"tasks/{task_id}/journal/HEAD.json"})
-    with _workspace_lock(root, exclusive=True):
-        if publication_state is not None:
-            publication_state["phase"] = "lock_acquired"
-        manifest = _require_v2(root)
-        binding = _task_binding(manifest, task_id)
-        durability_witness = journal._DurabilityWitness()
-        head = _task_head(root, binding, durability_witness=durability_witness)
-        prior_head_bytes = _record_bytes(head)
-        head_path = f"tasks/{task_id}/journal/HEAD.json"
-        if publication_state is not None:
-            publication_state.update({
-                "phase": "head_snapshotted",
-                "path": head_path,
-                "prior_head_bytes": prior_head_bytes,
-                "prior_sha256": sha256(prior_head_bytes).hexdigest(),
-                "new_head_bytes": None,
-                "new_sha256": None,
-                "publish_returned": False,
-            })
-        for kind, original_payload in events:
-            sequence = int(head["event_sequence"])
-            payload = json.loads(_record_bytes(original_payload))
-            event_attempt = payload.get("attempt_id")
-            if event_attempt is not None and event_attempt != head.get("last_attempt_id"):
-                raise _integrity(
-                    "Benchmark event does not belong to the current task attempt.",
-                    task_id=task_id, attempt_id=event_attempt,
-                )
-            value_attempt_id = event_attempt if isinstance(event_attempt, str) else head.get("last_attempt_id")
-            if kind == "evaluation":
-                if not isinstance(value_attempt_id, str):
-                    raise _integrity("Benchmark evaluation lacks a bound task attempt.", task_id=task_id)
-                compact = _compact_value_event(
-                    root, task_id, payload,
-                    attempt_id=value_attempt_id,
-                    event_sequence=sequence,
-                    inherited=inherited_value_refs,
-                    durability_witness=durability_witness,
-                )
-            elif isinstance(payload.get("numerical_observations"), Mapping):
-                if not isinstance(value_attempt_id, str):
-                    raise _integrity("Benchmark numerical observation lacks a bound task attempt.", task_id=task_id)
-                compact = dict(payload)
-                compact["numerical_observations"] = _compact_observations(
-                    root, task_id, payload["numerical_observations"],
-                    attempt_id=value_attempt_id, event_sequence=sequence,
-                    durability_witness=durability_witness,
-                )
-            else:
-                compact = payload
-            event = {"task_id": task_id, "sequence": sequence, "kind": kind, "payload": compact}
-            _append_task_commit(
-                root, binding, head, operation={"kind": "event", "event": event},
-                durability_witness=durability_witness,
-            )
-            head["event_sequence"] = sequence + 1
-            saved_events.append({"task_id": task_id, "sequence": sequence, "kind": kind, "payload": payload})
-        if barrier is not None:
-            kind, payload, evaluation_rows, baseline_block, generation_block = barrier
-            sequence = int(head["event_sequence"])
-            if payload.get("attempt_id") != head.get("last_attempt_id"):
-                raise _integrity(
-                    "Benchmark barrier does not belong to the current task attempt.",
-                    task_id=task_id, attempt_id=payload.get("attempt_id"),
-                )
-            evidence_ref, checkpoint_ref, compact, checkpoint_artifacts = _barrier_block_locked(
-                root, binding, head, kind=kind, payload=payload,
-                event_sequence=sequence, evaluation_rows=evaluation_rows,
-                baseline_block=baseline_block, generation_block=generation_block,
-                inherited_value_refs=inherited_value_refs,
-                durability_witness=durability_witness,
-                phase_scope=phase_scope,
-            )
-            event = {"task_id": task_id, "sequence": sequence, "kind": kind, "payload": compact}
-            operation = {
-                "kind": "event",
-                "event": event,
-                "evidence": evidence_ref,
-                "checkpoint": checkpoint_ref,
-                "artifacts": list(checkpoint_artifacts),
-            }
-            _append_task_commit(
-                root, binding, head, operation=operation,
-                durability_witness=durability_witness,
-            )
-            head["event_sequence"] = sequence + 1
-            if checkpoint_ref is not None:
-                attempt_id = str(payload.get("attempt_id", ""))
-                _update_head_attempt(
-                    head, attempt_id=attempt_id, checkpoint=checkpoint_ref,
-                )
-            saved_events.append({"task_id": task_id, "sequence": sequence, "kind": kind, "payload": dict(payload)})
-            acknowledgment = {"evidence": evidence_ref, "checkpoint": checkpoint_ref}
-        new_head_bytes = _record_bytes(head)
-        if publication_state is not None:
-            publication_state["phase"] = "head_publish_attempted"
-            publication_state["new_head_bytes"] = new_head_bytes
-            publication_state["new_sha256"] = sha256(new_head_bytes).hexdigest()
-        try:
-            journal.publish_head(
-                root, head_path, head,
-                durability_witness=durability_witness,
-            )
-            if publication_state is not None:
-                publication_state["publish_returned"] = True
-                publication_state["phase"] = "head_publish_returned"
-        except BaseException as error:
-            publication_marker = getattr(error, journal._HEAD_PUBLICATION_RECONCILIATION, None)
-            if not isinstance(publication_marker, dict):
-                raise
-            reconciliation: dict[str, object] = {
-                "path": head_path,
-                "prior_sha256": sha256(prior_head_bytes).hexdigest(),
-                "new_sha256": sha256(new_head_bytes).hexdigest(),
-                "visible_state": "unreadable_after_publication_error",
-            }
-            try:
-                observed = journal.read_head(
-                    root, head_path,
-                    schema=journal._TASK_HEAD,
-                    bind={"task_id": task_id, "request_sha256": binding["request_sha256"]},
-                )
-                observed_bytes = _record_bytes(observed)
-                reconciliation["observed_sha256"] = sha256(observed_bytes).hexdigest()
-                if observed_bytes == new_head_bytes:
-                    reconciliation["visible_state"] = "new_head_visible_unconfirmed"
-                elif observed_bytes == prior_head_bytes:
-                    reconciliation["visible_state"] = "prior_head_visible_after_error"
-                else:
-                    reconciliation["visible_state"] = "other_head_visible_after_error"
-            except BaseException as reconciliation_error:
-                reconciliation["reconciliation_error_type"] = type(reconciliation_error).__name__
-                reconciliation["reconciliation_error"] = str(reconciliation_error)
-            publication_marker.update(reconciliation)
-            if publication_state is not None:
-                publication_state["publication_marker"] = publication_marker
-            raise
-    return saved_events, acknowledgment
-
-
-class TaskWriter:
-    """One task attempt's boundary buffer and evidence links."""
-
-    def __init__(
-        self,
-        root: Path,
-        task_id: str,
-        attempt_id: str,
-        *,
-        diagnostics: str,
-        checkpoint_document: Mapping[str, object] | None = None,
-        phase_scope: Callable[[str, Mapping[str, Any]], Any] | None = None,
-    ) -> None:
-        self.root = root
-        self.task_id = task_id
-        self.attempt_id = attempt_id
-        self.diagnostics = diagnostics
-        self.phase_scope = phase_scope
-        self.pending: list[tuple[str, Mapping[str, object]]] = []
-        self.generation_rows: list[Mapping[str, object]] = []
-        self.publication_uncertain: dict[str, object] | None = None
-        self.unacknowledged_diagnostics: tuple[tuple[str, Mapping[str, object]], ...] = ()
-        links = checkpoint_document.get("_journal_links", {}) if checkpoint_document else {}
-        self.baseline_block = links.get("baseline_evidence") if isinstance(links, Mapping) else None
-        self.generation_block = links.get("generation_evidence") if isinstance(links, Mapping) else None
-        self.value_refs = links.get("value_refs", {}) if isinstance(links, Mapping) else {}
-        if not isinstance(self.value_refs, Mapping):
-            self.value_refs = {}
-        with _workspace_lock(root, exclusive=False):
-            manifest = _require_v2(root)
-            binding = _task_binding(manifest, task_id)
-            head = _task_head(root, binding)
-            self.sequence_hint = int(head["event_sequence"])
-
-    def _ensure_publishable(self) -> None:
-        if self.publication_uncertain is not None:
-            raise _integrity(
-                "Task writer cannot append after an unacknowledged commit outcome.",
-                task_id=self.task_id,
-                publication=self.publication_uncertain,
-            )
-
-    def _commit_events(
-        self,
-        events: Sequence[tuple[str, Mapping[str, object]]],
-        *,
-        barrier: tuple[str, Mapping[str, object], Sequence[Mapping[str, object]], Mapping[str, object] | None, Mapping[str, object] | None] | None = None,
-    ) -> tuple[list[dict[str, object]], dict[str, object] | None]:
-        self._ensure_publishable()
-        # Keep an explicit local delta until the caller has either received an
-        # ACK or reconciled the selected HEAD. A confirmed prior HEAD permits
-        # diagnostic-only failure flushing; a selected new or unknown HEAD
-        # must never replay the same delta.
-        commit_state: dict[str, object] = {}
-        commit_events = tuple(events)
-        diagnostic_events = tuple(
-            (kind, payload) for kind, payload in commit_events
-            if kind in _DIAGNOSTIC_EVENTS
-        )
-        has_barrier = barrier is not None
-        try:
-            self.pending.clear()
-            if has_barrier:
-                self.generation_rows.clear()
-            return _commit_task_events(
-                self.root, self.task_id, commit_events,
-                barrier=barrier,
-                inherited_value_refs=self.value_refs,
-                publication_state=commit_state,
-                phase_scope=self.phase_scope,
-            )
-        except BaseException as error:
-            self.pending.clear()
-            self.generation_rows.clear()
-            outcome = self._reconcile_commit_outcome(commit_state, error)
-            if outcome["visible_state"] == "prior_head_still_selected":
-                # Only diagnostic event deltas are safe to flush. The barrier
-                # itself and its in-memory population never become a checkpoint.
-                self.pending.extend(diagnostic_events)
-                self.publication_uncertain = None
-                self.unacknowledged_diagnostics = ()
-            else:
-                self.publication_uncertain = outcome
-                self.unacknowledged_diagnostics = (
-                    diagnostic_events
-                    if outcome["visible_state"] == "head_state_unknown"
-                    else ()
-                )
-            raise
-
-    def _reconcile_commit_outcome(
-        self,
-        state: Mapping[str, object],
-        error: BaseException,
-    ) -> dict[str, object]:
-        prior = state.get("prior_head_bytes")
-        new = state.get("new_head_bytes")
-        marker = state.get("publication_marker")
-        if not isinstance(marker, Mapping):
-            attached = getattr(error, journal._HEAD_PUBLICATION_RECONCILIATION, None)
-            marker = attached if isinstance(attached, Mapping) else None
-        if isinstance(marker, Mapping):
-            visible = marker.get("visible_state")
-            if visible == "prior_head_visible_after_error":
-                return {**dict(marker), "visible_state": "prior_head_still_selected"}
-            if visible == "new_head_visible_unconfirmed":
-                return {**dict(marker), "visible_state": "new_head_selected_unconfirmed"}
-
-        if not isinstance(prior, bytes):
-            return {
-                "path": state.get("path"),
-                "visible_state": "prior_head_still_selected",
-                "reconciliation": "head_publication_was_not_reached",
-            }
-        try:
-            with _workspace_lock(self.root, exclusive=False):
-                manifest = _require_v2(self.root)
-                binding = _task_binding(manifest, self.task_id)
-                observed = _record_bytes(_task_head(self.root, binding))
-        except BaseException as reconciliation_error:
-            return {
-                "path": state.get("path"),
-                "visible_state": "head_state_unknown",
-                "prior_sha256": state.get("prior_sha256"),
-                "new_sha256": state.get("new_sha256"),
-                "reconciliation_error_type": type(reconciliation_error).__name__,
-                "reconciliation_error": str(reconciliation_error),
-            }
-        if observed == prior:
-            return {
-                "path": state.get("path"),
-                "visible_state": "prior_head_still_selected",
-                "prior_sha256": state.get("prior_sha256"),
-            }
-        if isinstance(new, bytes) and observed == new:
-            return {
-                "path": state.get("path"),
-                "visible_state": (
-                    "new_head_selected_durable"
-                    if state.get("publish_returned") is True
-                    else "new_head_selected_unconfirmed"
-                ),
-                "prior_sha256": state.get("prior_sha256"),
-                "new_sha256": state.get("new_sha256"),
-            }
-        return {
-            "path": state.get("path"),
-            "visible_state": "head_state_unknown",
-            "prior_sha256": state.get("prior_sha256"),
-            "new_sha256": state.get("new_sha256"),
-            "observed_sha256": sha256(observed).hexdigest(),
-        }
-
-    def append_event(
-        self,
-        *,
-        kind: str,
-        payload: Mapping[str, object],
-        force: bool = False,
-    ) -> dict[str, object]:
-        self._ensure_publishable()
-        value = json.loads(_record_bytes(payload))
-        if kind == "evaluation" and isinstance(value.get("generation"), int) and value["generation"] > 0:
-            self.generation_rows.append(value)
-        if self.diagnostics == "boundary" and kind in _DIAGNOSTIC_EVENTS and not force:
-            self.pending.append((kind, value))
-            event = {
-                "task_id": self.task_id,
-                "sequence": self.sequence_hint,
-                "kind": kind,
-                "payload": value,
-            }
-            self.sequence_hint += 1
-            return event
-        saved, _ = self._commit_events((*self.pending, (kind, value)))
-        self.pending.clear()
-        if saved:
-            self.sequence_hint = int(saved[-1]["sequence"]) + 1
-            return saved[-1]
-        raise _integrity("Benchmark task event was not committed.", task_id=self.task_id)
-
-    def commit_barrier(self, kind: str, payload: Mapping[str, object]) -> tuple[dict[str, object], dict[str, object]]:
-        value = json.loads(_record_bytes(payload))
-        saved, acknowledgment = self._commit_events(
-            tuple(self.pending),
-            barrier=(kind, value, tuple(self.generation_rows), self.baseline_block, self.generation_block),
-        )
-        self.pending.clear()
-        if acknowledgment is None or not saved:
-            raise _integrity("Benchmark evidence barrier was not committed.", task_id=self.task_id)
-        if kind == "baseline_ready":
-            self.baseline_block = acknowledgment["evidence"]
-            self.generation_block = None
-        else:
-            self.generation_block = acknowledgment["evidence"]
-        self.generation_rows.clear()
-        self.sequence_hint = int(saved[-1]["sequence"]) + 1
-        return saved[-1], acknowledgment
-
-    def flush(self) -> None:
-        if self.publication_uncertain is not None:
-            raise _integrity(
-                "Task writer cannot flush after an unacknowledged commit outcome.",
-                task_id=self.task_id,
-                publication=self.publication_uncertain,
-                retained_diagnostic_event_count=len(self.unacknowledged_diagnostics),
-            )
-        if not self.pending:
-            return
-        saved, _ = self._commit_events(tuple(self.pending))
-        self.pending.clear()
-        if saved:
-            self.sequence_hint = int(saved[-1]["sequence"]) + 1
-
-
-def begin_task_writer(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    attempt_id: str,
-    diagnostics: str,
-    checkpoint_document: Mapping[str, object] | None = None,
-    phase_scope: Callable[[str, Mapping[str, Any]], Any] | None = None,
-) -> TaskWriter:
-    return TaskWriter(
-        _root_path(workspace), task_id, attempt_id,
-        diagnostics=diagnostics, checkpoint_document=checkpoint_document,
-        phase_scope=phase_scope,
-    )
-
-
-def append_event(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    kind: str,
-    payload: Mapping[str, object],
-    writer: TaskWriter | None = None,
-    force: bool = False,
-) -> dict[str, object]:
-    """Append one ordered task event, publishing its immutable body first."""
-    if writer is not None:
-        return writer.append_event(kind=kind, payload=payload, force=force)
-    root = _root_path(workspace)
-    saved, _ = _commit_task_events(root, task_id, ((kind, payload),))
-    return saved[0]
-
-
-def commit_barrier(
-    workspace: str | os.PathLike[str],
-    *,
-    writer: TaskWriter,
-    kind: str,
-    payload: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
-    return writer.commit_barrier(kind, payload)
-
-
-def task_record(workspace: str | os.PathLike[str], task_id: str) -> dict[str, Any]:
+def _legacy_task_record(workspace: str | os.PathLike[str], task_id: str) -> dict[str, Any]:
     """Return one stored task record without selecting or mutating other tasks."""
     root = _root_path(workspace)
     manifest = _read_document(root)
     if manifest.get("schema_version") == _V1:
         return json.loads(_record_bytes(_task_binding(manifest, task_id)))
-    return materialize_task(root, task_id)
-
-
-def _append_global_changes(
-    root: Path,
-    changes: Sequence[Mapping[str, object]],
-) -> None:
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        _ensure_global_head(root, manifest.get("benchmark_sha256"))
-        head = _global_head(root, manifest.get("benchmark_sha256"))
-        _append_global_commit(root, manifest, head, changes=changes)
-        journal.publish_head(root, "journal/global/HEAD.json", head)
-
-
-def record_task_launch_failure(
-    workspace: str | os.PathLike[str],
-    *,
-    arm: str,
-    sample: int,
-    attempt_id: str,
-    benchmark_sha256: str,
-    source_analysis_sha256: str,
-    error: BaseException,
-    request_artifact: Mapping[str, object] | None,
-) -> None:
-    """Record a real launch failure when no child environment identity exists."""
-    failure = {
-        "task_id": None,
-        "request_sha256": None,
-        "environment_sha256": None,
-        "arm": arm,
-        "sample": sample,
-        "attempt_id": attempt_id,
-        "benchmark_sha256": benchmark_sha256,
-        "source_analysis_sha256": source_analysis_sha256,
-        "request_artifact": None if request_artifact is None else json.loads(_record_bytes(request_artifact)),
-        "status": "failure",
-        "error": _error_document(error),
-    }
-    _append_global_changes(
-        _root_path(workspace), ({"field": "task_launch_failures", "value": failure},),
-    )
+    return _legacy_materialize_task(root, task_id)
 
 
 def _error_document(error: BaseException) -> dict[str, object]:
@@ -2481,155 +1197,6 @@ def _error_evidence(value: object) -> object:
     if isinstance(value, (tuple, list)):
         return [_error_evidence(item) for item in value]
     return value
-
-
-def record_execution_failure(
-    workspace: str | os.PathLike[str],
-    *,
-    phase: str,
-    benchmark_sha256: str,
-    plan_sha256: str,
-    source_analysis_sha256: str,
-    error: BaseException,
-) -> None:
-    failure = {
-        "phase": phase,
-        "status": "failure",
-        "benchmark_sha256": benchmark_sha256,
-        "plan_sha256": plan_sha256,
-        "source_analysis_sha256": source_analysis_sha256,
-        "error": _error_document(error),
-    }
-    _append_global_changes(
-        _root_path(workspace), ({"field": "execution_failures", "value": failure},),
-    )
-
-
-def record_callback_failure(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    sequence: int,
-    event_kind: str,
-    error: BaseException,
-) -> None:
-    _ = task_record(workspace, task_id)
-    failure = {
-        "task_id": task_id,
-        "event_sequence": sequence,
-        "event_kind": event_kind,
-        "error": _error_document(error),
-    }
-    _append_global_changes(
-        _root_path(workspace), ({"field": "callback_failures", "value": failure},),
-    )
-
-
-def _measurement_changes(
-    root: Path,
-    values: Sequence[Mapping[str, object]],
-) -> None:
-    by_task: dict[str, list[dict[str, object]]] = {}
-    benchmark_values: list[dict[str, object]] = []
-    for value in values:
-        task_id = str(value["task_id"])
-        if task_id == "benchmark":
-            benchmark_values.append(dict(value))
-        else:
-            by_task.setdefault(task_id, []).append(dict(value))
-    changes: list[dict[str, object]] = []
-    if benchmark_values:
-        changes.append({"field": "measurements", "value": benchmark_values})
-    for task_id, measurements in by_task.items():
-        changes.append({"field": "task_measurements", "task_id": task_id, "value": measurements})
-    if changes:
-        _append_global_changes(root, changes)
-
-
-def append_measurement(
-    workspace: str | os.PathLike[str],
-    measurement: Measurement,
-    *,
-    clock_binding: Mapping[str, object],
-) -> None:
-    value = _measurement_document(measurement, clock_binding=clock_binding)
-    _measurement_changes(_root_path(workspace), (value,))
-
-
-def append_measurements(
-    workspace: str | os.PathLike[str],
-    measurements: tuple[Measurement, ...],
-    *,
-    clock_binding: Mapping[str, object],
-) -> None:
-    values = tuple(_measurement_document(item, clock_binding=clock_binding) for item in measurements)
-    if values:
-        _measurement_changes(_root_path(workspace), values)
-
-
-def _save_checkpoint_locked(
-    root: Path,
-    binding: Mapping[str, object],
-    attempt_id: str,
-    checkpoint_bytes: bytes,
-    *,
-    durability_witness: journal._DurabilityWitness | None = None,
-) -> tuple[dict[str, object], tuple[dict[str, object], ...]]:
-    try:
-        checkpoint = record_document(checkpoint_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise _integrity("Benchmark checkpoint is not JSON.", error=str(error)) from error
-    if not isinstance(checkpoint, dict) or _record_bytes(checkpoint) != checkpoint_bytes:
-        raise _integrity("Benchmark checkpoint bytes are not canonical JSON.")
-    checkpoint_sha = sha256(checkpoint_bytes).hexdigest()
-    seal_doc = checkpoint_seal(
-        task_id=str(binding["task_id"]), request_sha256=str(binding["request_sha256"]),
-        arm=str(binding["arm"]), sample=int(binding["sample"]),
-        environment_sha256=str(binding["environment"]["environment_sha256"]),
-        attempt_id=attempt_id, checkpoint_sha256=checkpoint_sha, byte_length=len(checkpoint_bytes),
-    )
-    checkpoint_rel = f"tasks/{binding['task_id']}/attempts/{attempt_id}/checkpoints/{checkpoint_sha}.json"
-    seal_rel = checkpoint_rel[:-5] + ".seal.json"
-    checkpoint_artifact = journal.write_immutable(
-        root, checkpoint_rel, checkpoint_bytes, role="checkpoint",
-        durability_witness=durability_witness,
-    )
-    seal_bytes = _record_bytes(seal_doc)
-    seal_artifact = journal.write_immutable(
-        root, seal_rel, seal_bytes, role="checkpoint_seal",
-        durability_witness=durability_witness,
-    )
-    reference = {
-        "task_id": binding["task_id"], "request_sha256": binding["request_sha256"],
-        "arm": binding["arm"], "sample": binding["sample"],
-        "environment_sha256": binding["environment"]["environment_sha256"],
-        "attempt_id": attempt_id, "checkpoint": checkpoint_artifact,
-        "seal": seal_artifact, "seal_sha256": seal_doc["seal_sha256"],
-    }
-    return reference, (checkpoint_artifact, seal_artifact)
-
-
-def publish_checkpoint(
-    workspace: str | os.PathLike[str],
-    *,
-    task_id: str,
-    attempt_id: str,
-    checkpoint_bytes: bytes,
-) -> dict[str, object]:
-    """Durably publish and seal canonical checkpoint bytes before returning."""
-    root = _root_path(workspace)
-    with _workspace_lock(root, exclusive=True):
-        manifest = _require_v2(root)
-        binding = _task_binding(manifest, task_id)
-        head = _task_head(root, binding)
-        reference, artifacts = _save_checkpoint_locked(root, binding, attempt_id, checkpoint_bytes)
-        _update_head_attempt(head, attempt_id=attempt_id, checkpoint=reference)
-        operation = _attempt_change_operation(
-            attempt_id=attempt_id, checkpoint=reference, artifacts=artifacts,
-        )
-        _append_task_commit(root, binding, head, operation=operation)
-        _publish_task_head(root, head)
-    return reference
 
 
 def _checkpoint_is_committed(
@@ -2746,7 +1313,7 @@ def _hydrate_cma_checkpoint(
     }
 
 
-def read_checkpoint(
+def _legacy_read_checkpoint(
     workspace: str | os.PathLike[str],
     reference: Mapping[str, object],
     *,
@@ -2808,73 +1375,54 @@ def read_checkpoint(
     return _record_bytes(hydrated)
 
 
-def record_report(
-    workspace: str | os.PathLike[str],
-    report: Mapping[str, object],
-) -> None:
-    value = json.loads(_record_bytes(report))
-    _append_global_changes(_root_path(workspace), ({"field": "reports", "value": value},))
+# Discriminated domain reads share the existing schema/normalization authority.
+def _read_immutable(root, reference, *, role):
+    if reference.get("storage") == "sqlite":
+        from .sqlite_storage import read_object
+        return read_object(root, reference, role=role)
+    return journal.read_immutable(root, reference, role=role)
 
 
-def record_preparation_failure(
-    workspace: str | os.PathLike[str],
-    *,
-    error: BaseException,
-    timing: object,
-    plan_sha256: str | None = None,
-) -> None:
-    """Preserve pre-task failure timing without inventing a prepared identity."""
-    invocation_id = str(uuid.uuid4())
-    clock_binding = timing.clock_binding  # type: ignore[attr-defined]
-    measurements = tuple(
-        _measurement_document(item, clock_binding=clock_binding)
-        for item in timing.measurements  # type: ignore[attr-defined]
-    )
-    failure = {
-        "invocation_id": invocation_id,
-        "clock": clock_binding,
-        "status": "failure",
-        "prepared_sha256": None,
-        "declaration": None,
-        "request_sha256": None,
-        "plan_sha256": plan_sha256,
-        "source_analysis_sha256": None,
-        "error": _error_document(error),
-        "measurements": measurements,
-    }
-    root = _root_path(workspace)
-    root.mkdir(parents=True, exist_ok=True)
-    target = _inside(root, _RECORD_NAME)
-    with _workspace_lock(root, exclusive=True):
-        if target.is_symlink():
-            raise _integrity("Benchmark record path must not be a symlink.", path=str(target))
-        if target.exists():
-            manifest = _read_document(root)
-            if manifest.get("schema_version") != _V2:
-                raise _integrity("Historical benchmark records are read-only.", path=str(target))
-        else:
-            manifest = {
-                "schema": _RECORD_SCHEMA,
-                "schema_version": _V2,
-                "benchmark_sha256": None,
-                "declaration": None,
-                "plan_sha256": plan_sha256,
-                "source_analysis_sha256": None,
-                "clock": clock_binding,
-                "tasks": [],
-            }
-            _ensure_global_head(root, None)
-            _atomic_write(target, _record_bytes(manifest))
-        _ensure_global_head(root, manifest.get("benchmark_sha256"))
-        head = _global_head(root, manifest.get("benchmark_sha256"))
-        initial = manifest.get("benchmark_sha256") is None and not any(
-            change.get("field") == "preparation_failure"
-            for commit in _global_chain(root, manifest, head)
-            for change in commit.get("changes", ())
-        )
-        field = "preparation_failure" if initial else "preparation_failures"
-        _append_global_commit(
-            root, manifest, head,
-            changes=({"field": field, "value": failure},),
-        )
-        journal.publish_head(root, "journal/global/HEAD.json", head)
+def _read_domain_document(root, reference, *, schema, role, bind):
+    if reference.get("storage") == "sqlite":
+        from .sqlite_storage import read_document
+        return read_document(root, reference, schema=schema, role=role, bind=bind)
+    return journal.read_document(root, reference, schema=schema, role=role, bind=bind)
+
+
+def open_legacy_operation_record(binding):
+    return _legacy_open_operation_record(binding)
+
+
+def _merge_sqlite_legacy(root, current):
+    from .operations import _count
+    previous = _legacy_open_record(root).document()
+    document = current.document()
+    if previous.get("schema") != "scnsim.operation_benchmark":
+        raise _integrity("Historical operation record has an incompatible projection.")
+    for field, identity in (("operations", "operation_id"), ("spans", "span_id")):
+        rows = [*previous[field], *document[field]]
+        if len({row[identity] for row in rows}) != len(rows):
+            raise _integrity("Operation identity is duplicated across storage authorities.", field=field)
+        document[field] = rows
+    document["historical_records"] = previous.get("historical_records", [])
+    document["numerical_refs"] = [*previous.get("numerical_refs", []), *document.get("numerical_refs", [])]
+    clocks = {clock["id"]: clock for clock in [*previous.get("clock_domains", []), *document.get("clock_domains", [])]}
+    document["clock_domains"] = list(clocks.values())
+    document["counts"] = {"operations":len(document["operations"]),"spans":len(document["spans"]),
+        "operation_status":_count(document["operations"],"status"),
+        "span_kind":_count(document["spans"],"kind"),
+        "historical_kind":previous.get("counts", {}).get("historical_kind", {})}
+    return BenchmarkResult.from_document(root, document)
+
+
+# One current writer; historical format handlers above are explicitly readonly.
+from .sqlite_storage import (
+    TaskWriter, append_event, begin_attempt, begin_task_writer, bind_operation,
+    bind_operation_attempt, commit_barrier, complete_operation, ensure_operation_task,
+    ensure_task, find_operation_success, finish_operation, flush_completed,
+    initialize_operation_record, open_record, operation_task_record, query_operation_rows,
+    read_checkpoint, read_operation_success, record_operation_event,
+    recover_operation_workspace, start_operation, store_operation_request, task_record,
+    update_attempt, write_artifact,
+)

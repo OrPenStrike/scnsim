@@ -7,6 +7,7 @@ pure result projection. It never creates a Julia request, process or receipt.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from uuid import uuid4
 from contextlib import nullcontext
 import sys
@@ -29,6 +30,15 @@ def _decode(success, *, decoder, prepared_analysis, bound_spec):
         attempt_sha256=success["attempt_sha256"], result_sha256=success["result_sha256"],
         bound_spec=bound_spec,
     )
+
+
+def _acknowledge_spans(trace, ack) -> None:
+    """Advance the trace cursor only for rows the storage commit confirms."""
+    if not isinstance(ack, Mapping) or ack.get("committed") is not True:
+        return
+    rows = ack.get("committed_spans", ())
+    if rows:
+        trace.mark_spans_persisted(tuple(rows))
 
 
 def resolve_jax_operation(*, binding, prepared_analysis, decoder, bound_spec):
@@ -64,7 +74,8 @@ def _notify(on_progress, request, *, phase, generation, best_cost, reused=False,
 
 
 def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
-                          on_progress=None, checkpoint_policy="generation", resume_from=None, trace):
+                          on_progress=None, checkpoint_policy="generation", resume_from=None,
+                          commit_every_generations=1, trace):
     """Execute or reuse one ordinary request, with callbacks outside storage locks."""
     request = prepared_analysis.request()
     request_sha = prepared_analysis.request_sha256
@@ -72,6 +83,17 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
     if resume_from is not None and (not optimization or checkpoint_policy != "generation"):
         raise RuntimePreparationError("Only generation-checkpointed JAX Optimization can resume",
                                       stage="resume_prepare")
+
+    def notify_committed_generation(ack):
+        if not optimization or ack.get("committed") is not True:
+            return
+        generation = ack.get("latest_generation")
+        if not isinstance(generation, int) or isinstance(generation, bool):
+            return
+        committed_best_cost = float64_from_hex(ack["best_cost_f64"])
+        _notify(on_progress, request, phase="generation", generation=generation,
+                best_cost=committed_best_cost, trace=trace)
+
     # A resume is an explicit request to continue its exact state, never a cache
     # lookup that silently disregards the supplied checkpoint.
     if resume_from is None:
@@ -82,15 +104,19 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             trace.bind(operation=request["operation"], request_sha256=request_sha,
                        task_id=success["task_id"], environment_sha256=success["environment_sha256"],
                        attempt_id=None, details={"cache_hit": True, "checkpoint_policy": checkpoint_policy,
-                                                 "checkpoint_available": success["checkpoint_available"]})
+                                                 "checkpoint_available": success["checkpoint_available"],
+                                                 "requested_commit_every_generations": (
+                                                     commit_every_generations if optimization else None
+                                                 ),
+                                                 "commit_every_generations": None})
             trace.add_numerical_ref(success["result_ref"])
             # Cache-hit trace rows are global operation facts; no fictitious
             # numerical attempt is allocated to store these observations.
             with binding.writer():
-                storage.record_operation_event(binding, {"event": "cache_hit", "operation_id": trace.operation_id,
+                ack = storage.record_operation_event(binding, {"event": "cache_hit", "operation_id": trace.operation_id,
                     "checkpoint_policy": checkpoint_policy, "checkpoint_available": success["checkpoint_available"],
                     "result": success["result_ref"], "spans": list(trace.pending_spans())})
-            trace.mark_spans_persisted(trace.pending_spans())
+            _acknowledge_spans(trace, ack)
             if optimization:
                 projection = success["projection"]
                 best = next(row for row in (projection["baseline"], *projection["evaluations"])
@@ -126,6 +152,7 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             backend="jax", precision=precision, resources=resources,
             algorithm_id=request["runtime_semantic"]["algorithm_id"],
             environment_sha256=environment_sha, checkpoint_policy=checkpoint_policy,
+            commit_every_generations=commit_every_generations,
         )
         workspace = storage.operation_workspace(binding)
         checkpoint = None
@@ -133,37 +160,55 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             with trace.span("checkpoint_read"):
                 with binding.reader():
                     checkpoint = record_document(storage.read_checkpoint(
-                        workspace, resume_from, expected_task_id=task_id, expected_request_sha256=request_sha,
+                        workspace, resume_from, binding=binding, expected_task_id=task_id,
+                        expected_request_sha256=request_sha,
                         expected_arm=arm, expected_sample=0, expected_environment_sha256=environment_sha,
                     ))
         with binding.writer():
-            request_ref = storage.write_artifact(workspace, f"requests/{request_sha}/request.json",
-                                                 prepared_analysis.request_bytes, role="operation_request")
+            request_ref = storage.store_operation_request(
+                binding, request_sha256=request_sha, request_bytes=prepared_analysis.request_bytes,
+            )
         trace.bind(operation=request["operation"], request_sha256=request_sha, task_id=task_id,
                    environment_sha256=environment_sha, attempt_id=None,
-                   details={"cache_hit": False, "checkpoint_policy": checkpoint_policy, "request": request_ref})
+                   details={"cache_hit": False, "checkpoint_policy": checkpoint_policy,
+                            "requested_commit_every_generations": (
+                                commit_every_generations if optimization else None
+                            ),
+                            "commit_every_generations": (
+                                commit_every_generations if optimization else None
+                            ),
+                            "request": request_ref})
         with binding.writer():
             storage.ensure_operation_task(binding, {
                 "task_id": task_id, "request_sha256": request_sha, "arm": arm, "sample": 0,
                 "attempts": [], "events": [], "measurements": [], "environment": environment, "artifacts": [request_ref],
             })
             attempt_id = str(uuid4())
-            storage.begin_attempt(workspace, task_id=task_id, attempt_id=attempt_id, resume_from=resume_from)
+            storage.begin_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+                                  resume_from=resume_from)
         trace.set_attempt(attempt_id)
         with binding.writer():
-            writer = storage.begin_task_writer(workspace, task_id=task_id, attempt_id=attempt_id,
+            writer = storage.begin_task_writer(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
                                                diagnostics="boundary", checkpoint_document=checkpoint,
+                                               commit_every_generations=commit_every_generations,
                                                phase_scope=lambda kind, details: trace.span(kind, details=details))
-            storage.update_attempt(workspace, task_id=task_id, attempt_id=attempt_id, status="running")
+            storage.update_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+                                   status="running")
         best_cost = float64_from_hex(checkpoint["best"]["cost_f64"]) if checkpoint else None
 
         def emit(kind, payload):
             nonlocal best_cost
             value = {**payload, "attempt_id": attempt_id}
             if kind in {"baseline_ready", "generation_ready"}:
-                details = {"barrier": kind, "checkpoint_policy": checkpoint_policy}
+                details = {"barrier": kind, "checkpoint_policy": checkpoint_policy,
+                           "commit_every_generations": (
+                               commit_every_generations if optimization else None
+                           )}
                 if kind == "generation_ready":
                     details["generation"] = payload["generation"]
+                    # Persist only the completed-boundary best value in the
+                    # generation ACK; an incomplete later population must not
+                    # leak into a callback after an error-tail commit.
                 # This span closes after handing off the existing rows, so its
                 # own row remains pending until a later boundary/finalization.
                 with trace.span("diagnostic_archive", details=details):
@@ -174,13 +219,17 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                     with binding.writer():
                         with trace.span("evidence_checkpoint_commit", details=details):
                             _, ack = storage.commit_barrier(workspace, writer=writer, kind=kind, payload=value)
+                _acknowledge_spans(trace, ack)
                 if ack["checkpoint"] is not None:
                     trace.add_numerical_ref(ack["checkpoint"])
                 if optimization:
                     if kind == "baseline_ready":
                         best_cost = float64_from_hex(payload["baseline"]["cost_f64"])
-                    _notify(on_progress, request, phase="initial" if kind == "baseline_ready" else "generation",
-                            generation=0 if kind == "baseline_ready" else payload["generation"], best_cost=best_cost, trace=trace)
+                        if ack.get("committed") is True:
+                            _notify(on_progress, request, phase="initial", generation=0,
+                                    best_cost=best_cost, trace=trace)
+                    else:
+                        notify_committed_generation(ack)
                 return ack
             trace.publish_pending_spans(writer)
             if optimization and kind == "evaluation":
@@ -188,9 +237,13 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                 if best_cost is None or cost < best_cost:
                     best_cost = cost
             if kind in storage._DIAGNOSTIC_EVENTS:
-                return storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
+                event = storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
+                _acknowledge_spans(trace, getattr(writer, "last_ack", None))
+                return event
             with binding.writer():
-                return storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
+                event = storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
+            _acknowledge_spans(trace, getattr(writer, "last_ack", None))
+            return event
 
         if checkpoint is not None:
             trace.add_numerical_ref(resume_from)
@@ -200,22 +253,22 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             _notify(on_progress, request, phase="resume", generation=checkpoint["generation"], best_cost=best_cost, trace=trace)
         terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
                                     checkpoint=checkpoint, checkpoint_policy=checkpoint_policy)
+        if writer is not None:
+            trace.publish_pending_spans(writer)
+            with binding.writer():
+                tail_ack = storage.flush_completed(workspace, writer=writer, reason="terminal")
+            _acknowledge_spans(trace, tail_ack)
+            if tail_ack.get("checkpoint") is not None:
+                trace.add_numerical_ref(tail_ack["checkpoint"])
+            notify_committed_generation(tail_ack)
         with trace.span("result_publish"):
             with binding.writer():
-                result_ref = storage.write_artifact(workspace, f"tasks/{task_id}/attempts/{attempt_id}/result.json",
-                                                   record_bytes(terminal), role="operation_result")
-                storage.append_event(workspace, task_id=task_id, kind="completed", writer=writer, force=True,
-                                     payload={"attempt_id": attempt_id, "result": result_ref})
+                result_ref, result_ack = storage.complete_operation(
+                    binding, writer=writer, terminal_bytes=record_bytes(terminal),
+                )
+                _acknowledge_spans(trace, result_ack)
                 completed = True
-                storage.update_attempt(workspace, task_id=task_id, attempt_id=attempt_id, status="success",
-                                       artifacts=(result_ref,))
-                # Selection affects future lookup; this call returns its own attempt.
-                storage.select_operation_success(binding, task_id, attempt_id)
         trace.add_numerical_ref(result_ref)
-        trace.publish_pending_spans(writer)
-        if writer.pending:
-            with binding.writer():
-                writer.flush()
         if optimization:
             _notify(on_progress, request, phase="complete", generation=terminal["completed_generations"], best_cost=best_cost, trace=trace)
         with trace.span("result_decode"):
@@ -227,19 +280,31 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             try:
                 if writer is not None:
                     trace.publish_pending_spans(writer)
-                    if writer.pending:
-                        with binding.writer():
-                            writer.flush()
+                    with binding.writer():
+                        tail_ack = storage.flush_completed(workspace, writer=writer, reason="failure")
+                    _acknowledge_spans(trace, tail_ack)
+                    if tail_ack.get("checkpoint") is not None:
+                        trace.add_numerical_ref(tail_ack["checkpoint"])
+                    try:
+                        notify_committed_generation(tail_ack)
+                    except BaseException as callback_error:
+                        error.add_note(
+                            f"Generation callback during failure flush also failed: "
+                            f"{type(callback_error).__name__}: {callback_error}"
+                        )
+                    trace.publish_pending_spans(writer)
                 failure = storage._error_document(error)
                 interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
                 with binding.writer():
                     storage.append_event(workspace, task_id=task_id, kind="interrupted" if interrupted else "failed",
                                          payload={"attempt_id": attempt_id,
                                                   "interruption" if interrupted else "failure": failure}, writer=writer, force=True)
-                    storage.update_attempt(workspace, task_id=task_id, attempt_id=attempt_id,
+                    storage.update_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
                                            status="interrupted" if interrupted else "failure",
                                            interruption=failure if interrupted else None,
                                            failure=None if interrupted else failure)
+                if writer is not None:
+                    _acknowledge_spans(trace, getattr(writer, "last_ack", None))
             except BaseException as recording_error:
                 error.add_note(f"Operation failure recording also failed: {type(recording_error).__name__}: {recording_error}")
         raise
@@ -247,11 +312,6 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
         primary = sys.exception()
         try:
             backend.close()
-            if writer is not None and writer.publication_uncertain is None:
-                trace.publish_pending_spans(writer)
-                if writer.pending:
-                    with binding.writer():
-                        writer.flush()
         except BaseException as finalization_error:
             if primary is None:
                 raise

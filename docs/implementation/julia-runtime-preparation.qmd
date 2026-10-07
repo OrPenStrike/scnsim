@@ -21,7 +21,7 @@ there is no backend fallback. CI provisions the exact Julia explicitly before
 backend checks rather than relying on a feature call to acquire it.
 
 Normal Direct, DiagonalRoot, ResponseElement, related sweeps and Optimization
-default to same-process JAX CPU in the dev11 candidate and need no Julia.
+default to same-process JAX CPU in the dev12 candidate and need no Julia.
 Explicit `backend="julia"`, HB and Julia-only quantity families require Julia.
 `run.explain()` compiler preflight and compiled schematics also need it when
 they invoke the native compiler. Authoring, read-only result/resolve/Benchmark

@@ -811,6 +811,13 @@ class CircuitRun:
         return benchmark(self, operations=operations, method=method,
                          backend=backend, precision=precision, status=status)
 
+    def recover_workspace(self) -> None:
+        """Explicitly recover only this Run's bound Plan-leaf operation store."""
+        from .benchmark.storage import recover_operation_workspace
+
+        with self._binding.writer():
+            recover_operation_workspace(self._binding)
+
     @overload
     def optimize(
         self,
@@ -822,6 +829,7 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 1,
     ) -> OptimizationResult: ...
 
     @overload
@@ -836,6 +844,7 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 1,
     ) -> OptimizationResult: ...
 
     def optimize(
@@ -849,11 +858,20 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 1,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
         started_ns = perf_counter_ns()
         with self._operation_scope("optimize", backend, precision, started_ns) as (backend, precision, trace):
+            if isinstance(commit_every_generations, bool) or not isinstance(commit_every_generations, int):
+                raise TypeError("commit_every_generations must be a positive integer")
+            if commit_every_generations <= 0:
+                raise ValueError("commit_every_generations must be a positive integer")
+            if backend == "julia" and commit_every_generations != 1:
+                raise RuntimePreparationError(
+                    "commit_every_generations overrides require the JAX backend.", stage="runtime_prepare"
+                )
             if parameters is not None and not isinstance(parameters, ParameterSet):
                 raise TypeError(
                     "OptimizationSpec parameters must be a ParameterSet or None"
@@ -879,7 +897,8 @@ class CircuitRun:
                     backend=backend, precision=precision,
                 )
             return self._execute(prepared, bound_spec=optimization_spec, on_progress=on_progress,
-                                 checkpoint_policy=checkpoint, resume_from=resume_from, trace=trace)
+                                 checkpoint_policy=checkpoint, resume_from=resume_from,
+                                 commit_every_generations=commit_every_generations, trace=trace)
 
     @overload
     def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> DirectSolveResult | ParameterSweepResult: ...
@@ -1715,6 +1734,7 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint_policy: str = "generation",
         resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 1,
     ):
         if prepared_analysis.request()["runtime_semantic"].get("backend") == "jax":
             from .execution.jax_operation import execute_jax_operation
@@ -1722,7 +1742,8 @@ class CircuitRun:
                 binding=self._binding, plan_document=self._plan_document,
                 prepared_analysis=prepared_analysis, decoder=self._result_decoder(),
                 bound_spec=bound_spec, on_progress=on_progress,
-                checkpoint_policy=checkpoint_policy, resume_from=resume_from, trace=trace,
+                checkpoint_policy=checkpoint_policy, resume_from=resume_from,
+                commit_every_generations=commit_every_generations, trace=trace,
             )
         from .execution.coordinator import execute_prepared
 

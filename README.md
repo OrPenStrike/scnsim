@@ -20,12 +20,15 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current develop candidate is `1.0.0.dev11`, requiring Python 3.12. Normal
+The current develop candidate is `1.0.0.dev12`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
 the current Plan leaf without executing another calculation. Generation
 checkpoints and boundary diagnostics preserve recovery and numerical evidence.
+JAX Optimization accepts `commit_every_generations=1`; larger positive values
+commit completed generations in groups to the Plan leaf’s SQLite store. See the
+guide for recovery, durability and recomputation limits.
 This candidate is `CONVERGING` and does not replace the immutable Alpha trial
 snapshot; no performance or numerical acceptance is implied.
 

@@ -103,6 +103,7 @@ def operation_task_identifier(
     algorithm_id: str,
     environment_sha256: str,
     checkpoint_policy: str,
+    commit_every_generations: int = 1,
 ) -> str:
     """Bind resumable same-process work without changing numerical request identity."""
     return sha256_hex({
@@ -117,6 +118,7 @@ def operation_task_identifier(
         "algorithm_id": algorithm_id,
         "environment_sha256": environment_sha256,
         "checkpoint_policy": checkpoint_policy,
+        "commit_every_generations": commit_every_generations,
     })
 
 

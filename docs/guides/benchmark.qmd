@@ -3,7 +3,7 @@ title: "Run Operations and Read-only Benchmark"
 subtitle: "Execute with JAX or Julia, then inspect actual recorded work"
 ---
 
-**Status:** dev11 `CONVERGING` candidate. This guide describes the current
+**Status:** dev12 `CONVERGING` candidate. This guide describes the current
 implementation contract, not completed performance or numerical acceptance.
 Historical dev10 comparison records keep their original runtime identities.
 
@@ -60,26 +60,34 @@ and compiled schematics also require Julia. See
 
 ## Optimization and recovery
 
-Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics:
+Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics.
+JAX Optimization commits every generation by default:
 
 ```python
-best = run.optimize(run.original, optimization_spec, checkpoint="generation")
+best = run.optimize(run.original, optimization_spec, checkpoint="generation",
+                    commit_every_generations=1)
 ```
 
 A baseline/anchor barrier precedes candidate work. Completed generation evidence
-is ordered and durable; snapshots reference that evidence and hold exact CMA/RNG
-state. `checkpoint="off"` omits resumable snapshots, without deleting numerical
-observations, anchors or final results. Checkpoint policy does not change the
+is ordered; each commit publishes its group atomically with the latest full
+CMA/RNG state. `commit_every_generations=N` accepts a positive integer excluding
+booleans. Baseline commits separately, then every N completed post-tell
+generations commit together; a normal or handleable-error tail flushes a shorter
+group. Larger N buffers more evidence in memory and can require recomputing
+uncommitted generations after process death. `checkpoint="off"` omits resumable snapshots, without deleting numerical
+observations, anchors or final results. Checkpoint policy and commit interval do not change the
 numerical request hash; a completed result can resolve under either policy.
 A cache-hit operation records requested policy and actual checkpoint availability
 without manufacturing missing snapshots.
 
 `resume_from` accepts an exact stored checkpoint reference from the same
-operation/task identity and generation policy. An off-policy interrupted request
+operation/task identity, generation policy and commit interval. An off-policy interrupted request
 has no resumable state. Resume verifies identities and committed references;
 it does not migrate old source state. Standalone root anchors are not CMA
-checkpoints. The public optimization callback is notified only after its event
-is durable; callback exceptions and KeyboardInterrupt keep their ownership.
+checkpoints. A generation callback is notified once per commit, using its latest
+committed generation, after durability acknowledgement and outside locks.
+Intermediate generations do not receive deferred callbacks; callback exceptions
+and KeyboardInterrupt keep their ownership.
 An unflushed hard-kill diagnostic tail remains unknown.
 
 Retrieve a committed reference through the public read-only record, selecting the
@@ -89,7 +97,8 @@ operation you intend to resume:
 operation = run.benchmark(operations=operation_id).document()["operations"][0]
 checkpoint_ref = operation["details"]["checkpoint"]
 best = run.optimize(run.original, optimization_spec,
-                    checkpoint="generation", resume_from=checkpoint_ref)
+                    checkpoint="generation", commit_every_generations=1,
+                    resume_from=checkpoint_ref)
 ```
 
 `operation_id` comes from the `operations` rows returned by `run.benchmark()`.
@@ -99,12 +108,25 @@ actual attempt, or its exact resume source when no newer snapshot exists;
 references the selected success's actual checkpoint. This read projection also
 reconstructs committed state after a hard kill without requiring a finished
 operation row. An interrupted `checkpoint="off"` operation has no resumable
-reference. The reference is passed
-unchanged, with fields `task_id`, `request_sha256`, `arm`, `sample`,
-`environment_sha256`, `attempt_id`, `checkpoint`, `seal`, and `seal_sha256`.
-The nested `checkpoint` and `seal` artifact references each contain `path`,
-`role`, `byte_length`, and `sha256`; paths are relative to the operation journal.
-No private storage import or manual checkpoint-file reconstruction is needed.
+reference. Pass the complete public reference unchanged; do not reconstruct its
+checkpoint or ownership fields.
+For current SQLite records, content references use `schema_version=3`,
+`storage="sqlite"`, `database="operations.sqlite3"`, `role`, `byte_length` and
+`sha256`. The hash binds canonical object bytes, not the mutable database file.
+Pass the public reference unchanged; historical file references remain readonly.
+No private storage import or manual checkpoint reconstruction is needed.
+Use the same commit interval when resuming.
+
+Current JAX operation evidence lives in the bound Plan leaf’s
+`operations/operations.sqlite3`, using DELETE journaling and EXTRA synchronization.
+Readonly `resolve`, Benchmark and `BenchmarkResult.open` do not create, migrate
+or repair a database. If they raise `WorkspaceRecoveryRequiredError`, explicitly
+call `run.recover_workspace()` on the bound Run, then retry the readonly operation.
+Recovery is limited to that leaf; an absent database in a valid leaf is a no-op.
+Preserve the whole leaf, including any journal, when relocating it. Content
+references remain relative to its database and are not rewritten. This is not a
+physical power-loss guarantee. Explicit Julia retains its native storage and
+verification contract.
 
 ## Read operation evidence
 

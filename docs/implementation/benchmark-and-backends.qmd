@@ -3,11 +3,59 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, dev11 candidate contract. The following interfaces are
+**Status:** CONVERGING, dev12 candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
 or stabilization are assigned.
+
+## SQLite workspace candidate (dev12)
+
+The new CONVERGING workspace scope replaces the operation writer with one
+stdlib SQLite database per Plan leaf at `operations/operations.sqlite3`, using
+DELETE journaling and EXTRA synchronization. This is a target contract, not a
+claim that the implementation or observations below have completed. Dev11
+outputs remain historical evidence; the new goal does not rerun that writer or
+its old-flow tests. Historical workspace readers remain read-only, with no
+migration or fallback writer.
+
+JAX Optimization adds `commit_every_generations=1`, a positive integer excluding
+booleans. Baseline
+evidence commits separately. After N completed post-tell generations, one
+transaction publishes their ordered numerical records and the latest full
+CMA/RNG state. A short final group commits at the normal tail or a handleable
+error; incomplete generation work is never presented as a resumable generation.
+Checkpoint off retains evidence without fabricating a resumable snapshot. The
+interval binds operation/task/checkpoint identity, not the numerical request,
+so completed numeric cache lookup stays independent of commit granularity.
+Nondefault intervals are unsupported for explicit Julia and fail before launch.
+Numerical algorithms, precision, candidate order and winner meaning do not change.
+
+A generation callback is delivered once per committed group, for its latest
+committed generation, after commit acknowledgement and outside storage locks.
+Intermediate generations do not receive deferred callbacks. Baseline and separate
+terminal notifications retain their existing roles. Original callback, numerical and
+interruption errors remain primary if recording also fails. A transaction has a
+unique identity: an uncertain commit is reconciled from that identity, never
+blindly replayed. Canonical byte objects have content hashes; references identify
+the object inside the database, not a hash of its changing database file.
+
+Readonly `resolve`, Benchmark and public reopen never repair SQLite state.
+`WorkspaceRecoveryRequiredError` directs callers to explicit
+`run.recover_workspace()` when recovery is required. This method verifies the
+Run’s bound Plan leaf and recovers only its existing operation store. An absent
+operation database in a valid leaf is a no-op; recovery never creates a database
+or migrates historical data. A hot journal requiring rollback raises this typed
+error from readonly access rather than triggering an implicit repair. Operation/span
+indexes support timeline reads without replaying all numerical candidates.
+Existing clocks, result units/axes, partial provenance and rendering semantics
+remain; no UI redesign or physical power-loss promise is introduced.
+
+The bounded new performance observations are 14 CPU1 current-disk tasks and four
+SSD tasks over the existing LC and M80-fixed models. Separate authorized
+fault/state/function/render observations use the integrated candidate. Prior
+numbers remain classified historical; no speed or numerical acceptance
+threshold is added.
 
 ## Public operations and runtime configuration
 
@@ -98,15 +146,25 @@ inventing a completed attempt or result. Native child-clock alignment remains
 unavailable unless actual clock evidence exists. Trace binding is published only
 after the native coordinator releases its evidence ownership lock.
 
-Generation blocks own completed ordered evidence; snapshots contain CMA/RNG
-state and references to the baseline/anchor and committed cache/history blocks.
-A pre-HEAD-replacement failure leaves the previous selection. A post-replacement
-failure reconciles the selected HEAD and durability status; uncertain/new
-selected deltas are not blindly replayed. Unreferenced files do not establish a
-completed generation. Existing directory/file synchronization, lock, integrity
-and original-error boundaries remain. No rollback or physical power-loss promise
-is added. Diagnostic persistence failures must not mask a primary numerical,
-callback or interruption exception.
+SQLite transactions own completed ordered evidence; snapshots contain CMA/RNG
+state and references to the baseline/anchor and committed cache/history objects.
+DELETE journaling with EXTRA synchronization uses SQLite’s commit and rollback
+mechanisms, without promising survival of arbitrary physical power loss or
+storage failure. An uncertain commit is reconciled by its unique transaction
+identity; a selected or unknown delta is never blindly replayed. Uncommitted
+objects do not establish a completed generation. Diagnostic persistence failures
+must not mask a primary numerical, callback or interruption exception.
+
+Grouped generations remain in process memory until commit. Increasing N can
+increase buffered evidence and recomputation after process death: only the latest
+committed full CMA/RNG snapshot is resumable, and an uncommitted tail is unknown.
+Normal completion or a handleable interruption flushes completed generations; a
+SIGKILL cannot run that flush. SQLite object references identify canonical bytes
+by role, length and hash within the relative database name, so relocation does
+not require rewriting content references. Relocation must preserve the complete
+Plan leaf, including SQLite journal state; readonly open performs no recovery.
+Explicit Julia retains its existing native evidence files and verification
+contract; this operation-store replacement does not rewrite native receipts.
 
 ## Built-in read-only Benchmark
 
@@ -177,11 +235,12 @@ Workspace owns durable evidence, trace publication, resume verification and
 read-only typed decoding. Visualization owns timeline projection and rendering.
 No report, kernel cache or trace creates a competing numerical authority.
 
-Required installed-wheel observations are those in the exact dev11 work packet:
-Julia-blocked normal Direct/root/Optimization/sweep, explicit/missing Julia,
-original/retained/transformed Views, both precisions, cold versus successive
-same-shape different requests, CPU profiles, exact resume and interruption/fault
-ownership, old/new read-only projection, actual HTML inspection and required
-platform CI. They remain pending until source-bound receipts exist. No speed,
+Required new installed-wheel observations follow the exact dev12 work packet:
+Julia-blocked Direct/root/Optimization/sweep, grouped commit resume/tail/off and
+callback/interruption ownership, actual SQLite capacity/transaction fault cases,
+new/partial/relocated readonly projection and HTML inspection, and the 18 new
+performance tasks described above. Unchanged dev11 observations are historical
+evidence, not rerun or relabeled as dev12. New observations remain pending until
+source-bound receipts exist. No speed,
 accuracy, memory, convergence or mesh Gate is implied. GPU, Windows Workspace,
 Float16/mixed precision and new algorithms are excluded.

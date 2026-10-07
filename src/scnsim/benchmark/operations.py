@@ -13,6 +13,7 @@ from time import perf_counter_ns
 from typing import Iterator, Mapping, Sequence
 from uuid import uuid4
 
+from ..errors import EvidenceIntegrityError
 from .prepared import record_bytes
 
 
@@ -66,6 +67,7 @@ class OperationRecorder:
         self._stack: list[str] = [self.root_span_id]
         self._spans: list[dict[str, object]] = []
         self._persisted_spans = 0
+        self._handed_spans = 0
         self._entered = False
         self._closed = False
         self._request_sha256: str | None = None
@@ -111,6 +113,7 @@ class OperationRecorder:
                             {
                                 "event": "spans_archived",
                                 "operation_id": self.operation_id,
+                                "row": self.root_row(),
                                 "spans": [dict(row) for row in pending],
                             },
                         )
@@ -177,15 +180,7 @@ class OperationRecorder:
         from .storage import bind_operation
 
         with self.binding.writer():  # type: ignore[attr-defined]
-            bind_operation(
-                self.binding,
-                operation_id=self.operation_id,
-                operation=operation,
-                request_sha256=request_sha256,
-                task_id=task_id,
-                environment_sha256=environment_sha256,
-                attempt_id=attempt_id,
-            )
+            bind_operation(self.binding, row=self.root_row())
 
     def set_attempt(self, attempt_id: str | None) -> None:
         """Record the actual attempt allocated after a request cache lookup."""
@@ -197,25 +192,31 @@ class OperationRecorder:
         with self.binding.writer():  # type: ignore[attr-defined]
             bind_operation_attempt(
                 self.binding,
-                operation_id=self.operation_id,
-                attempt_id=attempt_id,
+                row=self.root_row(),
             )
 
     def add_numerical_ref(self, reference: Mapping[str, object]) -> None:
         self._numerical_refs.append(dict(reference))
 
     def publish_pending_spans(self, writer: object) -> tuple[dict[str, object], ...]:
-        """Hand buffered spans to TaskWriter in order, acknowledging each row."""
-        rows = self.pending_spans()
+        """Stage unhanded spans for a writer without claiming they are durable."""
+        rows = tuple(dict(row) for row in self._spans[self._handed_spans :])
         appended: list[dict[str, object]] = []
         for row in rows:
             writer.append_event(  # type: ignore[attr-defined]
                 kind="operation_span",
                 payload={"operation_id": self.operation_id, "span": row},
             )
-            self.mark_spans_persisted((row,))
+            self._handed_spans += 1
             appended.append(row)
         return tuple(appended)
+
+    def handed_pending_spans(self) -> tuple[dict[str, object], ...]:
+        """Return spans staged for a writer that have not received commit ACK."""
+        return tuple(
+            dict(row)
+            for row in self._spans[self._persisted_spans : self._handed_spans]
+        )
 
     @property
     def root_start_tick_ns(self) -> int:
@@ -296,6 +297,7 @@ class OperationRecorder:
         ]:
             raise RuntimeError("operation span persistence cursor no longer matches its committed prefix")
         self._persisted_spans += len(rows)
+        self._handed_spans = max(self._handed_spans, self._persisted_spans)
 
     def root_row(self) -> dict[str, object]:
         return {
@@ -385,12 +387,39 @@ def _count(values: Sequence[Mapping[str, object]], key: str) -> dict[str, int]:
     return dict(sorted(result.items()))
 
 
+def _matching_operation(
+    row: Mapping[str, object],
+    *,
+    selected_ids: set[str] | None,
+    method: str | None,
+    backend: str | None,
+    precision: str | None,
+    status: str | None,
+) -> bool:
+    return (
+        (selected_ids is None or row.get("operation_id") in selected_ids)
+        and (method is None or row.get("method") == method)
+        and (backend is None or row.get("backend") == backend)
+        and (precision is None or row.get("precision") == precision)
+        and (status is None or row.get("status") == status)
+    )
+
+
+def _selected_operation_ids(operations: Sequence[str] | str | None) -> set[str] | None:
+    if operations is None:
+        return None
+    if isinstance(operations, str):
+        return {operations}
+    return set(operations)
+
+
 def project_operation_record(
     source: Mapping[str, object] | None,
     *,
     workspace: Path,
     plan_sha256: object,
     workspace_instance_id: object,
+    storage_origin: Mapping[str, object] | None = None,
     operations: Sequence[str] | str | None = None,
     method: str | None = None,
     backend: str | None = None,
@@ -516,19 +545,17 @@ def project_operation_record(
                 if isinstance(span, Mapping) and isinstance(operation_id, str):
                     raw_spans.append(dict(span, operation_id=operation_id))
 
-    if operations is None:
-        selected_ids = None
-    elif isinstance(operations, str):
-        selected_ids = {operations}
-    else:
-        selected_ids = set(operations)
+    selected_ids = _selected_operation_ids(operations)
     selected_roots = [
         row for row in roots
-        if (selected_ids is None or row.get("operation_id") in selected_ids)
-        and (method is None or row.get("method") == method)
-        and (backend is None or row.get("backend") == backend)
-        and (precision is None or row.get("precision") == precision)
-        and (status is None or row.get("status") == status)
+        if _matching_operation(
+            row,
+            selected_ids=selected_ids,
+            method=method,
+            backend=backend,
+            precision=precision,
+            status=status,
+        )
     ]
     selected_operation_ids = {
         str(row["operation_id"]) for row in selected_roots
@@ -538,6 +565,18 @@ def project_operation_record(
         row for row in raw_spans
         if row.get("operation_id") in selected_operation_ids
     ]
+    if storage_origin is None and source is not None:
+        storage_origin = {
+            "kind": "file_journal",
+            "version": source.get("schema_version"),
+            "locator": "benchmark.json",
+        }
+    if storage_origin is not None:
+        origin = dict(storage_origin)
+        for row in selected_roots:
+            row["storage_origin"] = dict(origin)
+        for row in selected_spans:
+            row["storage_origin"] = dict(origin)
     selected_history = []
     for index, event in enumerate(raw_events):
         operation_id = _operation_event_identity(event)
@@ -584,6 +623,87 @@ def project_operation_record(
     return BenchmarkResult.from_document(workspace, document)
 
 
+def project_indexed_operation_rows(
+    rows: Mapping[str, object] | None,
+    *,
+    workspace: Path,
+    plan_sha256: object,
+    workspace_instance_id: object,
+    operations: Sequence[str] | str | None = None,
+    method: str | None = None,
+    backend: str | None = None,
+    precision: str | None = None,
+    status: str | None = None,
+):
+    """Project selected decoded operation and span rows from the SQL index."""
+    selected_ids = _selected_operation_ids(operations)
+    if rows is None:
+        source_operations = source_spans = ()
+    else:
+        source_operations = rows["operations"]
+        source_spans = rows["spans"]
+    selected_roots = [
+        dict(row)
+        for row in source_operations  # type: ignore[union-attr]
+        if _matching_operation(
+            row,
+            selected_ids=selected_ids,
+            method=method,
+            backend=backend,
+            precision=precision,
+            status=status,
+        )
+    ]
+    selected_operation_ids = {
+        str(row["operation_id"])
+        for row in selected_roots
+        if isinstance(row.get("operation_id"), str)
+    }
+    selected_spans = [
+        dict(row)
+        for row in source_spans  # type: ignore[union-attr]
+        if row.get("operation_id") in selected_operation_ids  # type: ignore[union-attr]
+    ]
+    origin = {"kind": "sqlite", "version": 3, "locator": "operations.sqlite3"}
+    for row in selected_roots:
+        row["storage_origin"] = dict(origin)
+    for row in selected_spans:
+        row["storage_origin"] = dict(origin)
+
+    clocks: dict[str, dict[str, object]] = {}
+    for row in [*selected_roots, *selected_spans]:
+        clock = row.get("clock")
+        if isinstance(clock, Mapping) and isinstance(clock.get("id"), str):
+            clocks[str(clock["id"])] = dict(clock)
+    numerical_refs = [
+        {"operation_id": row.get("operation_id"), "reference": dict(reference)}
+        for row in selected_roots
+        for reference in row.get("numerical_refs", ())
+        if isinstance(reference, Mapping)
+    ]
+    document: dict[str, object] = {
+        "schema": "scnsim.operation_benchmark",
+        "schema_version": 1,
+        "plan_sha256": plan_sha256,
+        "workspace_instance_id": workspace_instance_id,
+        "operations": selected_roots,
+        "spans": selected_spans,
+        "counts": {
+            "operations": len(selected_roots),
+            "spans": len(selected_spans),
+            "operation_status": _count(selected_roots, "status"),
+            "span_kind": _count(selected_spans, "kind"),
+            "historical_kind": {},
+        },
+        "clock_domains": [clocks[key] for key in sorted(clocks)],
+        "numerical_refs": numerical_refs,
+        "historical_records": [],
+    }
+    from .models import BenchmarkResult
+
+    return BenchmarkResult.from_document(workspace, document)
+
+
 def read_operations(
     binding: object,
     *,
@@ -593,20 +713,113 @@ def read_operations(
     precision: str | None = None,
     status: str | None = None,
 ):
-    """Read the Plan leaf's operation roots, spans and historical event refs."""
+    """Read file-journal history and indexed SQLite operation/span projections."""
     from . import storage
 
     with binding.reader():  # type: ignore[attr-defined]
-        record = storage.open_operation_record(binding)
-        source = None if record is None else record.document()
-    return project_operation_record(
-        source,
-        workspace=storage.operation_workspace(binding),
-        plan_sha256=getattr(binding, "plan_sha256"),
-        workspace_instance_id=getattr(binding, "workspace_instance_id"),
+        legacy_record = storage.open_legacy_operation_record(binding)
+        operation_ids = (
+            None if operations is None else (operations,) if isinstance(operations, str) else tuple(operations)
+        )
+        indexed_rows = storage.query_operation_rows(
+            binding,
+            operation_ids=operation_ids,
+            method=method,
+            backend=backend,
+            precision=precision,
+            status=status,
+        )
+
+    workspace = storage.operation_workspace(binding)
+    plan_sha256 = getattr(binding, "plan_sha256")
+    workspace_instance_id = getattr(binding, "workspace_instance_id")
+    legacy_projection = project_operation_record(
+        None if legacy_record is None else legacy_record.document(),
+        workspace=workspace,
+        plan_sha256=plan_sha256,
+        workspace_instance_id=workspace_instance_id,
         operations=operations,
         method=method,
         backend=backend,
         precision=precision,
         status=status,
-    )
+    ).document()
+    indexed_projection = project_indexed_operation_rows(
+        indexed_rows,
+        workspace=workspace,
+        plan_sha256=plan_sha256,
+        workspace_instance_id=workspace_instance_id,
+        operations=operations,
+        method=method,
+        backend=backend,
+        precision=precision,
+        status=status,
+    ).document()
+
+    legacy_operations = legacy_projection["operations"]
+    indexed_operations = indexed_projection["operations"]
+    all_operations = [*legacy_operations, *indexed_operations]  # type: ignore[misc]
+    seen_operation_ids: dict[str, Mapping[str, object]] = {}
+    for row in all_operations:
+        if not isinstance(row, Mapping) or not isinstance(row.get("operation_id"), str):
+            continue
+        operation_id = str(row["operation_id"])
+        previous = seen_operation_ids.get(operation_id)
+        if previous is not None:
+            raise EvidenceIntegrityError(
+                "An operation identifier is duplicated across storage projections.",
+                stage="benchmark_record",
+                evidence={
+                    "operation_id": operation_id,
+                    "storage_origins": [
+                        dict(previous.get("storage_origin", {}))
+                        if isinstance(previous.get("storage_origin"), Mapping)
+                        else None,
+                        dict(row.get("storage_origin", {}))
+                        if isinstance(row.get("storage_origin"), Mapping)
+                        else None,
+                    ],
+                },
+            )
+        seen_operation_ids[operation_id] = row
+
+    all_spans = [
+        *legacy_projection["spans"],
+        *indexed_projection["spans"],
+    ]
+    clocks: dict[str, dict[str, object]] = {}
+    for row in [*all_operations, *all_spans]:
+        if not isinstance(row, Mapping):
+            continue
+        clock = row.get("clock")
+        if isinstance(clock, Mapping) and isinstance(clock.get("id"), str):
+            clocks[str(clock["id"])] = dict(clock)
+    historical = legacy_projection["historical_records"]
+    numerical_refs = [
+        {"operation_id": row.get("operation_id"), "reference": dict(reference)}
+        for row in all_operations
+        if isinstance(row, Mapping)
+        for reference in row.get("numerical_refs", ())
+        if isinstance(reference, Mapping)
+    ]
+    document: dict[str, object] = {
+        "schema": "scnsim.operation_benchmark",
+        "schema_version": 1,
+        "plan_sha256": plan_sha256,
+        "workspace_instance_id": workspace_instance_id,
+        "operations": all_operations,
+        "spans": all_spans,
+        "counts": {
+            "operations": len(all_operations),
+            "spans": len(all_spans),
+            "operation_status": _count(all_operations, "status"),  # type: ignore[arg-type]
+            "span_kind": _count(all_spans, "kind"),  # type: ignore[arg-type]
+            "historical_kind": _count(historical, "kind"),
+        },
+        "clock_domains": [clocks[key] for key in sorted(clocks)],
+        "numerical_refs": numerical_refs,
+        "historical_records": historical,
+    }
+    from .models import BenchmarkResult
+
+    return BenchmarkResult.from_document(workspace, document)
