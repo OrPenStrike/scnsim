@@ -3,6 +3,8 @@
 The Python task owns candidate order, continuation and durable state. Numerical
 adapters consume these descriptors; they do not capture Plans or mutate Views.
 Arrays have immutable byte backing, so backend preparation cannot modify them.
+BenchmarkSpec owns persistence policy declarations; task/storage own their durable
+realization. These policies never change numerical or CMA scheduling semantics.
 """
 
 from __future__ import annotations
@@ -59,6 +61,9 @@ class BenchmarkSpec:
 
     cpu_threads declares physical affinity profiles and Python/JAX resources.
     Each native Julia count defaults independently to that task's quota.
+    checkpoint controls CMA resume snapshots, not required baseline/root anchors.
+    Omitted diagnostics resolves to boundary for common Python arms and immediate
+    for original Julia. Notified events are always durable first.
     """
 
     arms: tuple[Arm, ...] = (
@@ -72,8 +77,18 @@ class BenchmarkSpec:
     cohort_bytes: bytes = b"[]"
     julia_threads: int | None = None
     julia_blas_threads: int | None = None
+    checkpoint: Literal["generation", "off"] = "generation"
+    diagnostics: Literal["immediate", "boundary"] | None = None
 
     def __post_init__(self) -> None:
+        if self.checkpoint not in ("generation", "off"):
+            raise ValueError("checkpoint must be generation or off")
+        if self.diagnostics not in (None, "immediate", "boundary"):
+            raise ValueError("diagnostics must be immediate, boundary, or None")
+        if "original_julia" in self.arms and (
+            self.checkpoint != "generation" or self.diagnostics not in (None, "immediate")
+        ):
+            raise ValueError("original_julia requires generation checkpoints and immediate diagnostics")
         for name in ("julia_threads", "julia_blas_threads"):
             value = getattr(self, name)
             if value is None:

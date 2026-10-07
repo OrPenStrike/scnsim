@@ -94,7 +94,15 @@ class PreparedBenchmark:
         analysis: PreparedAnalysis,
         benchmark: BenchmarkSpec,
     ) -> PreparedBenchmark:
+        # Persistence strings bind the same declaration as numerical/resource policy;
+        # child dispatch consumes them without a separate mutable policy authority.
         policy = asdict(benchmark)
+        # Resolve omitted policy once; every arm has a concrete canonical value.
+        policy["diagnostics"] = {
+            arm: (benchmark.diagnostics if benchmark.diagnostics is not None
+                  else "immediate" if arm == "original_julia" else "boundary")
+            for arm in benchmark.arms
+        }
         policy["cohort"] = [canonical_parameter_set(point) for point in json.loads(policy.pop("cohort_bytes"))]
         mesh = policy["mesh"]
         mesh["derivation"] = json.loads(mesh.pop("derivation_bytes"))

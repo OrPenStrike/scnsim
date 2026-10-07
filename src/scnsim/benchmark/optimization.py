@@ -362,7 +362,8 @@ class Evaluator:
             self.cache[key] = {k: v for k, v in state.items() if k not in ("values", "views", "roots")}
         result, seen = [], set()
         for key in keys:
-            result.append(dict(deepcopy(self.cache[key]), cache_hit=key not in representatives or key in seen))
+            result.append(dict(deepcopy(self.cache[key]), candidate_key=key,
+                               cache_hit=key not in representatives or key in seen))
             seen.add(key)
         return result
 
@@ -462,7 +463,8 @@ def restore_cma(optimizer, record: dict) -> None:
                               rng["has_gaussian"], float64_from_hex(rng["cached_gaussian_f64"])))
 
 
-def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = None) -> dict:
+def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = None, *,
+             checkpoint_policy: str = "generation") -> dict:
     from cmaes import CMA
 
     if version("cmaes") != "0.13.1":
@@ -480,21 +482,22 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         restore_cma(optimizer, checkpoint["cma"])
         evaluator.anchors = {key: complex_value(value) for key, value in checkpoint["anchors"].items()}
         evaluator.cache = checkpoint["cache"]
-        baseline, best, generations = checkpoint["baseline"], checkpoint["best"], checkpoint["generations"]
+        baseline, best = checkpoint["baseline"], checkpoint["best"]
         next_ordinal = checkpoint["next_ordinal"]
     else:
         baseline = dict(evaluator.evaluate_many([evaluator.base], baseline=True)[0], evaluation_ordinal=0, generation=0, population_column=0)
-        best, generations, next_ordinal = baseline, [], 1
+        best, next_ordinal = baseline, 1
 
-    def state() -> dict:
-        return {"schema": "scnsim.benchmark_optimization_checkpoint", "schema_version": 1,
-                "generation": optimizer.generation, "next_ordinal": next_ordinal,
-                "cma": cma_snapshot(optimizer), "baseline": baseline, "best": best,
-                "anchors": {key: complex_record(value) for key, value in evaluator.anchors.items()},
-                "cache": evaluator.cache, "generations": generations}
+    def resume_state() -> dict | None:
+        # Anchors have one durable owner: the acknowledged baseline block.
+        return {"cma": cma_snapshot(optimizer)} if checkpoint_policy == "generation" else None
 
     if checkpoint is None:
-        emit("baseline_ready", state())
+        emit("baseline_ready", {
+            "baseline": baseline,
+            "anchors": {key: complex_record(value) for key, value in evaluator.anchors.items()},
+            "resume_state": resume_state(),
+        })
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):
         start = perf_counter_ns()
         raw = [optimizer.ask() for _ in range(optimizer.population_size)]
@@ -516,8 +519,9 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         optimizer.tell([(value.copy(), cost) for value, cost in zip(raw, costs)])
         emit("timing", {"stage": "cma_tell", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
                         "counts": {"population": len(raw)}})
-        generations.append({"generation": generation, "candidates": records})
-        emit("generation_ready", state())
-    return {"type": "optimization", "baseline": baseline, "best": best, "generations": generations,
+        emit("generation_ready", {"generation": optimizer.generation, "next_ordinal": next_ordinal,
+                                  "best_ordinal": best["evaluation_ordinal"],
+                                  "resume_state": resume_state()})
+    return {"type": "optimization", "best_ordinal": best["evaluation_ordinal"],
             "completed_generations": optimizer.generation, "unused_evaluations": controls["unused_evaluations"],
             "algorithm_id": "scnsim.python_cmaes_0.13.1.ask_tell.v1"}

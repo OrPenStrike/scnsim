@@ -2054,10 +2054,9 @@ wheels = [
 
 [[package]]
 name = "scnsim"
-version = "1.0.0.dev9"
+version = "1.0.0.dev10"
 source = { editable = "." }
 dependencies = [
-    { name = "juliapkg" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pint" },
@@ -2068,6 +2067,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+julia = [
+    { name = "juliapkg" },
+]
 benchmark = [
     { name = "cmaes" },
     { name = "jax", marker = "python_full_version >= '3.12'" },
@@ -2089,7 +2091,7 @@ requires-dist = [
     { name = "cmaes", marker = "extra == 'benchmark'", specifier = "==0.13.1" },
     { name = "jax", marker = "python_full_version >= '3.12' and extra == 'benchmark'", specifier = "==0.11.2" },
     { name = "jaxlib", marker = "python_full_version >= '3.12' and extra == 'benchmark'", specifier = "==0.11.2" },
-    { name = "juliapkg", specifier = ">=0.1.26,<0.2" },
+    { name = "juliapkg", marker = "extra == 'julia'", specifier = ">=0.1.26,<0.2" },
     { name = "kaleido", marker = "extra == 'static-export'", specifier = ">=1,<2" },
     { name = "matplotlib", specifier = ">=3.10.9,<3.11" },
     { name = "numpy", specifier = ">=2.2.6,<2.3" },
@@ -2098,7 +2100,7 @@ requires-dist = [
     { name = "schemdraw", specifier = ">=0.23,<1" },
     { name = "zarr", specifier = ">=2.18.3,<3" },
 ]
-provides-extras = ["benchmark", "static-export"]
+provides-extras = ["benchmark", "julia", "static-export"]
 
 [package.metadata.requires-dev]
 course-generation = [

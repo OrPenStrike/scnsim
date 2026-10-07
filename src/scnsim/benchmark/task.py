@@ -121,11 +121,16 @@ def _event(
     kind: str,
     payload: Mapping[str, object],
     progress=None,
+    writer=None,
 ) -> dict[str, object]:
-    saved = storage.append_event(workspace, task_id=task_id, kind=kind, payload=payload)
-    if progress is not None and kind in {
+    eligible = kind in {
         "checkpoint_committed", "population_observed", "progress", "timing", "evaluation", "completed",
-    }:
+    }
+    saved = storage.append_event(
+        workspace, task_id=task_id, kind=kind, payload=payload,
+        writer=writer, force=progress is not None and eligible,
+    )
+    if progress is not None and eligible:
         _notify_progress(workspace, saved, progress)
     return saved
 
@@ -201,6 +206,16 @@ def _add_task_interval(timing, stage: str, task_id: str, start_ns: int, end_ns: 
     )
 
 
+def _persist_measurement_delta(workspace: Path, timing) -> None:
+    pending = timing.pending_measurements
+    if not pending:
+        return
+    storage.append_measurements(
+        workspace, pending, clock_binding=timing.clock_binding,
+    )
+    timing.mark_persisted(pending)
+
+
 def _input_artifacts(workspace: Path, prepared: PreparedBenchmark) -> tuple[Mapping[str, object], ...]:
     declaration = prepared.declaration()
     return (
@@ -267,11 +282,16 @@ def _python_task(
     attempt_id = new_attempt_id()
     task_started = timing.mark()
     declaration = prepared.declaration()
+    diagnostics = declaration["benchmark"]["diagnostics"][arm]
     checkpoint = None
     if resume_reference is not None:
         if resume_document is None:
             raise EvidenceIntegrityError("resume reference lacks its verified checkpoint document", stage="benchmark_checkpoint")
-        checkpoint = dict(resume_document)
+        checkpoint = {
+            key: resume_document[key]
+            for key in ("generation", "next_ordinal", "cma", "anchors", "baseline", "best", "cache", "generations")
+            if key in resume_document
+        }
     native_threads = None
     if arm in {"python_julia_reuse", "python_julia_lu"}:
         native_threads = _native_thread_spec(
@@ -290,6 +310,7 @@ def _python_task(
         "device": "cpu",
         "cpu_threads": cpu_threads,
         "checkpoint": checkpoint,
+        "diagnostics": diagnostics,
     }
     if native_threads is not None:
         request["julia_threads"] = native_threads.julia_threads
@@ -346,6 +367,13 @@ def _python_task(
             state["attempt_started"] = True
             storage.update_attempt(workspace, task_id=frame_task_id, attempt_id=attempt_id, status="launched")
             _event(workspace, task_id=frame_task_id, kind="ready", payload=payload, progress=progress)
+            state["writer"] = storage.begin_task_writer(
+                workspace,
+                task_id=frame_task_id,
+                attempt_id=attempt_id,
+                diagnostics=diagnostics,
+                checkpoint_document=resume_document,
+            )
             return {"ready": True}
 
         if state["task_id"] != frame_task_id:
@@ -353,17 +381,16 @@ def _python_task(
         task_id = frame_task_id
 
         if kind in {"baseline_ready", "generation_ready"}:
-            checkpoint_bytes = record_bytes(dict(payload))
-            reference = storage.publish_checkpoint(
-                workspace, task_id=task_id, attempt_id=attempt_id,
-                checkpoint_bytes=checkpoint_bytes,
+            writer = state.get("writer")
+            if writer is None:
+                raise EvidenceIntegrityError("benchmark task evidence writer is unavailable", stage="benchmark_checkpoint")
+            _saved, acknowledgment = storage.commit_barrier(
+                workspace,
+                writer=writer,
+                kind=kind,
+                payload={"attempt_id": attempt_id, **dict(payload)},
             )
-            _event(workspace, task_id=task_id, kind=kind, payload={
-                "checkpoint_sha256": reference["checkpoint"]["sha256"],
-                "generation": payload.get("generation"),
-                "next_ordinal": payload.get("next_ordinal"),
-            })
-            return reference
+            return acknowledgment
 
         if kind == "completed":
             result_bytes = record_bytes(dict(payload["result"]))
@@ -394,6 +421,7 @@ def _python_task(
             kind=kind,
             payload=payload,
             progress=None if kind == "completed" else progress,
+            writer=state.get("writer"),
         )
         if kind in {"completed", "failed", "interrupted"}:
             state["terminal_event"] = saved
@@ -434,6 +462,9 @@ def _python_task(
         task_id = state.get("task_id")
         try:
             if isinstance(task_id, str) and state.get("attempt_started"):
+                writer = state.get("writer")
+                if writer is not None:
+                    writer.flush()
                 _record_task_failure(workspace, task_id=task_id, attempt_id=attempt_id, error=error, interrupted=True)
                 _add_task_interval(timing, "task_end_to_end", task_id, task_started, timing.mark(), attempt_id=attempt_id)
             elif not state.get("terminal"):
@@ -453,6 +484,9 @@ def _python_task(
         task_id = state.get("task_id")
         try:
             if isinstance(task_id, str) and state.get("attempt_started"):
+                writer = state.get("writer")
+                if writer is not None:
+                    writer.flush()
                 if not state.get("terminal_event"):
                     _event(workspace, task_id=task_id, kind="failed", payload={
                         "attempt_id": attempt_id, "failure": _exception_record(error),
@@ -1592,7 +1626,7 @@ def run_benchmark(
         if any(arm == "original_julia" for arm, *_ in choices):
             try:
                 with timing.span("shared_julia_runtime_preparation"):
-                    runtime = prepare_runtime()
+                    runtime = prepare_runtime(feature="Benchmark original_julia")
                     project, _, _ = resources_stack.enter_context(packaged_julia_resources())
                     wrapper = project / "bin" / "scnsim_benchmark.jl"
                     if wrapper.is_symlink() or not wrapper.is_file():
@@ -1656,9 +1690,7 @@ def _record_report_failure(
         end_tick_ns=timing.mark(),
         details={"status": "failure", "stage": stage},
     )
-    storage.append_measurements(
-        workspace, timing.measurements, clock_binding=timing.clock_binding,
-    )
+    _persist_measurement_delta(workspace, timing)
 
 
 def finish_benchmark(
@@ -1667,9 +1699,7 @@ def finish_benchmark(
 ) -> BenchmarkResult:
     """Persist exact timing/report observations and return the final manifest."""
     root = Path(workspace).expanduser().resolve(strict=False)
-    storage.append_measurements(
-        root, timing.measurements, clock_binding=timing.clock_binding,
-    )
+    _persist_measurement_delta(root, timing)
 
     source_json = None
     snapshot_started = timing.mark()
@@ -1775,7 +1805,5 @@ def finish_benchmark(
         end_tick_ns=timing.mark(),
         details={"status": "success"},
     )
-    storage.append_measurements(
-        root, timing.measurements, clock_binding=timing.clock_binding,
-    )
+    _persist_measurement_delta(root, timing)
     return storage.open_record(root)

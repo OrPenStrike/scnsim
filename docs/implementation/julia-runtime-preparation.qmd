@@ -4,25 +4,36 @@ subtitle: "How does the first backend operation obtain a reproducible Julia?"
 toc-depth: 2
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** the optional-runtime installation boundary is `CONVERGING`.
+Existing numerical preparation and process guarantees remain the authority.
 
-## Prepare on the first backend-bound operation
+## Select dependencies and provide Julia explicitly
 
-The user installs SCNSim with `uv sync --locked`; no separate Julia setup step
-is part of the Notebook UX. SCNSim ships static runtime metadata naming one
-exact Julia patch version for that package release. The first operation that
-needs Julia asks JuliaPkg for that version: JuliaPkg reuses an exact matching
-system installation when available and otherwise installs it automatically.
-See the official [JuliaPkg package documentation](https://pypi.org/project/juliapkg/).
+The base wheel does not depend on JuliaPkg and does not acquire a Julia runtime.
+Install `scnsim[julia]` for the existing Julia-backed features, and provide Julia
+`1.12.6` yourself on PATH or through `PYTHON_JULIAPKG_EXE`. In a repository checkout,
+`uv sync --locked --extra julia` installs the Python discovery support only.
+It does not install Julia. Feature calls ask JuliaPkg to find an already installed
+exact-patch executable with installation and upgrades disabled. Missing Python
+support or runtime discovery failure raises `RuntimePreparationError` naming the
+requested feature, exact version, original cause and installation instructions;
+there is no backend fallback. CI provisions the exact Julia explicitly before
+backend checks rather than relying on a feature call to acquire it.
 
-JuliaPkg owns executable discovery and installation only. SCNSim does not use
-JuliaPkg's managed project as its numerical environment. Every child process
+New ordinary Direct/root/Optimization/HB execution and Julia Benchmark arms need
+Julia. `run.explain()` compiler preflight and compiled schematics also need it
+when they invoke the native compiler. Pure authoring, authoring schematics,
+read-only results/`resolve()`, verified cached-result reuse and the independent
+JAX Benchmark arm do not discover or execute Julia. Cache lookup remains before
+runtime preparation. The Python `benchmark` extra supplies JAX/CMA dependencies
+for Python 3.12 CPU execution; it does not install JuliaPkg or select a new default
+backend. Select `arms=("python_jax",)` explicitly in a JAX-only environment.
+
+JuliaPkg owns executable discovery only on feature calls. SCNSim does not use
+JuliaPkg's managed project as its numerical environment. Once Julia is provided,
+SCNSim still instantiates its committed project dependencies as preparation;
+this is distinct from acquisition of the Julia executable. Every child process
 uses the separate SCNSim-owned project described below.
-
-Pure authoring and authoring-schematic operations do not prepare Julia.
-`run.explain()` and the compiled schematic may prepare it because both need the
-real compiler preflight. Preparation is dependency work, not a solver action
-and not workspace evidence.
 
 For a terminal operation, preparation and exact-version verification complete
 before request/attempt workspace mutation. The Plan-bound Run workspace may
@@ -55,7 +66,7 @@ only. The HB slice adds JosephsonCircuits `0.5.4` at General-registry tree
 through `importlib.resources`, never caller cwd or a user Julia project.
 
 SCNSim ships one internal `Project.toml` and `Manifest.toml`. The package
-launches the JuliaPkg-resolved executable with `--project` pointing to that
+launches the JuliaPkg-discovered executable with `--project` pointing to that
 internal project and instantiates it when needed. A committed Manifest fixes
 the resolved dependency state; Julia's environment guidance
 documents that `instantiate` restores the packages recorded by a project and
@@ -92,8 +103,8 @@ Int64 optimizer seeds can be reinterpreted exactly as UInt64.
 
 ## Fail without a hidden fallback
 
-Offline mode uses only an already available exact-version Julia and cached
-packages. If either is absent, preparation fails with the missing runtime or
+Offline preparation uses only an already installed exact-version Julia and
+cached native packages. If either is absent, preparation fails with the missing runtime or
 package named. SCNSim does not silently switch environment, edit a user Julia
 project, download during `resolve()`, or fall back to an unrecorded system
 installation.

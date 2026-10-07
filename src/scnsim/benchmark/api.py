@@ -41,6 +41,8 @@ def benchmark(run, ref, spec, *, workspace, benchmark=None, parameters=None, pro
                     raise NotImplementedError("this benchmark scope supports CPU devices only")
                 if policy.task_kind not in ("full", "cohort"):
                     raise ValueError(f"unsupported benchmark task kind {policy.task_kind!r}")
+                if resume_from is not None and policy.checkpoint == "off":
+                    raise ValueError("checkpoint off does not support resume_from")
                 run._require_ref(ref)
                 if isinstance(spec, DirectSolveSpec):
                     operation = "solve_direct"
@@ -173,7 +175,7 @@ def execute_root_points(plan, analysis, mesh, backend, points, emit):
         raise numerical_error(baseline_result.failure)
     # The child blocks until the parent has sealed this exact baseline record.
     emit("baseline_ready", {"schema": "scnsim.benchmark_root_anchor", "schema_version": 1,
-                            "baseline": baseline_record})
+                            "baseline": baseline_record, "resume_state": None})
     cache = {key(baseline): (baseline_view, diagonal_policy(baseline_result))}
     pending = {}
     for ordinal, point in enumerate(points):
@@ -207,21 +209,19 @@ def execute_root_points(plan, analysis, mesh, backend, points, emit):
             failed = error.result if error.result is not None else result
             result = replace(failed, failure=error.failure, root_omega_rad_s=None, root_slope=None)
         cache[identity] = view, result
-    records, seen = [], {key(baseline)}
+    seen = {key(baseline)}
     for ordinal, point in enumerate(points):
         identity = key(point)
         view, result = cache[identity]
         record = observation(point, view, result, source_index=ordinal, origin="requested_point",
                              cache_hit=identity in seen, numerical_source_id=result.id)
-        records.append(record)
         seen.add(identity)
         emit("evaluation", record)
     failure = next((cache[key(point)][1].failure for point in points if cache[key(point)][1].failure is not None), None)
     if failure is not None:
         raise numerical_error(failure)
-    return {"type": "diagonal_root", "baseline": baseline_record,
-            "baseline_anchor_schema": "scnsim.benchmark_root_anchor",
-            "points": records, "backend": backend.identity()}
+    return {"type": "diagonal_root", "baseline_anchor_schema": "scnsim.benchmark_root_anchor",
+            "point_count": len(points), "backend": backend.identity()}
 
 
 def execute_python_task(prepared: PreparedBenchmark, backend, *, emit, checkpoint=None) -> dict:
@@ -233,15 +233,20 @@ def execute_python_task(prepared: PreparedBenchmark, backend, *, emit, checkpoin
     if analysis["operation"] == "optimize_direct":
         evaluator = Evaluator(plan, analysis, mesh, backend, emit=emit)
         if policy["task_kind"] == "cohort":
-            baseline = evaluator.evaluate_many([evaluator.base], baseline=True)[0]
-            emit("evaluation", dict(baseline, evaluation_ordinal=0, origin="baseline"))
+            baseline = dict(evaluator.evaluate_many([evaluator.base], baseline=True)[0],
+                            evaluation_ordinal=0, origin="baseline")
+            emit("evaluation", baseline)
+            emit("baseline_ready", {"schema": "scnsim.benchmark_cohort_anchor", "schema_version": 1,
+                                    "baseline": baseline,
+                                    "anchors": {key: complex_record(value) for key, value in evaluator.anchors.items()},
+                                    "resume_state": None})
             candidates = evaluator.evaluate_many([evaluator.cohort_values(point) for point in policy["cohort"]])
             for ordinal, candidate in enumerate(candidates, 1):
                 candidate.update(evaluation_ordinal=ordinal, origin="cohort")
                 emit("evaluation", candidate)
-            return {"type": "cohort", "baseline": baseline, "candidates": candidates,
+            return {"type": "cohort", "candidate_count": len(candidates),
                     "source_inputs": policy["cohort"]}
-        return optimize(evaluator, emit, checkpoint)
+        return optimize(evaluator, emit, checkpoint, checkpoint_policy=policy["checkpoint"])
     if policy["task_kind"] != "full":
         raise NotImplementedError("cohort tasks require an Optimization declaration")
     spec = analysis["spec"]
@@ -276,14 +281,12 @@ def execute_python_task(prepared: PreparedBenchmark, backend, *, emit, checkpoin
     finally:
         emit("timing", {"stage": "numerical_evaluation", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
                         "counts": {"jobs": len(jobs)}})
-    records = []
     for ordinal, (point, view, result) in enumerate(zip(points, views, results)):
         record = evaluation_record(result)
         record.update(source_index=ordinal, parameters=point, lineage=json.loads(view.lineage_bytes),
                       discretization=json.loads(view.model.evidence_bytes)["discretization"], terminal_ids=list(view.terminal_ids))
-        records.append(record)
         emit("evaluation", record)
     first_failure = next((result.failure for result in results if result.failure is not None), None)
     if first_failure is not None:
         raise numerical_error(first_failure)
-    return {"type": spec["type"], "points": records, "backend": backend.identity()}
+    return {"type": spec["type"], "point_count": len(points), "backend": backend.identity()}

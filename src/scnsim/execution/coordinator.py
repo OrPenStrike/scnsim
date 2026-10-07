@@ -85,7 +85,7 @@ def execute_prepared(
             report_reuse(success)
             yield success
             return
-    prepared_runtime = prepare_runtime()
+    prepared_runtime = prepare_runtime(feature=str(request["operation"]))
     executable_sha = sha256(prepared_runtime.executable.read_bytes()).hexdigest()
     started = _utc_now()
     with binding.writer():

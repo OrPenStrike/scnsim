@@ -488,16 +488,26 @@ jobs:
           version: "0.12.6"
           python-version: "3.12"
 
-      - name: Prepare the packaged Julia runtime
+      - name: Explicitly provision Julia and prepare the packaged runtime
         env:
           JULIA_DEPOT_PATH: ${{ runner.temp }}/scnsim-julia-depot
         run: |
           uv build --no-sources
           uv venv --clear --python 3.12 .venv-wheel
-          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          for wheel in dist/*.whl; do
+            uv pip install --python .venv-wheel/bin/python "${wheel}[julia]"
+          done
           .venv-wheel/bin/python - <<'PY'
+          from juliapkg.compat import Compat
+          from juliapkg.find_julia import find_julia
+          from juliapkg.state import STATE
           from scnsim.execution.preparation import prepare_runtime
 
+          # CI setup explicitly acquires Julia; package feature calls never do.
+          find_julia(
+              compat=Compat.parse("=1.12.6"), prefix=STATE["install"],
+              install=True, upgrade=False,
+          )
           runtime = prepare_runtime()
           assert runtime.julia_version == "1.12.6"
           PY

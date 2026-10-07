@@ -282,7 +282,7 @@ calculation is recomputed. Exact target behavior belongs to the
 
 ## Experimental CPU Benchmark boundary
 
-The dev9 [Benchmark contract](benchmark-and-backends.qmd) and
+The dev10 [Benchmark contract](benchmark-and-backends.qmd) and
 [usage guide](../guides/benchmark.qmd) describe a `CONVERGING` experimental
 consumer. Python selects the original whole-Julia control or an independent
 Python-host numerical adapter. The JAX path uses Python physical lowering,
@@ -307,8 +307,11 @@ validation. CircuitPlan convenience delegates and Runtime uses its own
 frozen snapshot directly. No numerical operation depends on rendering success, and
 compiled diagrams remain one-way evidence consumers.
 
-The Full V1 package uses Pint, NumPy, JuliaPkg, Zarr, Plotly, Matplotlib, and Schemdraw
-in Python. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
+The base package uses Pint, NumPy, Zarr, Plotly, Matplotlib and Schemdraw.
+The optional `julia` extra supplies JuliaPkg discovery support; the `benchmark`
+extra supplies CPU JAX/CMA dependencies without requiring JuliaPkg. Julia-backed
+features require a separately provided Julia 1.12.6; feature calls never acquire
+its executable. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
 JosephsonCircuits, and Julia standard libraries. The lockfile and committed
 Julia project/Manifest are the executable dependency authority; this page
 explains their ownership boundary rather than defining alternate versions.

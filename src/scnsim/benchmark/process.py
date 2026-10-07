@@ -245,17 +245,21 @@ def _emit_child(
         if kind in {"baseline_ready", "generation_ready"}:
             ack = next_ack(current)
             reference = ack["reference"]
-            committed = {
-                "schema": _EVENT_SCHEMA,
-                "schema_version": 1,
-                "task_id": task_id,
-                "sequence": sequence_ref[0],
-                "kind": "checkpoint_committed",
-                "payload": {"checkpoint": reference},
-            }
-            process_stdout.write(_json_line(committed))
-            process_stdout.flush()
-            sequence_ref[0] += 1
+            if not isinstance(reference, dict) or not isinstance(reference.get("evidence"), dict):
+                raise _protocol_error("Python task evidence acknowledgement is malformed", stage="benchmark_checkpoint")
+            checkpoint = reference.get("checkpoint")
+            if checkpoint is not None:
+                committed = {
+                    "schema": _EVENT_SCHEMA,
+                    "schema_version": 1,
+                    "task_id": task_id,
+                    "sequence": sequence_ref[0],
+                    "kind": "checkpoint_committed",
+                    "payload": {"evidence": reference["evidence"], "checkpoint": checkpoint},
+                }
+                process_stdout.write(_json_line(committed))
+                process_stdout.flush()
+                sequence_ref[0] += 1
 
     return emit
 

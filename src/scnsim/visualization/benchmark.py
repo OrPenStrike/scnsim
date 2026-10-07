@@ -34,6 +34,37 @@ def _recorded(value: object) -> object:
     return "not recorded" if value is None else value
 
 
+def _objective_units(
+    declaration: Mapping[str, object] | None,
+) -> dict[str, str]:
+    """Read objective display units from the immutable bound declaration."""
+
+    if declaration is None:
+        return {}
+    analysis_value = declaration.get("analysis")
+    if not isinstance(analysis_value, Mapping):
+        return {}
+    spec_value = analysis_value.get("spec")
+    if not isinstance(spec_value, Mapping):
+        return {}
+    objectives_value = spec_value.get("objectives")
+    if not isinstance(objectives_value, Sequence) or isinstance(objectives_value, (str, bytes)):
+        return {}
+
+    units_by_id: dict[str, str] = {}
+    for raw_objective in objectives_value:
+        if not isinstance(raw_objective, Mapping):
+            continue
+        objective_id = raw_objective.get("id")
+        target_value = raw_objective.get("target")
+        if not isinstance(objective_id, str) or not isinstance(target_value, Mapping):
+            continue
+        unit = target_value.get("si_unit")
+        if isinstance(unit, str):
+            units_by_id[objective_id] = unit
+    return units_by_id
+
+
 def _table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> str:
     head = "".join(f"<th>{escape(label)}</th>" for label in headers)
     body = "".join(
@@ -193,6 +224,402 @@ def _native_artifact_label(value: object) -> str:
     return f"{role}: {path} (SHA-256 {digest})"
 
 
+def _python_artifact_label(value: object) -> str:
+    artifact = _required_mapping(value, "Python observation artifact reference")
+    role = artifact["role"]
+    path = artifact["path"]
+    digest = artifact["sha256"]
+    return f"{role}: {path} (SHA-256 {digest})"
+
+
+def _python_observation_summary(
+    value: object,
+    *,
+    objective_units: Mapping[str, str],
+) -> str:
+    """Summarize a verified Python observation without expanding its history."""
+
+    record = _required_mapping(value, "Python numerical observation")
+    parts: list[str] = []
+    for key in ("status", "failure"):
+        if record.get(key) is not None:
+            parts.append(f"{key} {_native_compact(record[key], field=key)}")
+    if record.get("parameters") is not None:
+        parts.append(f"parameters {_native_parameters(record['parameters'])}")
+    for key in (
+        "cost_f64", "value_f64", "value", "response_value",
+        "root_omega_rad_s", "root_slope", "frequency_hz_f64",
+        "root_frequency_hz_f64", "linewidth_hz_f64", "cache_hit",
+    ):
+        if record.get(key) is not None:
+            text = _native_value_text(record[key], field=key)
+            if key in {"root_omega_rad_s", "frequency_hz_f64", "root_frequency_hz_f64", "linewidth_hz_f64"}:
+                unit = "rad/s" if key == "root_omega_rad_s" else "Hz"
+                text = f"{text} {unit}"
+            parts.append(f"{key} {text}")
+    objectives = record.get("objectives", record.get("objective_components"))
+    if objectives is not None:
+        parts.append(f"objectives {_native_objectives(objectives, objective_units)}")
+    arrays = record.get("arrays")
+    if isinstance(arrays, Mapping):
+        for name, array_value in arrays.items():
+            array_item = _required_mapping(array_value, f"Python {name} array")
+            catalog = _required_mapping(array_item["catalog"], f"Python {name} array catalog")
+            packed = _required_mapping(array_item["values"], f"Python {name} array values")
+            shape = " × ".join(str(dimension) for dimension in packed["shape"])
+            parts.append(f"{name} shape {shape}, unit {catalog['unit']}")
+    return "; ".join(parts) if parts else "No scalar summary fields are recorded."
+
+
+def _python_observation_sections(
+    tasks: Sequence[Mapping[str, object]],
+    objective_units: Mapping[str, str],
+) -> list[str]:
+    """Render only the baseline/winner summary from verified Python projections."""
+
+    sections: list[str] = []
+    for task in tasks:
+        if task.get("arm") == "original_julia":
+            continue
+        task_id = task["task_id"]
+        events = _required_sequence(task["events"], f"task {task_id}.events")
+        for raw_event in events:
+            event = _required_mapping(raw_event, f"task {task_id} event")
+            if event.get("kind") not in {"completed", "failed", "interrupted"}:
+                continue
+            payload = _required_mapping(event["payload"], f"task {task_id} event payload")
+            observations_value = payload.get("numerical_observations")
+            if observations_value is None:
+                continue
+            observations = _required_mapping(
+                observations_value,
+                f"task {task_id} numerical observations",
+            )
+            if observations.get("result_kind") != "optimization":
+                continue
+
+            records = _required_sequence(
+                observations["records"],
+                f"task {task_id} numerical observation records",
+            )
+            rows: list[tuple[object, ...]] = []
+            role_counts: dict[str, int] = {}
+            for record_index, raw_record in enumerate(records):
+                record = _required_mapping(
+                    raw_record,
+                    f"task {task_id} numerical observation {record_index}",
+                )
+                role = str(record["role"])
+                role_counts[role] = role_counts.get(role, 0) + 1
+                if role != "baseline":
+                    continue
+                artifact = _required_mapping(
+                    record["source_artifact"],
+                    f"task {task_id} baseline source artifact",
+                )
+                rows.append((
+                    role,
+                    _recorded(record.get("generation")),
+                    _recorded(record.get("native_ordinal")),
+                    _python_observation_summary(
+                        record["value"], objective_units=objective_units,
+                    ),
+                    _python_artifact_label(artifact),
+                ))
+
+            winner_value = observations.get("winner")
+            if winner_value is not None:
+                winner = _required_mapping(winner_value, f"task {task_id} winner")
+                winner_artifact = _required_mapping(
+                    winner["source_artifact"],
+                    f"task {task_id} winner source artifact",
+                )
+                rows.append((
+                    "winner",
+                    _recorded(winner.get("generation")),
+                    _recorded(winner.get("native_ordinal")),
+                    _python_observation_summary(
+                        winner["value"], objective_units=objective_units,
+                    ),
+                    _python_artifact_label(winner_artifact),
+                ))
+
+            terminal_summary_value = observations.get("terminal_summary")
+            terminal_summary = (
+                {} if terminal_summary_value is None else _required_mapping(
+                    terminal_summary_value,
+                    f"task {task_id} compact terminal summary",
+                )
+            )
+            result_artifact_value = observations.get("result_artifact")
+            result_artifact = (
+                None if result_artifact_value is None else _required_mapping(
+                    result_artifact_value,
+                    f"task {task_id} compact result artifact",
+                )
+            )
+            terminal_field_names = ["type", "algorithm_id", "unused_evaluations"]
+            if result_artifact is not None:
+                # Task events may span several attempts; only the terminal
+                # projection owns this result's completed-generation count.
+                terminal_field_names.append("completed_generations")
+            terminal_fields = {
+                key: terminal_summary[key]
+                for key in terminal_field_names
+                if key in terminal_summary
+            }
+            count_text = ", ".join(
+                f"{role}: {count}" for role, count in role_counts.items()
+            ) or "no numerical rows"
+            artifact_text = (
+                "No terminal result artifact is recorded."
+                if result_artifact is None
+                else f"Compact terminal result: {_python_artifact_label(result_artifact)}"
+            )
+            if winner_value is None:
+                winner_text = (
+                    "No winner is present in this verified observation projection."
+                )
+            else:
+                winner_text = "Winner is the recorded projection row; no candidate ranking was recomputed."
+
+            sections.append(
+                f"<h3>Task {escape(str(task_id))}: Python Optimization summary "
+                f"({escape(str(event['kind']))} event)</h3>"
+                "<p>This compact summary uses the verified numerical-observation projection. "
+                "The ordered evaluation table and event disclosures remain the candidate history; "
+                "this section does not decode the compact terminal artifact as a full result.</p>"
+                + _native_table(
+                    ("record", "generation", "evaluation ordinal", "recorded values", "source artifact"),
+                    rows,
+                    ("8%", "8%", "10%", "42%", "32%"),
+                )
+                + ("" if rows else "<p>No baseline or winner rows are present in this verified projection.</p>")
+                + f"<p>Projection rows: {escape(count_text)}. {escape(winner_text)}</p>"
+                + ("<p>Compact terminal summary fields: "
+                   f"{escape(_native_compact(terminal_fields))}</p>" if terminal_fields else "")
+                + f"<p>{escape(artifact_text)}</p>"
+            )
+    return sections
+
+
+def _diagnostic_persistence_section(
+    declaration: Mapping[str, object] | None,
+    tasks: Sequence[Mapping[str, object]],
+    execution_failures: object,
+) -> str:
+    """Explain only recorded policies and lifecycle evidence for diagnostic durability."""
+
+    benchmark_value = None if declaration is None else declaration.get("benchmark")
+    benchmark = benchmark_value if isinstance(benchmark_value, Mapping) else {}
+    checkpoint = benchmark.get("checkpoint")
+    diagnostics = benchmark.get("diagnostics")
+    checkpoint_text = str(_recorded(checkpoint))
+    per_arm_diagnostics = isinstance(diagnostics, Mapping)
+    diagnostics_text = (
+        _native_compact(diagnostics)
+        if per_arm_diagnostics else str(_recorded(diagnostics))
+    )
+
+    if checkpoint == "generation":
+        checkpoint_description = (
+            "Generation checkpointing retains CMA resume snapshots at committed generations."
+        )
+    elif checkpoint == "off":
+        checkpoint_description = (
+            "CMA resume snapshots are disabled; baseline/root anchors, committed numerical "
+            "observations, and terminal results retain their separate durability."
+        )
+    else:
+        checkpoint_description = "The checkpoint policy is not recorded as a recognized value."
+
+    def describe_diagnostics_policy(policy: object) -> str:
+        if policy == "immediate":
+            return "diagnostic events are persisted as they are received"
+        if policy == "boundary":
+            return (
+                "diagnostic events are buffered until generation commit, terminal outcome, "
+                "or a handleable interruption/failure"
+            )
+        return "the diagnostic persistence policy is not a recognized value"
+
+    if per_arm_diagnostics:
+        diagnostics_description = (
+            "Each task selects the concrete policy from this map using its recorded arm. "
+            + "; ".join(
+                f"{arm}: {describe_diagnostics_policy(policy)}"
+                for arm, policy in diagnostics.items()
+            )
+        )
+        boundary_tasks: list[Mapping[str, object]] = []
+        unresolved_policy_tasks: list[tuple[str, object]] = []
+        policy_by_task_id: dict[str, object] = {}
+        for task in tasks:
+            task_id = str(task.get("task_id", "not recorded"))
+            arm = task.get("arm")
+            policy = diagnostics.get(arm) if isinstance(arm, str) else None
+            policy_by_task_id[task_id] = policy
+            if policy == "boundary":
+                boundary_tasks.append(task)
+            elif policy != "immediate":
+                unresolved_policy_tasks.append((task_id, arm))
+    else:
+        if diagnostics == "immediate":
+            diagnostics_description = "Diagnostic events are persisted as they are received."
+        elif diagnostics == "boundary":
+            diagnostics_description = (
+                "Diagnostic events are buffered until generation commit, terminal outcome, or a "
+                "handleable interruption/failure."
+            )
+        else:
+            diagnostics_description = "The diagnostic persistence policy is not recorded as a recognized value."
+        boundary_tasks = list(tasks) if diagnostics == "boundary" else []
+        unresolved_policy_tasks = []
+
+    uncertain_tasks: list[tuple[str, str]] = []
+    if boundary_tasks:
+        for task in boundary_tasks:
+            task_id = str(task.get("task_id", "not recorded"))
+            events = _required_sequence(task.get("events", []), f"task {task_id}.events")
+            terminal_attempts: set[str] = set()
+            process_exit_attempts: set[str] = set()
+            for raw_event in events:
+                event = _required_mapping(raw_event, f"task {task_id} event")
+                kind = event.get("kind")
+                payload = _required_mapping(event.get("payload", {}), f"task {task_id} event payload")
+                attempt_id = payload.get("attempt_id")
+                if kind in {"completed", "failed", "interrupted"} and isinstance(attempt_id, str):
+                    terminal_attempts.add(attempt_id)
+                if kind == "failed":
+                    failure = payload.get("failure")
+                    if isinstance(failure, Mapping) and failure.get("stage") == "process_exit":
+                        if isinstance(attempt_id, str):
+                            process_exit_attempts.add(attempt_id)
+                        else:
+                            uncertain_tasks.append((task_id, "process_exit failure without attempt binding"))
+
+            attempts = _required_sequence(task.get("attempts", []), f"task {task_id}.attempts")
+            for raw_attempt in attempts:
+                attempt = _required_mapping(raw_attempt, f"task {task_id} attempt")
+                attempt_id = str(attempt.get("attempt_id", "not recorded"))
+                status = attempt.get("status")
+                attempt_failure = attempt.get("failure")
+                attempt_process_exit = (
+                    isinstance(attempt_failure, Mapping)
+                    and attempt_failure.get("stage") == "process_exit"
+                )
+                if attempt_id in process_exit_attempts or attempt_process_exit:
+                    uncertain_tasks.append((task_id, f"attempt {attempt_id} ended with process_exit"))
+                elif status in {"allocated", "launched"} and attempt_id not in terminal_attempts:
+                    uncertain_tasks.append((task_id, f"attempt {attempt_id} remains {status}"))
+
+    global_failures = (
+        [] if execution_failures is None
+        else _required_sequence(execution_failures, "execution_failures")
+    )
+    global_process_exit = False
+    global_process_exit_for_boundary_task = False
+    global_unbound_process_exit = False
+    boundary_task_ids = {
+        task_id for task_id, policy in policy_by_task_id.items() if policy == "boundary"
+    } if per_arm_diagnostics else set()
+    immediate_task_ids = {
+        task_id for task_id, policy in policy_by_task_id.items() if policy == "immediate"
+    } if per_arm_diagnostics else set()
+    for raw_failure in global_failures:
+        failure = _required_mapping(raw_failure, "execution failure")
+        error = failure.get("error")
+        if isinstance(error, Mapping) and error.get("stage") == "process_exit":
+            global_process_exit = True
+            if not per_arm_diagnostics:
+                break
+            failure_task_id = failure.get("task_id")
+            if isinstance(failure_task_id, str) and failure_task_id in boundary_task_ids:
+                global_process_exit_for_boundary_task = True
+            elif isinstance(failure_task_id, str) and failure_task_id in immediate_task_ids:
+                continue
+            else:
+                failure_arm = failure.get("arm")
+                failure_arm_policy = (
+                    diagnostics.get(failure_arm)
+                    if isinstance(failure_arm, str) else None
+                )
+                if failure_arm_policy == "boundary":
+                    global_process_exit_for_boundary_task = True
+                elif failure_arm_policy != "immediate":
+                    global_unbound_process_exit = True
+
+    if not per_arm_diagnostics and diagnostics == "boundary" and global_process_exit and not uncertain_tasks:
+        uncertain_tasks.append(("benchmark", "recorded process_exit without task-level completeness evidence"))
+    elif per_arm_diagnostics and boundary_tasks and not uncertain_tasks:
+        if global_process_exit_for_boundary_task:
+            uncertain_tasks.append(("benchmark", "recorded process_exit without task-level completeness evidence"))
+
+    if per_arm_diagnostics:
+        if uncertain_tasks:
+            lifecycle = (
+                "The record shows an abnormal or nonterminal process lifecycle for a task using "
+                "boundary diagnostics. Any diagnostic tail still buffered in the child is unknown; "
+                "this report does not infer a lost-event count. Affected records: "
+                + "; ".join(f"{task_id} ({reason})" for task_id, reason in uncertain_tasks)
+                + "."
+            )
+        elif boundary_tasks:
+            lifecycle = (
+                "No abnormal or nonterminal process lifecycle is recorded for tasks whose selected "
+                "policy is boundary. A recorded terminal outcome flushes their pending diagnostic "
+                "stream; the report adds no separate completeness marker or event count."
+            )
+        else:
+            lifecycle = (
+                "No task selected boundary diagnostics from the recorded per-arm map; no "
+                "boundary-buffer tail inference is applied."
+            )
+        if global_unbound_process_exit:
+            lifecycle += (
+                " A process_exit without a task or arm binding is also recorded; its policy and any "
+                "diagnostic tail cannot be attributed, so no arm-specific tail conclusion is made."
+            )
+        if unresolved_policy_tasks:
+            lifecycle += (
+                " A policy could not be selected for these task arms, so no tail inference is made "
+                "for them: "
+                + "; ".join(
+                    f"{task_id} (arm {arm if arm is not None else 'not recorded'})"
+                    for task_id, arm in unresolved_policy_tasks
+                )
+                + "."
+            )
+    elif diagnostics != "boundary":
+        lifecycle = "No boundary-buffer tail inference is applied to the recorded policy."
+    elif uncertain_tasks:
+        lifecycle = (
+            "The record shows an abnormal or nonterminal process lifecycle. Any diagnostic "
+            "tail still buffered in the child is unknown; this report does not infer a lost-event count. "
+            + "Affected records: "
+            + "; ".join(f"{task_id} ({reason})" for task_id, reason in uncertain_tasks)
+            + "."
+        )
+    else:
+        lifecycle = (
+            "No abnormal or nonterminal process lifecycle is recorded for these tasks. A recorded "
+            "terminal outcome flushes its pending diagnostic stream; this report does not add a "
+            "separate completeness marker or infer an event count."
+        )
+
+    return (
+        "<h2>Recorded persistence policies</h2>"
+        + _table(
+            ("policy", "recorded value", "meaning"),
+            (
+                ("CMA checkpoint", checkpoint_text, checkpoint_description),
+                ("diagnostics", diagnostics_text, diagnostics_description),
+            ),
+        )
+        + f"<p>{escape(lifecycle)}</p>"
+    )
+
+
 def _native_array_summary(name: str, value: object) -> tuple[str, str]:
     item = _required_mapping(value, f"native {name} array")
     catalog = _required_mapping(item["catalog"], f"native {name} catalog")
@@ -221,6 +648,7 @@ def _native_observation_summary(
     result_kind: object,
     role: object,
     value: object,
+    objective_units: Mapping[str, str],
 ) -> tuple[str, list[str]]:
     record = _required_mapping(value, "native numerical value")
     summaries: list[str] = [f"{result_kind} {role}"]
@@ -267,7 +695,7 @@ def _native_observation_summary(
     if objectives is None:
         objectives = outcome.get("objectives", outcome.get("objective_components"))
     if objectives is not None:
-        summaries.append(f"objectives {_native_objectives(objectives)}")
+        summaries.append(f"objectives {_native_objectives(objectives, objective_units)}")
 
     scalar_catalog = record.get("scalar_catalog")
     if scalar_catalog is not None:
@@ -289,7 +717,10 @@ def _native_observation_summary(
     return "; ".join(summaries), details
 
 
-def _native_objectives(value: object) -> str:
+def _native_objectives(
+    value: object,
+    objective_units: Mapping[str, str],
+) -> str:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return _native_value_text(value)
     compact: list[dict[str, object]] = []
@@ -308,10 +739,18 @@ def _native_objectives(value: object) -> str:
         if objective_value is None:
             objective_value = raw_objective.get("value")
         if objective_value is not None:
-            objective["value"] = _native_value_text(
+            value_text = _native_value_text(
                 objective_value,
                 field="value_f64" if "value_f64" in raw_objective else "value",
             )
+            unit = objective_units.get(str(objective_id)) if objective_id is not None else None
+            has_recorded_unit = (
+                isinstance(objective_value, Mapping)
+                and isinstance(objective_value.get("si_unit"), str)
+            )
+            if unit is not None and not has_recorded_unit:
+                value_text = f"{value_text} {unit}"
+            objective["value"] = value_text
         for key in ("cost_f64", "weighted_cost_f64", "normalized_residual_f64"):
             if key in raw_objective:
                 objective[key.removesuffix("_f64")] = _native_value_text(
@@ -377,6 +816,7 @@ def _native_table(
 def _native_winner_observation_summary(
     winner: Mapping[str, object],
     records: Sequence[object],
+    objective_units: Mapping[str, str],
 ) -> str:
     """Join the reported winner to its recorded candidate row without ranking."""
 
@@ -416,13 +856,16 @@ def _native_winner_observation_summary(
         if objectives is None:
             summary.append("matching objective unavailable")
         else:
-            summary.append(f"matching objective {_native_objectives(objectives)}")
+            summary.append(
+                f"matching objective {_native_objectives(objectives, objective_units)}"
+            )
         return "; ".join(summary)
     return "matching candidate objective unavailable"
 
 
 def _evaluation_rows(
     tasks: Sequence[Mapping[str, object]],
+    objective_units: Mapping[str, str],
 ) -> list[tuple[object, ...]]:
     rows: list[tuple[object, ...]] = []
     for task in tasks:
@@ -465,9 +908,15 @@ def _evaluation_rows(
                 for objective_value in objectives:
                     objective = _required_mapping(objective_value, "evaluation objective")
                     if objective.get("value_f64") is not None:
+                        objective_id = objective.get("id", objective.get("objective_id"))
+                        unit = (
+                            objective_units.get(objective_id)
+                            if isinstance(objective_id, str) else None
+                        )
+                        unit_text = f" {unit}" if unit is not None else ""
                         values.append(
                             f"{objective.get('id', 'objective')} value "
-                            f"{_f64_token(objective['value_f64'])}"
+                            f"{_f64_token(objective['value_f64'])}{unit_text}"
                         )
             cost = payload.get("cost_f64")
             if cost is not None:
@@ -483,11 +932,14 @@ def _evaluation_rows(
 
 def _native_observation_sections(
     tasks: Sequence[Mapping[str, object]],
+    objective_units: Mapping[str, str],
 ) -> list[str]:
     """Render terminal native observations without inventing task events."""
 
     sections: list[str] = []
     for task in tasks:
+        if task.get("arm") != "original_julia":
+            continue
         task_id = task["task_id"]
         events = _required_sequence(task["events"], f"task {task_id}.events")
         for raw_event in events:
@@ -528,7 +980,7 @@ def _native_observation_sections(
                 generation = _recorded(record.get("generation"))
                 native_ordinal = _recorded(record.get("native_ordinal"))
                 summary, value_details = _native_observation_summary(
-                    result_kind, role, record["value"],
+                    result_kind, role, record["value"], objective_units,
                 )
                 rows.append((
                     role,
@@ -555,10 +1007,10 @@ def _native_observation_sections(
                     f"task {task_id} winner source artifact",
                 )
                 winner_summary, winner_value_details = _native_observation_summary(
-                    result_kind, "winner", winner["value"],
+                    result_kind, "winner", winner["value"], objective_units,
                 )
                 winner_summary += "; " + _native_winner_observation_summary(
-                    winner, records,
+                    winner, records, objective_units,
                 )
                 winner_details = (
                     "<h4>Reported native winner</h4>"
@@ -727,7 +1179,7 @@ def render_benchmark(result: BenchmarkResult) -> str:
     document = record_document(result.manifest_bytes)
     if document["schema"] != "scnsim.benchmark_record":
         raise ValueError("unsupported benchmark record schema")
-    if document["schema_version"] != 1:
+    if document["schema_version"] not in (1, 2):
         raise ValueError("unsupported benchmark record version")
 
     declaration_value = document.get("declaration")
@@ -767,6 +1219,11 @@ def render_benchmark(result: BenchmarkResult) -> str:
         body.append("<p>No immutable benchmark declaration was recorded.</p>")
     else:
         body.append(_details("Benchmark declaration", declaration))
+    body.append(_diagnostic_persistence_section(
+        declaration,
+        task_records,
+        document.get("execution_failures"),
+    ))
     if clock is None:
         body.append("<p>No benchmark clock record was recorded.</p>")
     else:
@@ -827,7 +1284,8 @@ def render_benchmark(result: BenchmarkResult) -> str:
     else:
         body.append("<h2>Declared task samples</h2><p>No task records are present.</p>")
 
-    evaluation_rows = _evaluation_rows(task_records)
+    objective_units = _objective_units(declaration)
+    evaluation_rows = _evaluation_rows(task_records, objective_units)
     if evaluation_rows:
         body.append(
             "<h2>Recorded numerical evaluations</h2>"
@@ -844,7 +1302,12 @@ def render_benchmark(result: BenchmarkResult) -> str:
             "<p>No task <code>evaluation</code> events are recorded.</p>"
         )
 
-    native_observations = _native_observation_sections(task_records)
+    python_observations = _python_observation_sections(task_records, objective_units)
+    if python_observations:
+        body.append("<h2>Recorded Python numerical result summaries</h2>")
+        body.extend(python_observations)
+
+    native_observations = _native_observation_sections(task_records, objective_units)
     if native_observations:
         body.append("<h2>Recorded native numerical observations</h2>")
         body.extend(native_observations)

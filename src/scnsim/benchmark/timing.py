@@ -23,12 +23,27 @@ class TimingRecorder:
         self.clock_id = str(uuid4())
         self.origin_ns = perf_counter_ns()
         self._measurements: list[Measurement] = []
+        self._persisted_count = 0
         self._lock = RLock()
 
     @property
     def measurements(self) -> tuple[Measurement, ...]:
         with self._lock:
             return tuple(self._measurements)
+
+    @property
+    def pending_measurements(self) -> tuple[Measurement, ...]:
+        """Return only intervals not yet acknowledged by the durable recorder."""
+        with self._lock:
+            return tuple(self._measurements[self._persisted_count:])
+
+    def mark_persisted(self, measurements: tuple[Measurement, ...]) -> None:
+        """Advance the recorder cursor after the corresponding journal commit."""
+        with self._lock:
+            pending = tuple(self._measurements[self._persisted_count:])
+            if pending[:len(measurements)] != measurements:
+                raise RuntimeError("timing persistence cursor no longer matches its committed prefix")
+            self._persisted_count += len(measurements)
 
     def mark(self) -> int:
         """Read the same monotonic clock used for all recorder intervals."""

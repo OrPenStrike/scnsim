@@ -36,7 +36,8 @@ class JuliaBackend:
         self._resources = ExitStack()
         if project is None:
             project = self._resources.enter_context(packaged_julia_resources())[0]
-        executable = prepare_runtime().executable if executable is None else executable
+        executable = (prepare_runtime(feature=f"Benchmark python_julia_{algorithm}").executable
+                      if executable is None else executable)
         script = Path(project) / "bin" / "scnsim_benchmark.jl"
         env = dict(os.environ)
         env["JULIA_NUM_THREADS"] = str(julia_threads)

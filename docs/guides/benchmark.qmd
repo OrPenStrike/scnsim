@@ -9,6 +9,20 @@ contracts of `solve()`, `evaluate()`, `optimize()`, or `resolve()`. This guide
 describes the candidate API and its current limits; it does not claim numerical
 or performance results.
 
+## Install the selected runtime
+
+For JAX-only CPU execution on Python 3.12, install `scnsim[benchmark]` and
+explicitly select `BenchmarkSpec(arms=("python_jax",), ...)`. The base wheel and
+this extra do not install JuliaPkg or acquire Julia. This does not change the
+default arm declaration or ordinary analysis API backend.
+
+For Julia arms, also install `scnsim[julia]` and provide Julia 1.12.6 yourself
+on PATH or set `PYTHON_JULIAPKG_EXE`. Missing Julia support produces an actionable
+feature-specific error; it never silently selects JAX. Ordinary new numerical
+execution and native compile/explain/compiled schematics also require Julia.
+Authoring, read-only results/resolve and verified cache reuse do not prepare it.
+See [Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
+
 ## Declare one task
 
 Build the physical `CircuitPlan`, select the original or a derived View, and
@@ -101,6 +115,53 @@ Their source catalogs retain the producer's artifact paths even when decoding
 reads from a localized point directory. A secondary post hoc decoding error is
 recorded as `numerical_observation_error`; it does not replace the original
 native terminal failure.
+
+Python Optimization reports also show the verified baseline and recorded
+winner, when present, with their generation, evaluation ordinal, scalar
+objective summary, and source artifact reference. The ordered Python
+`evaluation` events remain the candidate history; the report does not rebuild a
+candidate table or choose a winner. In schema v2, read-only report projection
+assembles these summaries from verified journal commits and value blocks. The
+terminal result artifact remains compact and is not treated as the full
+numerical history. Historical schema v1 records remain readable in their
+original shape.
+
+### Persistence policy and diagnostic limits
+
+Common Python-host arms default to generation checkpoints and boundary
+diagnostics. `BenchmarkSpec()` retains the existing four arms; omitted
+`diagnostics=None` resolves per arm, using boundary for common Python arms and
+the original immediate policy for whole-Julia. The canonical declaration records
+that effective map. Explicit boundary diagnostics or checkpoint off with the
+original whole-Julia arm fails before launch.
+
+```python
+BenchmarkSpec()  # generation checkpoints; diagnostics resolved per arm
+BenchmarkSpec(arms=("python_jax",), diagnostics="immediate")
+BenchmarkSpec(arms=("python_jax",), checkpoint="off")
+```
+
+`checkpoint="generation"` stores CMA resume snapshots at committed
+generations. `checkpoint="off"` disables those resume snapshots; baseline and
+root anchors, committed numerical observations, and terminal results keep their
+own durability. `diagnostics="immediate"` persists diagnostic events as they
+are received. With no public progress callback, default `diagnostics="boundary"`
+buffers candidate and other diagnostic events until a generation commit,
+terminal outcome, or a handleable interruption or failure. Ordered candidate
+numerical records remain retained at those barriers. A public progress
+callback forces its event and references durable before it is called in either
+mode.
+
+The record does not contain a diagnostic completeness marker or a lost-event
+count. If the parent is stopped while an attempt remains allocated or launched,
+or the child exits with a recorded `process_exit` before a terminal diagnostic
+flush, any child-side buffered tail is unknown. The report identifies that
+unknown tail from the recorded lifecycle and does not infer a missing-event
+count. A terminal flush describes the diagnostic records the parent received;
+it does not claim that a child handed off records that were still buffered when
+the child died. When a task reaches its recorded terminal barrier normally, the
+pending stream is flushed at that boundary. Already committed observations and
+checkpoints remain visible in all of these cases.
 
 Measurements retain monotonic start and duration, work counts, memory
 observations, and details. Each new row binds its invocation clock ID, source,

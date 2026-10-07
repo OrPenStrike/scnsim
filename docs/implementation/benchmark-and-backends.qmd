@@ -56,6 +56,14 @@ flowchart LR
 Python selects the arm directly. The JAX arm must not invoke Julia for runtime
 discovery, preflight, lowering, root evaluation, Optimization or reporting.
 The original whole-task arm is separate from both common-host Julia arms.
+The base package has no JuliaPkg dependency. Install `scnsim[benchmark]` on
+Python 3.12 and select `arms=("python_jax",)` for JAX-only CPU execution.
+Julia arms additionally require `scnsim[julia]` and a manually provided Julia
+1.12.6 on PATH or `PYTHON_JULIAPKG_EXE`; feature calls never acquire Julia or
+fall back to another backend. The default arm declaration remains unchanged.
+Existing native compile/explain/compiled-schematic and new ordinary numerical
+operations require Julia; authoring, result reading, resolve and verified cache
+reuse remain independent of executable discovery.
 
 ## Shared descriptor and ownership
 
@@ -154,14 +162,60 @@ None and `should_stop` is not activated. The local RNG mapping is
 `signed64-two-uint32-v1`. Tell receives a copy because it sorts its inputs.
 No Julia trajectory or replay equivalence is claimed.
 
-The baseline and root anchors are committed before the first ask. Durable
-generation checkpoints are post-tell/pre-next-ask and contain full numeric CMA
-state, explicit RNG snapshot, candidate cache, strict-best record, baseline
-anchors and committed evidence links. They bind request, backend, dependency,
-source, mesh, device and resource identities. Untold populations are observed
-but regenerated on exact-identity resume; no pickle or blind getstate restores
-authority. Candidate and objective order remains observable even when numerical
-jobs are batched. Equal costs retain the earlier strict-best winner.
+The baseline and root anchors are committed before the first ask. Common Python
+arms default to generation checkpoints and boundary diagnostics. The declaration
+`BenchmarkSpec()` keeps the four existing arms: omitted `diagnostics=None`
+resolves to `"boundary"` for common Python arms and the existing `"immediate"`
+policy for original whole-Julia. Explicit `diagnostics="immediate"` remains
+available. Original whole-Julia rejects explicit `"boundary"` or checkpoint
+`"off"` before launch; explicit options are never ignored. The canonical request
+records the effective diagnostics map by declared arm; each Python task request
+and evidence writer receives its concrete string. The map and selected arm bind
+the task identity. Ordinary Julia APIs are unchanged. Checkpoint off disables CMA-resumable
+snapshots, including the initial CMA snapshot; required baseline/root anchors,
+committed numerical observations and terminal results remain durable.
+
+Generation checkpoints are post-tell/pre-next-ask and retain numeric CMA state,
+explicit RNG snapshot, strict-best and baseline references and committed
+cache/history links. Root anchors live once in the baseline evidence block;
+generation snapshots reference that block rather than copy its anchors. Immutable completed-generation blocks own ordered
+candidate occurrences and newly evaluated candidate values; events, checkpoints
+and reports reference that authority rather than embedding repeated cache and
+history copies. Small commit records publish a generation only after its linked
+content is durable. An interruption before HEAD replacement leaves the previous
+commit selected. After replacement, storage reconciles the selected HEAD and
+whether its durability is confirmed; an uncertain or newly selected delta is not
+blindly replayed. Unreferenced files alone are not evidence of a completed
+generation. Storage
+owns locks, atomic publication, file/directory durability and verification;
+optimization owns the numerical cache, order and CMA snapshot. Reopen/resume
+verifies the selected links and reconstructs working state. Read-only assembly
+produces complete report documents without migrating historical records.
+
+Snapshots bind request, backend, dependency, source, mesh, device and resource
+identities. Untold populations are observed but regenerated on exact-identity
+resume; no pickle or blind getstate restores authority. Candidate and objective
+order remains observable even when numerical jobs are batched. Equal costs
+retain the earlier strict-best winner. No cross-source resume is promised.
+
+Immediate diagnostics persist each event. With no public progress callback,
+default boundary diagnostics buffer candidate and other diagnostic events until
+a generation commit, terminal outcome, or handleable interruption/failure.
+Candidate numerical records remain retained at the generation barrier; boundary
+buffering does not delete them. A public
+callback forces its corresponding event and required references durable before
+notification, even in boundary mode. Callback exceptions and KeyboardInterrupt
+propagate with their original ownership; persistence/protocol/process errors
+remain fatal and never become candidate Inf. A hard kill may lose unflushed
+diagnostics; reports identify an unknown/missing tail from the recorded
+lifecycle rather than claiming a complete stream or a known lost-event count.
+There is no persisted diagnostic-completeness marker. A terminal flush covers
+records received by the parent, not unobserved child-side work. Already committed results and checkpoints retain their guarantees.
+Normal interruption flushes available evidence without publishing an incomplete
+population as a completed generation. Profiling stays outside the measured
+store. These persistence guarantees do not themselves imply a measured speedup.
+The Human-selected defaults are generation checkpoints and boundary diagnostics
+for common Python arms.
 
 For each full population, the host identifies unique effective parameter
 records, prepares one physical model per unique candidate and one View per
@@ -187,8 +241,9 @@ Kinds are ready, authorized, started, timing, baseline_ready,
 checkpoint_committed, population_observed,
 generation_ready, evaluation, progress, completed, interrupted and failed. Payloads bind
 their request/arm/sample identities. Ready events propose immutable content;
-only storage's acknowledged checkpoint commit permits the host to advance.
-`generation_ready` includes full state and ordered candidate evidence;
+only storage's acknowledged evidence commit permits the host to advance;
+a CMA checkpoint reference is present only when checkpointing is enabled.
+`generation_ready` hands off the new generation block and optional resume snapshot;
 `evaluation` includes its ordinal/context and numerical outcome. Interrupt and
 callback exceptions keep their existing ownership; partial evidence remains
 readable. Public progress receives a frozen `TaskEvent` after its observation
@@ -205,7 +260,14 @@ and bounded canonical frames use no shell or pickle. Shared `array_record` /
 little-endian binary64 `data_hex`; zero-based index collections remain JSON
 integer lists. An Optimization checkpoint payload has
 schema/version, context, generation, next evaluation ordinal, baseline/anchors,
-cache, best, numeric CMA state, RNG state and committed evidence links. Storage
+best reference, numeric CMA state, RNG state and committed cache/history links.
+Historical full-cache checkpoints remain readable through their original format;
+new writes use one current format without in-place migration. Numerical
+terminal markers contain counts and selection references; read-only assembly
+restores the existing ordered baseline/candidate/point bodies from evidence.
+Standalone root continuation rows remain evidence, separate from requested
+point rows. Cohort and standalone anchor barriers never create CMA resume
+checkpoints. Explicit resume with checkpoint off fails before replay. Storage
 verifies staged content, atomically publishes it and returns its exact hash
 acknowledgment. Arms run serially to avoid competing resource profiles.
 
@@ -216,6 +278,17 @@ the original analysis hash is a source reference. Common-host transforms have
 their own IDs. Original Julia runtime identities are not transplanted onto
 JAX tasks or benchmark numerical records, and benchmark observations do not
 fabricate existing AnalysisResult identities.
+New writes use the benchmark v2 journal: a declaration/task manifest, task/global
+HEAD pointers, immutable commit chains and referenced numerical value blocks.
+Each mutation reopens its HEAD under the workspace lock, publishes content
+before the pointer and releases the lock before callbacks. Historical v1
+workspaces remain read-only through their original format. The verified
+materializer expands occurrence records and adds Python terminal
+`numerical_observations` with exact compact `terminal_summary`, actual value-block
+artifact references and the recorded best ordinal. Partial records have no
+fabricated terminal artifact or winner. These are source-level candidate
+interfaces; installed-wheel recovery and performance evidence remain pending.
+
 `BenchmarkResult` stores a canonical observation manifest. Its JSON document is
 detached; the intended `open(workspace)` reconstruction is read-only. HTML
 rendering consumes this result and retained partial outcomes without execution.

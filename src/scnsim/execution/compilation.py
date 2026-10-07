@@ -27,7 +27,7 @@ def _run_preflight(
     plan_bytes: bytes,
     request: Mapping[str, object],
 ) -> Mapping[str, object]:
-    prepared = prepare_runtime()
+    prepared = prepare_runtime(feature=f"CircuitRun.explain compiler preflight ({request['operation']})")
     with tempfile.TemporaryDirectory(prefix="scnsim-preflight-") as temporary:
         plan_path = Path(temporary) / "plan.json"
         request_path = Path(temporary) / "request.json"
@@ -58,7 +58,7 @@ def _compiled_schematic_evidence(point: ResolvedPlanPoint) -> Mapping[str, objec
     plan_sha = sha256_hex(plan_bytes)
     point_document = canonical_resolved_plan_point(point, plan_sha256=plan_sha)
     point_bytes = canonical_json_bytes(point_document)
-    prepared = prepare_runtime()
+    prepared = prepare_runtime(feature="compiled schematic")
     with tempfile.TemporaryDirectory(prefix="scnsim-compiler-audit-") as temporary:
         plan_path = Path(temporary) / "plan.json"
         point_path = Path(temporary) / "point.json"

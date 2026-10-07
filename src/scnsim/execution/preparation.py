@@ -142,8 +142,13 @@ def _runtime_version(runtime: Mapping[str, object]) -> str:
     return _EXPECTED_JULIA_VERSION
 
 
-def _discover_julia(version: str) -> tuple[Path, str]:
-    """Use JuliaPkg only as the documented executable finder/installer."""
+def _discover_julia(version: str, *, feature: str = "Julia runtime preparation") -> tuple[Path, str]:
+    """Find an installed exact-patch runtime; never acquire Julia implicitly."""
+
+    instructions = (
+        f'Install Python support with `uv pip install "scnsim[julia]"`, then install Julia {version} '
+        "manually and expose its executable on PATH or configure PYTHON_JULIAPKG_EXE."
+    )
 
     try:
         from juliapkg.compat import Compat
@@ -151,29 +156,30 @@ def _discover_julia(version: str) -> tuple[Path, str]:
         from juliapkg.state import STATE
     except ImportError as error:
         raise RuntimePreparationError(
-            "JuliaPkg is required to prepare the SCNSim backend",
+            f"{feature} requires Julia support; JuliaPkg import failed: {error}. {instructions}",
             stage="runtime_discovery",
-            evidence={"error": str(error)},
+            evidence={"requested_feature": feature, "required_julia_version": version, "error": str(error)},
         ) from error
     try:
         executable, discovered_version = find_julia(
             compat=Compat.parse(f"={version}"),
             prefix=STATE["install"],
-            install=True,
+            install=False,
             upgrade=False,
         )
-    except Exception as error:  # JuliaPkg intentionally owns its acquisition details.
+    except Exception as error:  # Preserve JuliaPkg discovery failures and their original causes.
         raise RuntimePreparationError(
-            "JuliaPkg could not find or install the required Julia runtime",
+            f"Julia runtime discovery failed for {feature}: {error}. Required Julia {version}. {instructions}",
             stage="runtime_discovery",
-            evidence={"required_julia_version": version, "error": str(error)},
+            evidence={"requested_feature": feature, "required_julia_version": version, "error": str(error)},
         ) from error
     path = Path(executable).resolve()
     if not path.is_file() or str(discovered_version) != version:
         raise RuntimePreparationError(
-            "JuliaPkg returned a runtime other than the required exact patch",
+            f"JuliaPkg returned a runtime other than the required exact patch for {feature}",
             stage="runtime_discovery",
-            evidence={"executable": str(path), "reported_version": str(discovered_version)},
+            evidence={"requested_feature": feature, "required_julia_version": version,
+                      "executable": str(path), "reported_version": str(discovered_version)},
         )
     return path, str(discovered_version)
 
@@ -257,13 +263,13 @@ def _instantiate_packaged_project(executable: Path, project: Path) -> None:
         )
 
 
-def prepare_runtime() -> PreparedRuntime:
-    """Prepare and exact-version-check Julia without touching a workspace."""
+def prepare_runtime(*, feature: str = "Julia runtime preparation") -> PreparedRuntime:
+    """Prepare installed Julia for the requested feature without acquiring a runtime."""
 
     _require_supported_platform()
     with packaged_julia_resources() as (project, _, runtime):
         version = _runtime_version(runtime)
-        executable, discovered_version = _discover_julia(version)
+        executable, discovered_version = _discover_julia(version, feature=feature)
         _verify_julia_version(executable, discovered_version)
         _instantiate_packaged_project(executable, project)
     return PreparedRuntime(executable, discovered_version, runtime)
