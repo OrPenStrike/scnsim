@@ -185,6 +185,7 @@ def _verify_julia_version(executable: Path, expected: str) -> None:
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
             env=_child_environment(),
         )
     except OSError as error:
@@ -226,6 +227,7 @@ def _instantiate_packaged_project(executable: Path, project: Path) -> None:
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
             env=_child_environment(),
             cwd=str(project),
         )

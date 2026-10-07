@@ -153,6 +153,10 @@ if TYPE_CHECKING:
 
 
 _LAZY_DIAGRAM_EXPORTS = {
+    "BenchmarkSpec": (".benchmark", "BenchmarkSpec"),
+    "BenchmarkResult": (".benchmark", "BenchmarkResult"),
+    "MeshSpec": (".benchmark", "MeshSpec"),
+    "MeshGroup": (".benchmark", "MeshGroup"),
     "CircuitDiagramAudit": (".results", "CircuitDiagramAudit"),
     "CircuitDiagramResult": (".results", "CircuitDiagramResult"),
     "CircuitDiagramSpec": (".specs", "CircuitDiagramSpec"),
@@ -165,7 +169,7 @@ _LAZY_DIAGRAM_EXPORTS = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve diagram presentation names only when a caller asks for one."""
+    """Resolve presentation and experimental names only when requested."""
 
     target = _LAZY_DIAGRAM_EXPORTS.get(name)
     if target is None:
@@ -178,6 +182,10 @@ def __getattr__(name: str) -> object:
 __version__ = metadata_version("scnsim")
 
 __all__ = [
+    "BenchmarkSpec",
+    "BenchmarkResult",
+    "MeshSpec",
+    "MeshGroup",
     "RLGC",
     "AffineMap",
     "ElectricalResolution",

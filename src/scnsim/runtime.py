@@ -726,6 +726,15 @@ class CircuitRun:
         prepared = self._prepare_analysis("evaluate_direct", ref, spec, parameters)
         return self._execute(prepared, bound_spec=spec)
 
+    def benchmark(
+        self, ref, spec, *, workspace, benchmark=None, parameters=None,
+        progress=None, resume_from=None,
+    ):
+        """Observe independent experimental backend tasks in a separate workspace."""
+        from .benchmark.api import benchmark as execute_benchmark
+        return execute_benchmark(self, ref, spec, workspace=workspace, benchmark=benchmark,
+                                 parameters=parameters, progress=progress, resume_from=resume_from)
+
     @overload
     def optimize(
         self,

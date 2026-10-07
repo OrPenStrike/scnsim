@@ -70,8 +70,10 @@ change the accepted dev1–dev6 runtime slices or represent a stable release.
 
 The current Human-authorized research promotion names exactly `1.0.0a1` as
 the main-line exception, replacing dev7 as the active exception in the version
-check. Other prereleases receive no exception. The package and lockfile keep
-that Alpha version. This promotion does not create a stable release, new tag,
+check. Other prereleases receive no exception. The current develop package
+and lockfile use `1.0.0.dev9` for the `CONVERGING` CPU Benchmark candidate;
+the exact Alpha exception and immutable trial snapshot remain separate.
+This promotion does not create a stable release, new tag,
 PyPI publication, consumer migration, or acceptance of newer `CONVERGING`
 semantics. The existing Alpha tag remains an immutable trial snapshot;
 consumers should pin a tag or reviewed commit and a fixed environment while

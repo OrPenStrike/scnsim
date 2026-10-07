@@ -77,6 +77,8 @@ project:
     - docs/contracts/parameter-system.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
+    - docs/guides/benchmark.qmd
+    - docs/implementation/benchmark-and-backends.qmd
     - docs/implementation/system-architecture.qmd
     - docs/implementation/plan-sealing-and-identity.qmd
     - docs/implementation/canonical-identities-and-schemas.qmd
@@ -261,10 +263,14 @@ website:
               href: docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
             - text: "Parameter System"
               href: docs/contracts/parameter-system.qmd
+            - text: "CPU Benchmark guide"
+              href: docs/guides/benchmark.qmd
             - text: "V1 Runtime Contract"
               href: docs/v1-runtime-contract.qmd
         - section: "Implementation design"
           contents:
+            - text: "Benchmark and independent backends"
+              href: docs/implementation/benchmark-and-backends.qmd
             - text: "System architecture and ownership"
               href: docs/implementation/system-architecture.qmd
             - text: "Plan sealing and identity"

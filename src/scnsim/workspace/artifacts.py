@@ -289,14 +289,22 @@ def _read_canonical_artifact_json(
 
 
 def _read_zarr(
-    attempt: Path, artifact: Mapping[str, object], *, complex_values: bool
+    attempt: Path,
+    artifact: Mapping[str, object],
+    *,
+    complex_values: bool,
+    manifest_artifact_path: str | None = None,
 ) -> np.ndarray:
     root = _inside(attempt, str(artifact["path"]))
     manifest_path = _inside(attempt, str(artifact["file_manifest"]))
     rebuilt = zarr_artifact_manifest(
         artifact_directory=root,
         artifact_id=artifact["id"],
-        artifact_path=artifact["path"],
+        artifact_path=(
+            artifact["path"]
+            if manifest_artifact_path is None
+            else manifest_artifact_path
+        ),
     )
     if manifest_path.is_symlink() or not manifest_path.is_file():
         raise EvidenceIntegrityError(

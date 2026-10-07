@@ -1,0 +1,176 @@
+---
+title: "Benchmarking Independent Numerical Backends"
+subtitle: "Measure one declared SCNSim task and inspect its retained evidence"
+---
+
+**Status:** `CONVERGING`. `run.benchmark()` is an experimental candidate for
+independent Julia/JAX execution. It does not change the existing Julia
+contracts of `solve()`, `evaluate()`, `optimize()`, or `resolve()`. This guide
+describes the candidate API and its current limits; it does not claim numerical
+or performance results.
+
+## Declare one task
+
+Build the physical `CircuitPlan`, select the original or a derived View, and
+declare the same typed Direct, root, response, or Optimization Spec used by the
+existing analysis operations. The benchmark records the exact Plan, View, Spec,
+effective parameter input, backend identities, and outputs for that request.
+
+```python
+from pathlib import Path
+
+from scnsim import BenchmarkSpec
+
+record = run.benchmark(
+    root_view,
+    root_spec,
+    workspace=Path("workspaces/benchmark/chapter-02-root"),
+    benchmark=BenchmarkSpec(device="cpu", cpu_threads=(1, 32)),
+)
+```
+
+The default request is one complete sample for each declared CPU arm and
+thread profile. A repeat is a new task with its own sample identity and fresh
+workspace. The CPU arms are the original whole-Julia task, common Python-host
+Julia factorization reuse, common Python-host pivoted LU, and the independent
+Python-host JAX backend. To reproduce native Julia thread configurations under
+the same physical quota, declare them explicitly:
+
+```python
+BenchmarkSpec(cpu_threads=(32,), julia_threads=32, julia_blas_threads=32)
+BenchmarkSpec(cpu_threads=(32,), julia_threads=32, julia_blas_threads=1)
+```
+
+Use distinct workspaces for these distinct requests. Both fields apply only to
+native Julia in the Julia arms; Python host NumPy/BLAS and JAX/XLA still follow
+`cpu_threads`. Each omitted field independently defaults to the quota. Requested
+and actual native counts remain bound to their task and checkpoint identities;
+this comparison introduces no automatic resource tuning or candidate threading.
+The JAX arm does not start Julia for discovery,
+preflight, lowering, root calculation, optimization, or report composition.
+The observations in this case package use CPU devices only and make no
+non-CPU device-support claim.
+
+The Optimization path uses the declared seed, sigma, population settings, and
+complete-generation budget. The benchmark keeps candidate order, baseline
+anchors, checkpoints, and the strict-best winner in its own record. A separate
+`cohort` task evaluates one exact ordered list of canonical `ParameterSet`
+records on the common Python-host arms. Partial bindings override the declared
+effective baseline closure. The cohort and a closed-loop CMA run
+are distinct observations. The original whole-Julia control remains a full
+optimization task; it is not converted into a forced-CMA cohort.
+
+## Compare mesh policies without changing the Plan
+
+For a transmission line, the current `ElectricalResolution` policy remains the
+dynamic-section baseline. A benchmark `MeshSpec` may declare fixed per-line
+section counts or ordered parameter groups with fixed counts. Those overrides
+belong to the benchmark request, not to the `CircuitPlan`; each task records
+the requested policy and the actual compiled N and dx at its evaluated points.
+
+The Chapter 7 position model provides a maintained two-conductor workload: its
+line lengths are `x` and `8 mm - x`, it has a 20 fF midpoint shunt and four
+terminated 50 Ω signal ports, and its Direct request uses 61 frequencies from
+1 to 10 GHz. The declared dynamic policy is compared with the work packet's
+full-range fixed and grouped fixed requests at positions 2, 4, and 6 mm and at
+the requested neighbors of the 4 mm group boundary. The physical Plan stays
+the same. These observations describe discretization and measured differences;
+they do not create an S-parameter error bound or an automatic mesh default.
+
+## Read the observations
+
+The returned `BenchmarkResult` is an immutable view of one benchmark record.
+`to_json()` returns its canonical manifest; `to_html()` renders that same
+record without starting a calculation, choosing a latest result, or mutating
+the task evidence. A record may contain completed, failed, interrupted, or
+pending tasks. Any recorded report status remains separate, so report handling
+does not change a numerical outcome.
+
+The HTML gives a compact, 12-significant-digit summary of recorded evaluation
+values and includes the event data in disclosure sections. The canonical JSON
+manifest remains the exact tagged-value and identity authority.
+Original Julia observations are decoded post hoc from the verified native
+result and retained baseline/generation artifacts. Their native order and
+source references remain explicit; they do not supply per-evaluation timings.
+Interrupted or failed tasks can show the actual retained numerical records
+without claiming a terminal result artifact or winner.
+Native parameter sweeps show the actual ordered point values, statuses and
+payload/chunk references. Partial post-stop rows refer to the retained verified
+point checkpoints; Direct arrays retain their existing units and axes.
+Their source catalogs retain the producer's artifact paths even when decoding
+reads from a localized point directory. A secondary post hoc decoding error is
+recorded as `numerical_observation_error`; it does not replace the original
+native terminal failure.
+
+Measurements retain monotonic start and duration, work counts, memory
+observations, and details. Each new row binds its invocation clock ID, source,
+unit and monotonic origin; `start_ns` is relative to that row's origin.
+Historical rows retain their recorded legacy root clock binding. The report
+labels missing per-row clocks explicitly and does not infer origins or compare
+start positions across invocation clocks. The global `benchmark_end_to_end` interval covers
+shared preparation and the serial benchmark arms. A task's `end_to_end` interval
+covers that task's arm-specific request and binding preparation through
+completion. Stage intervals can overlap; the report presents each interval
+separately and does not add stages into a total. Startup, initialization, first
+JIT compilation, later evaluations, transfers, solving, committing, decoding,
+and report rendering remain distinguishable when observed. `new_shape` means
+first executable-signature preparation, whose numerical tensor shapes/dtypes,
+job kind, family, Port realizability and batch size are distinct from node IDs
+and lineage. It does not prove uncached machine-code generation or a changed
+matrix dimension. A numerical batch's timing is attached to each result;
+comparisons must count that batch once.
+Common-host Julia observations expose the exact `batch_id`,
+`backend_invocation_start_ns`, `batch_transfer_and_compute_start_ns` and
+`batch_transfer_and_compute_end_ns` copied from the same measured interval.
+Use the invocation identity with the batch ID to deduplicate its repeated
+result evidence; the interval includes transfer and compute and is not a
+separate timer for every job.
+
+The optional progress callback receives a frozen `TaskEvent` after its
+observation is durable. Native original Optimization uses `progress` events;
+Python population generations start at 1 and its baseline is generation0.
+Benchmark preserves the callback's original exception and `KeyboardInterrupt`,
+retaining partial observations. This does not change the ordinary `optimize()`
+callback wrapper.
+
+Standalone root tasks first evaluate and acknowledge a sealed baseline-root
+record, then continue each requested nonbaseline point independently from that
+anchor. They reuse the actual baseline or duplicate-point results and preserve
+requested order. This root-anchor record is not a CMA resume checkpoint;
+`resume_from` remains restricted to full Optimization.
+
+Target values for this experiment are collected from actual Julia Results at
+the exact declared parameters and Views before backend comparisons. The
+private case manifest records each source Result identity, selector, unit,
+value, and numerical input request hash alongside the public benchmark record.
+The public benchmark declaration binds the target value in its objective spec;
+common-host and JAX outcomes use benchmark task identities and artifacts, not
+borrowed Julia Result identities. Candidate-cohort records preserve ordered
+input ParameterSets and per-candidate outcomes, separately from
+complete-generation optimization records.
+
+```python
+print(record.to_json())
+html = record.to_html()
+```
+
+Use a browser to inspect the returned HTML when reviewing figures or tables.
+Source inspection and successful serialization alone do not establish that the
+rendered report is visually usable. Keep the original manifest and linked
+artifacts with the report so each displayed observation retains its provenance.
+
+## Scope and interpretation
+
+The current candidate supports Direct S/Y/Z requests, diagonal roots, scalar
+response elements, and Optimization expressions built from those quantities.
+HB and other quantity families fail explicitly. Arrays use Float64 and
+Complex128. The observations in this guide execute CPU tasks only. The
+maintained examples provide one-conductor and two-conductor line cases; there
+is no maintained physical input with more than two conductors, so this workflow
+does not invent one.
+
+Performance and numerical observations have no automatic acceptance threshold
+or error tolerance. The report can show timings, work counts, output values,
+mesh refinement, and failed or partial tasks, but it does not declare a backend
+winner or a design target met. Interpretation remains specific to the recorded
+inputs, algorithms, environment, and execution identities.

@@ -44,8 +44,11 @@ def _verify_generation_artifacts(
     *,
     request_sha256: str,
     attempt_sha256: str,
+    expected_julia_threads: int = 1,
+    expected_blas_threads: int = 1,
     allow_other_artifacts: bool = False,
-) -> list[tuple[int, str]]:
+    include_records: bool = False,
+) -> list[tuple[int, str]] | list[tuple[int, str, Mapping[str, object]]]:
     if not isinstance(artifacts, list):
         raise _integrity("Attempt has no artifact inventory.")
     request_path = directory.parent.parent / "request.json"
@@ -67,6 +70,8 @@ def _verify_generation_artifacts(
         _verify_baseline_checkpoint_directory(
             request_path.parent / "baseline-checkpoint",
             request_sha256=request_sha256, request=request, plan=plan,
+            expected_julia_threads=expected_julia_threads,
+            expected_blas_threads=expected_blas_threads,
         )
         if artifacts else None
     )
@@ -164,6 +169,8 @@ def _verify_generation_artifacts(
         result = _load_canonical(result_path)
         if result.get("result_kind") == "optimization":
             _verify_optimization_winner(result, spec, plan, [ledger for _, _, ledger in ledgers])
+    if include_records:
+        return [(generation, digest, ledger) for generation, digest, ledger in ledgers]
     return [(generation, digest) for generation, digest, _ in ledgers]
 
 def _verify_generation_ledger(
@@ -520,6 +527,8 @@ def _verify_baseline_checkpoint_directory(
     request_sha256: str,
     request: Mapping[str, object],
     plan: Mapping[str, object],
+    expected_julia_threads: int = 1,
+    expected_blas_threads: int = 1,
 ) -> BaselineCheckpoint:
     if directory.is_symlink() or not directory.is_dir() or directory.parent.is_symlink():
         raise _integrity("Baseline checkpoint directory is missing or symlinked.")
@@ -556,7 +565,12 @@ def _verify_baseline_checkpoint_directory(
         or not _valid_utc_timestamp(seal.get("published_at_utc"))
     ):
         raise _integrity("Baseline checkpoint seal does not bind its exact files.")
-    _verify_checkpoint_source_attempt(source_attempt, request_sha256)
+    _verify_checkpoint_source_attempt(
+        source_attempt,
+        request_sha256,
+        expected_julia_threads=expected_julia_threads,
+        expected_blas_threads=expected_blas_threads,
+    )
     _verify_baseline_checkpoint_document(
         checkpoint, request_sha256=request_sha256, request=request, plan=plan,
     )
@@ -566,7 +580,11 @@ def _verify_baseline_checkpoint_directory(
     )
 
 def _verify_checkpoint_source_attempt(
-    attempt: Mapping[str, object], request_sha256: str
+    attempt: Mapping[str, object],
+    request_sha256: str,
+    *,
+    expected_julia_threads: int = 1,
+    expected_blas_threads: int = 1,
 ) -> None:
     fields = {
         "schema", "schema_version", "request_sha256", "ordinal", "ordinal_text",
@@ -593,8 +611,8 @@ def _verify_checkpoint_source_attempt(
         or not str(attempt["started_at_utc"]).endswith("Z")
         or _SHA256.fullmatch(str(attempt.get("julia_executable_sha256", ""))) is None
         or any(not isinstance(attempt.get(key), str) or not attempt[key] for key in ("os", "architecture", "cpu", "blas_vendor"))
-        or attempt.get("julia_threads") != 1
-        or attempt.get("blas_threads") != 1
+        or attempt.get("julia_threads") != expected_julia_threads
+        or attempt.get("blas_threads") != expected_blas_threads
     ):
         raise _integrity("Baseline checkpoint source attempt is not a closed producing optimization attempt.")
 
@@ -1228,8 +1246,13 @@ def verified_generation_links(
     *,
     request_sha256: str,
     attempt_sha256: str,
+    expected_julia_threads: int = 1,
+    expected_blas_threads: int = 1,
     allow_other_artifacts: bool = False,
-) -> list[dict[str, str]]:
+    include_records: bool = False,
+) -> list[dict[str, str]] | tuple[
+    list[dict[str, str]], list[tuple[int, str, Mapping[str, object]]]
+]:
     """Build and verify the receipt links for completed staged generations."""
 
     root = _inside(directory, "artifacts/generations")
@@ -1250,11 +1273,16 @@ def verified_generation_links(
         }
         for path in children
     ]
-    _verify_generation_artifacts(
+    verified = _verify_generation_artifacts(
         directory,
         links,
         request_sha256=request_sha256,
         attempt_sha256=attempt_sha256,
+        expected_julia_threads=expected_julia_threads,
+        expected_blas_threads=expected_blas_threads,
         allow_other_artifacts=allow_other_artifacts,
+        include_records=include_records,
     )
+    if include_records:
+        return links, verified  # type: ignore[return-value]
     return links

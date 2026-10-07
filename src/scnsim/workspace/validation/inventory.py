@@ -162,10 +162,20 @@ def _verify_hb_artifact_inventory(directory: Path, result: Mapping[str, object],
             if set(trace_entries) != expected_trace_entries or any(child.is_symlink() or (name.endswith(".zarr") != child.is_dir() or name.endswith(".manifest.json") != child.is_file()) for name, child in trace_entries.items()):
                 raise _integrity("HB trace directory contains undeclared or unsafe entries.", case_ordinal=ordinal)
 
-def _verify_artifact_inventory(directory: Path, result: Mapping[str, object], receipt: Mapping[str, object]) -> None:
+def _verify_artifact_inventory(
+    directory: Path,
+    result: Mapping[str, object],
+    receipt: Mapping[str, object],
+    *,
+    include_sweep_records: bool = False,
+) -> list[dict[str, object]] | None:
     if result.get("result_kind") == "parameter_sweep":
-        _verify_parameter_sweep_artifacts(directory, result, receipt)
-        return
+        return _verify_parameter_sweep_artifacts(
+            directory,
+            result,
+            receipt,
+            include_records=include_sweep_records,
+        )
     if result.get("result_kind") == "hb_batch":
         _verify_hb_artifact_inventory(directory, result, receipt)
         return

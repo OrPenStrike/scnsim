@@ -34,6 +34,7 @@ second implementation or a compatibility fallback.
 | `execution/` | View realization, prepared analysis, backend preparation, process coordination, and numerical operation orchestration | Finalized request declarations and independently verified execution evidence |
 | `workspace/` | Workspace binding, locks, allocation, publication, receipts, integrity verification, and recovery/checkpoint publication | Verified evidence within the applicable reader or writer lifetime |
 | `results/` | Typed Result reconstruction, retained public values, lazy payload access, and Result identity | Verified typed values and presentation selections |
+| `benchmark/` | Isolated CPU experiment: independent lowering/Views, numerical adapters, Python CMA, task protocol, observations and read-only records | Benchmark-owned numerical evidence; original whole-Julia control remains distinct |
 | `visualization/` | Diagram specification and realization, numerical presentation, and pure report composition | Derived SVG, Plotly, and HTML artifacts |
 
 Public modules such as `runtime.py` and `specs.py` remain facades with their
@@ -278,6 +279,21 @@ process per point or a persistent service. Values are runtime data; compatible
 topology preparation may be reused, but every parameter-dependent assembly and
 calculation is recomputed. Exact target behavior belongs to the
 [Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations).
+
+## Experimental CPU Benchmark boundary
+
+The dev9 [Benchmark contract](benchmark-and-backends.qmd) and
+[usage guide](../guides/benchmark.qmd) describe a `CONVERGING` experimental
+consumer. Python selects the original whole-Julia control or an independent
+Python-host numerical adapter. The JAX path uses Python physical lowering,
+View realization, continuation and CMA, without Julia discovery or execution.
+Benchmark records have their own request/backend/CMA/environment identities;
+they do not relabel existing AnalysisResults. The one-Julia-process descriptions
+above continue to describe the original analysis operations.
+
+The optional `benchmark` dependency extra targets Python 3.12 CPU execution.
+The base dependency/import boundary and Python 3.10 support remain unchanged.
+CUDA, ROCm and Apple GPU execution are outside the current Goal.
 
 ## Keep the runtime dependency boundary explicit
 

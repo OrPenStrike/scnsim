@@ -156,4 +156,13 @@ different semantic runtime is a different request, while the same semantic
 runtime on another machine may reuse the verified request already present in a
 relocated workspace.
 
+The `CONVERGING` [CPU Benchmark](benchmark-and-backends.qmd) binds its immutable
+Plan/View/Spec/effective inputs and request-owned mesh separately from each
+arm/sample/backend/device/resource environment. Python CMA has its own
+algorithm and numeric checkpoint identity; neither a JAX task nor a
+common-host Julia task borrows an original whole-Julia Optimization identity.
+Static source hashing may read Julia resource bytes as provenance without
+performing Julia discovery. `BenchmarkResult.open()` only reconstructs recorded
+evidence and never dispatches an arm or selects a latest success.
+
 [Next: Julia runtime preparation](julia-runtime-preparation.qmd)

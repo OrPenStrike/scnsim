@@ -20,6 +20,13 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
+The current develop candidate is `1.0.0.dev9`. Its optional
+[CPU Benchmark](docs/guides/benchmark.qmd) compares independent Julia/JAX
+execution on declared real circuits, while the existing analysis APIs retain
+their Julia contract. The experimental `benchmark` extra uses Python 3.12;
+the base package keeps Python 3.10 support. This candidate is `CONVERGING`
+and does not replace the immutable Alpha trial snapshot.
+
 ## A first Direct S11 result
 
 This Chapter 1 example builds a grounded parallel LC resonator, couples it to

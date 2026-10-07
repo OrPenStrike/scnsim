@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scnsim"
-version = "1.0.0a1"
+version = "1.0.0.dev9"
 description = "Superconducting Circuit Network Simulation."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,6 +27,11 @@ Issues = "https://github.com/OrPenStrike/scnsim/issues"
 Repository = "https://github.com/OrPenStrike/scnsim"
 
 [project.optional-dependencies]
+benchmark = [
+    "cmaes==0.13.1",
+    "jax==0.11.2; python_version >= '3.12'",
+    "jaxlib==0.11.2; python_version >= '3.12'",
+]
 static-export = [
     "kaleido>=1,<2",
 ]
