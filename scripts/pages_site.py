@@ -22,6 +22,7 @@ REPO = "https://github.com/OrPenStrike/scnsim"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 RELEASE = re.compile(r"(?P<line>\d+\.\d+\.\d+)(?P<alpha>a\d+)?\Z")
 DEVELOPMENT = re.compile(r"(?P<line>\d+\.\d+\.\d+) dev\Z")
+DEVELOPMENT_SOURCE = re.compile(r"(?P<line>\d+\.\d+\.\d+)(?:a\d+|\.dev\d+)?\Z")
 # The 25 unmodified files in arfiligol/askr@06cebff4da5e842cac15b73daa27d9f1825a14be.
 ASKR_SHA256 = "0598d94358bb0bf25e43c14c6060b7c068265ef06c4870bc837837c3437690df"
 
@@ -134,9 +135,10 @@ def _prepare(source: Path, vendor: Path, catalog: dict[str, object], label: str,
     version = _version(source)
     if entry["kind"] == "release" and version != label:
         raise ValueError("Pages tag content version differs from the catalog")
-    parsed_version = RELEASE.fullmatch(version)
-    if entry["kind"] != "release" and (not parsed_version or parsed_version["line"] != label.removesuffix(" dev")):
-        raise ValueError("Pages development source has a different version line")
+    if entry["kind"] != "release":
+        parsed_version = DEVELOPMENT_SOURCE.fullmatch(version)
+        if not parsed_version or parsed_version["line"] != label.removesuffix(" dev"):
+            raise ValueError("Pages development source has a different version line")
     profile = source / "_quarto-pages.yml"
     if profile.exists():
         raise ValueError("Pages render profile already exists in exported source")
