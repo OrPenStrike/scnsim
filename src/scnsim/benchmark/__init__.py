@@ -1,9 +1,8 @@
-"""Experimental benchmark declarations; execution integration is separately owned.
+"""Read-only operation reports and immutable historical Benchmark readers.
 
-Importing this package discovers neither Julia nor JAX and launches no process.
-Existing CircuitRun operations keep their original Julia execution contract.
+Normal CircuitRun methods own numerical execution. Importing this package does
+not initialize JAX, discover Julia, launch a process or mutate a workspace.
 """
+from .models import BenchmarkResult
 
-from .models import BenchmarkResult, BenchmarkSpec, MeshGroup, MeshSpec
-
-__all__ = ["BenchmarkResult", "BenchmarkSpec", "MeshGroup", "MeshSpec"]
+__all__ = ["BenchmarkResult"]

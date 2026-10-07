@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from copy import deepcopy
+from contextlib import nullcontext
 import json
 import math
 import struct
@@ -136,10 +137,11 @@ def continue_diagonal_root(*, baseline: dict, values: dict, baseline_root: compl
 class Evaluator:
     """One task's baseline anchor and physical-parameter cache authority."""
 
-    def __init__(self, plan: dict, analysis: dict, mesh: MeshSpec, backend: NumericalBackend, *, emit=None):
+    def __init__(self, plan: dict, analysis: dict, mesh: MeshSpec, backend: NumericalBackend, *, emit=None, trace=None):
         self.plan, self.analysis, self.mesh, self.backend = plan, analysis, mesh, backend
         self.spec = analysis["spec"]
         self.emit = emit
+        self.trace = trace
         self.preparation_cache = {}
         source = analysis["parameter_source"]
         point = source["parameters"] if source["kind"] == "point" else source["baseline_parameters"] if source["kind"] == "points" else source["base_parameters"]
@@ -349,7 +351,7 @@ class Evaluator:
                 cost = unbits(state["cost_f64"]) + contribution
                 state["cost_f64"] = bits(cost)
                 state["objectives"].append({"id": objective["id"], "status": "success", "value_f64": bits(value),
-                                            "cost_f64": bits(contribution), "terms": term_records[index]})
+                                            "cost_f64": bits(contribution), "normalized_residual_f64": bits(residual), "terms": term_records[index]})
         for key, index in representatives.items():
             state = states[index]
             if not state["failure"] and not math.isfinite(unbits(state["cost_f64"])):
@@ -464,7 +466,7 @@ def restore_cma(optimizer, record: dict) -> None:
 
 
 def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = None, *,
-             checkpoint_policy: str = "generation") -> dict:
+             checkpoint_policy: str = "generation", trace=None) -> dict:
     from cmaes import CMA
 
     if version("cmaes") != "0.13.1":
@@ -499,29 +501,30 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             "resume_state": resume_state(),
         })
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):
-        start = perf_counter_ns()
-        raw = [optimizer.ask() for _ in range(optimizer.population_size)]
-        emit("timing", {"stage": "cma_ask", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
-                        "counts": {"population": len(raw)}})
-        emit("population_observed", {"generation": generation, "latent": array_record(np.stack(raw))})
-        records = evaluator.evaluate_many([mapped_values(evaluator.spec, evaluator.base, value) for value in raw])
-        costs = []
-        for column, record in enumerate(records):
-            record.update(evaluation_ordinal=next_ordinal, generation=generation, population_column=column,
-                          latent_coordinates=array_record(raw[column]))
-            next_ordinal += 1
-            cost = unbits(record["cost_f64"])
-            costs.append(cost)
-            if math.isfinite(cost) and cost < unbits(best["cost_f64"]):
-                best = record
-            emit("evaluation", record)
-        start = perf_counter_ns()
-        optimizer.tell([(value.copy(), cost) for value, cost in zip(raw, costs)])
-        emit("timing", {"stage": "cma_tell", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
-                        "counts": {"population": len(raw)}})
-        emit("generation_ready", {"generation": optimizer.generation, "next_ordinal": next_ordinal,
-                                  "best_ordinal": best["evaluation_ordinal"],
-                                  "resume_state": resume_state()})
+        with (nullcontext() if trace is None else trace.span("generation", details={"generation": generation})):
+            start = perf_counter_ns()
+            raw = [optimizer.ask() for _ in range(optimizer.population_size)]
+            emit("timing", {"stage": "cma_ask", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
+                            "counts": {"population": len(raw)}})
+            emit("population_observed", {"generation": generation, "latent": array_record(np.stack(raw))})
+            records = evaluator.evaluate_many([mapped_values(evaluator.spec, evaluator.base, value) for value in raw])
+            costs = []
+            for column, record in enumerate(records):
+                record.update(evaluation_ordinal=next_ordinal, generation=generation, population_column=column,
+                              latent_coordinates=array_record(raw[column]))
+                next_ordinal += 1
+                cost = unbits(record["cost_f64"])
+                costs.append(cost)
+                if math.isfinite(cost) and cost < unbits(best["cost_f64"]):
+                    best = record
+                emit("evaluation", record)
+            start = perf_counter_ns()
+            optimizer.tell([(value.copy(), cost) for value, cost in zip(raw, costs)])
+            emit("timing", {"stage": "cma_tell", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
+                            "counts": {"population": len(raw)}})
+            emit("generation_ready", {"generation": optimizer.generation, "next_ordinal": next_ordinal,
+                                      "best_ordinal": best["evaluation_ordinal"],
+                                      "resume_state": resume_state()})
     return {"type": "optimization", "best_ordinal": best["evaluation_ordinal"],
             "completed_generations": optimizer.generation, "unused_evaluations": controls["unused_evaluations"],
             "algorithm_id": "scnsim.python_cmaes_0.13.1.ask_tell.v1"}

@@ -126,7 +126,7 @@ jobs:
           print(scnsim.__version__)
           PY
 
-      - name: Verify portable wheel identity and Python 3.10 import
+      - name: Verify portable wheel identity and minimum Python 3.12 import
         run: |
           mkdir -p dist/path-a dist/path-b
           cp dist/*.whl dist/path-a/
@@ -161,9 +161,9 @@ jobs:
           ]
           assert values[0] == values[1], values
           PY
-          uv venv --clear --python 3.10 .venv-py310
-          uv pip install --python .venv-py310/bin/python dist/*.whl
-          .venv-py310/bin/python - <<'PY'
+          uv venv --clear --python 3.12 .venv-py312
+          uv pip install --python .venv-py312/bin/python dist/*.whl
+          .venv-py312/bin/python - <<'PY'
           from importlib.metadata import version
 
           import scnsim
@@ -488,11 +488,68 @@ jobs:
           version: "0.12.6"
           python-version: "3.12"
 
+      - name: Observe installed same-process JAX CPU operations and workpool
+        run: |
+          uv build --no-sources
+          uv venv --clear --python 3.12 .venv-jax-wheel
+          uv pip install --python .venv-jax-wheel/bin/python dist/*.whl
+          for count in 1 32; do
+            SCNSIM_CI_CPU_THREADS="$count" .venv-jax-wheel/bin/python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import subprocess
+          import sys
+          from tempfile import TemporaryDirectory
+          from importlib.metadata import version
+          import scnsim
+          from scnsim import CircuitRun, DirectSolveSpec, DiagonalRootSpec, ReductionPipeline, configure_runtime, units as u
+          from examples.tutorials.fixtures.primitive_resonator import build_primitive_resonator
+
+          launches = []
+          def observe(event, args):
+              if event == "subprocess.Popen":
+                  executable, argv = args[0], args[1]
+                  launches.append({"executable": str(executable), "argv": str(argv)})
+                  if "julia" in Path(str(executable)).name.lower():
+                      raise RuntimeError("Julia executable denied for the JAX observation")
+          sys.addaudithook(observe)
+          configuration = configure_runtime(cpu_threads=int(os.environ["SCNSIM_CI_CPU_THREADS"]))
+          fixture = build_primitive_resonator()
+          with TemporaryDirectory() as workspace:
+              run = CircuitRun(plan=fixture.plan, workspace=workspace)
+              observations = []
+              for precision in ("float64", "float32"):
+                  for frequencies in ([5.5, 6.0, 6.5], [5.6, 6.1, 6.6]):
+                      spec = DirectSolveSpec(frequencies=frequencies * u.GHz)
+                      result = run.solve(run.original, spec, precision=precision)
+                      assert run.resolve(run.original, spec, precision=precision).identity == result.identity
+                      observations.append({"precision": precision, "request": result.identity.request_sha256,
+                                           "s": str(result.s.view.matrix)})
+                  view = run.original.reduce(ReductionPipeline().retain(fixture.resonator_node))
+                  root = run.evaluate(view, DiagonalRootSpec(coordinate=fixture.resonator_node, root_hint=6.0*u.GHz), precision=precision)
+                  observations.append({"precision": precision, "frequency": str(root.frequency), "linewidth": str(root.linewidth)})
+              trace = run.benchmark().document()
+          assert "juliapkg" not in sys.modules
+          # This is a coarse process-wide thread observation, not an inferred
+          # exact PJRT-worker count or an affinity/pool-size acceptance threshold.
+          if platform.system() == "Darwin":
+              threads = subprocess.check_output(["ps", "-M", "-p", str(os.getpid())], text=True)
+          else:
+              threads = subprocess.check_output(["ps", "-o", "nlwp=", "-p", str(os.getpid())], text=True)
+          print(json.dumps({"python": sys.version, "module": scnsim.__file__, "version": version("scnsim"),
+                            "jax": version("jax"), "jaxlib": version("jaxlib"),
+                            "requested_cpu_threads": configuration.cpu_threads, "PJRT_NPROC": os.environ.get("PJRT_NPROC"),
+                            "process_thread_observation": threads, "launches": launches,
+                            "numerical_observations": observations, "operation_record": trace}, default=str))
+          PY
+          done
+
       - name: Explicitly provision Julia and prepare the packaged runtime
         env:
           JULIA_DEPOT_PATH: ${{ runner.temp }}/scnsim-julia-depot
         run: |
-          uv build --no-sources
           uv venv --clear --python 3.12 .venv-wheel
           for wheel in dist/*.whl; do
             uv pip install --python .venv-wheel/bin/python "${wheel}[julia]"
@@ -529,7 +586,7 @@ jobs:
 
           fixture = build_primitive_resonator()
           with TemporaryDirectory() as workspace:
-              run = CircuitRun(plan=fixture.plan, workspace=Path(workspace))
+              run = CircuitRun(plan=fixture.plan, workspace=Path(workspace), backend="julia")
               direct_spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz)
               direct = run.solve(run.original, direct_spec)
               pump = PumpAxis(id="pump", frequency=9.0 * u.GHz)

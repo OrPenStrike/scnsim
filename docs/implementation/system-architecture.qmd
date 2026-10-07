@@ -280,20 +280,22 @@ topology preparation may be reused, but every parameter-dependent assembly and
 calculation is recomputed. Exact target behavior belongs to the
 [Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations).
 
-## Experimental CPU Benchmark boundary
+## Same-process CPU execution and read-only Benchmark
 
-The dev10 [Benchmark contract](benchmark-and-backends.qmd) and
-[usage guide](../guides/benchmark.qmd) describe a `CONVERGING` experimental
-consumer. Python selects the original whole-Julia control or an independent
-Python-host numerical adapter. The JAX path uses Python physical lowering,
-View realization, continuation and CMA, without Julia discovery or execution.
-Benchmark records have their own request/backend/CMA/environment identities;
-they do not relabel existing AnalysisResults. The one-Julia-process descriptions
-above continue to describe the original analysis operations.
+The dev11 [backend contract](benchmark-and-backends.qmd) and
+[usage guide](../guides/benchmark.qmd) describe the `CONVERGING` current candidate.
+Normal Run operations default to same-process JAX using the existing Python
+physical lowering, View realization, continuation and CMA authorities. Explicit
+Julia retains the native process path described above; that path is no longer
+the default for supported Direct/root/response and corresponding Optimization.
+The Plan leaf owns verified typed Results and checkpoints for either backend.
 
-The optional `benchmark` dependency extra targets Python 3.12 CPU execution.
-The base dependency/import boundary and Python 3.10 support remain unchanged.
-CUDA, ROCm and Apple GPU execution are outside the current Goal.
+The base requires Python 3.12 and pinned CPU JAX/CMA dependencies. Initialization
+remains lazy and Julia discovery optional. Resolve and operation Benchmark remain
+read-only; the latter aggregates parented spans and numerical references without
+launching an independent comparison task. Historical dev10 comparison records
+remain immutable and readable under their original identities. CUDA, ROCm and
+Apple GPU execution are outside this Goal.
 
 ## Keep the runtime dependency boundary explicit
 

@@ -156,6 +156,16 @@ class PreparedAnalysis:
         runtime_semantic: Mapping[str, object],
         source_units: Sequence[Mapping[str, object]],
     ) -> PreparedAnalysis:
+        if runtime_semantic.get("backend") == "jax" and operation == "optimize_direct":
+            # Backend identity and transform naming share one canonical owner;
+            # the existing host mapping math is unchanged.
+            optimizer = dict(spec["optimizer"])
+            optimizer["box_transform_id"] = (
+                "scnsim-python-cmaes-0.13.1-native-domains.v1"
+                if optimizer["box_transform_id"].endswith("native-domains.v1")
+                else "scnsim-python-cmaes-0.13.1-linquad-unit-box.v1"
+            )
+            spec = {**spec, "optimizer": optimizer}
         request = canonical_request_document(
             plan_sha256=plan_sha256,
             operation=operation,

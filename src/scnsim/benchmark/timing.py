@@ -19,9 +19,9 @@ class TimingRecorder:
     sum parent and child intervals as if they were disjoint work.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, start_tick_ns: int | None = None) -> None:
         self.clock_id = str(uuid4())
-        self.origin_ns = perf_counter_ns()
+        self.origin_ns = perf_counter_ns() if start_tick_ns is None else start_tick_ns
         self._measurements: list[Measurement] = []
         self._persisted_count = 0
         self._lock = RLock()

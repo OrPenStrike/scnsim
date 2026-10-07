@@ -140,7 +140,7 @@ def build_position_model(M, workspace):
             id=name, at=buses[name], role="terminated",
             reference_impedance=50*u.ohm,
         )
-    run = CircuitRun(plan=plan, workspace=workspace, versioned=True)
+    run = CircuitRun(backend="julia", plan=plan, workspace=workspace, versioned=True)
     trace = SParameterTrace(
         id="through_a", input_port="left_a", input_mode=(),
         output_port="right_a", output_mode=(),

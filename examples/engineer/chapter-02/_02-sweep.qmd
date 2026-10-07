@@ -8,7 +8,7 @@ answer.
 
 ```{python}
 #| id: ch2-prepare-root-request
-run = CircuitRun(
+run = CircuitRun(backend="julia",
     plan=plan,
     workspace="workspaces/engineer-chapter-02",
 )

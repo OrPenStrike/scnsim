@@ -20,15 +20,14 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current develop candidate is `1.0.0.dev10`. Its optional
-[CPU Benchmark](docs/guides/benchmark.qmd) compares independent Julia/JAX
-execution on declared real circuits, while the existing analysis APIs retain
-their Julia contract. The experimental `benchmark` extra uses Python 3.12;
-the base package keeps Python 3.10 support. This candidate is `CONVERGING`
-and does not replace the immutable Alpha trial snapshot. Common Python arms
-default to generation checkpoints and boundary diagnostics; immediate diagnostics
-remain explicit. Original whole-Julia retains its immediate policy when omitted.
-Performance and state-recovery observations remain part of the current experiment.
+The current develop candidate is `1.0.0.dev11`, requiring Python 3.12. Normal
+`CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
+Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
+[Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
+the current Plan leaf without executing another calculation. Generation
+checkpoints and boundary diagnostics preserve recovery and numerical evidence.
+This candidate is `CONVERGING` and does not replace the immutable Alpha trial
+snapshot; no performance or numerical acceptance is implied.
 
 ## A first Direct S11 result
 
@@ -165,14 +164,19 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@v1.0.0a1"
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
-For the current development checkout, Julia-backed execution, compiler preflight
-(`run.explain()`) and compiled schematics require `uv sync --locked --extra julia`
-and Julia 1.12.6 installed separately on PATH or `PYTHON_JULIAPKG_EXE`. Feature
-calls never download Julia. The base wheel supports authoring and read-only
-results/cache resolution without JuliaPkg. JAX-only CPU Benchmark execution uses
-`scnsim[benchmark]` on Python 3.12 with `arms=("python_jax",)` explicitly; it does
-not change the default backend or default Benchmark arm declaration. Missing
-Julia features fail with installation instructions and no implicit fallback.
+For the current development checkout, `uv sync --locked` installs the pinned CPU
+JAX/CMA runtime on Python 3.12. The default JAX path does not install JuliaPkg,
+discover Julia or launch a numerical child process. Configure its CPU pool before
+first execution with `configure_runtime(cpu_threads=...)`; per-call `backend`
+and `precision` override the Run defaults. `run.benchmark()` and `resolve()` are
+read-only. See the [operation guide](docs/guides/benchmark.qmd).
+
+Explicit Julia execution, HB and the other Julia-only quantity families, compiler
+preflight (`run.explain()`) and compiled schematics require
+`uv sync --locked --extra julia` and manually provided Julia 1.12.6 on PATH or
+`PYTHON_JULIAPKG_EXE`. Feature calls never download Julia or change backends.
+Historical Engineer-course execution sources explicitly select Julia so their
+original outputs retain their original numerical authority.
 
 The Engineer-course generators use repository-local Jupyter tooling and an
 optional static-export extra:

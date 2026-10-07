@@ -20,14 +20,14 @@ requested feature, exact version, original cause and installation instructions;
 there is no backend fallback. CI provisions the exact Julia explicitly before
 backend checks rather than relying on a feature call to acquire it.
 
-New ordinary Direct/root/Optimization/HB execution and Julia Benchmark arms need
-Julia. `run.explain()` compiler preflight and compiled schematics also need it
-when they invoke the native compiler. Pure authoring, authoring schematics,
-read-only results/`resolve()`, verified cached-result reuse and the independent
-JAX Benchmark arm do not discover or execute Julia. Cache lookup remains before
-runtime preparation. The Python `benchmark` extra supplies JAX/CMA dependencies
-for Python 3.12 CPU execution; it does not install JuliaPkg or select a new default
-backend. Select `arms=("python_jax",)` explicitly in a JAX-only environment.
+Normal Direct, DiagonalRoot, ResponseElement, related sweeps and Optimization
+default to same-process JAX CPU in the dev11 candidate and need no Julia.
+Explicit `backend="julia"`, HB and Julia-only quantity families require Julia.
+`run.explain()` compiler preflight and compiled schematics also need it when
+they invoke the native compiler. Authoring, read-only result/resolve/Benchmark
+and verified cache reuse do not discover or execute Julia. The base Python 3.12
+installation supplies pinned JAX/CMA dependencies; Julia remains optional.
+Historical course sources explicitly select Julia to preserve their outputs.
 
 JuliaPkg owns executable discovery only on feature calls. SCNSim does not use
 JuliaPkg's managed project as its numerical environment. Once Julia is provided,

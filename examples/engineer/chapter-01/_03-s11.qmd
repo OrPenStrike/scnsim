@@ -8,7 +8,7 @@ frequency grid is an explicit 401-point request from 5.75 GHz through 6.25 GHz.
 ```{python}
 #| id: ch1-prepare-direct-request
 frequencies = np.linspace(5.75, 6.25, 401) * u.GHz
-run = CircuitRun(
+run = CircuitRun(backend="julia",
     plan=plan,
     workspace="workspaces/engineer-chapter-01",
 )

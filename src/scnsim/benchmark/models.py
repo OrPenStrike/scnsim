@@ -33,6 +33,19 @@ def immutable_array(value: object, *, complex_: bool = False) -> FloatArray | Co
     return np.frombuffer(array.tobytes(order="C"), dtype=array.dtype).reshape(array.shape)
 
 
+def immutable_numerical_array(value: object) -> np.ndarray:
+    """Keep actual numerical precision in immutable result buffers."""
+    array = np.asarray(value)
+    if array.dtype not in (np.dtype("float32"), np.dtype("float64"), np.dtype("complex64"), np.dtype("complex128")):
+        raise TypeError(f"unsupported numerical array dtype {array.dtype}")
+    backing = array
+    while isinstance(backing, np.ndarray):
+        backing = backing.base
+    if not array.flags.writeable and isinstance(backing, bytes) and array.flags.c_contiguous:
+        return array
+    return np.frombuffer(array.tobytes(order="C"), dtype=array.dtype).reshape(array.shape)
+
+
 @dataclass(frozen=True, slots=True)
 class MeshGroup:
     """One ordered parameter interval with fixed per-line section counts (SI)."""
@@ -220,9 +233,9 @@ class EvaluationResult:
 
     id: str
     failure: NumericalFailure | None = None
-    S: ComplexArray | None = None
-    Y: ComplexArray | None = None
-    Z: ComplexArray | None = None
+    S: NDArray[np.complex64] | ComplexArray | None = None
+    Y: NDArray[np.complex64] | ComplexArray | None = None
+    Z: NDArray[np.complex64] | ComplexArray | None = None
     response_value: complex | None = None
     root_omega_rad_s: complex | None = None
     root_slope: complex | None = None
@@ -232,7 +245,7 @@ class EvaluationResult:
         for name in ("S", "Y", "Z"):
             value = getattr(self, name)
             if value is not None:
-                object.__setattr__(self, name, immutable_array(value, complex_=True))
+                object.__setattr__(self, name, immutable_numerical_array(value))
 
 
 class NumericalBackend(Protocol):
@@ -305,6 +318,11 @@ class BenchmarkResult:
     def to_html(self) -> str:
         from ..visualization.benchmark import render_benchmark
         return render_benchmark(self)
+
+    def show(self):
+        """Display the stored report lazily, without initializing a runtime."""
+        from ..results.base import HtmlPresentation
+        return HtmlPresentation(self.to_html())
 
     def write_html(self, path: str | Path) -> Path:
         target = Path(path)

@@ -1,237 +1,167 @@
 ---
-title: "Benchmarking Independent Numerical Backends"
-subtitle: "Measure one declared SCNSim task and inspect its retained evidence"
+title: "Run Operations and Read-only Benchmark"
+subtitle: "Execute with JAX or Julia, then inspect actual recorded work"
 ---
 
-**Status:** `CONVERGING`. `run.benchmark()` is an experimental candidate for
-independent Julia/JAX execution. It does not change the existing Julia
-contracts of `solve()`, `evaluate()`, `optimize()`, or `resolve()`. This guide
-describes the candidate API and its current limits; it does not claim numerical
-or performance results.
+**Status:** dev11 `CONVERGING` candidate. This guide describes the current
+implementation contract, not completed performance or numerical acceptance.
+Historical dev10 comparison records keep their original runtime identities.
 
-## Install the selected runtime
+## Configure once, execute normal operations
 
-For JAX-only CPU execution on Python 3.12, install `scnsim[benchmark]` and
-explicitly select `BenchmarkSpec(arms=("python_jax",), ...)`. The base wheel and
-this extra do not install JuliaPkg or acquire Julia. This does not change the
-default arm declaration or ordinary analysis API backend.
+Python 3.12 is required. The base installation supplies the pinned CPU JAX,
+jaxlib and CMA dependencies. JAX executes in the calling Python process and
+never discovers, preflights or invokes Julia.
 
-For Julia arms, also install `scnsim[julia]` and provide Julia 1.12.6 yourself
-on PATH or set `PYTHON_JULIAPKG_EXE`. Missing Julia support produces an actionable
-feature-specific error; it never silently selects JAX. Ordinary new numerical
-execution and native compile/explain/compiled schematics also require Julia.
-Authoring, read-only results/resolve and verified cache reuse do not prepare it.
-See [Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
-
-## Declare one task
-
-Build the physical `CircuitPlan`, select the original or a derived View, and
-declare the same typed Direct, root, response, or Optimization Spec used by the
-existing analysis operations. The benchmark records the exact Plan, View, Spec,
-effective parameter input, backend identities, and outputs for that request.
+Set the CPU pool before the first JAX operation:
 
 ```python
-from pathlib import Path
+from scnsim import CircuitRun, configure_runtime
 
-from scnsim import BenchmarkSpec
-
-record = run.benchmark(
-    root_view,
-    root_spec,
-    workspace=Path("workspaces/benchmark/chapter-02-root"),
-    benchmark=BenchmarkSpec(device="cpu", cpu_threads=(1, 32)),
-)
+configure_runtime(cpu_threads=1)
+run = CircuitRun(plan=plan, workspace="workspaces/analysis")
+result = run.solve(run.original, direct_spec)
+root = run.evaluate(run.original, root_spec)
 ```
 
-The default request is one complete sample for each declared CPU arm and
-thread profile. A repeat is a new task with its own sample identity and fresh
-workspace. The CPU arms are the original whole-Julia task, common Python-host
-Julia factorization reuse, common Python-host pivoted LU, and the independent
-Python-host JAX backend. To reproduce native Julia thread configurations under
-the same physical quota, declare them explicitly:
+The Run defaults to `backend="jax", precision="float64"`. Per-call omitted
+backend/precision inherit the Run declaration; explicit values override it:
 
 ```python
-BenchmarkSpec(cpu_threads=(32,), julia_threads=32, julia_blas_threads=32)
-BenchmarkSpec(cpu_threads=(32,), julia_threads=32, julia_blas_threads=1)
+result32 = run.solve(run.original, direct_spec, precision="float32")
+result64 = run.solve(run.original, direct_spec, precision="float64")
 ```
 
-Use distinct workspaces for these distinct requests. Both fields apply only to
-native Julia in the Julia arms; Python host NumPy/BLAS and JAX/XLA still follow
-`cpu_threads`. Each omitted field independently defaults to the quota. Requested
-and actual native counts remain bound to their task and checkpoint identities;
-this comparison introduces no automatic resource tuning or candidate threading.
-The JAX arm does not start Julia for discovery,
-preflight, lowering, root calculation, optimization, or report composition.
-The observations in this case package use CPU devices only and make no
-non-CPU device-support claim.
+Float32 selects real Float32/Complex64 kernel arrays; Float64 selects
+Float64/Complex128. Host SI values and CMA state remain binary64. These are
+different recorded requests, not converted views of one computed result.
+Existing numerical procedures use the selected dtype's epsilon/stagnation
+behavior, without a new accuracy or convergence threshold.
 
-The Optimization path uses the declared seed, sigma, population settings, and
-complete-generation budget. The benchmark keeps candidate order, baseline
-anchors, checkpoints, and the strict-best winner in its own record. A separate
-`cohort` task evaluates one exact ordered list of canonical `ParameterSet`
-records on the common Python-host arms. Partial bindings override the declared
-effective baseline closure. The cohort and a closed-loop CMA run
-are distinct observations. The original whole-Julia control remains a full
-optimization task; it is not converted into a forced-CMA cohort.
+`configure_runtime(cpu_threads=None)` leaves the process default resource
+policy. Positive integer declarations use `PJRT_NPROC` before initialization,
+without altering affinity or global JAX precision/platform settings. Repeating
+a known configuration is idempotent; changing initialized resources requires a
+Kernel restart. An externally initialized pool's unknown size is not invented.
 
-## Compare mesh policies without changing the Plan
-
-For a transmission line, the current `ElectricalResolution` policy remains the
-dynamic-section baseline. A benchmark `MeshSpec` may declare fixed per-line
-section counts or ordered parameter groups with fixed counts. Those overrides
-belong to the benchmark request, not to the `CircuitPlan`; each task records
-the requested policy and the actual compiled N and dx at its evaluated points.
-
-The Chapter 7 position model provides a maintained two-conductor workload: its
-line lengths are `x` and `8 mm - x`, it has a 20 fF midpoint shunt and four
-terminated 50 Ω signal ports, and its Direct request uses 61 frequencies from
-1 to 10 GHz. The declared dynamic policy is compared with the work packet's
-full-range fixed and grouped fixed requests at positions 2, 4, and 6 mm and at
-the requested neighbors of the 4 mm group boundary. The physical Plan stays
-the same. These observations describe discretization and measured differences;
-they do not create an S-parameter error bound or an automatic mesh default.
-
-## Read the observations
-
-The returned `BenchmarkResult` is an immutable view of one benchmark record.
-`to_json()` returns its canonical manifest; `to_html()` renders that same
-record without starting a calculation, choosing a latest result, or mutating
-the task evidence. A record may contain completed, failed, interrupted, or
-pending tasks. Any recorded report status remains separate, so report handling
-does not change a numerical outcome.
-
-The HTML gives a compact, 12-significant-digit summary of recorded evaluation
-values and includes the event data in disclosure sections. The canonical JSON
-manifest remains the exact tagged-value and identity authority.
-Original Julia observations are decoded post hoc from the verified native
-result and retained baseline/generation artifacts. Their native order and
-source references remain explicit; they do not supply per-evaluation timings.
-Interrupted or failed tasks can show the actual retained numerical records
-without claiming a terminal result artifact or winner.
-Native parameter sweeps show the actual ordered point values, statuses and
-payload/chunk references. Partial post-stop rows refer to the retained verified
-point checkpoints; Direct arrays retain their existing units and axes.
-Their source catalogs retain the producer's artifact paths even when decoding
-reads from a localized point directory. A secondary post hoc decoding error is
-recorded as `numerical_observation_error`; it does not replace the original
-native terminal failure.
-
-Python Optimization reports also show the verified baseline and recorded
-winner, when present, with their generation, evaluation ordinal, scalar
-objective summary, and source artifact reference. The ordered Python
-`evaluation` events remain the candidate history; the report does not rebuild a
-candidate table or choose a winner. In schema v2, read-only report projection
-assembles these summaries from verified journal commits and value blocks. The
-terminal result artifact remains compact and is not treated as the full
-numerical history. Historical schema v1 records remain readable in their
-original shape.
-
-### Persistence policy and diagnostic limits
-
-Common Python-host arms default to generation checkpoints and boundary
-diagnostics. `BenchmarkSpec()` retains the existing four arms; omitted
-`diagnostics=None` resolves per arm, using boundary for common Python arms and
-the original immediate policy for whole-Julia. The canonical declaration records
-that effective map. Explicit boundary diagnostics or checkpoint off with the
-original whole-Julia arm fails before launch.
+Direct S/Y/Z, DiagonalRoot, ResponseElement and their parameter sweeps and
+Optimization expressions support original, retained and transformed Views.
+HB and the other quantity families require explicit Julia:
 
 ```python
-BenchmarkSpec()  # generation checkpoints; diagnostics resolved per arm
-BenchmarkSpec(arms=("python_jax",), diagnostics="immediate")
-BenchmarkSpec(arms=("python_jax",), checkpoint="off")
+native = run.solve(run.original, hb_spec, backend="julia", precision="float64")
 ```
 
-`checkpoint="generation"` stores CMA resume snapshots at committed
-generations. `checkpoint="off"` disables those resume snapshots; baseline and
-root anchors, committed numerical observations, and terminal results keep their
-own durability. `diagnostics="immediate"` persists diagnostic events as they
-are received. With no public progress callback, default `diagnostics="boundary"`
-buffers candidate and other diagnostic events until a generation commit,
-terminal outcome, or a handleable interruption or failure. Ordered candidate
-numerical records remain retained at those barriers. A public progress
-callback forces its event and references durable before it is called in either
-mode.
+Install `scnsim[julia]` and manually provide Julia 1.12.6 on PATH or
+`PYTHON_JULIAPKG_EXE`. Missing support gives an actionable feature-specific error;
+there is no automatic acquisition or backend fallback. Native compiler preflight
+and compiled schematics also require Julia. See
+[Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
 
-The record does not contain a diagnostic completeness marker or a lost-event
-count. If the parent is stopped while an attempt remains allocated or launched,
-or the child exits with a recorded `process_exit` before a terminal diagnostic
-flush, any child-side buffered tail is unknown. The report identifies that
-unknown tail from the recorded lifecycle and does not infer a missing-event
-count. A terminal flush describes the diagnostic records the parent received;
-it does not claim that a child handed off records that were still buffered when
-the child died. When a task reaches its recorded terminal barrier normally, the
-pending stream is flushed at that boundary. Already committed observations and
-checkpoints remain visible in all of these cases.
+## Optimization and recovery
 
-Measurements retain monotonic start and duration, work counts, memory
-observations, and details. Each new row binds its invocation clock ID, source,
-unit and monotonic origin; `start_ns` is relative to that row's origin.
-Historical rows retain their recorded legacy root clock binding. The report
-labels missing per-row clocks explicitly and does not infer origins or compare
-start positions across invocation clocks. The global `benchmark_end_to_end` interval covers
-shared preparation and the serial benchmark arms. A task's `end_to_end` interval
-covers that task's arm-specific request and binding preparation through
-completion. Stage intervals can overlap; the report presents each interval
-separately and does not add stages into a total. Startup, initialization, first
-JIT compilation, later evaluations, transfers, solving, committing, decoding,
-and report rendering remain distinguishable when observed. `new_shape` means
-first executable-signature preparation, whose numerical tensor shapes/dtypes,
-job kind, family, Port realizability and batch size are distinct from node IDs
-and lineage. It does not prove uncached machine-code generation or a changed
-matrix dimension. A numerical batch's timing is attached to each result;
-comparisons must count that batch once.
-Common-host Julia observations expose the exact `batch_id`,
-`backend_invocation_start_ns`, `batch_transfer_and_compute_start_ns` and
-`batch_transfer_and_compute_end_ns` copied from the same measured interval.
-Use the invocation identity with the batch ID to deduplicate its repeated
-result evidence; the interval includes transfer and compute and is not a
-separate timer for every job.
-
-The optional progress callback receives a frozen `TaskEvent` after its
-observation is durable. Native original Optimization uses `progress` events;
-Python population generations start at 1 and its baseline is generation0.
-Benchmark preserves the callback's original exception and `KeyboardInterrupt`,
-retaining partial observations. This does not change the ordinary `optimize()`
-callback wrapper.
-
-Standalone root tasks first evaluate and acknowledge a sealed baseline-root
-record, then continue each requested nonbaseline point independently from that
-anchor. They reuse the actual baseline or duplicate-point results and preserve
-requested order. This root-anchor record is not a CMA resume checkpoint;
-`resume_from` remains restricted to full Optimization.
-
-Target values for this experiment are collected from actual Julia Results at
-the exact declared parameters and Views before backend comparisons. The
-private case manifest records each source Result identity, selector, unit,
-value, and numerical input request hash alongside the public benchmark record.
-The public benchmark declaration binds the target value in its objective spec;
-common-host and JAX outcomes use benchmark task identities and artifacts, not
-borrowed Julia Result identities. Candidate-cohort records preserve ordered
-input ParameterSets and per-candidate outcomes, separately from
-complete-generation optimization records.
+Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics:
 
 ```python
-print(record.to_json())
+best = run.optimize(run.original, optimization_spec, checkpoint="generation")
+```
+
+A baseline/anchor barrier precedes candidate work. Completed generation evidence
+is ordered and durable; snapshots reference that evidence and hold exact CMA/RNG
+state. `checkpoint="off"` omits resumable snapshots, without deleting numerical
+observations, anchors or final results. Checkpoint policy does not change the
+numerical request hash; a completed result can resolve under either policy.
+A cache-hit operation records requested policy and actual checkpoint availability
+without manufacturing missing snapshots.
+
+`resume_from` accepts an exact stored checkpoint reference from the same
+operation/task identity and generation policy. An off-policy interrupted request
+has no resumable state. Resume verifies identities and committed references;
+it does not migrate old source state. Standalone root anchors are not CMA
+checkpoints. The public optimization callback is notified only after its event
+is durable; callback exceptions and KeyboardInterrupt keep their ownership.
+An unflushed hard-kill diagnostic tail remains unknown.
+
+Retrieve a committed reference through the public read-only record, selecting the
+operation you intend to resume:
+
+```python
+operation = run.benchmark(operations=operation_id).document()["operations"][0]
+checkpoint_ref = operation["details"]["checkpoint"]
+best = run.optimize(run.original, optimization_spec,
+                    checkpoint="generation", resume_from=checkpoint_ref)
+```
+
+`operation_id` comes from the `operations` rows returned by `run.benchmark()`.
+`details.checkpoint` is the latest committed snapshot for that operation's
+actual attempt, or its exact resume source when no newer snapshot exists;
+`details.checkpoint_attempt_id` identifies its owning attempt. A cache-hit row
+references the selected success's actual checkpoint. This read projection also
+reconstructs committed state after a hard kill without requiring a finished
+operation row. An interrupted `checkpoint="off"` operation has no resumable
+reference. The reference is passed
+unchanged, with fields `task_id`, `request_sha256`, `arm`, `sample`,
+`environment_sha256`, `attempt_id`, `checkpoint`, `seal`, and `seal_sha256`.
+The nested `checkpoint` and `seal` artifact references each contain `path`,
+`role`, `byte_length`, and `sha256`; paths are relative to the operation journal.
+No private storage import or manual checkpoint-file reconstruction is needed.
+
+## Read operation evidence
+
+```python
+record = run.benchmark()
+optimization_record = run.benchmark(method="optimize", backend="jax")
 html = record.to_html()
+record.write_html("operation-history.html")
 ```
 
-Use a browser to inspect the returned HTML when reviewing figures or tables.
-Source inspection and successful serialization alone do not establish that the
-rendered report is visually usable. Keep the original manifest and linked
-artifacts with the report so each displayed observation retains its provenance.
+`run.benchmark(*, operations=None, method=None, backend=None, precision=None,
+status=None)` reads the current Plan leaf. It does not accept a Spec, launch
+another calculation, initialize JAX, choose a comparison arm or mutate records.
+`run.resolve(...)` is likewise read-only and selects the exact verified numerical
+request using the Run defaults or explicit backend/precision overrides.
 
-## Scope and interpretation
+A returned ParameterSweepResult may contain both successful and failed points.
+The operation status describes whether the public call completed; per-point
+statuses describe numerical outcomes. A completed sweep is not a claim that all
+points succeeded. Single-point numerical failures still raise typed errors.
 
-The current candidate supports Direct S/Y/Z requests, diagonal roots, scalar
-response elements, and Optimization expressions built from those quantities.
-HB and other quantity families fail explicitly. Arrays use Float64 and
-Complex128. The observations in this guide execute CPU tasks only. The
-maintained examples provide one-conductor and two-conductor line cases; there
-is no maintained physical input with more than two conductors, so this workflow
-does not invent one.
+The timeline shows operation roots below their actual child details, with zoom,
+collapse, cursor inspection, counts and filters. It distinguishes compilation
+from verified result reuse and references ordered numerical evidence without
+copying candidate histories. One numerical batch owns one measured interval;
+there are no invented per-candidate timings. JAX intervals synchronize actual
+work before closing. Parent intervals are inclusive and overlapping, so nested
+durations must not be summed. Cumulative operation duration differs from wall
+span. Unaligned historical clocks and unknown timings remain explicit.
 
-Performance and numerical observations have no automatic acceptance threshold
-or error tolerance. The report can show timings, work counts, output values,
-mesh refinement, and failed or partial tasks, but it does not declare a backend
-winner or a design target met. Interpretation remains specific to the recorded
-inputs, algorithms, environment, and execution identities.
+The root begins at the method's first clock read. Its final
+`operation_finalization` child includes Plan-lock acquisition and pending-span
+archival, ending at the same tick as the root. Only the final root append and
+return tail remain outside that endpoint. Read-only resolve and Benchmark do not
+persist operation roots or recursive self-spans. Partial records retain actual
+failure/interruption state and numerical references; `operation["details"]["failure"]`
+exposes the exact saved failure when present. They do not acquire a fabricated
+winner or terminal result.
+
+For explicit Julia operations, trace references point to the native verified
+request, canonical attempt, receipt and result. Native `attempt_id` is the actual
+canonical attempt SHA, including when an existing result is reused; it does not
+claim a new launch. Native task/environment IDs remain null, with available
+native environment facts in `details.native_environment`. A failed operation
+retains the request and any verified numerical evidence actually available;
+missing results and unaligned native clocks remain explicit.
+
+## Historical comparison records
+
+The old public comparison executor and its arm declarations are superseded.
+Existing immutable records remain readable without execution or migration:
+
+```python
+from scnsim import BenchmarkResult
+historical = BenchmarkResult.open("workspaces/historical-benchmark")
+```
+
+Their original wheel/backend/precision/clock identities remain historical.
+They are not relabeled as normal dev11 execution. No GPU, automatic mesh choice,
+new CMA algorithm or numerical/performance acceptance condition is introduced.

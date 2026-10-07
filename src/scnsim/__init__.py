@@ -111,6 +111,7 @@ from .results import (
     ScatteringMatrixResult,
     TraceResult,
 )
+from .execution.config import RuntimeConfiguration, configure_runtime
 from .runtime import CircuitRun, NetworkViewRef, ReductionPipeline
 from .specs import (
     CMAESSpec,
@@ -153,10 +154,7 @@ if TYPE_CHECKING:
 
 
 _LAZY_DIAGRAM_EXPORTS = {
-    "BenchmarkSpec": (".benchmark", "BenchmarkSpec"),
     "BenchmarkResult": (".benchmark", "BenchmarkResult"),
-    "MeshSpec": (".benchmark", "MeshSpec"),
-    "MeshGroup": (".benchmark", "MeshGroup"),
     "CircuitDiagramAudit": (".results", "CircuitDiagramAudit"),
     "CircuitDiagramResult": (".results", "CircuitDiagramResult"),
     "CircuitDiagramSpec": (".specs", "CircuitDiagramSpec"),
@@ -169,7 +167,7 @@ _LAZY_DIAGRAM_EXPORTS = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve presentation and experimental names only when requested."""
+    """Resolve presentation and read-only Benchmark names only when requested."""
 
     target = _LAZY_DIAGRAM_EXPORTS.get(name)
     if target is None:
@@ -182,10 +180,7 @@ def __getattr__(name: str) -> object:
 __version__ = metadata_version("scnsim")
 
 __all__ = [
-    "BenchmarkSpec",
     "BenchmarkResult",
-    "MeshSpec",
-    "MeshGroup",
     "RLGC",
     "AffineMap",
     "ElectricalResolution",
@@ -200,6 +195,8 @@ __all__ = [
     "CircuitDiagramSpec",
     "CircuitPlan",
     "CircuitRun",
+    "RuntimeConfiguration",
+    "configure_runtime",
     "CompilerInvariantError",
     "ComponentInstance",
     "CompositePlan",

@@ -42,6 +42,7 @@ def execute_prepared(
     plan_document: Mapping[str, object],
     prepared_analysis: PreparedAnalysis,
     on_progress: Callable[[OptimizationProgress], object] | None = None,
+    _timing_observer: Callable[[str, int, int, Mapping[str, object]], object] | None = None,
 ) -> Iterator[VerifiedSuccess]:
     """Yield verified success while its workspace ownership lock remains held."""
 
@@ -241,6 +242,7 @@ def execute_prepared(
             )
             terminal = run_terminal(
                 prepared_runtime,
+                _timing_observer=_timing_observer,
                 request_path=(request_directory / "request.json").resolve(),
                 staging_directory=allocation.staging_directory.resolve(),
                 request_sha256=request_sha,

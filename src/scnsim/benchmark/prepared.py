@@ -63,12 +63,13 @@ def record_document(value: bytes) -> dict:
 
 
 def array_record(value: object) -> dict[str, object]:
-    """Exact row-major little-endian binary64 wire payload, without pickle."""
+    """Exact row-major numeric payload, preserving selected numerical precision."""
     source = np.asarray(value)
     complex_ = np.iscomplexobj(source)
-    array = np.asarray(source, dtype="<c16" if complex_ else "<f8")
+    dtype = "<c8" if source.dtype == np.dtype("complex64") else "<f4" if source.dtype == np.dtype("float32") else "<c16" if complex_ else "<f8"
+    array = np.asarray(source, dtype=dtype)
     return {
-        "dtype": "complex128" if complex_ else "float64",
+        "dtype": array.dtype.name,
         "shape": list(array.shape),
         "data_hex": array.tobytes(order="C").hex(),
     }
@@ -76,7 +77,7 @@ def array_record(value: object) -> dict[str, object]:
 
 def array_from_record(record: dict[str, object]) -> np.ndarray:
     """Reconstruct immutable typed arrays; native decoding/shape errors propagate."""
-    dtype = {"float64": "<f8", "complex128": "<c16"}[record["dtype"]]
+    dtype = {"float32": "<f4", "float64": "<f8", "complex64": "<c8", "complex128": "<c16"}[record["dtype"]]
     return np.frombuffer(bytes.fromhex(record["data_hex"]), dtype=dtype).reshape(record["shape"])
 
 

@@ -1,4 +1,4 @@
-"""Independent binary64 JAX kernels and complete local diagonal Newton loops.
+"""Dtype-preserving JAX kernels and complete local diagonal Newton loops.
 
 Physical lowering, continuation and CMA stay in the Python task. Every matrix,
 index and start is a runtime argument. Complex symmetry always uses transpose.
@@ -33,8 +33,8 @@ FAILURES = {
 }
 
 
-def tau(n):
-    return 256.0 * (n + 1) * jnp.finfo(jnp.float64).eps
+def tau(n, dtype):
+    return 256.0 * (n + 1) * jnp.finfo(dtype).eps
 
 
 def maximum_abs(a):
@@ -57,7 +57,7 @@ def solve(a, b, n, code, status, factor=None):
     factor = jl.lu_factor(a) if factor is None else factor
     x = jl.lu_solve(factor, b)
     eta = residual(a, x, b)
-    bad = ~(jnp.all(jnp.isfinite(a)) & jnp.all(jnp.isfinite(b)) & jnp.isfinite(eta) & (eta <= tau(n)))
+    bad = ~(jnp.all(jnp.isfinite(a)) & jnp.all(jnp.isfinite(b)) & jnp.isfinite(eta) & (eta <= tau(n, a.real.dtype)))
     return x, first(status, bad, code), eta
 
 
@@ -66,14 +66,14 @@ def operator(data, omega, loaded, *, derivative):
     n = C.shape[0]
     status = jnp.int32(0)
     if loaded and R.shape[0]:
-        load, status, _ = solve(R.astype(jnp.complex128), jnp.diag(M).astype(jnp.complex128), R.shape[0], 1, status)
+        load, status, _ = solve(R.astype(omega.dtype), jnp.diag(M).astype(omega.dtype), R.shape[0], 1, status)
         G = G + B @ load @ B.T
     Q = K - omega**2 * C - 1j * omega * G
     Qp = -2 * omega * C - 1j * G
     bound = jnp.abs(K) + (omega.real**2 + omega.imag**2) * jnp.abs(C) + jnp.abs(omega) * jnp.abs(G)
     for incidence, resistance, inductance in groups:
         width = resistance.shape[0]
-        inv, status, _ = solve(resistance - 1j * omega * inductance, jnp.eye(width, dtype=jnp.complex128), width, 2, status)
+        inv, status, _ = solve(resistance - 1j * omega * inductance, jnp.eye(width, dtype=omega.dtype), width, 2, status)
         for k in range(incidence.shape[0]):
             A = incidence[k]
             contribution = -1j * omega * (A @ inv @ A.T)
@@ -89,28 +89,28 @@ def network(data, omega, family):
     n, p = B.shape[0], Rk.shape[0]
     Q, _, _, status = operator(data, omega, False, derivative=False)
     H = Q / (-1j * omega) + B @ Go @ B.T
-    Rinv, status, _ = solve(Rk.astype(jnp.complex128), jnp.eye(p, dtype=jnp.complex128), p, 1, status)
+    Rinv, status, _ = solve(Rk.astype(omega.dtype), jnp.eye(p, dtype=omega.dtype), p, 1, status)
     W = H + Bk @ Rinv @ Bk.T
     factor = jl.lu_factor(W)
-    X, status, _ = solve(W, Bk.astype(jnp.complex128), n, 5, status, factor)
+    X, status, _ = solve(W, Bk.astype(omega.dtype), n, 5, status, factor)
     Zsrc = Bk.T @ X
-    Ysrc, status, _ = solve(Zsrc, jnp.eye(p, dtype=jnp.complex128), p, 6, status)
+    Ysrc, status, _ = solve(Zsrc, jnp.eye(p, dtype=omega.dtype), p, 6, status)
     Y = Ysrc - Rinv
     Z = jnp.zeros_like(Y)
     S = jnp.zeros_like(Y)
     if family in ("all", "Z"):
-        Z, status, _ = solve(Y, jnp.eye(p, dtype=jnp.complex128), p, 7, status)
+        Z, status, _ = solve(Y, jnp.eye(p, dtype=omega.dtype), p, 7, status)
     if family in ("all", "S"):
-        P = jnp.eye(p, dtype=jnp.complex128) + Dk @ Y @ Dk
-        N = jnp.eye(p, dtype=jnp.complex128) - Dk @ Y @ Dk
+        P = jnp.eye(p, dtype=omega.dtype) + Dk @ Y @ Dk
+        N = jnp.eye(p, dtype=omega.dtype) - Dk @ Y @ Dk
         S, status, _ = solve(P, N, p, 8, status)
-        dfactor = jl.lu_factor(Dk.astype(jnp.complex128))
-        Dinv, status, _ = solve(Dk.astype(jnp.complex128), jnp.eye(p, dtype=jnp.complex128), p, 1, status, dfactor)
+        dfactor = jl.lu_factor(Dk.astype(omega.dtype))
+        Dinv, status, _ = solve(Dk.astype(omega.dtype), jnp.eye(p, dtype=omega.dtype), p, 1, status, dfactor)
         voltage, status, _ = solve(W, 2 * Bk @ Dinv, n, 5, status, factor)
-        source_s, status, _ = solve(Dk.astype(jnp.complex128), Bk.T @ voltage, p, 9, status, dfactor)
-        source_s = source_s - jnp.eye(p, dtype=jnp.complex128)
+        source_s, status, _ = solve(Dk.astype(omega.dtype), Bk.T @ voltage, p, 9, status, dfactor)
+        source_s = source_s - jnp.eye(p, dtype=omega.dtype)
         eta = maximum_abs(source_s - S) / (1 + maximum_abs(source_s) + maximum_abs(S))
-        status = first(status, ~(jnp.isfinite(eta) & (eta <= tau(n))), 9)
+        status = first(status, ~(jnp.isfinite(eta) & (eta <= tau(n, omega.real.dtype))), 9)
     status = first(status, ~(jnp.all(jnp.isfinite(Y)) & jnp.all(jnp.isfinite(S)) & jnp.all(jnp.isfinite(Z))), 10)
     return S, Y, Z, status
 
@@ -130,7 +130,7 @@ def selected_state(data, omega):
         numerator = maximum_abs(ee - ee.T)
         denominator = maximum_abs(jnp.abs(ee) + jnp.abs(ee.T))
         asym = jnp.where(denominator == 0, jnp.where(numerator == 0, 0.0, jnp.inf), numerator / denominator)
-        status = first(status, ~(jnp.isfinite(asym) & (asym <= tau(ee.shape[0]))), 3)
+        status = first(status, ~(jnp.isfinite(asym) & (asym <= tau(ee.shape[0], omega.real.dtype))), 3)
         factor = jl.lu_factor(ee)
         X, status, ex = solve(ee, er, ee.shape[0], 3, status, factor)
         Xp, status, exp = solve(ee, erp - eep @ X, ee.shape[0], 4, status, factor)
@@ -139,7 +139,7 @@ def selected_state(data, omega):
         eta_e = jnp.maximum(ex, exp)
     else:
         F, Fp, eta_e = rr, rrp, 0.0
-        X = jnp.empty((0, indices.shape[0]), dtype=jnp.complex128)
+        X = jnp.empty((0, indices.shape[0]), dtype=omega.dtype)
         Xp = jnp.empty_like(X)
     return F, Fp, Q, Qp, bound, X, Xp, eta_e, status
 
@@ -149,7 +149,7 @@ def retained_response(data, omega, family):
     Y = F / (-1j * omega)
     Z = jnp.zeros_like(Y)
     if family == "Z":
-        Z, status, _ = solve(Y, jnp.eye(Y.shape[0], dtype=jnp.complex128), Y.shape[0], 7, status)
+        Z, status, _ = solve(Y, jnp.eye(Y.shape[0], dtype=omega.dtype), Y.shape[0], 7, status)
     return jnp.zeros_like(Y), Y, Z, status
 
 
@@ -158,7 +158,7 @@ def element_state(data, omega, coordinate):
     F, Fp, Q, Qp, bound, X, Xp, eta_e, status = selected_state(data, omega)
     n = Q.shape[0]
     row = indices[coordinate]
-    x = jnp.zeros(n, dtype=jnp.complex128).at[row].set(1)
+    x = jnp.zeros(n, dtype=omega.dtype).at[row].set(1)
     slope_scale = jnp.abs(Qp[row, row])
     if eliminated.shape[0]:
         x = x.at[eliminated].set(-X[:, coordinate])
@@ -185,12 +185,13 @@ def diagonal_root(data, start, coordinate):
         f, fp, _, code = element_state(data, omega, coordinate)
         code = first(code, fp == 0, 11)
         candidate = omega - f / fp
-        same = (lax.bitcast_convert_type(candidate.real, jnp.uint64) == lax.bitcast_convert_type(omega.real, jnp.uint64)) & (lax.bitcast_convert_type(candidate.imag, jnp.uint64) == lax.bitcast_convert_type(omega.imag, jnp.uint64))
+        bits = jnp.uint32 if omega.real.dtype == jnp.float32 else jnp.uint64
+        same = (lax.bitcast_convert_type(candidate.real, bits) == lax.bitcast_convert_type(omega.real, bits)) & (lax.bitcast_convert_type(candidate.imag, bits) == lax.bitcast_convert_type(omega.imag, bits))
         return step + 1, jnp.where(code == 0, candidate, omega), code, same
     steps, omega, status, _ = lax.while_loop(condition, advance, (jnp.int32(0), start, status, jnp.bool_(False)))
     _, slope, certificate, code = element_state(data, omega, coordinate)
     status = jnp.where(status == 0, code, status)
-    threshold = tau(data[0].shape[0])
+    threshold = tau(data[0].shape[0], omega.real.dtype)
     closed = jnp.isfinite(omega) & (omega.real > 0) & jnp.all(certificate[:4] <= threshold)
     status = first(status, ~closed, 12)
     status = first(status, ~(certificate[4] > threshold), 13)

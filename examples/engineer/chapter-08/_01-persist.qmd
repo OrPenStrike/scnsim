@@ -78,7 +78,7 @@ the same signal bus and creates no second electrical connection.
 ```{python}
 #| id: ch8-prepare-persisted-requests
 workspace = "workspaces/engineer-chapter-08"
-run = CircuitRun(plan=plan, workspace=workspace)
+run = CircuitRun(backend="julia", plan=plan, workspace=workspace)
 direct_spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz)
 quantity_view = run.original.reduce(
     ReductionPipeline().retain(resonator_coordinate)

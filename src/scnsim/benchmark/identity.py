@@ -1,4 +1,4 @@
-"""Stable task and artifact identities from actual benchmark inputs."""
+"""Stable identities from actual operation inputs."""
 
 from __future__ import annotations
 
@@ -7,13 +7,11 @@ import json
 import os
 import platform
 import sys
-import uuid
-from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Mapping
 
-from ..canonical import canonical_json_bytes, sha256_hex
+from ..canonical import sha256_hex
 
 
 _THREAD_ENVIRONMENT = (
@@ -23,27 +21,6 @@ _THREAD_ENVIRONMENT = (
     "NUMEXPR_NUM_THREADS",
     "XLA_FLAGS",
 )
-
-
-@dataclass(frozen=True, slots=True)
-class _NativeThreadSpec:
-    """Effective Julia and BLAS counts, separate from physical CPU affinity."""
-
-    julia_threads: int
-    blas_threads: int
-
-
-def _native_thread_spec(
-    cpu_threads: int,
-    *,
-    julia_threads: int | None = None,
-    julia_blas_threads: int | None = None,
-) -> _NativeThreadSpec:
-    """Resolve each native count independently against the task's CPU quota."""
-    return _NativeThreadSpec(
-        cpu_threads if julia_threads is None else julia_threads,
-        cpu_threads if julia_blas_threads is None else julia_blas_threads,
-    )
 
 
 def _distribution_version(name: str) -> str | None:
@@ -59,7 +36,6 @@ def environment_snapshot(
     device: str,
     cpu_threads: int,
     backend: Mapping[str, object] | None = None,
-    native_threads: _NativeThreadSpec | None = None,
 ) -> dict[str, object]:
     """Capture the selected process, installed numerical packages and device."""
     executable = Path(sys.executable)
@@ -95,9 +71,6 @@ def environment_snapshot(
         },
         "backend": dict(backend or {}),
     }
-    if native_threads is not None:
-        snapshot["julia_threads_requested"] = native_threads.julia_threads
-        snapshot["julia_blas_threads_requested"] = native_threads.blas_threads
     return snapshot
 
 
@@ -119,59 +92,32 @@ def _stable_identity(value: object) -> object:
     return value
 
 
-def task_request_identity(
+def operation_task_identifier(
     *,
-    benchmark_sha256: str,
-    arm: str,
+    plan_sha256: str,
+    request_sha256: str,
+    method: str,
+    backend: str,
+    precision: str,
+    resources: Mapping[str, object],
+    algorithm_id: str,
     environment_sha256: str,
-    device: str,
-    cpu_threads: int,
-    backend_identity: Mapping[str, object],
-    mesh_identity: Mapping[str, object] | None = None,
+    checkpoint_policy: str,
 ) -> str:
-    """Bind one arm/profile request to its algorithm, environment and mesh."""
+    """Bind resumable same-process work without changing numerical request identity."""
     return sha256_hex({
-        "schema": "scnsim.benchmark_task_request",
+        "schema": "scnsim.operation_task",
         "schema_version": 1,
-        "benchmark_sha256": benchmark_sha256,
-        "arm": arm,
-        "environment_sha256": environment_sha256,
-        "device": device,
-        "cpu_threads": cpu_threads,
-        "backend": _stable_identity(dict(backend_identity)),
-        "mesh": dict(mesh_identity or {}),
-    })
-
-
-def task_identifier(*, request_sha256: str, sample: int) -> str:
-    """Derive a stable independent task identity for one complete sample."""
-    return sha256_hex({
-        "schema": "scnsim.benchmark_task",
-        "schema_version": 1,
+        "plan_sha256": plan_sha256,
         "request_sha256": request_sha256,
-        "sample": sample,
+        "method": method,
+        "backend": backend,
+        "precision": precision,
+        "resources": _stable_identity(dict(resources)),
+        "algorithm_id": algorithm_id,
+        "environment_sha256": environment_sha256,
+        "checkpoint_policy": checkpoint_policy,
     })
-
-
-def new_attempt_id() -> str:
-    """Allocate an opaque attempt identifier for one actual launch."""
-    return str(uuid.uuid4())
-
-
-def artifact_reference(root: Path, path: Path, *, role: str) -> dict[str, object]:
-    """Return content identity for a real regular artifact beneath ``root``."""
-    if path.is_symlink() or not path.is_file():
-        raise ValueError(f"benchmark artifact is not a regular file: {path}")
-    resolved_root = root.resolve()
-    resolved_path = path.resolve()
-    relative = resolved_path.relative_to(resolved_root).as_posix()
-    data = path.read_bytes()
-    return {
-        "path": relative,
-        "role": role,
-        "byte_length": len(data),
-        "sha256": sha256(data).hexdigest(),
-    }
 
 
 def checkpoint_seal(

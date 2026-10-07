@@ -9,7 +9,7 @@ launch a separate solve.
 
 ```{python}
 #| id: ch3-prepare-direct-s21
-run = CircuitRun(plan=plan, workspace="workspaces/engineer-chapter-03")
+run = CircuitRun(backend="julia", plan=plan, workspace="workspaces/engineer-chapter-03")
 view = run.original
 sample_frequencies = [5.5, 6.0, 6.5] * u.GHz
 transmission_trace = SParameterTrace(
