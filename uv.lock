@@ -1482,7 +1482,7 @@ wheels = [
 
 [[package]]
 name = "scnsim"
-version = "1.0.0a2"
+version = "1.0.0.dev13"
 source = { editable = "." }
 dependencies = [
     { name = "cmaes" },
@@ -1493,6 +1493,7 @@ dependencies = [
     { name = "pint" },
     { name = "plotly" },
     { name = "schemdraw" },
+    { name = "scipy" },
     { name = "zarr" },
 ]
 
@@ -1523,6 +1524,7 @@ requires-dist = [
     { name = "pint", specifier = ">=0.24.4,<0.25" },
     { name = "plotly", specifier = ">=6.3,<7" },
     { name = "schemdraw", specifier = ">=0.23,<1" },
+    { name = "scipy", specifier = "==1.18.1" },
     { name = "zarr", specifier = ">=2.18.3,<3" },
 ]
 provides-extras = ["julia", "static-export"]

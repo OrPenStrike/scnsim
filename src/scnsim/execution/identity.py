@@ -54,6 +54,7 @@ def _jax_runtime_identity(base: dict[str, object], *, precision: str) -> dict[st
     return {
         "backend": "jax", "precision": precision,
         "python_source_sha256": base["python_source_sha256"],
+        "scipy_version": version("scipy"),
         "jax_version": version("jax"), "jaxlib_version": version("jaxlib"),
         "cmaes_version": version("cmaes"),
         "resources": runtime_resource_identity(),

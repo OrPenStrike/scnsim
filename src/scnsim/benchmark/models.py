@@ -113,54 +113,124 @@ class BenchmarkSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class SeriesRL:
-    """Full-node incidence (n,r), resistance/inductance (r,r), coherent SI."""
+class SparseMatrix:
+    """Immutable canonical COO; structural zeros survive numeric coalescing.
 
-    incidence: FloatArray
+    Compiler/View own binary64 SI values. Numerical adapters consume indexed
+    operands directly; explicit dense conversion belongs only to Julia transport.
+    """
+
+    shape: tuple[int, int]
+    rows: np.ndarray
+    cols: np.ndarray
+    values: FloatArray
+
+    def __post_init__(self) -> None:
+        for name in ("rows", "cols"):
+            array = np.asarray(getattr(self, name), dtype=np.int64)
+            object.__setattr__(self, name, np.frombuffer(array.tobytes(), dtype=np.int64).reshape(array.shape))
+        object.__setattr__(self, "values", immutable_array(self.values))
+
+    @classmethod
+    def from_entries(cls, shape, rows, cols, values) -> SparseMatrix:
+        rows, cols = np.asarray(rows, dtype=np.int64), np.asarray(cols, dtype=np.int64)
+        values = np.asarray(values, dtype=np.float64)
+        if not len(rows):
+            return cls(tuple(shape), rows, cols, values)
+        order = np.lexsort((cols, rows))
+        rows, cols, values = rows[order], cols[order], values[order]
+        starts = np.r_[0, np.flatnonzero((rows[1:] != rows[:-1]) | (cols[1:] != cols[:-1])) + 1]
+        return cls(tuple(shape), rows[starts], cols[starts], np.add.reduceat(values, starts))
+
+    def entry(self, row: int, col: int) -> float:
+        return float(np.sum(self.values[(self.rows == row) & (self.cols == col)]))
+
+    def row(self, row: int) -> np.ndarray:
+        result = np.zeros(self.shape[1])
+        take = self.rows == row
+        np.add.at(result, self.cols[take], self.values[take])
+        return result
+
+    def column_rows(self, col: int) -> np.ndarray:
+        return self.rows[self.cols == col]
+
+    def to_dense(self) -> np.ndarray:
+        """Explicit transport-only materialization, never a numerical fallback."""
+        result = np.zeros(self.shape)
+        np.add.at(result, (self.rows, self.cols), self.values)
+        return result
+
+    def right_multiply(self, matrix: np.ndarray) -> SparseMatrix:
+        # Dense right operands are small Port maps. Include zero weights so
+        # structural identity does not depend on their candidate values.
+        q = matrix.shape[1]
+        return self.from_entries((self.shape[0], q), np.repeat(self.rows, q),
+                                 np.tile(np.arange(q), len(self.rows)),
+                                 (self.values[:, None] * matrix[self.cols]).reshape(-1))
+
+    def transform_rows(self, mapping, new_size: int) -> SparseMatrix:
+        rows, cols, values = [], [], []
+        for row, col, value in zip(self.rows, self.cols, self.values, strict=True):
+            for target, weight in mapping[row]:
+                rows.append(target); cols.append(col); values.append(weight * value)
+        return self.from_entries((new_size, self.shape[1]), rows, cols, values)
+
+    def congruence(self, mapping, new_size: int) -> SparseMatrix:
+        rows, cols, values = [], [], []
+        for row, col, value in zip(self.rows, self.cols, self.values, strict=True):
+            for left, lw in mapping[row]:
+                for right, rw in mapping[col]:
+                    rows.append(left); cols.append(right); values.append(lw * value * rw)
+        return self.from_entries((new_size, new_size), rows, cols, values)
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesRL:
+    """Indexed full-node incidence (n,r), local dense R/L (r,r), coherent SI.
+
+    One ordered section owns one complete frequency-dependent contribution;
+    coalesce that contribution before its absolute certificate bound.
+    """
+
+    incidence: SparseMatrix
     resistance: FloatArray
     inductance: FloatArray
 
     def __post_init__(self) -> None:
-        for name in ("incidence", "resistance", "inductance"):
+        for name in ("resistance", "inductance"):
             object.__setattr__(self, name, immutable_array(getattr(self, name)))
 
 
 @dataclass(frozen=True, slots=True)
 class CompiledModel:
-    """One physical point in canonical node/Port order, before View reduction.
+    """Candidate-specific sparse physical forms in canonical node/Port order.
 
-    C/K/G are (n,n), B is (n,p), R is (p,p), M is (p,). All are real
-    binary64 SI arrays; series-RL impedance remains frequency-dependent.
-    Evidence contains resolved bindings, branch rows and actual line grids.
+    C/K/G are coalesced indexed (n,n), B indexed (n,p), R (p,p), M (p,).
+    Binary64 SI values remain separate from structure, including exact zeros.
     """
 
     node_ids: tuple[str, ...]
     port_ids: tuple[str, ...]
-    C: FloatArray
-    K: FloatArray
-    G: FloatArray
-    B: FloatArray
+    C: SparseMatrix
+    K: SparseMatrix
+    G: SparseMatrix
+    B: SparseMatrix
     R: FloatArray
     M: FloatArray
     series_rl: tuple[SeriesRL, ...] = ()
     evidence_bytes: bytes = b"{}"
 
     def __post_init__(self) -> None:
-        for name in ("C", "K", "G", "B", "R", "M"):
+        for name in ("R", "M"):
             object.__setattr__(self, name, immutable_array(getattr(self, name)))
 
 
 @dataclass(frozen=True, slots=True)
 class RealizedView:
-    """Candidate-specific transformed model and selected generalized boundary.
+    """Sparse transformed model and ordered selected generalized boundary.
 
-    model retains every physical/internal node and ordered full B/R/M.
-    coordinates describes the active public basis, distinct from model.node_ids.
-    selected_indices order the root operator; terminal_ids order response axes.
-    coordinate_port_map is (n,p) in original_node_ids order;
-    selected_map is (q,p), Bk is (n,q) in model.node_ids order,
-    Rk/Dk are (q,q), Go is (p,p).
-    Boundary arrays are absent only for a non-Port-realizable root-only View.
+    coordinate_port_map keeps its original-node public evidence axis. Bk is
+    indexed (n,q); selected_map/Rk/Dk/Go remain small dense boundary arrays.
     """
 
     model: CompiledModel
@@ -170,7 +240,7 @@ class RealizedView:
     selected_indices: tuple[int, ...]
     port_realizable: bool
     selected_map: FloatArray | None = None
-    Bk: FloatArray | None = None
+    Bk: SparseMatrix | None = None
     Rk: FloatArray | None = None
     Dk: FloatArray | None = None
     Go: ComplexArray | None = None
@@ -179,7 +249,7 @@ class RealizedView:
     original_node_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        for name in ("coordinate_port_map", "selected_map", "Bk", "Rk", "Dk", "Go"):
+        for name in ("coordinate_port_map", "selected_map", "Rk", "Dk", "Go"):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, immutable_array(value, complex_=name == "Go"))

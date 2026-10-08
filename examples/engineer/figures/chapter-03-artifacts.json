@@ -203,9 +203,9 @@
     ]
   },
   "publication_binding": {
-    "binding_sha256": "d5ec8c311d633b267c68855e56d75aadbc54b146e9cf4e4fb32c392af1301028",
+    "binding_sha256": "78cdfcc70fd4361821910ed88286c41c0377bf20ec0b759758440e3f021b10d2",
     "generator_sha256": "fa9579b69358bc95f2879121229b4fb623c07a47fbcbaf8d3b86cf592c4817e3",
-    "source_tree_sha256": "c0a3f47cf808cd26b081b0924e550cb23f1ba49ee1672f31f07381534d2e16eb"
+    "source_tree_sha256": "bb2a661c7a8eee5f232a981dce7b123c7823b2d62db0dc9ef26915b74e29c8ec"
   },
   "publication_rebind": {
     "deltas": {
@@ -239,9 +239,53 @@
         "before_sha256": "fa9579b69358bc95f2879121229b4fb623c07a47fbcbaf8d3b86cf592c4817e3"
       },
       "source_files": {
-        "src/scnsim/runtime.py": {
-          "after_sha256": "0d34f0c3f8149550f565559766318f8ba81918284be88ac62437e0a4f324a61c",
-          "before_sha256": "630e22bdc9bbfc3cf1516836a66bc1a9fea3622ee6325cc3e252b5b4cad6ba06"
+        "src/scnsim/benchmark/backends/base.py": {
+          "after_sha256": "9aa0861ce0078979a014ccde7927293510fc1db6cb1df8897cc78ac5bd98cf5d",
+          "before_sha256": "8b6c01824cf869993f28c20253add95949635cd5429fde3a43f7f4b9be1dfdb8"
+        },
+        "src/scnsim/benchmark/backends/jax_backend.py": {
+          "after_sha256": "45370883b0c321ed5e4c0609a1569fea29563ca80a7dd19a03e4075eb5d483aa",
+          "before_sha256": "3d5b88ca5f370c8af75d773e7c573ac473e7bebc628688c20b5f4068c32ee76f"
+        },
+        "src/scnsim/benchmark/backends/jax_core.py": {
+          "after_sha256": "a1187315849c1987f906b93fe749003641c8e3041093b8e60fa1653b4c402213",
+          "before_sha256": "bd25b77dfd96027fac5dbfc0eba169b4a32f35b32627c3bbea70eccb12332c5b"
+        },
+        "src/scnsim/benchmark/backends/sparse_direct.py": {
+          "after_sha256": "8778ea4689fb9e45b15528b9ef55e1093d5dc409cd5dd950ed5f12e9b259e1bb",
+          "before_sha256": "absent"
+        },
+        "src/scnsim/benchmark/backends/sparse_root.py": {
+          "after_sha256": "540ebb006123b5c7589943d2391b8c39fd1abc524931b2f3b7fad6aef04f640f",
+          "before_sha256": "absent"
+        },
+        "src/scnsim/benchmark/compiler.py": {
+          "after_sha256": "7f3f5f23a2c7670e1ea3315068d34794cac37183ea30c78dace25dc18bc7a2f2",
+          "before_sha256": "953bd51f3a5c569b4b686b63344ac609852379a75495067faaa632fe5e475e9c"
+        },
+        "src/scnsim/benchmark/identity.py": {
+          "after_sha256": "8dc792f185955f38c5eb6e9706982ea0a772140629377e8fc647317c6cb27afc",
+          "before_sha256": "d86187e9a836956efdc2fd5b4a77e64def1b5d1927f69d313e92551091e9a6a5"
+        },
+        "src/scnsim/benchmark/models.py": {
+          "after_sha256": "3131759bff173059507334df95dc40a6fd491a47b409adddfebd191dca7282d2",
+          "before_sha256": "282fd9c3759361a3045b95b1e1f50136adf960aa53a8f0d6783b643afaccc3a8"
+        },
+        "src/scnsim/benchmark/operations.py": {
+          "after_sha256": "20b34ec61540fd39e6cb52de80744b316079f70b2a8d1eb8bf1b0b1f3afe2f64",
+          "before_sha256": "4d7e06efcf0b6041af818c25025a2c83fffba6d7f0205d02fcea8a38deac690a"
+        },
+        "src/scnsim/benchmark/views.py": {
+          "after_sha256": "ba7a19d4c6653bebb30ff7593c44017fef8b9aa64dd8e0e1ee447d1de676c576",
+          "before_sha256": "7f6af5190ad45a1c2d10c9a5df2a117601100b94beb1aab0c8ac0faa8d2c8671"
+        },
+        "src/scnsim/execution/identity.py": {
+          "after_sha256": "dec65cfe7335929e6623971fffd024e3bcd6c2a33686d1103b50cb36b61d48e4",
+          "before_sha256": "73ae665ea6f1c8e834427c7f596f25dfb710ab27b27183c1d330ccd2f24be061"
+        },
+        "src/scnsim/execution/request.py": {
+          "after_sha256": "6c6820797d7ffa6622d576fda611a6ff8fb1f035638f7c4418bbc387ed483c93",
+          "before_sha256": "df01b3edb1db8d5441c91f7377c52ae8628ea6be439748855cfc2d5ab4446730"
         }
       },
       "teaching_sources": {}
@@ -265,7 +309,7 @@
         "03-feedline-illustration.svg": "f3591bd6225c9219d3c783c6e91441178bd448d8871366bb97d28c7a316831dd",
         "03-readout-illustration.svg": "24106030b412de3b6c409f33f4bb971a63cd6f5111bf5e7ab2e73a49bd47caa2"
       },
-      "prior_publication_binding_sha256": "4dd9d0358f2aed8e8693aae4e8ac6cb30be9ba8b10d865f8bc3ba840a60a163b",
+      "prior_publication_binding_sha256": "d5ec8c311d633b267c68855e56d75aadbc54b146e9cf4e4fb32c392af1301028",
       "prior_redrawn_artifacts": {
         "03-direct-s21.svg": {
           "execution_sha256": "e14c7d93c455621e51e9c839296154f80b75d0d277c73fc34addd5725c6986a9",
@@ -276,9 +320,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "adc7e7a03808efb83115cb3f85158edd94d58ab842b1248e693cba8a95e1730d",
-    "prior_publication_binding_sha256": "4dd9d0358f2aed8e8693aae4e8ac6cb30be9ba8b10d865f8bc3ba840a60a163b",
-    "prior_publication_rebind_sha256": "ebd4be231e07475a4b2de308c4e132150f2f2c5f80f441395650871753cb34b4",
+    "prior_manifest_sha256": "51844eda3b12290d53ab44ba7ff858f8f68071db2d2d93c34ebcac2956d4d1a7",
+    "prior_publication_binding_sha256": "d5ec8c311d633b267c68855e56d75aadbc54b146e9cf4e4fb32c392af1301028",
+    "prior_publication_rebind_sha256": "9de6e6e438368662bf59aae102afb9d67d65b992bbc9ff4d960a0070946f2b59",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "03-direct-s21.csv": "d5eebf293f6e25b7a20f41c0ba00bd0315348ab11e1ef4751dcfc44084b2f08d",
@@ -287,10 +331,10 @@
       "03-feedline-illustration.svg": "f3591bd6225c9219d3c783c6e91441178bd448d8871366bb97d28c7a316831dd",
       "03-readout-illustration.svg": "24106030b412de3b6c409f33f4bb971a63cd6f5111bf5e7ab2e73a49bd47caa2"
     },
-    "publication_binding_sha256": "d5ec8c311d633b267c68855e56d75aadbc54b146e9cf4e4fb32c392af1301028",
+    "publication_binding_sha256": "78cdfcc70fd4361821910ed88286c41c0377bf20ec0b759758440e3f021b10d2",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.sqlite_commit_default10.20261008"
+    "transition_id": "scnsim.jax_sparse_superlu.20261008"
   },
   "result": {
     "attempt_sha256": "f8c4d004ed0345b7c79a5bc6fd6208b03855ff716ed6794357f3e14226ab284b",

@@ -23,10 +23,10 @@ _DIRECT_ALGORITHMS = {
 
 
 _JAX_ALGORITHMS = {
-    "solve_direct": "scnsim.jax.direct_response.v1",
-    "diagonal_root": "scnsim.jax.diagonal_root.newton32.v1",
-    "response_element": "scnsim.jax.response_element.v1",
-    "optimize_direct": "scnsim.jax.direct_cmaes.cmaes_0_13_1.v1",
+    "solve_direct": "scnsim.jax.sparse_superlu.direct_response.v1",
+    "diagonal_root": "scnsim.jax.sparse_superlu.diagonal_root.newton32.v1",
+    "response_element": "scnsim.jax.sparse_superlu.response_element.v1",
+    "optimize_direct": "scnsim.jax.sparse_superlu.direct_cmaes.cmaes_0_13_1.v1",
 }
 
 

@@ -65,6 +65,7 @@ def environment_snapshot(
         "packages": {
             "scnsim": _distribution_version("scnsim"),
             "numpy": _distribution_version("numpy"),
+            "scipy": _distribution_version("scipy"),
             "jax": _distribution_version("jax"),
             "jaxlib": _distribution_version("jaxlib"),
             "cmaes": _distribution_version("cmaes"),

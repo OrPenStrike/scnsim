@@ -272,6 +272,7 @@ class OperationRecorder:
         end_tick_ns: int,
         parent_span_id: str | None = None,
         details: Mapping[str, object] | None = None,
+        status: str = "success",
     ) -> None:
         """Record an observed inclusive interval supplied by a numerical owner."""
         self._spans.append(
@@ -281,7 +282,7 @@ class OperationRecorder:
                 kind=kind,
                 start_tick_ns=start_tick_ns,
                 end_tick_ns=end_tick_ns,
-                status="success",
+                status=status,
                 details=details,
             )
         )

@@ -12,7 +12,7 @@ import math
 
 import numpy as np
 
-from ..models import EvaluationJob
+from ..models import EvaluationJob, SparseMatrix
 from ..prepared import array_record, record_bytes
 
 
@@ -39,6 +39,11 @@ def evidence_bytes(value: object) -> bytes:
 
 def job_record(job: EvaluationJob) -> dict[str, object]:
     """Serialize every numeric axis using shared row-major binary64 transport."""
+    def transport_array(value):
+        # The native adapter's existing wire schema is dense. This is the only
+        # foundation conversion boundary, not a JAX numerical fallback.
+        return array_record(value.to_dense() if isinstance(value, SparseMatrix) else value)
+
     view = job.view
     model = view.model
     # Compiler section rows own physical path/section identity. View transforms
@@ -48,7 +53,7 @@ def job_record(job: EvaluationJob) -> dict[str, object]:
     series_rl = [
         {"id": "\x1f".join(row["component_path"]) + "\x1esection-" + str(row["section"]),
          "component_path": row["component_path"], "section": row["section"],
-         **{name: array_record(getattr(block, name))
+         **{name: transport_array(getattr(block, name))
             for name in ("incidence", "resistance", "inductance")}}
         for block, row in zip(model.series_rl, sections, strict=True)
     ]
@@ -62,13 +67,13 @@ def job_record(job: EvaluationJob) -> dict[str, object]:
     record["view"] = {
         "model": {
             "node_ids": list(model.node_ids), "port_ids": list(model.port_ids),
-            **{name: array_record(getattr(model, name)) for name in ("C", "K", "G", "B", "R", "M")},
+            **{name: transport_array(getattr(model, name)) for name in ("C", "K", "G", "B", "R", "M")},
             "series_rl": series_rl,
         },
         "coordinates": list(view.coordinates), "terminal_ids": list(view.terminal_ids),
         "original_node_ids": list(view.original_node_ids),
         "selected_indices": list(view.selected_indices), "port_realizable": view.port_realizable,
-        **{name: None if getattr(view, name) is None else array_record(getattr(view, name))
+        **{name: None if getattr(view, name) is None else transport_array(getattr(view, name))
            for name in ("coordinate_port_map", "selected_map", "Bk", "Rk", "Dk", "Go")},
     }
     return record

@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0a2 Alpha candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev13 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -30,7 +30,9 @@ Checkpoint off retains evidence without fabricating a resumable snapshot. The
 interval binds operation/task/checkpoint identity, not the numerical request,
 so completed numeric cache lookup stays independent of commit granularity.
 Explicit Julia intervals other than 1 are unsupported and fail before launch.
-Numerical algorithms, precision, candidate order and winner meaning do not change.
+The workspace policy does not change numerical algorithms, precision, candidate
+order or winner meaning. The dev13 sparse implementation below changes the
+factorization mechanism under a distinct numerical algorithm identity.
 
 A generation callback is delivered once per committed group, for its latest
 committed generation, after commit acknowledgement and outside storage locks.
@@ -236,12 +238,48 @@ Workspace owns durable evidence, trace publication, resume verification and
 read-only typed decoding. Visualization owns timeline projection and rendering.
 No report, kernel cache or trace creates a competing numerical authority.
 
-Required new installed-wheel observations follow the exact dev12 work packet:
+The historical dev12 observation scope followed its own work packet:
 Julia-blocked Direct/root/Optimization/sweep, grouped commit resume/tail/off and
 callback/interruption ownership, actual SQLite capacity/transaction fault cases,
 new/partial/relocated readonly projection and HTML inspection, and the 18 new
 performance tasks described above. Unchanged dev11 observations are historical
-evidence, not rerun or relabeled as dev12. New observations remain pending until
-source-bound receipts exist. No speed,
+evidence, not rerun or relabeled as dev12. The dev13 work packet separately assigns only its named functional observations.
+No speed,
 accuracy, memory, convergence or mesh Gate is implied. GPU, Windows Workspace,
-Float16/mixed precision and new algorithms are excluded.
+Float16/mixed precision and additional quantity families are excluded.
+
+## Sparse CPU numerical foundation (dev13 candidate)
+
+The CONVERGING dev13 implementation replaces the JAX dense nodal path with
+immutable indexed local stamps, candidate-specific sparse View congruences and
+JAX numeric assembly followed by CPU CSC SuperLU. The source candidate now implements this path; installed-wheel observations
+remain pending. There is
+no selectable dense numerical fallback. Dense conductor, Port, selected Schur
+and actual RHS blocks remain where the mathematics requires them; genuine fill
+is preserved without dropping small values.
+
+Compiler and View own binary64 SI lowering and declaration order. The backend
+owns requested arithmetic precision, local frequency assembly, direct factors,
+analytic derivatives and existing numerical certificates. C/K/G are coalesced
+before their separate absolute bounds; each series-RL section is bounded before
+section summation. Host continuation/CMA and Workspace commit/checkpoint
+authorities remain separate. The private Python-to-Julia transport may materialize
+a dense descriptor at that adapter boundary; explicit ordinary Julia is unchanged.
+
+Runtime coefficients, indices and View weights are inputs, rather than captured
+physical constants. Static-pattern preparation, compiled-kernel reuse and actual
+call-local factor reuse are distinct observations. Installed-wheel functionality
+remains pending; historical measurements
+retain their original implementation identity.
+
+The current JAX algorithm is
+`scnsim.jax-sparse-csc-superlu-reuse-analytic-newton32.v1`. Canonical requests
+bind it, and actual execution environment records bind SciPy and the selected
+backend. This prevents an old dense request/checkpoint from becoming a new sparse
+execution by relabeling. Historical results remain readable without migration.
+Sparse assembly uses at most eight systems per chunk with an exact tail; each
+system has a call-local CPU SuperLU factor reused for its actual RHS solves.
+Retained roots factor only the eliminated block and form the selected Schur
+operator and analytic derivative; they never invert the full singular root
+operator. Timing distinguishes actual assembly, CSC construction, factorization,
+RHS solves and checks; these nested intervals are not additive wall-time parts.

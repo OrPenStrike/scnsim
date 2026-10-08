@@ -9,7 +9,17 @@ toc-depth: 2
 the newer preparation, multi-View binding, checkpoint/resume,
 and ReportPanel ownership paths remain `CONVERGING`.
 
-The numerical algorithms below remain accepted. The `CONVERGING`
+The physical formulas and search semantics below remain authoritative. The
+CONVERGING dev13 JAX implementation uses sparse local stamps, JAX numeric
+assembly and CPU CSC SuperLU under
+`scnsim.jax-sparse-csc-superlu-reuse-analytic-newton32.v1`; explicit Julia keeps
+its existing native path. Dense local conductor, Port, selected Schur and actual
+RHS blocks remain where required, with no dense nodal fallback. Retained roots
+factor the eliminated block and reuse that factor for the analytic Schur
+derivative. Precision-specific residuals, Newton bit stagnation, host
+continuation, candidate failure ownership and CMA state/order remain the
+existing contracts. Sparse arithmetic is not claimed bit-identical to historical
+dense execution, and no new accuracy or performance threshold is introduced. The `CONVERGING`
 [Parameter System Contract](../contracts/parameter-system.qmd) separately
 reopens ref identity, fixed non-active parameter binding, ordered batch
 execution, and sweep Results. Its implementation baseline is integrated;

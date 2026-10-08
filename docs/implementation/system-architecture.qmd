@@ -4,7 +4,8 @@ subtitle: "Which layer owns each Runtime responsibility?"
 toc-depth: 2
 ---
 
-**Status:** accepted numerical algorithms remain unchanged. Run publication,
+**Status:** accepted physical formulas remain authoritative. The dev13 sparse
+JAX assembly/CPU SuperLU implementation, Run publication,
 public value ownership, and maintenance diagnostics are a `CONVERGING`
 candidate. The [public contracts](../contracts/index.qmd#public-contracts)
 remain authoritative; this page does not assign one lifecycle state to the
@@ -334,3 +335,27 @@ train. Reusable algorithms are admitted only through the classified matrix in
 [External Inputs and Delivery](external-inputs-and-delivery.qmd#legacy-adoption-matrix).
 
 [Next: Plan sealing and identity](plan-sealing-and-identity.qmd)
+
+## Sparse CPU numerical foundation (dev13 candidate)
+
+The CONVERGING dev13 implementation replaces the JAX dense nodal path with
+immutable indexed local stamps, candidate-specific sparse View congruences and
+JAX numeric assembly followed by CPU CSC SuperLU. The source candidate now implements this path; installed-wheel observations
+remain pending. There is
+no selectable dense numerical fallback. Dense conductor, Port, selected Schur
+and actual RHS blocks remain where the mathematics requires them; genuine fill
+is preserved without dropping small values.
+
+Compiler and View own binary64 SI lowering and declaration order. The backend
+owns requested arithmetic precision, local frequency assembly, direct factors,
+analytic derivatives and existing numerical certificates. C/K/G are coalesced
+before their separate absolute bounds; each series-RL section is bounded before
+section summation. Host continuation/CMA and Workspace commit/checkpoint
+authorities remain separate. The private Python-to-Julia transport may materialize
+a dense descriptor at that adapter boundary; explicit ordinary Julia is unchanged.
+
+Runtime coefficients, indices and View weights are inputs, rather than captured
+physical constants. Static-pattern preparation, compiled-kernel reuse and actual
+call-local factor reuse are distinct observations. Installed-wheel functionality
+remains pending; historical measurements
+retain their original implementation identity.

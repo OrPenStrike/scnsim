@@ -1,7 +1,7 @@
 """Independent Plan-v2 physical lowering; no Julia discovery or preflight.
 
-Connectivity supplies the authoritative graph. The compiler allocates actual
-line stations, stamps reciprocal physical forms and retains series-RL blocks.
+Connectivity supplies structural slots, including zero-valued coefficients.
+Only local conductor/coupling support is dense; no nodal dense forms are built.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import numpy as np
 from ..canonical import canonical_json_bytes, sha256_hex
 from ..errors import CompilerInvariantError, InvalidCandidatePhysicalParameter
 from .mesh import prepare_rlgc, quantity, realize_line
-from .models import CompiledModel, MeshSpec, SeriesRL
+from .models import CompiledModel, MeshSpec, SeriesRL, SparseMatrix
 from .prepared import record_bytes
 
 
@@ -85,14 +85,34 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
                 nodes.extend(internal_node(leaf, grids[path]["n_sections"], station, c) for c in rlgc["conductors"])
     indices = {node: i for i, node in enumerate(nodes)}
     n = len(nodes)
-    C, K, G = (np.zeros((n, n)) for _ in range(3))
+    C, K, G = (dict(rows=[], cols=[], values=[]) for _ in range(3))
+
+    def stamp(target: dict, support, local: np.ndarray) -> None:
+        support = tuple(support)
+        target["rows"].extend(np.repeat(support, len(support)))
+        target["cols"].extend(np.tile(support, len(support)))
+        target["values"].extend(local.reshape(-1))
+
+    def outer_stamp(target: dict, b: dict, scale: float) -> None:
+        support = tuple(b)
+        weights = np.asarray([b[row] for row in support])
+        stamp(target, support, scale * np.outer(weights, weights))
+
+    def difference(positive: dict, negative: dict) -> dict:
+        result = dict(positive)
+        for row, value in negative.items():
+            result[row] = result.get(row, 0) - value
+        return result
+
+    def evidence_vector(b: dict) -> list:
+        vector = np.zeros(n)
+        for row, value in b.items():
+            vector[row] = value
+        return vector.tolist()
     blocks, branches, rows = [], [], []
 
-    def incidence(net: str) -> np.ndarray:
-        b = np.zeros(n)
-        if net != ground:
-            b[indices[net]] = 1
-        return b
+    def incidence(net: str) -> dict:
+        return {} if net == ground else {indices[net]: 1.0}
 
     for leaf in plan["physical_leaves"]:
         path = tuple(leaf["path"])
@@ -103,52 +123,57 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
             sections, dx = grid["n_sections"], grid["dx_m"]
             conductors = rlgc["conductors"]
 
-            def station_map(station: int) -> np.ndarray:
-                return np.column_stack([incidence(
-                    endpoints[path, ("head." if station == 0 else "tail.") + conductor]
-                    if station in (0, sections) else internal_node(leaf, sections, station, conductor))
-                    for conductor in conductors])
+            def station_map(station: int) -> SparseMatrix:
+                rr, cc, vv = [], [], []
+                for col, conductor in enumerate(conductors):
+                    net = (endpoints[path, ("head." if station == 0 else "tail.") + conductor]
+                           if station in (0, sections) else internal_node(leaf, sections, station, conductor))
+                    for row, value in incidence(net).items():
+                        rr.append(row); cc.append(col); vv.append(value)
+                return SparseMatrix.from_entries((n, len(conductors)), rr, cc, vv)
 
             Rline, Lline, Gline, Cline = (value * dx for value in prepare_rlgc(rlgc, preparation_cache)[:4])
             for section in range(sections):
                 left, right = station_map(section), station_map(section + 1)
-                blocks.append(SeriesRL(left - right, Rline, Lline))
+                binding = SparseMatrix.from_entries(left.shape, np.r_[left.rows, right.rows],
+                            np.r_[left.cols, right.cols], np.r_[left.values, -right.values])
+                blocks.append(SeriesRL(binding, Rline, Lline))
                 for station in (left, right):
-                    # A station touches only its conductor coordinates. Stamp
-                    # that submatrix rather than multiply dense zero incidence.
-                    active = np.flatnonzero(np.any(station, axis=1))
-                    local = station[active]
-                    target = np.ix_(active, active)
-                    C[target] += local @ (Cline / 2) @ local.T
-                    G[target] += local @ (Gline / 2) @ local.T
+                    active = np.unique(station.rows)
+                    local_indices = {row: index for index, row in enumerate(active)}
+                    local = np.zeros((len(active), len(conductors)))
+                    for row, col, value in zip(station.rows, station.cols, station.values, strict=True):
+                        local[local_indices[row], col] += value
+                    stamp(C, active, local @ (Cline / 2) @ local.T)
+                    stamp(G, active, local @ (Gline / 2) @ local.T)
                 rows.append({"component_path": leaf["path"], "kind": "pi_section", "section": section + 1,
                              "dx_m": dx, "conductors": conductors})
             continue
         positive, negative = (incidence(endpoints[path, pin]) for pin in leaf["pin_order"])
-        b = positive - negative
+        b = difference(positive, negative)
         if model in ("capacitor", "resistor"):
             value = field("capacitance" if model == "capacitor" else "resistance")
             if not math.isfinite(value) or value <= 0:
                 raise InvalidCandidatePhysicalParameter("primitive R/C must be positive", stage="physical_validation")
             if model == "capacitor":
-                C += value * np.outer(b, b)
+                outer_stamp(C, b, value)
             else:
-                G += np.outer(b, b) / value
+                outer_stamp(G, b, 1 / value)
         elif model in ("inductor", "josephson_junction"):
             if model == "josephson_junction":
                 capacitance = field("junction_capacitance")
                 if not math.isfinite(capacitance) or capacitance < 0:
                     raise InvalidCandidatePhysicalParameter("Cj must be finite and nonnegative", stage="physical_validation")
-                C += capacitance * np.outer(b, b)
+                outer_stamp(C, b, capacitance)
             for branch in leaf["oriented_branches"]:
                 value = field(branch["value_field"])
                 if not math.isfinite(value) or value <= 0:
                     raise InvalidCandidatePhysicalParameter("inductance must be positive", stage="physical_validation")
-                branch_b = incidence(endpoints[path, branch["positive_pin"]]) - incidence(endpoints[path, branch["negative_pin"]])
+                branch_b = difference(incidence(endpoints[path, branch["positive_pin"]]), incidence(endpoints[path, branch["negative_pin"]]))
                 branches.append((path, branch["id"], branch_b, value))
         else:
             raise CompilerInvariantError(f"unsupported physical model {model}", stage="compile")
-        rows.append({"component_path": leaf["path"], "kind": model, "positive": positive.tolist(), "negative": negative.tolist()})
+        rows.append({"component_path": leaf["path"], "kind": model, "positive": evidence_vector(positive), "negative": evidence_vector(negative)})
     if branches:
         branch_indices = {(branch[0], branch[1]): i for i, branch in enumerate(branches)}
         neighbors = [[] for _ in branches]
@@ -177,7 +202,7 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
                         pending.append(neighbor)
             if len(group) == 1:
                 branch = branches[group[0]]
-                K += (1 / branch[3]) * np.outer(branch[2], branch[2])
+                outer_stamp(K, branch[2], 1 / branch[3])
                 continue
             local = {index: ordinal for ordinal, index in enumerate(group)}
             L = np.diag([branches[index][3] for index in group])
@@ -188,14 +213,24 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
                 np.linalg.cholesky(L)
             except np.linalg.LinAlgError as error:
                 raise InvalidCandidatePhysicalParameter("complete reciprocal inductance matrix is not positive definite", stage="physical_validation") from error
-            binding = np.column_stack([branches[index][2] for index in group])
+            support = tuple(sorted({row for index in group for row in branches[index][2]}))
+            support_indices = {row: index for index, row in enumerate(support)}
+            binding = np.zeros((len(support), len(group)))
+            for col, index in enumerate(group):
+                for row, value in branches[index][2].items():
+                    binding[support_indices[row], col] = value
             reciprocal = np.linalg.solve(L, binding.T)
-            residual = backward_residual(L, reciprocal, binding.T)
+            residual = backward_residual(L, reciprocal, binding.T) if support else 0.0
             if not math.isfinite(residual) or residual > 256 * (len(group) + 1) * np.finfo(np.float64).eps:
                 raise InvalidCandidatePhysicalParameter("reciprocal inductance solve exceeded normalized residual contract", stage="physical_validation")
-            K += binding @ reciprocal
+            stamp(K, support, binding @ reciprocal)
     ports = connectivity["ports"]
-    B = np.column_stack([incidence(port["net"]) for port in ports]) if ports else np.zeros((n, 0))
+    port_rows, port_cols, port_values = [], [], []
+    for col, port in enumerate(ports):
+        for row, value in incidence(port["net"]).items():
+            port_rows.append(row); port_cols.append(col); port_values.append(value)
+    B = SparseMatrix.from_entries((n, len(ports)), port_rows, port_cols, port_values)
+    C, K, G = (SparseMatrix.from_entries((n, n), **target) for target in (C, K, G))
     R = np.diag([quantity(port["reference_impedance"]) for port in ports])
     evidence = {"original_coordinates": [row["compiler_node_id"] for row in connectivity["node_coordinates"]],
                 "discretization": list(grids.values()), "branches": rows, "extrapolation": extrapolation,
