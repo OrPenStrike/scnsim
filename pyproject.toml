@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scnsim"
-version = "1.0.0.dev12"
+version = "1.0.0a2"
 description = "Superconducting Circuit Network Simulation."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,7 +24,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/OrPenStrike/scnsim"
-Documentation = "https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd"
+Documentation = "https://orpenstrike.github.io/scnsim/"
 Issues = "https://github.com/OrPenStrike/scnsim/issues"
 Repository = "https://github.com/OrPenStrike/scnsim"
 

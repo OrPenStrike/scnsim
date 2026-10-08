@@ -11,7 +11,7 @@ VERSION_PATTERN = re.compile(
     r"(?:(?P<dev>\.dev\d+)|(?P<alpha>a\d+)|(?P<rc>rc\d+))?$"
 )
 
-RESEARCH_MAIN_VERSION = "1.0.0a1"
+RESEARCH_MAIN_VERSION = "1.0.0a2"
 
 
 def _quoted_value(section: str, key: str) -> str:

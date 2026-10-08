@@ -95,6 +95,9 @@ from .specs import (
 )
 
 
+# Omission selects the backend default; explicit None remains invalid.
+_OMITTED_COMMIT_EVERY_GENERATIONS = object()
+
 def _coordinate_id(value: str | ElectricNodeRef | CoordinateRef) -> str:
     if isinstance(value, str):
         if not value:
@@ -829,7 +832,7 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
-        commit_every_generations: int = 1,
+        commit_every_generations: int = 10,
     ) -> OptimizationResult: ...
 
     @overload
@@ -844,7 +847,7 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
-        commit_every_generations: int = 1,
+        commit_every_generations: int = 10,
     ) -> OptimizationResult: ...
 
     def optimize(
@@ -858,12 +861,14 @@ class CircuitRun:
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
-        commit_every_generations: int = 1,
+        commit_every_generations: int | object = _OMITTED_COMMIT_EVERY_GENERATIONS,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
         started_ns = perf_counter_ns()
         with self._operation_scope("optimize", backend, precision, started_ns) as (backend, precision, trace):
+            if commit_every_generations is _OMITTED_COMMIT_EVERY_GENERATIONS:
+                commit_every_generations = 10 if backend == "jax" else 1
             if isinstance(commit_every_generations, bool) or not isinstance(commit_every_generations, int):
                 raise TypeError("commit_every_generations must be a positive integer")
             if commit_every_generations <= 0:

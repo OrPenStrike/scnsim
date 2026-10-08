@@ -173,9 +173,9 @@
     }
   },
   "publication_binding": {
-    "binding_sha256": "d5c3c52d80440d8667abf93dcdf7259226237e1f9ea0912bd017d5009a9a4005",
+    "binding_sha256": "9a7c139162636c719f45820f67654a16812b81ab5651c144ea23502a29ce4704",
     "generator_sha256": "7516e642aebf377c18279bbc524d22102923114d4cb7cca1f0bf8a0ca70b96d7",
-    "source_tree_sha256": "5656ca26e7549a1fd1d9285de807badef093da20c5f88dc66e5dadcead70228b"
+    "source_tree_sha256": "c0a3f47cf808cd26b081b0924e550cb23f1ba49ee1672f31f07381534d2e16eb"
   },
   "publication_rebind": {
     "deltas": {
@@ -211,41 +211,9 @@
         "before_sha256": "7516e642aebf377c18279bbc524d22102923114d4cb7cca1f0bf8a0ca70b96d7"
       },
       "source_files": {
-        "src/scnsim/__init__.py": {
-          "after_sha256": "a458ae334e43d4095bcf4c00c1911b4eb09a0818860957499ba8b35489ab5700",
-          "before_sha256": "4a5ae4c57246aebeec686e3bb5411bf6405ed88f25fd634515d386f6263e516c"
-        },
-        "src/scnsim/benchmark/identity.py": {
-          "after_sha256": "d86187e9a836956efdc2fd5b4a77e64def1b5d1927f69d313e92551091e9a6a5",
-          "before_sha256": "14468de827c95039b72e323f2d939cf3b951a9a2353dc39c6aa8f535f06555ce"
-        },
-        "src/scnsim/benchmark/operations.py": {
-          "after_sha256": "4d7e06efcf0b6041af818c25025a2c83fffba6d7f0205d02fcea8a38deac690a",
-          "before_sha256": "3f8ac6336a695e86c01eba9a32a00c02d2ce5eff9b1a8cd21e56c16c15b2122b"
-        },
-        "src/scnsim/benchmark/sqlite_storage.py": {
-          "after_sha256": "394a7156304885c6f13a92119adab66a8f2366f0455e16f5cc143926a5f6b3fb",
-          "before_sha256": "absent"
-        },
-        "src/scnsim/benchmark/storage.py": {
-          "after_sha256": "bc2d380d2216dfba1849476e6d1cbc3418dec17b0117d6719ac135955151158b",
-          "before_sha256": "5dc7fc22b9919f63e6e1cefe88bb4a544b31447fa91e7e85f8a7a7154ec3bf54"
-        },
-        "src/scnsim/errors.py": {
-          "after_sha256": "fed925e2fbe23217593de2169b107e4cf5cc9e351514c2e774f292c7b64cfaa5",
-          "before_sha256": "f0b1ac8f9553b94ad9682389441a791435cd9ab6a5d7b8cadc24572807074227"
-        },
-        "src/scnsim/execution/jax_operation.py": {
-          "after_sha256": "4546376a01c1ca70293c94eaaee5bb08e2a5226c2efcb95286fe22706da96d3c",
-          "before_sha256": "17275ea2139be0ade25d52ca649c84f9bbcecc2c6c9c4ec68e4a4b836e6114bf"
-        },
         "src/scnsim/runtime.py": {
-          "after_sha256": "630e22bdc9bbfc3cf1516836a66bc1a9fea3622ee6325cc3e252b5b4cad6ba06",
-          "before_sha256": "337c298065ec68747d195b30fa9784290d948fedd8b87dc11e6c01bd042509e2"
-        },
-        "src/scnsim/workspace/operation_store.py": {
-          "after_sha256": "bb6b145f88e34b7a7c006b2ef7b2b2b1505a505aecab60074275f2a2f829d8a8",
-          "before_sha256": "absent"
+          "after_sha256": "0d34f0c3f8149550f565559766318f8ba81918284be88ac62437e0a4f324a61c",
+          "before_sha256": "630e22bdc9bbfc3cf1516836a66bc1a9fea3622ee6325cc3e252b5b4cad6ba06"
         }
       },
       "teaching_sources": {}
@@ -269,15 +237,15 @@
         "06-tapped-feedline-t.md": "2445ed4432967205d1bca80ec52d930fde42e8c5ebc8ecaaf826fc67d57161d2",
         "06-tapped-feedline-t.svg": "293d3a9aa5c1b5c35f821429b32f838de2e302ed2ac8cad5019f139ea131ac7c"
       },
-      "prior_publication_binding_sha256": "3f363e2760c1b7ab4e9a40a8f1b2ff8d28bb0c253ec60d0e53a018f88da93d02",
+      "prior_publication_binding_sha256": "d5c3c52d80440d8667abf93dcdf7259226237e1f9ea0912bd017d5009a9a4005",
       "prior_redrawn_artifacts": {},
       "source_tree_sha256": "f9dfbf48f5c917d8af9f4983c45169e5ed68bf039c9954ad756dbf786d6f0816"
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "365871f0ae819a9f74d40f7b9c554bad8f06f27de17512378eafee8902453d56",
-    "prior_publication_binding_sha256": "3f363e2760c1b7ab4e9a40a8f1b2ff8d28bb0c253ec60d0e53a018f88da93d02",
-    "prior_publication_rebind_sha256": "5e97b7a2e3d5f60a1cff55b93977e733082b57f3d8fa1983df2eedbb45361088",
+    "prior_manifest_sha256": "a13131f3826e62239a788b11ae6190d24a08fdfd0162dc7b3249ab69a3911ee1",
+    "prior_publication_binding_sha256": "d5c3c52d80440d8667abf93dcdf7259226237e1f9ea0912bd017d5009a9a4005",
+    "prior_publication_rebind_sha256": "22bfb7213a25d7d857d6ab3f9bdea99ad5993bf21b18e29ba1f19450ef69cf95",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "06-four-arm-cross.svg": "dc535b3200f3c4c1ab65ee674735ae14ff0e91ab0bf32d78aff4a0c14c9a934b",
@@ -286,10 +254,10 @@
       "06-tapped-feedline-t.md": "2445ed4432967205d1bca80ec52d930fde42e8c5ebc8ecaaf826fc67d57161d2",
       "06-tapped-feedline-t.svg": "293d3a9aa5c1b5c35f821429b32f838de2e302ed2ac8cad5019f139ea131ac7c"
     },
-    "publication_binding_sha256": "d5c3c52d80440d8667abf93dcdf7259226237e1f9ea0912bd017d5009a9a4005",
+    "publication_binding_sha256": "9a7c139162636c719f45820f67654a16812b81ab5651c144ea23502a29ce4704",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.sqlite_workspace.20261008"
+    "transition_id": "scnsim.sqlite_commit_default10.20261008"
   },
   "schema": "scnsim.engineer_chapter6_artifacts.v1"
 }

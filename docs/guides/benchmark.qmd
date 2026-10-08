@@ -3,7 +3,7 @@ title: "Run Operations and Read-only Benchmark"
 subtitle: "Execute with JAX or Julia, then inspect actual recorded work"
 ---
 
-**Status:** dev12 `CONVERGING` candidate. This guide describes the current
+**Status:** 1.0.0a2 Alpha `CONVERGING` candidate. This guide describes the current
 implementation contract, not completed performance or numerical acceptance.
 Historical dev10 comparison records keep their original runtime identities.
 
@@ -61,17 +61,19 @@ and compiled schematics also require Julia. See
 ## Optimization and recovery
 
 Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics.
-JAX Optimization commits every generation by default:
+JAX Optimization commits every 10 completed generations by default:
 
 ```python
 best = run.optimize(run.original, optimization_spec, checkpoint="generation",
-                    commit_every_generations=1)
+                    commit_every_generations=10)
 ```
 
 A baseline/anchor barrier precedes candidate work. Completed generation evidence
 is ordered; each commit publishes its group atomically with the latest full
 CMA/RNG state. `commit_every_generations=N` accepts a positive integer excluding
-booleans. Baseline commits separately, then every N completed post-tell
+booleans; `None` is invalid. Omission selects 10 for JAX and retains 1 for
+explicit Julia. Explicit Julia intervals other than 1 fail before launch.
+Baseline commits separately, then every N completed post-tell
 generations commit together; a normal or handleable-error tail flushes a shorter
 group. Larger N buffers more evidence in memory and can require recomputing
 uncommitted generations after process death. `checkpoint="off"` omits resumable snapshots, without deleting numerical
@@ -97,7 +99,7 @@ operation you intend to resume:
 operation = run.benchmark(operations=operation_id).document()["operations"][0]
 checkpoint_ref = operation["details"]["checkpoint"]
 best = run.optimize(run.original, optimization_spec,
-                    checkpoint="generation", commit_every_generations=1,
+                    checkpoint="generation", commit_every_generations=10,
                     resume_from=checkpoint_ref)
 ```
 

@@ -20,17 +20,40 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current develop candidate is `1.0.0.dev12`, requiring Python 3.12. Normal
+The current release candidate is Alpha `1.0.0a2`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
 the current Plan leaf without executing another calculation. Generation
 checkpoints and boundary diagnostics preserve recovery and numerical evidence.
-JAX Optimization accepts `commit_every_generations=1`; larger positive values
-commit completed generations in groups to the Plan leaf’s SQLite store. See the
+JAX Optimization defaults to `commit_every_generations=10`; explicit positive
+integers select a different group size in the Plan leaf’s SQLite store. Omitted
+intervals with explicit Julia keep its existing native value of 1. See the
 guide for recovery, durability and recomputation limits.
 This candidate is `CONVERGING` and does not replace the immutable Alpha trial
 snapshot; no performance or numerical acceptance is implied.
+
+## Alpha 1.0.0a2 release notes
+
+This candidate retains `CONVERGING` semantics; it is not a stable release or a
+claim of new numerical certainty. Publication and its exact tag remain separate
+delivery steps. The immutable `v1.0.0a1` snapshot and historical course outputs
+keep their original identities.
+
+Python 3.12 or newer and pinned CPU JAX/CMA dependencies supply the default
+same-process JAX path. Julia is optional and explicitly selected; Julia-only
+features require the extra and a manually provided compatible executable.
+JAX Optimization now defaults to committing every 10 completed generations;
+explicit positive intervals remain available, and omitted Julia intervals retain
+its existing native value of 1. A larger interval trades fewer commits for more
+buffered evidence and possible recomputation after interruption.
+
+Current JAX operation evidence uses a Plan-leaf SQLite store. Same-version exact
+checkpoint references resume only committed full CMA/RNG state; checkpoint off
+creates no resumable state. Readonly access never repairs a hot journal: recovery
+is explicit on the bound Run. Historical workspaces remain readonly without
+migration. Public interfaces and saved workspace compatibility may change before
+a stable release; pin exact versions and preserve their environments.
 
 ## A first Direct S11 result
 
@@ -159,7 +182,8 @@ responsibilities.
 
 ## Install and learn
 
-In a consuming project, install the exact Alpha tag and retain the resulting
+The immutable first-Alpha snapshot remains available for historical trial use.
+To install that snapshot, retain the resulting
 lockfile and environment for reproducibility:
 
 ```bash

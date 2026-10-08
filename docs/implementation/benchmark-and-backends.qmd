@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, dev12 candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0a2 Alpha candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -19,8 +19,9 @@ outputs remain historical evidence; the new goal does not rerun that writer or
 its old-flow tests. Historical workspace readers remain read-only, with no
 migration or fallback writer.
 
-JAX Optimization adds `commit_every_generations=1`, a positive integer excluding
-booleans. Baseline
+JAX Optimization defaults to `commit_every_generations=10`, a positive integer
+excluding booleans. Explicit `None` remains invalid. Omission resolves after
+backend selection: JAX uses 10, while explicit Julia retains its native value 1. Baseline
 evidence commits separately. After N completed post-tell generations, one
 transaction publishes their ordered numerical records and the latest full
 CMA/RNG state. A short final group commits at the normal tail or a handleable
@@ -28,7 +29,7 @@ error; incomplete generation work is never presented as a resumable generation.
 Checkpoint off retains evidence without fabricating a resumable snapshot. The
 interval binds operation/task/checkpoint identity, not the numerical request,
 so completed numeric cache lookup stays independent of commit granularity.
-Nondefault intervals are unsupported for explicit Julia and fail before launch.
+Explicit Julia intervals other than 1 are unsupported and fail before launch.
 Numerical algorithms, precision, candidate order and winner meaning do not change.
 
 A generation callback is delivered once per committed group, for its latest

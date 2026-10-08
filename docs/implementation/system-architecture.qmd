@@ -186,10 +186,13 @@ looks similar.
 
 The current delivery endpoint is a history-preserving develop-to-main PR
 promotion followed by exact main/develop/tracking/checkout synchronization,
-required CI and Pages outcomes, and privacy review. The exact `1.0.0a1`
-research exception does not constitute a stable release. New tags, PyPI,
-parent-repository pins, consumer migrations, dependencies, numerical
-algorithms, schemas, and data formats remain outside this assignment.
+required CI and Pages outcomes, and privacy review. The current Human-authorized
+Alpha promotion and publication prepare exactly `1.0.0a2`; its research exception
+does not constitute a stable release or acceptance of CONVERGING semantics.
+The immutable first-Alpha snapshot remains historical authority. Publication is
+a separate delivery action; parent-repository pins, consumer migrations,
+dependency changes, numerical algorithms and data-format changes remain outside
+this bounded default-policy amendment.
 
 ## Keep the Notebook boundary in Python
 
