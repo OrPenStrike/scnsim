@@ -22,6 +22,21 @@ from ..specs import OptimizationProgress
 from .config import get_runtime_configuration, runtime_resource_identity
 
 
+_POSITIVE_INFINITY_CANDIDATE_COST = "7ff0000000000000"
+
+
+def _candidate_cost_from_hex(value: str) -> float:
+    """Decode the optimizer's existing failed-candidate cost sentinel.
+
+    Candidate failure rows use positive infinity as a numeric cost while
+    retaining their typed failure record. Other cost tokens keep the canonical
+    finite-Float64 decoder's validation contract.
+    """
+    if value == _POSITIVE_INFINITY_CANDIDATE_COST:
+        return float("inf")
+    return float64_from_hex(value)
+
+
 def _decode(success, *, decoder, prepared_analysis, bound_spec):
     return decode_jax_operation(
         decoder, projection=success["projection"], request=prepared_analysis.request(),
@@ -233,7 +248,7 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                 return ack
             trace.publish_pending_spans(writer)
             if optimization and kind == "evaluation":
-                cost = float64_from_hex(payload["cost_f64"])
+                cost = _candidate_cost_from_hex(payload["cost_f64"])
                 if best_cost is None or cost < best_cost:
                     best_cost = cost
             if kind in storage._DIAGNOSTIC_EVENTS:

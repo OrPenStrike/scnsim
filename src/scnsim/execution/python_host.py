@@ -8,7 +8,6 @@ processes, prepares Julia or promotes an unverified result.
 
 from __future__ import annotations
 
-from dataclasses import replace
 import itertools
 import json
 from time import perf_counter_ns
@@ -18,10 +17,10 @@ import numpy as np
 from ..canonical import canonical_json_bytes
 from ..benchmark.compiler import compile_model, parameter_key, parameter_values
 from ..benchmark.mesh import quantity
-from ..benchmark.models import EvaluationJob, MeshSpec, NumericalFailure
-from ..benchmark.optimization import (Evaluator, EvaluationFailure, bits, checked_results,
-                                      complex_record, continue_diagonal_root, numerical_error, optimize)
-from ..benchmark.prepared import array_record, record_bytes
+from ..benchmark.models import EvaluationJob, EvaluationResult, MeshSpec
+from ..benchmark.optimization import Evaluator, bits, checked_results, numerical_error, optimize
+from ..benchmark.prepared import array_record
+from .quantities import EvaluationFailure, QuantityEvaluator, quantity_body_id, quantity_record
 from ..benchmark.views import realize_view
 
 
@@ -43,30 +42,21 @@ def resolved_points(source: dict) -> list[dict]:
 
 
 def evaluation_record(result) -> dict:
-    record = {"id": result.id, "status": "failure" if result.failure else "success", "evidence": json.loads(result.evidence_bytes)}
-    if result.failure:
-        record["failure"] = {"kind": result.failure.kind, "stage": result.failure.stage,
-                             "detail": result.failure.detail, "evidence": json.loads(result.failure.evidence_bytes)}
-        return record
-    for name in ("S", "Y", "Z"):
-        array = getattr(result, name)
-        if array is not None:
-            record[name] = array_record(array)
-    if result.response_value is not None:
-        record["response_value"] = complex_record(result.response_value)
-    if result.root_omega_rad_s is not None:
-        record["root_omega_rad_s"] = complex_record(result.root_omega_rad_s)
-        record["frequency_hz_f64"] = bits(result.root_omega_rad_s.real / (2 * np.pi))
-        record["linewidth_hz_f64"] = bits(-result.root_omega_rad_s.imag / np.pi)
-        if result.root_slope is not None:
-            record["root_slope"] = complex_record(result.root_slope)
-    return record
+    return quantity_record(result)
 
 
-def execute_root_points(plan, analysis, mesh, backend, points, emit):
-    """Standalone roots share the sealed-baseline continuation authority."""
+def _point_identity(point):
+    return canonical_json_bytes({
+        "bindings": sorted(point["bindings"], key=lambda binding: parameter_key(binding["parameter"])),
+        "allow_extrapolation": sorted(point["allow_extrapolation"], key=parameter_key),
+    })
+
+
+def execute_quantity_points(plan, analysis, mesh, backend, points, emit):
+    """Evaluate standalone/sweep quantities through the shared dependency owner."""
     spec = analysis["spec"]
     preparation_cache = {}
+    quantity_evaluator = QuantityEvaluator(backend, emit=emit)
     baseline = {
         "type": "parameter_set_v2", "allow_extrapolation": [],
         "bindings": [{"parameter": {"definitions_id": definition["definitions_id"],
@@ -75,12 +65,6 @@ def execute_root_points(plan, analysis, mesh, backend, points, emit):
                      for definition in plan["parameter_closure"]["definitions"]],
     }
     baseline_values = parameter_values(baseline)
-
-    def key(point):
-        return canonical_json_bytes({
-            "bindings": sorted(point["bindings"], key=lambda binding: parameter_key(binding["parameter"])),
-            "allow_extrapolation": sorted(point["allow_extrapolation"], key=parameter_key),
-        })
 
     def view_at(values, point, stage):
         start = perf_counter_ns()
@@ -92,90 +76,120 @@ def execute_root_points(plan, analysis, mesh, backend, points, emit):
             emit("timing", {"stage": stage, "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
                             "counts": {"points": 1}})
 
-    def job(identity, view, start):
-        return EvaluationJob(identity, "diagonal_root", view,
-                             coordinate_index=view.terminal_ids.index(spec["coordinate"]),
-                             root_hint_hz=quantity(spec["root_hint"]), omega_start_rad_s=start)
-
-    def evaluate(jobs):
-        start = perf_counter_ns()
+    baseline_needed = spec["type"] in {
+        "diagonal_root", "operator_element_root", "hybridized_pole", "transfer_zero",
+        "residue_normalized_coupling",
+    }
+    anchors = {}
+    baseline_key = _point_identity(baseline)
+    cache = {}
+    if baseline_needed:
+        baseline_view = view_at(baseline_values, baseline, "root_baseline_lowering_and_view")
+        baseline_cache = {}
         try:
-            return checked_results(backend, jobs)
-        finally:
-            emit("timing", {"stage": "numerical_evaluation", "start_tick_ns": start,
-                            "end_tick_ns": perf_counter_ns(), "counts": {"jobs": len(jobs)}})
+            baseline_evaluated = quantity_evaluator.evaluate(
+                spec, baseline_view, view_declaration=analysis["view"], identity="baseline",
+                baseline_values=baseline_values, values=baseline_values, anchors=anchors,
+                result_cache=baseline_cache, baseline=True,
+                candidate_view=lambda values_at: view_at(values_at, baseline, "continuation_lowering_and_view"),
+                dependency_bodies={},
+                defer_baseline_diagonal_policy=spec["type"] == "diagonal_root",
+            )
+        except EvaluationFailure as error:
+            failed = error.result if error.result is not None else EvaluationResult("baseline", failure=error.failure)
+            baseline_record = quantity_record(failed)
+            baseline_record.update(parameters=baseline, origin="baseline", cache_hit=False,
+                                   dependencies=error.dependencies,
+                                   lineage=json.loads(baseline_view.lineage_bytes),
+                                   discretization=json.loads(baseline_view.model.evidence_bytes)["discretization"],
+                                   terminal_ids=list(baseline_view.terminal_ids))
+            emit("evaluation", baseline_record)
+            raise numerical_error(error.failure) from error
+        baseline_result = baseline_evaluated["result"]
+        baseline_dependencies = dict(baseline_evaluated["dependencies"])
+        baseline_body_id = quantity_body_id(baseline_result)[0]
+        baseline_dependencies.pop(baseline_body_id, None)
+        baseline_record = quantity_record(baseline_result)
+        baseline_record.update(parameters=baseline, origin="baseline", cache_hit=False,
+                               dependencies=baseline_dependencies,
+                               lineage=json.loads(baseline_view.lineage_bytes),
+                               discretization=json.loads(baseline_view.model.evidence_bytes)["discretization"],
+                               terminal_ids=list(baseline_view.terminal_ids))
+        emit("evaluation", baseline_record)
+        anchor_references = {key: quantity_body_id(result)[0] for key, result in anchors.items()}
+        emit("baseline_ready", {"schema": "scnsim.benchmark_root_anchor", "schema_version": 1,
+                                "baseline": baseline_record, "anchors": anchor_references,
+                                "resume_state": None})
+        requested_baseline_result = (
+            quantity_evaluator._diagonal_policy(baseline_result)
+            if spec["type"] == "diagonal_root" else baseline_result
+        )
+        cache[baseline_key] = (baseline_view, requested_baseline_result, baseline_dependencies)
 
-    def diagonal_policy(result):
-        if result.failure is None and result.root_omega_rad_s.imag > 0:
-            evidence = json.loads(result.evidence_bytes)
-            evidence["root_omega_rad_s"] = complex_record(result.root_omega_rad_s)
-            return replace(result, root_omega_rad_s=None, root_slope=None,
-                           failure=NumericalFailure("numerical_resolution_unresolved", "newton_certificate",
-                                                    "diagonal root violates passive imaginary-root policy", record_bytes(evidence)))
-        return result
-
-    def observation(point, view, result, **context):
-        return dict(evaluation_record(result), parameters=point, lineage=json.loads(view.lineage_bytes),
-                    discretization=json.loads(view.model.evidence_bytes)["discretization"],
-                    terminal_ids=list(view.terminal_ids), **context)
-
-    baseline_view = view_at(baseline_values, baseline, "root_baseline_lowering_and_view")
-    baseline_result = evaluate((job("baseline", baseline_view,
-                                    complex(2 * np.pi * quantity(spec["root_hint"]))),))[0]
-    baseline_record = observation(baseline, baseline_view, baseline_result, origin="baseline", cache_hit=False,
-                                  numerical_source_id=baseline_result.id)
-    emit("evaluation", baseline_record)
-    if baseline_result.failure is not None:
-        raise numerical_error(baseline_result.failure)
-    # The child blocks until the parent has sealed this exact baseline record.
-    emit("baseline_ready", {"schema": "scnsim.benchmark_root_anchor", "schema_version": 1,
-                            "baseline": baseline_record, "resume_state": None})
-    cache = {key(baseline): (baseline_view, diagonal_policy(baseline_result))}
-    pending = {}
+    seen = {baseline_key} if baseline_needed else set()
     for ordinal, point in enumerate(points):
-        identity = key(point)
-        if identity not in cache and identity not in pending:
-            values = parameter_values(point)
-            pending[identity] = (ordinal, point, values, view_at(values, point, "lowering_and_view"))
-    jobs = tuple(job(str(ordinal), view, baseline_result.root_omega_rad_s)
-                 for ordinal, point, values, view in pending.values())
-    results = evaluate(jobs) if jobs else ()
-    for (identity, (ordinal, point, values, view)), result in zip(pending.items(), results):
-        templates = {parameter_key(binding["parameter"]): binding for binding in point["bindings"]}
+        identity = _point_identity(point)
+        if identity in cache:
+            continue
+        values = parameter_values(point)
+        view = view_at(values, point, "lowering_and_view")
+        point_cache = {}
+        dependencies = {}
 
         def observe(values_at, realized, attempt, t):
+            templates = {parameter_key(binding["parameter"]): binding for binding in point["bindings"]}
             bindings = [{"parameter": template["parameter"], "value": value if isinstance(value, dict)
                          else dict(template["value"], si_value_f64=bits(value))}
                         for parameter, template in templates.items() for value in (values_at[parameter],)]
             actual = dict(point, bindings=bindings)
-            emit("evaluation", observation(actual, realized, attempt, origin="root_continuation",
-                                           source_index=ordinal, continuation_t_f64=bits(t)))
+            row = quantity_record(attempt)
+            row.update(parameters=actual, origin="root_continuation", source_index=ordinal,
+                       continuation_t_f64=bits(t), lineage=json.loads(realized.lineage_bytes),
+                       discretization=json.loads(realized.model.evidence_bytes)["discretization"],
+                       terminal_ids=list(realized.terminal_ids))
+            emit("evaluation", row)
 
         try:
-            result = continue_diagonal_root(
-                baseline=baseline_values, values=values, baseline_root=baseline_result.root_omega_rad_s,
-                endpoint_view=view, initial_result=result,
+            evaluated = quantity_evaluator.evaluate(
+                spec, view, view_declaration=analysis["view"], identity=str(ordinal),
+                baseline_values=baseline_values, values=values, anchors=anchors,
+                result_cache=point_cache, baseline=False,
                 candidate_view=lambda values_at: view_at(values_at, point, "continuation_lowering_and_view"),
-                make_job=job, evaluate=evaluate, identity=str(ordinal), observe=observe,
+                dependency_bodies=dependencies, observe=observe,
             )
-            result = diagonal_policy(result)
+            result = evaluated["result"]
+            dependencies = dict(evaluated["dependencies"])
+            dependencies.pop(evaluated["body_id"], None)
         except EvaluationFailure as error:
-            failed = error.result if error.result is not None else result
-            result = replace(failed, failure=error.failure, root_omega_rad_s=None, root_slope=None)
-        cache[identity] = view, result
-    seen = {key(baseline)}
+            result = error.result if error.result is not None else EvaluationResult(str(ordinal), failure=error.failure)
+            result = result if result.failure is not None and result.failure == error.failure else EvaluationResult(
+                result.id, failure=error.failure, evidence_bytes=result.evidence_bytes)
+            dependencies = dict(error.dependencies)
+        cache[identity] = (view, result, dependencies)
+
     for ordinal, point in enumerate(points):
-        identity = key(point)
-        view, result = cache[identity]
-        record = observation(point, view, result, source_index=ordinal, origin="requested_point",
-                             cache_hit=identity in seen, numerical_source_id=result.id)
+        identity = _point_identity(point)
+        view, result, dependencies = cache[identity]
+        record = quantity_record(result)
+        record.update(source_index=ordinal, origin="requested_point", parameters=point,
+                      cache_hit=identity in seen, numerical_source_id=result.id,
+                      dependencies=dependencies, lineage=json.loads(view.lineage_bytes),
+                      discretization=json.loads(view.model.evidence_bytes)["discretization"],
+                      terminal_ids=list(view.terminal_ids))
+        if spec["type"] == "response_element":
+            record["frequencies_hz"] = array_record(
+                np.asarray([quantity(spec["frequency"])], dtype=np.float64)
+            )
         seen.add(identity)
         emit("evaluation", record)
-    failure = next((cache[key(point)][1].failure for point in points if cache[key(point)][1].failure is not None), None)
+    failure = next((cache[_point_identity(point)][1].failure for point in points
+                    if cache[_point_identity(point)][1].failure is not None), None)
     if failure is not None and analysis["parameter_source"]["kind"] == "point":
         raise numerical_error(failure)
-    return {"type": "diagonal_root", "baseline_anchor_schema": "scnsim.benchmark_root_anchor",
-            "point_count": len(points), "backend": backend.identity()}
+    terminal = {"type": spec["type"], "point_count": len(points), "backend": backend.identity()}
+    if baseline_needed:
+        terminal["baseline_anchor_schema"] = "scnsim.benchmark_root_anchor"
+    return terminal
 
 
 
@@ -206,8 +220,8 @@ def _execute_points(plan, analysis, mesh, backend, emit):
     spec = analysis["spec"]
     source = analysis["parameter_source"]
     points = resolved_points(source)
-    if spec["type"] == "diagonal_root":
-        return execute_root_points(plan, analysis, mesh, backend, points, emit)
+    if spec["type"] != "direct_solve":
+        return execute_quantity_points(plan, analysis, mesh, backend, points, emit)
     views, jobs = [], []
     preparation_cache = {}
     for ordinal, point in enumerate(points):
@@ -222,10 +236,6 @@ def _execute_points(plan, analysis, mesh, backend, emit):
         views.append(view)
         if spec["type"] == "direct_solve":
             job = EvaluationJob(str(ordinal), "direct", view, frequencies_hz=np.array([quantity(value) for value in spec["frequencies"]]))
-        elif spec["type"] == "response_element":
-            job = EvaluationJob(str(ordinal), "response_element", view, frequencies_hz=np.array([quantity(spec["frequency"])]),
-                                family=spec["family"], input_index=view.terminal_ids.index(spec["input_coordinate"]),
-                                output_index=view.terminal_ids.index(spec["output_coordinate"]))
         else:
             raise NotImplementedError(f"benchmark quantity {spec['type']!r} is unsupported")
         jobs.append(job)

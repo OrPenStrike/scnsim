@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import math
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal
 
 from pint import Quantity
 
 from ..canonical import float64_from_hex
 from ..construction import unavailable
+from ..value_storage import quantity_view
 from ..visualization.presentation import Theme
 from .base import AnalysisResult, MatrixFamilyResult, MatrixView, _fresh_quantity_attribute
 
@@ -105,6 +107,7 @@ class DirectQuantityResult(AnalysisResult):
     branch_b_residue: Quantity | None = None
     evaluation_omega: Quantity | None = None
     family: Literal["S", "Y", "Z"] | None = None
+    evidence: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
     _presentation: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
     _quantity_fields = frozenset({
         "root", "frequency", "linewidth", "slope", "value", "magnitude",
@@ -117,6 +120,8 @@ class DirectQuantityResult(AnalysisResult):
         unavailable(f"{type(self).__name__} construction")
 
     def __getattribute__(self, name: str) -> object:
+        if name == "evidence":
+            return _fresh_evidence_attribute(object.__getattribute__(self, name))
         return _fresh_quantity_attribute(self, name)
 
     @property
@@ -148,6 +153,18 @@ class DirectQuantityResult(AnalysisResult):
         from ..visualization.plots.numerical import scalar_add_to
 
         return scalar_add_to(self, fig, row=row, col=col)
+
+
+def _fresh_evidence_attribute(value: object) -> object:
+    """Detach nested Pint wrappers while retaining immutable result backing."""
+
+    if isinstance(value, Quantity):
+        return quantity_view(value)
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _fresh_evidence_attribute(item) for key, item in value.items()})
+    if isinstance(value, (tuple, list)):
+        return tuple(_fresh_evidence_attribute(item) for item in value)
+    return value
 
 @dataclass(frozen=True, slots=True)
 class DiagonalRootResult(DirectQuantityResult):

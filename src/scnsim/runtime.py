@@ -647,7 +647,11 @@ class CircuitRun:
                 raise RuntimePreparationError(
                     "The Julia backend requires precision='float64'.", stage="runtime_prepare")
             return
-        supported = (DirectSolveSpec, DiagonalRootSpec, ResponseElementSpec)
+        supported = (
+            DirectSolveSpec, DiagonalRootSpec, OperatorElementRootSpec,
+            HybridizedPoleSpec, TransferZeroSpec, ResidueNormalizedCouplingSpec,
+            ResponseElementSpec, OperatorSpec,
+        )
         quantities = (selector.spec for objective in spec.objectives
                       for selector in _quantity_selectors(objective.quantity)) if isinstance(spec, OptimizationSpec) else (spec,)
         for quantity in quantities:
@@ -1030,9 +1034,12 @@ class CircuitRun:
         | OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> ExplanationResult:
-        """Compile and present request evidence without creating an attempt."""
+        """Explain the selected backend compiler without creating an attempt or solve."""
 
+        backend, precision = self._selected_backend(backend, precision)
         self._require_ref(ref)
         if not isinstance(
             spec,
@@ -1070,6 +1077,7 @@ class CircuitRun:
             )
             else "optimize_direct"
         )
+        self._require_backend_spec(backend, precision, spec)
         selector_views = None
         if isinstance(spec, OptimizationSpec):
             ref, selector_views = self._optimization_views(spec, default_ref=ref)
@@ -1079,9 +1087,14 @@ class CircuitRun:
             spec,
             parameters,
             selector_views=selector_views,
+            backend=backend, precision=precision,
         )
         request = prepared.request()
-        compiled = self._preflight(request)
+        if backend == "jax":
+            from .execution.compilation import _run_jax_preflight
+            compiled = _run_jax_preflight(self._plan_document, request)
+        else:
+            compiled = self._preflight(request)
         return _verified_result(
             ExplanationResult,
             evidence={

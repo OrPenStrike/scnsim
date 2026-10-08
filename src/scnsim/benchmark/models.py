@@ -267,7 +267,7 @@ class EvaluationJob:
     """
 
     id: str
-    kind: Literal["direct", "diagonal_root", "response_element"]
+    kind: Literal["direct", "diagonal_root", "response_element", "operator_element_root", "hybridized_pole", "transfer_zero", "residue_normalized_coupling", "operator"]
     view: RealizedView
     frequencies_hz: FloatArray | None = None
     coordinate_index: int | None = None
@@ -276,6 +276,11 @@ class EvaluationJob:
     family: Literal["S", "Y", "Z"] | None = None
     input_index: int | None = None
     output_index: int | None = None
+    row_index: int | None = None
+    column_index: int | None = None
+    branches: tuple[RootBranch, RootBranch] | None = None
+    evaluation_omega_rad_s: complex | None = None
+    frequency_mode: Literal["fixed", "complex_root_midpoint"] | None = None
 
     def __post_init__(self) -> None:
         if self.frequencies_hz is not None:
@@ -309,13 +314,32 @@ class EvaluationResult:
     response_value: complex | None = None
     root_omega_rad_s: complex | None = None
     root_slope: complex | None = None
+    operator_values: NDArray | None = None
+    null_vector: NDArray | None = None
+    numerator_slope: complex | None = None
+    denominator: complex | None = None
+    residue_a: complex | None = None
+    residue_b: complex | None = None
+    coupling_rad_s: complex | None = None
+    branch_roots_rad_s: NDArray | None = None
+    evaluation_omega_rad_s: complex | None = None
     evidence_bytes: bytes = b"{}"
 
     def __post_init__(self) -> None:
-        for name in ("S", "Y", "Z"):
+        for name in ("S", "Y", "Z", "operator_values", "null_vector", "branch_roots_rad_s"):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, immutable_numerical_array(value))
+
+
+@dataclass(frozen=True, slots=True)
+class RootBranch:
+    """Finished host-certified dependency; coupling never locates it again."""
+
+    kind: Literal["diagonal_root", "hybridized_pole"]
+    coordinate_index: int | None
+    root_hint_hz: float
+    result: EvaluationResult
 
 
 class NumericalBackend(Protocol):

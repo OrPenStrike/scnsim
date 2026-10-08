@@ -9,15 +9,54 @@ toc-depth: 3
 `STABILIZED`. Selected-View element roots are `CONVERGING` and specified in
 the [root procedure](diagonal-root-numerical-procedure.qmd).
 
+The dev14 JAX implementation scope is `CONVERGING`: it adds the existing
+`OperatorElementRootSpec`, `HybridizedPoleSpec`, S/Y/Z `TransferZeroSpec`,
+`ResidueNormalizedCouplingSpec` and `OperatorSpec` to same-process public
+`evaluate`, ordered parameter sweeps, and every existing scalar Optimization
+selector/expression. Operators remain matrix outputs, not scalar objectives.
+These are implementation targets pending source-bound installed-wheel
+observations, not completed functionality or Human acceptance. Explicit Julia
+keeps its current numerical and storage contract; HB is outside this scope.
+
 This page realizes the previously accepted Direct quantity catalog. It does not change
 the definitions in the
 [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog),
-and it does not infer a pole or zero from a sampled response. The fixed
+and it does not infer a pole or zero from a sampled response. The existing
 machine-resolution policy is the Human-approved Runtime Contract value
 
 $$
 \tau(q)=256(q+1)\epsilon_{\mathrm{Float64}}.
 $$
+
+The displayed Float64 convention describes the existing native Julia path.
+For JAX, the same prescribed procedures use the selected real arithmetic dtype:
+Float32/Complex64 or Float64/Complex128, including epsilon, analytic Newton
+updates, reductions, correction, bitwise stagnation and certificate arithmetic.
+Host coherent-SI declarations and CMA/RNG state remain binary64; widening a
+stored presentation scalar does not change the recorded kernel precision.
+Certified root, slope and null-vector bodies retain that dtype through the shared
+record codec and sealed baseline anchors. Residue coupling consumes the two
+already-certified branch outcomes; it does not repeat Newton polishing. Public
+`DirectQuantityResult.evidence` supplements existing scalar fields with ordered
+coordinate/channel bindings, null vectors and branch certificates. Nested Pint
+wrappers are detached on access over immutable arrays and mappings.
+The shared `root_frequency_linewidth` projection derives public frequency and
+linewidth in Hz from the actual certified complex omega; it does not locate
+another root. `DirectQuantityResult.evidence` defaults to an empty mapping. Its
+ordered terminal/element/channel bindings and certificates supplement, rather
+than override, existing scalar fields. Hybridized evidence exposes the actual
+dtype-preserved dimensionless null-vector Quantity. Coupling evidence exposes
+ordered a/b branch bindings and their already-certified roots, slopes, optional
+vectors, residues and certificates. Each read recursively detaches nested Pint
+wrappers over immutable array backing, mappings and tuples.
+
+Candidate ledger terms identify canonical numerical bodies by `body_id` in the
+candidate's `dependencies` map. Coupling branch references join that same map;
+they are not child Result identities or duplicated numerical artifacts. The
+verified decoder projects these supplied bodies without storage access or
+recalculation.
+
+No new threshold is introduced by this dtype distinction.
 
 Every square solve uses the normalized backward residual and exact `0/0`
 convention already specified for Direct S/Y/Z. This page introduces no second
@@ -72,7 +111,14 @@ $$
 =Q'_{RR}-Q'_{RE}X-Q_{RE}X'.
 $$
 
-No implementation forms an inverse. Empty $E$ is a no-op. Every nonempty
+Solves do not materialize a global inverse. Empty $E$ is a no-op. The JAX
+compiler, transformed operator and eliminated blocks remain sparse through
+assembly and CPU CSC SuperLU. Dense local conductor, selected Schur, actual
+RHS, numerator/cofactor and requested output blocks are permitted; there is no
+dense global fallback. $D_{\mathrm{circ}}$ here includes any realized series-RL
+section contributions and their analytic derivatives, as in the
+[root procedure](diagonal-root-numerical-procedure.qmd); they are not replaced
+by frequency-independent K/C/G stamps. Every nonempty
 solve must satisfy its backward-residual certificate; failure is
 `EliminatedBlockSolveFailure`. The exact Ref lineage, coordinate maps, PTC
 mask, retained/eliminated order, ParameterSet, $C/G/K$, solve evidence, and
@@ -152,7 +198,7 @@ in terminal coordinate order. It includes every uncompensated Port load in
 $M$ and is not the source-resistor-de-embedded public Y matrix. Its canonical
 unit is `siemens / second`, equivalent to inverse henry under this convention.
 
-The `OperatorResult` has exactly two array-catalog entries:
+The native Julia `OperatorResult` envelope has exactly two array-catalog entries:
 
 | ID | Path | Datasets | dtype and shape | Axes and unit |
 |---|---|---|---|---|
@@ -167,7 +213,9 @@ the shared no-codec/no-extra-file rules. With $c(F)=\min(F,1024)$, chunks are
 between chunks. C order, paired real/imag storage, ordered coordinate IDs, PTC
 load labels, and exact dataset metadata belong to the artifact manifest and
 runtime identity. An operator matrix is inspectable output and cannot itself
-be one scalar objective.
+be one scalar objective. JAX publishes the same typed axes and units through
+its existing verified SQLite numerical-record codec: the actual output dtype
+is retained, without fabricating Julia Zarr artifacts or receipt identities.
 
 ## Locate one hybridized pole
 
@@ -175,10 +223,17 @@ Every determinant/cofactor certificate on this page uses one fixed mechanical
 rule. For each row $a$ of its unscaled evidence matrix $A$, let
 $m_a=\max_b|A_{ab}|$ and choose $s_a=1$ when $m_a=0$, otherwise
 $s_a=2^{-\lfloor\log_2m_a\rfloor}$. The diagonal $S=\operatorname{diag}(s_a)$
-is applied to both $A$ and $A'$ for that one value/derivative evaluation. LU
+is applied to both $A$ and $A'$ for that one value/derivative evaluation. The existing Julia determinant implementation
 uses partial row pivoting by largest absolute value in the active column, with
 ties resolved by the smallest current row index, and includes permutation
-parity. Determinant ratios use scaled mantissa/exponent arithmetic so products
+parity. For the dev14 JAX sparse path, the Human-authorized denominator
+amendment uses the actual native SuperLU factor and its row/column permutation
+parity for a nonsingular sparse denominator. Its determinant and analytic
+derivative preserve the stated mathematical identities and coherent scaling;
+replaying Julia pivot choices or its bit patterns is not required. Singular
+local numerator and retained matrices retain analytic cofactor derivatives and
+unscaled SVD/null-vector certificates. This changes the JAX algorithm identity,
+not the stopping conditions or failure ownership. Determinant ratios use scaled mantissa/exponent arithmetic so products
 cannot silently underflow or overflow. This scaling is determinant/cofactor
 evidence only; SVD, null vectors, and residuals always use the unscaled matrix.
 
@@ -212,7 +267,7 @@ $$
 $$
 
 for at most 32 updates. The initial anchor is checked before update one. If a
-proposed update leaves both Float64 real/imaginary bit patterns unchanged, the
+proposed update leaves both selected-dtype real/imaginary bit patterns unchanged, the
 complete certificate is checked immediately; failure is
 `NumericalResolutionUnresolved`. Every finite analytic $h/h'$ pair is checked
 inside the identified algorithm execution but is not persisted as raw
@@ -414,7 +469,8 @@ For empty $E$, $\det H_{EE}=1$ and $B_F=B_{H,RR}$.
 For Z the denominator is the product of norms of the complete Y rows retained
 by its numerator minor, before the output column is deleted; the one-port
 empty cofactor retains constant one and zero derivative. Positive scales and
-ratios use binary64 mantissa/power-of-two exponent pairs, so product overflow
+ratios use mantissa/power-of-two exponent pairs in their declared arithmetic
+precision (binary64 in the native Julia envelope), so product overflow
 or underflow cannot be accepted as a zero certificate.
 Residual `0/0` is zero; nonzero-slope and rank-gap predicates reject a zero
 denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
@@ -426,11 +482,15 @@ $|T/T'|/(2\pi)\le 0.01\,\mathrm{Hz}$, using the full complex magnitude.
 
 The denominator operator $A_D$ must remain finite and machine nonsingular: its
 factorization and full `A_D X = I` backward residual must pass at
-$\tau(q_D)$, where $q_D$ is its order. No condition number is computed or
+$\tau(q_D)$, where $q_D$ is its order. JAX may stream the actual identity RHS
+columns through the same sparse factor, but must aggregate the complete
+normalized residual over every column; a subset or per-block ratio is not a
+replacement for that certificate. The streamed solve never materializes a
+global inverse. No condition number is computed or
 published. Let $\widehat A_D$ be its recorded coherent-SI
 equation/unknown-scaled dimensionless form and
-$\widehat\Delta=\det(\widehat A_D)$, reconstructed through the same canonical
-cofactor/scaling rule; empty Y-complement uses $\widehat\Delta=1$. The Result
+$\widehat\Delta=\det(\widehat A_D)$, reconstructed through the corresponding recorded determinant/scaling rule
+(native SuperLU for a nonsingular sparse JAX denominator); empty Y-complement uses $\widehat\Delta=1$. The Result
 stores `denominator` with unit/dimensionality `dimensionless`. A singular or
 non-finite denominator is not a zero. A simultaneously unresolved numerator
 and denominator is a rejected pole-zero cancellation. Unlike a passive pole,
@@ -540,8 +600,8 @@ Let $q$ be the common retained-space dimension, normalize both finite branch
 vectors to unit 2-norm, and write $V=[v_a\ v_b]$ with singular values
 $\gamma_1\ge\gamma_2$. SCNSim requires $q\ge2$ and
 $\gamma_2/\gamma_1>\tau(q)$; a zero denominator fails. At each bitwise-distinct
-point in $\{\widetilde\omega_a,\widetilde\omega_b,\omega_*\}$, the selected
-operator must also satisfy
+point in $\{\widetilde\omega_a,\widetilde\omega_b,\omega_*\}$, the existing native
+Julia reciprocity certificate requires the selected operator to satisfy
 
 $$
 \eta_{\mathrm{sym}}=
@@ -552,7 +612,44 @@ $$
 with residual `0/0` equal to zero. A failed numerical check reports every
 matching branch-root/evaluation location, complex angular frequency, retained
 dimension, asymmetry numerator, scale, ratio, and the same threshold. It does
-not by itself establish physical nonreciprocity. For each branch,
+not by itself establish physical nonreciprocity.
+
+For the JAX selected-Schur path, the Human-authorized numerical reciprocity
+amendment accounts for cancellation and the residual of the existing eliminated
+solve. Write $A=Q_{EE}$, $B=Q_{ER}$, $C=Q_{RE}$, $D=Q_{RR}$, with the actual
+solve $X$, residual $R=B-AX$, and input skew $E=C-B^T$. The raw selected
+operator remains $F=D-CX$. Ordinary transpose gives the exact identity
+
+$$
+F-F^T=D-D^T+X^T(A-A^T)X-EX+X^TE^T+X^TR-R^TX.
+$$
+
+Only $T=X^TR-R^TX$ is credited as explained solve-residual skew. Input-origin
+asymmetry is neither credited as numerical error nor removed. After the existing
+eliminated-block symmetry and solve-residual checks, the coupling reciprocity
+certificate compares the corrected defect
+$H=\operatorname{fl}((F-F^T)-\operatorname{fl}(T))$ with the existing
+$\tau(q)$ times the raw selected scale, plus a componentwise arithmetic-rounding
+envelope. This envelope follows actual dtype unit roundoff, sparse row lengths
+and complex operation counts for residual and Schur formation, retained
+products, skew formation and subtraction. Bound arithmetic rounds outward in
+the actual real dtype, including subnormal error terms; it has no fitted
+multiplier.
+An unavailable or overflowed numerical budget cannot become an infinite success
+allowance: the existing reciprocity/`RootSlopeUnresolved` failure owner remains.
+
+Evidence retains the raw skew, scale and ratio, together with the residual
+contribution, corrected defect, rounding budget, dtype and input-skew
+interpretation. This certificate supports reciprocity within numerical
+uncertainty; it does not establish improved forward accuracy of $F$. The raw
+$F$ continues into all physical quantities. There is no symmetrization,
+additional solve or factorization, retry, fallback or mixed precision. No new
+$F'$ rejection is introduced. All other branch root, zero, residue, vector
+independence and derivative conditions remain unchanged. The implementation
+records a distinct aggregate v4 algorithm identity; installed observations keep
+their own original source identities.
+
+For each branch,
 
 $$
 s_i=-v_i^TQ'(\widetilde\omega_i)v_i,
@@ -630,13 +727,40 @@ continuation, solve-residual, condition, and complete-certificate diagnostics
 do not. `HybridizedPoleSpec` uses its one fixed null
 vector artifact; `OperatorSpec` uses the two fixed Zarr artifacts above.
 
-The closed algorithm IDs are
+The existing native Julia algorithm IDs are
 `scnsim.hybridized_pole.newton32.v1`,
 `scnsim.transfer_zero.newton32.v4`,
 `scnsim.residue_normalized_coupling.v2`,
 `scnsim.response_element.v1`, and `scnsim.direct_operator.v1`. Changing a
 formula, derivative, normalization, iteration/subdivision rule, artifact
 layout, or branch policy requires a new runtime algorithm identity.
+
+## JAX host and durable evidence ownership
+
+One quantity implementation supplies standalone evaluation, parameter sweeps
+and scalar Optimization dependencies. The host binds each exact View and
+effective ParameterSet, owns dependency declaration order and scalar projection,
+and continues each nonbaseline root independently from its acknowledged sealed
+baseline. Coupling branches retain separate baseline locators/vectors; midpoint
+mode uses the actual candidate roots. A baseline is not a CMA-resumable
+checkpoint. Candidate caches do not turn a preceding candidate into an anchor.
+
+Successful root/pole/zero/coupling records retain their actual complex state,
+analytic slopes, required vectors/denominator/residue evidence, coordinates,
+units and parameter/lineage identity. Numerical failures retain their existing
+kind/stage/context with no partial success value. Verified read-only decoding
+reconstructs the existing public Result types without running a solver.
+JAX algorithm and dependency identities bind the new implementation and prevent
+relabeling earlier requests or checkpoints. No new public Spec or selector is
+introduced.
+
+SQLite retains the default commit interval of ten completed post-tell
+generations, separate baseline acknowledgement, optional checkpoint off,
+commit-before-callback, and same-version exact resume. Quantity work does not
+change CMA/RNG, winner order, transaction uncertainty, interrupt or failure
+ownership. Only the existing legitimate candidate numerical failures become
+Optimization penalties; baseline, compiler, storage, callback, cancellation,
+resource and infrastructure failures retain their established owners.
 
 ## Failure ownership
 

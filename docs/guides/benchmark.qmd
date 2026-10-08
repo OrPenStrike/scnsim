@@ -44,9 +44,10 @@ without altering affinity or global JAX precision/platform settings. Repeating
 a known configuration is idempotent; changing initialized resources requires a
 Kernel restart. An externally initialized pool's unknown size is not invented.
 
-Direct S/Y/Z, DiagonalRoot, ResponseElement and their parameter sweeps and
-Optimization expressions support original, retained and transformed Views.
-HB and the other quantity families require explicit Julia:
+Direct S/Y/Z, diagonal and operator-element roots, hybridized poles, S/Y/Z
+transfer zeros, residue-normalized coupling and loaded operators support JAX
+original, retained and transformed Views. Existing scalar selectors also serve
+Optimization; loaded operators remain matrix outputs. HB requires explicit Julia:
 
 ```python
 native = run.solve(run.original, hb_spec, backend="julia", precision="float64")
@@ -54,8 +55,15 @@ native = run.solve(run.original, hb_spec, backend="julia", precision="float64")
 
 Install `scnsim[julia]` and manually provide Julia 1.12.6 on PATH or
 `PYTHON_JULIAPKG_EXE`. Missing support gives an actionable feature-specific error;
-there is no automatic acquisition or backend fallback. Native compiler preflight
-and compiled schematics also require Julia. See
+there is no automatic acquisition or backend fallback. Explicit Julia compiler preflight and compiled schematics also require Julia.
+`run.explain(ref, spec, *, parameters=None, backend=None, precision=None)` inherits
+the Run defaults, with per-call overrides. Its JAX route lowers the captured
+Plan and realizes the selected View and every Optimization objective View using
+the sparse Python compiler. It returns actual axes, sparse coefficient records,
+line grids and leaf evidence without initializing JAX, solving, creating an
+attempt or discovering Julia. Host SI lowering remains binary64; the declared
+execution precision is bound in the request, not a claim that a kernel ran.
+This backend-aware explanation is `CONVERGING`. See
 [Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
 
 ## Optimization and recovery

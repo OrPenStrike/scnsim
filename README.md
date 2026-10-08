@@ -20,7 +20,7 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current release candidate is Alpha `1.0.0a2`, requiring Python 3.12. Normal
+The current development candidate is `1.0.0.dev14`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
@@ -30,8 +30,12 @@ JAX Optimization defaults to `commit_every_generations=10`; explicit positive
 integers select a different group size in the Plan leaf’s SQLite store. Omitted
 intervals with explicit Julia keep its existing native value of 1. See the
 guide for recovery, durability and recomputation limits.
-This candidate is `CONVERGING` and does not replace the immutable Alpha trial
-snapshot; no performance or numerical acceptance is implied.
+The dev14 candidate extends JAX evaluation to operator-element roots, hybridized
+poles, S/Y/Z transfer zeros, residue-normalized coupling and loaded operators.
+Scalar quantity selectors also serve Optimization; operators remain matrix
+outputs. These additions remain `CONVERGING` pending source-bound functional
+observations; no performance or numerical acceptance is implied. Published
+Alpha snapshots and historical outputs retain their original identities.
 
 ## Alpha 1.0.0a2 release notes
 
@@ -204,8 +208,10 @@ first execution with `configure_runtime(cpu_threads=...)`; per-call `backend`
 and `precision` override the Run defaults. `run.benchmark()` and `resolve()` are
 read-only. See the [operation guide](docs/guides/benchmark.qmd).
 
-Explicit Julia execution, HB and the other Julia-only quantity families, compiler
-preflight (`run.explain()`) and compiled schematics require
+`run.explain(ref, spec, backend=None, precision=None)` inherits the Run defaults.
+Its JAX route uses sparse Python lowering and View realization without Julia,
+JIT or a numerical solve. Explicit Julia execution, HB, Julia compiler
+preflight and compiled schematics require
 `uv sync --locked --extra julia` and manually provided Julia 1.12.6 on PATH or
 `PYTHON_JULIAPKG_EXE`. Feature calls never download Julia or change backends.
 Historical Engineer-course execution sources explicitly select Julia so their

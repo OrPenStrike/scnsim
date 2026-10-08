@@ -4,6 +4,10 @@ Descriptors retain structural zeros. Only local, Port, selected Schur and actual
 RHS arrays become dense. Sparse factors never survive their numerical call.
 Native program/resource failures escape; only SuperLU's exact singularity is
 translated to the existing formation stage. Transpose is never conjugated.
+Selected-state Qee factors use MMD_AT_PLUS_A column ordering; other factor
+roles retain native defaults. Pivoting and equilibration retain native defaults.
+The coupling reciprocity certificate explains residual-induced Schur skew while
+retaining input-origin asymmetry and the raw physical selected matrix.
 """
 from __future__ import annotations
 from contextlib import contextmanager
@@ -80,7 +84,7 @@ def dense_solve(a, b, n, code, status, real_dtype, measurements, factor=None):
 
 
 class SparseFactor:
-    def __init__(self, matrix, code, status, system, measurements):
+    def __init__(self, matrix, code, status, system, measurements, *, permc_spec=None):
         self.matrix, self.code, self.status = matrix, code, status
         self.system, self.measurements, self.factor = system, measurements, None
         # Do not mask a previous local failure with a consequent native factor
@@ -92,7 +96,7 @@ class SparseFactor:
             return
         with measurements.phase('sparse_factorization', nodes=matrix.shape[0], stage=code, nnz=matrix.nnz):
             try:
-                self.factor = splu(matrix)
+                self.factor = splu(matrix) if permc_spec is None else splu(matrix, permc_spec=permc_spec)
             except RuntimeError as error:
                 if str(error) != 'Factor is exactly singular':
                     raise
@@ -205,8 +209,8 @@ class System:
         return result
 
 
-def network(system, omega, assembled, family, measurements):
-    Q, _, _, status = assembled
+def network(system, omega, assembled, family, measurements, *, derivative=False):
+    Q, Qp, _, status = assembled
     status = int(status)
     if status:
         return None, status
@@ -216,9 +220,10 @@ def network(system, omega, assembled, family, measurements):
     Rinv, status, _ = dense_solve(system.Rk, eye, p, 1, status, rd, measurements)
     if status:
         return None, status
-    w_values = (Q / cd(-cd(1j) * omega)
-                + system.stamp(system.B, system.Go, system.B_pair_map)
-                + system.stamp(system.Bk, Rinv, system.Bk_pair_map))
+    divisor = cd(-cd(1j) * omega)
+    h_values = Q / divisor + system.stamp(system.B, system.Go, system.B_pair_map)
+    hp_values = (Qp * divisor + cd(1j) * Q) / cd(divisor * divisor) if derivative else None
+    w_values = h_values + system.stamp(system.Bk, Rinv, system.Bk_pair_map)
     W = system.csc(w_values, measurements)
     factor = SparseFactor(W, 5, status, system, measurements)
     X, status, _ = factor.solve(system.Bk_rhs)
@@ -229,6 +234,13 @@ def network(system, omega, assembled, family, measurements):
     if status:
         return None, status
     Y = np.asarray(Ysrc - Rinv, dtype=cd)
+    Yp = None
+    if derivative:
+        Hp = system.csc(hp_values, measurements)
+        Xp, status, _ = factor.solve(np.asarray(-Hp @ X, dtype=cd))
+        if status:
+            return None, status
+        Yp = np.asarray(-Ysrc @ (system.Bk_rhs.T @ Xp) @ Ysrc, dtype=cd)
     Z, S = np.zeros_like(Y), np.zeros_like(Y)
     if family in ('all', 'Z'):
         Z, status, _ = dense_solve(Y, eye, p, 7, status, rd, measurements)
@@ -249,6 +261,13 @@ def network(system, omega, assembled, family, measurements):
         eta = rd(maximum_abs(source_s - S, rd) / rd(rd(1) + maximum_abs(source_s, rd) + maximum_abs(S, rd)))
         status = first(status, not (np.isfinite(eta) and eta <= tau(system.n, rd)), 9)
     status = first(status, not all(np.all(np.isfinite(a)) for a in (Y, S, Z)), 10)
+    if derivative and not status:
+        Zp = np.asarray(-Z @ Yp @ Z, dtype=cd) if family in ('all', 'Z') else None
+        Sp = None
+        if family in ('all', 'S'):
+            Pp = system.Dk @ Yp @ system.Dk
+            Sp, status, _ = dense_solve(P, -Pp-Pp @ S, p, 8, status, rd, measurements)
+        return (S, Y, Z, Sp, Yp, Zp, system.csc(h_values, measurements), Hp), status
     return (S, Y, Z), status
 
 
@@ -274,7 +293,7 @@ def selected_state(system, assembled, measurements):
         denominator = maximum_abs(abs(ee) + abs(ee.T), rd)
         asym = ratio(numerator, denominator, rd)
         status = first(status, not (np.isfinite(asym) and asym <= tau(len(eliminated), rd)), 3)
-        factor = SparseFactor(ee, 3, status, system, measurements)
+        factor = SparseFactor(ee, 3, status, system, measurements, permc_spec="MMD_AT_PLUS_A")
         X, status, ex = factor.solve(er)
         if status:
             return None, status
@@ -287,6 +306,113 @@ def selected_state(system, assembled, measurements):
         X = np.empty((0, len(selected)), dtype=system.complex_dtype)
         Xp = np.empty_like(X)
     return (F, Fp, Q, Qp, system.csc(bound, measurements), X, Xp, eta_e), status
+
+
+def schur_reciprocity(system, state):
+    """Explain solve-induced skew without changing the physical selected F.
+
+    R=B-A X gives F-F.T = input_skew + X.T R-R.T X (ordinary
+    transpose). Only this signed residual term is removed from the certificate.
+    Bounds use real/imaginary component arithmetic in the declared dtype. A
+    length-d complex dot and final subtraction have at most 2d+2 rounding
+    stages on any term and 8d+2 scalar operations overall; the latter also
+    bounds absolute subnormal-rounding errors. No input skew enters the budget.
+    """
+    F, _, Q, _, _, X, _, _ = state
+    rd, cd = system.real_dtype, system.complex_dtype
+    selected, eliminated = system.selected, system.eliminated
+    u = rd(np.finfo(rd).eps / 2)
+    subnormal = np.nextafter(rd(0), rd(1))
+
+    def up(value):
+        return np.nextafter(np.asarray(value, dtype=rd), rd(np.inf))
+
+    def add(a, b):
+        return up(np.asarray(a, dtype=rd) + np.asarray(b, dtype=rd))
+
+    def mul(a, b):
+        return up(np.asarray(a, dtype=rd) * np.asarray(b, dtype=rd))
+
+    def magnitude(a):
+        # L1 complex magnitude bounds both components without a square/sqrt.
+        if hasattr(a, 'tocsc'):
+            result = a.copy()
+            result.data = add(np.abs(a.data.real), np.abs(a.data.imag))
+            return result
+        return add(np.abs(a.real), np.abs(a.imag))
+
+    def degrees(a):
+        if hasattr(a, 'tocsr'):
+            return np.diff(a.tocsr().indptr)
+        return np.full(a.shape[0], a.shape[1], dtype=np.int64)
+
+    def constants(a):
+        d = np.asarray(degrees(a), dtype=rd)[:, None]
+        k = add(mul(rd(2), d), rd(2))
+        ku = mul(k, u)
+        lower = np.nextafter(rd(1)-ku, rd(-np.inf))
+        gamma = np.where(lower > 0, up(ku/lower), rd(np.inf))
+        operations = add(mul(rd(8), d), rd(2))
+        floor = np.where(lower > 0, up(mul(operations, subnormal)/lower), rd(np.inf))
+        return gamma, floor
+
+    def dot_upper(a, b):
+        # Enclose the exact positive product, including rounding in the bound
+        # computation itself, rather than treating a rounded sum as an upper bound.
+        gamma, floor = constants(a)
+        product = np.asarray(magnitude(a) @ magnitude(b), dtype=rd)
+        lower = np.nextafter(rd(1)-gamma, rd(-np.inf))
+        return np.where(lower > 0, up(add(product, floor)/lower), rd(np.inf))
+
+    def formation_error(a, x, b):
+        gamma, floor = constants(a)
+        return add(mul(gamma, add(magnitude(b), dot_upper(a, x))), floor)
+
+    def subtraction_error(a, b):
+        return add(mul(u, add(magnitude(a), magnitude(b))), mul(rd(2), subnormal))
+
+    with np.errstate(over='ignore', invalid='ignore', divide='ignore', under='ignore'):
+        raw_skew = np.asarray(F-F.T, dtype=cd)
+        D = Q[selected][:, selected].toarray()
+        if len(eliminated):
+            A = Q[eliminated][:, eliminated].tocsc()
+            B = Q[eliminated][:, selected].toarray()
+            C = Q[selected][:, eliminated]
+            R = np.asarray(B-A @ X, dtype=cd)
+            P = np.asarray(X.T @ R, dtype=cd)
+            T = np.asarray(P-P.T, dtype=cd)
+            er = formation_error(A, X, B)
+            ef = formation_error(C, X, D)
+            ep = formation_error(X.T, R, np.zeros_like(P))
+            et = add(add(ep, ep.T), subtraction_error(P, P.T))
+            residual_uncertainty = dot_upper(X.T, er)
+            budget = add(add(ef, ef.T), add(residual_uncertainty, residual_uncertainty.T))
+            budget = add(budget, et)
+            input_skew = dict(eliminated=maximum_abs(A-A.T, rd),
+                              cross=maximum_abs(C-B.T, rd))
+        else:
+            T = np.zeros_like(F)
+            budget = np.zeros(F.shape, dtype=rd)
+            input_skew = dict(eliminated=rd(0), cross=rd(0))
+        H = np.asarray(raw_skew-T, dtype=cd)
+        budget = add(budget, subtraction_error(F, F.T))
+        budget = add(budget, subtraction_error(raw_skew, T))
+        num = maximum_abs(raw_skew, rd)
+        scale = maximum_abs(np.abs(F)+np.abs(F.T), rd)
+        allowance = rd(add(mul(tau(len(selected), rd), scale), maximum_abs(budget, rd)))
+        defect = maximum_abs(H, rd)
+        # A nonfinite/unavailable arithmetic certificate is never an infinite
+        # allowance for success; the caller retains the existing failure owner.
+        closed = bool(np.isfinite(allowance) and np.isfinite(defect) and defect <= allowance)
+        input_skew['retained'] = maximum_abs(D-D.T, rd)
+    return closed, dict(numerator=num, denominator=scale, ratio=ratio(num, scale, rd),
+                        raw_selected_matrix=F, raw_skew=raw_skew,
+                        residual_contribution=T, corrected_defect=H,
+                        corrected_defect_norm=defect, rounding_budget=budget,
+                        allowance=allowance, unit_roundoff=u,
+                        arithmetic_precision=np.dtype(rd).name, input_skew=input_skew,
+                        rounding_model="gamma_(2d+2); (8d+2) subnormal errors; sparse row d",
+                        input_skew_interpretation='input-origin skew remains signal; never credited to rounding budget')
 
 
 def retained_response(system, omega, assembled, family, measurements):

@@ -66,7 +66,7 @@ class JaxBackend:
 
     def identity(self) -> dict[str, object]:
         return {
-            "backend": "jax", "algorithm_id": "scnsim.jax-sparse-csc-superlu-reuse-analytic-newton32.v1",
+            "backend": "jax", "algorithm_id": "scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v4",
             "jax": importlib.metadata.version("jax"), "jaxlib": importlib.metadata.version("jaxlib"),
             "scipy": importlib.metadata.version("scipy"),
             "sparse_solver": "scipy.sparse.linalg.splu", "factorization_backend": "SuperLU",
@@ -141,13 +141,15 @@ class JaxBackend:
     def _evaluate_batch(self, jobs: tuple[EvaluationJob, ...]) -> tuple[EvaluationResult, ...]:
         from .sparse_direct import Measurements, System, network, retained_response
         from .sparse_root import diagonal_root
+        from .sparse_quantities import evaluate_quantity
+        from .determinants import QuantityError
         if self._closed:
             raise RuntimeError('numerical backend is closed')
         results = []
         for job in jobs:
-            if job.kind not in ('direct', 'response_element', 'diagonal_root'):
+            if job.kind not in ('direct', 'response_element', 'diagonal_root', 'operator', 'operator_element_root', 'hybridized_pole', 'transfer_zero', 'residue_normalized_coupling'):
                 raise ValueError(f'unsupported JAX numerical operation: {job.kind}')
-            if not job.view.port_realizable and (job.kind == 'direct' or (job.kind == 'response_element' and job.family == 'S')):
+            if not job.view.port_realizable and (job.kind == 'direct' or (job.kind in ('response_element', 'transfer_zero') and job.family == 'S')):
                 results.append(EvaluationResult(job.id, failure=NumericalFailure(
                     'port_realizability', 'selected_network', 'wave response requires a Port-realizable View')))
                 continue
@@ -158,48 +160,77 @@ class JaxBackend:
                 with measurements.phase('sparse_pattern_prepare'):
                     system = System(job.view, self.real_dtype, self.complex_dtype)
                 batches = []
-                if job.kind == 'diagonal_root':
-                    def assemble(omega, *, loaded, derivative):
-                        arrays = self._assembly(system, [omega], loaded=loaded, derivative=derivative,
-                                                measurements=measurements, batches=batches)
-                        return tuple(a[0] for a in arrays)
-                    start = (self.complex_dtype(job.omega_start_rad_s) if job.omega_start_rad_s is not None
-                             else self.complex_dtype(2 * np.pi * job.root_hint_hz))
-                    omega, slope, certificate, code, steps = diagonal_root(system, start, job.coordinate_index,
-                                                                           assemble, measurements)
-                    values = {'root_omega_rad_s': complex(omega), 'root_slope': complex(slope)}
-                    extra = {'newton_steps': steps, 'certificate': certificate.tolist()}
-                else:
-                    family = 'all' if job.kind == 'direct' else job.family
-                    frequencies = np.asarray(job.frequencies_hz, dtype=np.float64)
-                    omegas = np.asarray(2 * np.pi * frequencies, dtype=self.complex_dtype)
-                    outputs = []
-                    codes = []
-                    for offset in range(0, len(omegas), 8):
-                        assembled = self._assembly(system, omegas[offset:offset+8],
-                                                   loaded=not job.view.port_realizable,
-                                                   derivative=not job.view.port_realizable,
-                                                   measurements=measurements, batches=batches)
-                        for index, omega_at in enumerate(omegas[offset:offset+8]):
-                            state = tuple(a[index] for a in assembled)
-                            if job.view.port_realizable:
-                                value, status = network(system, omega_at, state, family, measurements)
-                            else:
-                                value, status = retained_response(system, omega_at, state, family, measurements)
-                            outputs.append(value)
-                            codes.append(status)
-                    failed = next((i for i, code_at in enumerate(codes) if code_at), None)
-                    code = 0 if failed is None else codes[failed]
-                    extra = {'frequency_count': len(frequencies)}
-                    if failed is not None:
-                        extra['first_failure_frequency_index'] = failed
-                        values = {}
-                    elif job.kind == 'direct':
-                        values = {name: np.asarray([value[i] for value in outputs], dtype=self.complex_dtype)
-                                  for i, name in enumerate(('S', 'Y', 'Z'))}
+                def assemble(omega, *, loaded, derivative):
+                    arrays = self._assembly(system, [omega], loaded=loaded, derivative=derivative,
+                                            measurements=measurements, batches=batches)
+                    return tuple(a[0] for a in arrays)
+                quantity_failure = None
+                code = 0
+                try:
+                    if job.kind == 'diagonal_root':
+                        start = (self.complex_dtype(job.omega_start_rad_s) if job.omega_start_rad_s is not None
+                                 else self.complex_dtype(2 * np.pi * job.root_hint_hz))
+                        omega, slope, certificate, code, steps = diagonal_root(system, start, job.coordinate_index,
+                                                                               assemble, measurements)
+                        values = {'root_omega_rad_s': omega, 'root_slope': slope}
+                        extra = {'newton_steps': steps, 'certificate': certificate.tolist(),
+                                 'certificates': dict(zip(('eliminated_residual', 'operator_residual',
+                                     'element_residual', 'relative_correction', 'normalized_slope', 'slope_scale'),
+                                     certificate, strict=True))}
+                    elif job.kind == 'operator':
+                        frequencies = np.asarray(job.frequencies_hz, dtype=np.float64)
+                        omegas = np.asarray(2*np.pi*frequencies, dtype=self.complex_dtype)
+                        operators = []
+                        for offset in range(0, len(omegas), 8):
+                            arrays = self._assembly(system, omegas[offset:offset+8], loaded=True, derivative=True,
+                                                    measurements=measurements, batches=batches)
+                            from .sparse_direct import selected_state
+                            for index in range(len(omegas[offset:offset+8])):
+                                state, code = selected_state(system, tuple(a[index] for a in arrays), measurements)
+                                if code:
+                                    from .sparse_quantities import numerical_code
+                                    numerical_code(code)
+                                operators.append(state[0])
+                        values = {'operator_values': np.asarray(operators, dtype=self.complex_dtype)}
+                        extra = {'frequency_count': len(frequencies)}
+                    elif job.kind in ('operator_element_root', 'hybridized_pole', 'transfer_zero', 'residue_normalized_coupling'):
+                        values, certificates = evaluate_quantity(system, job, assemble, measurements)
+                        extra = {'certificates': certificates}
                     else:
-                        family_index = {'S': 0, 'Y': 1, 'Z': 2}[job.family]
-                        values = {'response_value': complex(outputs[0][family_index][job.output_index, job.input_index])}
+                        family = 'all' if job.kind == 'direct' else job.family
+                        frequencies = np.asarray(job.frequencies_hz, dtype=np.float64)
+                        omegas = np.asarray(2 * np.pi * frequencies, dtype=self.complex_dtype)
+                        outputs = []
+                        codes = []
+                        for offset in range(0, len(omegas), 8):
+                            assembled = self._assembly(system, omegas[offset:offset+8],
+                                                       loaded=not job.view.port_realizable,
+                                                       derivative=not job.view.port_realizable,
+                                                       measurements=measurements, batches=batches)
+                            for index, omega_at in enumerate(omegas[offset:offset+8]):
+                                state = tuple(a[index] for a in assembled)
+                                if job.view.port_realizable:
+                                    value, status = network(system, omega_at, state, family, measurements)
+                                else:
+                                    value, status = retained_response(system, omega_at, state, family, measurements)
+                                outputs.append(value)
+                                codes.append(status)
+                        failed = next((i for i, code_at in enumerate(codes) if code_at), None)
+                        code = 0 if failed is None else codes[failed]
+                        extra = {'frequency_count': len(frequencies)}
+                        if failed is not None:
+                            extra['first_failure_frequency_index'] = failed
+                            values = {}
+                        elif job.kind == 'direct':
+                            values = {name: np.asarray([value[i] for value in outputs], dtype=self.complex_dtype)
+                                      for i, name in enumerate(('S', 'Y', 'Z'))}
+                        else:
+                            family_index = {'S': 0, 'Y': 1, 'Z': 2}[job.family]
+                            values = {'response_value': self.complex_dtype(outputs[0][family_index][job.output_index, job.input_index])}
+                except QuantityError as error:
+                    values = {}
+                    extra = {'certificates': error.facts}
+                    quantity_failure = error
                 ended = perf_counter_ns()
                 compile_times = [row['shape_compilation_ns'] for row in batches if row['shape_compilation_ns'] is not None]
                 # The outer interval is a job observation; actual JAX assembly
@@ -211,7 +242,7 @@ class JaxBackend:
                               transfer_to_device_ns=sum(row['transfer_to_device_ns'] for row in batches),
                               synchronized_compute_ns=sum(row['synchronized_compute_ns'] for row in batches),
                               transfer_to_host_ns=sum(row['transfer_to_host_ns'] for row in batches))
-                observations = {'batch': timing, 'batch_index': 0, 'batch_span_id': parent,
+                observations = {'quantity_kind': job.kind, 'terminal_ids': list(job.view.terminal_ids), 'batch': timing, 'batch_index': 0, 'batch_span_id': parent,
                                 'arithmetic_precision': self.precision, 'algorithm_id': self.identity()['algorithm_id'],
                                 'sparse_phases': measurements.rows, 'factors': system.factor_facts,
                                 'static_pattern_sha256': system.pattern_sha256, **extra}
@@ -220,8 +251,17 @@ class JaxBackend:
                     port_ids=list(job.view.model.port_ids), selected_indices=list(job.view.selected_indices),
                     probe_loads={port: 'raw' if flag != 0 else 'compensated'
                                  for port, flag in zip(job.view.model.port_ids, job.view.model.M, strict=True)})
+                for key, index in (('coordinate', job.coordinate_index), ('row', job.row_index),
+                                   ('column', job.column_index), ('input', job.input_index), ('output', job.output_index)):
+                    if index is not None:
+                        observations[key] = job.view.terminal_ids[index]
+                if job.family is not None:
+                    observations['family'] = job.family
                 failure = None
-                if code:
+                if quantity_failure is not None:
+                    failure = NumericalFailure(quantity_failure.kind, quantity_failure.stage, quantity_failure.detail,
+                                               evidence_bytes(observations))
+                elif code:
                     kind, stage = self.core.FAILURES[code]
                     failure = NumericalFailure(kind, stage, 'numerical operation did not satisfy its existing solve/root contract', evidence_bytes(observations))
                     values = {}

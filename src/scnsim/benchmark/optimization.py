@@ -25,6 +25,13 @@ from .compiler import compile_model, parameter_key, parameter_values
 from .mesh import quantity
 from .models import EvaluationJob, EvaluationResult, MeshSpec, NumericalBackend, NumericalFailure
 from .prepared import array_from_record, array_record, record_bytes, record_document
+from ..execution.quantities import (
+    EvaluationFailure,
+    QuantityEvaluator,
+    expression_leaves as leaves,
+    expression_value,
+    result_from_record,
+)
 from .views import realize_view
 
 CANDIDATE_FAILURES = frozenset(("invalid_candidate_physical_parameter", "eliminated_block_solve_failure",
@@ -48,42 +55,6 @@ def complex_value(record: dict) -> complex:
     return complex(float64_from_hex(record["real_f64"]), float64_from_hex(record["imag_f64"]))
 
 
-def leaves(expression: dict) -> list[dict]:
-    kind = expression["type"]
-    if kind == "quantity_sum":
-        return [leaf for term in expression["terms"] for leaf in leaves(term)]
-    if kind == "quantity_difference":
-        return leaves(expression["left"]) + leaves(expression["right"])
-    if kind == "quantity_absolute":
-        return leaves(expression["operand"])
-    if kind not in ("diagonal_root_projection", "response_element_projection"):
-        raise NotImplementedError(f"benchmark quantity {kind!r} is unsupported")
-    return [expression]
-
-
-def expression_value(expression: dict, values: list[float]) -> float:
-    iterator = iter(values)
-
-    def evaluate(node: dict) -> float:
-        kind = node["type"]
-        if kind == "quantity_sum":
-            return sum(evaluate(term) for term in node["terms"])
-        if kind == "quantity_difference":
-            return evaluate(node["left"]) - evaluate(node["right"])
-        if kind == "quantity_absolute":
-            return abs(evaluate(node["operand"]))
-        return next(iterator)
-
-    return evaluate(expression)
-
-
-class EvaluationFailure(Exception):
-    def __init__(self, failure: NumericalFailure, *, result: EvaluationResult | None = None):
-        self.failure = failure
-        self.result = result
-        super().__init__(failure.detail)
-
-
 def numerical_error(failure: NumericalFailure):
     """Restore the existing public failure type from a numerical handoff."""
     classes = (errors.DirectResponseFormationError, errors.PortRealizabilityError,
@@ -101,39 +72,6 @@ def checked_results(backend: NumericalBackend, jobs: tuple[EvaluationJob, ...]) 
     return results
 
 
-def continue_diagonal_root(*, baseline: dict, values: dict, baseline_root: complex,
-                           endpoint_view, initial_result: EvaluationResult,
-                           candidate_view, make_job, evaluate, identity: str, observe=None):
-    """One baseline-anchored dyadic authority for standalone and CMA roots."""
-    def advance(left_t, left_root, right_t, depth, result=None):
-        if right_t == 1.0:
-            point, view = values, endpoint_view
-        else:
-            point = {}
-            for parameter, base in baseline.items():
-                candidate = values[parameter]
-                if isinstance(base, dict):
-                    if canonical_json_bytes(base) != canonical_json_bytes(candidate):
-                        raise CompilerInvariantError("root continuation cannot interpolate RLGC", stage="root_continuation")
-                    point[parameter] = base
-                else:
-                    point[parameter] = base + right_t * (candidate - base)
-            view = candidate_view(point)
-        if result is None:
-            result = evaluate((make_job(f"continuation:{identity}:{right_t.hex()}", view, left_root),))[0]
-        if observe is not None:
-            observe(point, view, result, right_t)
-        if result.failure is None:
-            return result
-        if result.failure.kind != "numerical_resolution_unresolved" or depth >= 32:
-            raise EvaluationFailure(result.failure, result=result)
-        midpoint = (left_t + right_t) / 2
-        middle = advance(left_t, left_root, midpoint, depth + 1)
-        return advance(midpoint, middle.root_omega_rad_s, right_t, depth + 1)
-
-    return advance(0.0, baseline_root, 1.0, 0, initial_result)
-
-
 class Evaluator:
     """One task's baseline anchor and physical-parameter cache authority."""
 
@@ -148,8 +86,15 @@ class Evaluator:
         self.templates = {parameter_key(binding["parameter"]): binding for binding in point["bindings"]}
         self.base = parameter_values(point)
         self.authorized = {parameter_key(record) for record in self.spec.get("allow_extrapolation", point.get("allow_extrapolation", []))}
-        self.anchors: dict[str, complex] = {}
+        self.quantity_evaluator = QuantityEvaluator(backend, emit=emit)
+        self.anchors: dict[str, EvaluationResult] = {}
         self.cache: dict[str, dict] = {}
+
+    def anchor_references(self) -> dict[str, str]:
+        """Return references into the baseline candidate's dependency bodies."""
+        from ..execution.quantities import quantity_body_id
+
+        return {key: quantity_body_id(result)[0] for key, result in self.anchors.items()}
 
     def cohort_values(self, point: dict) -> dict:
         """Apply declared overrides to the task's effective baseline closure."""
@@ -165,15 +110,6 @@ class Evaluator:
             values[key] = supplied if supplied["type"] == "rlgc" else quantity(supplied)
         return values
 
-    def timed_results(self, jobs):
-        start = perf_counter_ns()
-        try:
-            return checked_results(self.backend, jobs)
-        finally:
-            if self.emit is not None:
-                self.emit("timing", {"stage": "numerical_evaluation", "start_tick_ns": start,
-                                     "end_tick_ns": perf_counter_ns(), "counts": {"jobs": len(jobs)}})
-
     def parameter_record(self, values: dict) -> dict:
         bindings = []
         for key, template in self.templates.items():
@@ -181,9 +117,6 @@ class Evaluator:
             encoded = value if isinstance(value, dict) else dict(template["value"], si_value_f64=bits(value))
             bindings.append({"parameter": template["parameter"], "value": encoded})
         return {"type": "parameter_set_v2", "bindings": bindings, "allow_extrapolation": []}
-
-    def root_key(self, selector: dict) -> str:
-        return canonical_json_bytes({"spec": selector["spec"], "view": selector["view"], "type": "diagonal_root"}).decode()
 
     def candidate_view(self, values: dict, declaration: dict):
         start = perf_counter_ns()
@@ -195,36 +128,8 @@ class Evaluator:
                 self.emit("timing", {"stage": "continuation_lowering_and_view", "start_tick_ns": start,
                                      "end_tick_ns": perf_counter_ns(), "counts": {"points": 1}})
 
-    def root_job(self, identity: str, selector: dict, view, start: complex | None) -> EvaluationJob:
-        spec = selector["spec"]
-        hint = quantity(spec["root_hint"])
-        return EvaluationJob(identity, "diagonal_root", view, coordinate_index=view.terminal_ids.index(spec["coordinate"]),
-                             root_hint_hz=hint, omega_start_rad_s=start if start is not None else complex(2 * np.pi * hint))
-
-    def continued_root(self, selector: dict, values: dict, endpoint_view, initial_result: EvaluationResult) -> EvaluationResult:
-        """Accepted dyadic repair only for numerical-resolution failure."""
-        key = self.root_key(selector)
-
-        try:
-            return continue_diagonal_root(
-                baseline=self.base, values=values, baseline_root=self.anchors[key],
-                endpoint_view=endpoint_view, initial_result=initial_result,
-                candidate_view=lambda point: self.candidate_view(point, selector["view"]),
-                make_job=lambda identity, view, start: self.root_job(identity, selector, view, start),
-                evaluate=self.timed_results, identity=key,
-            )
-        except EvaluationFailure as error:
-            if error.failure.kind != "direct_response_formation":
-                raise
-            # Only this nonbaseline CMA boundary owns a formation penalty.
-            # Conversion follows the failed local solve, without dyadic retry.
-            failure = NumericalFailure("numerical_resolution_unresolved", error.failure.stage,
-                                       "candidate selected response is numerically unresolved",
-                                       error.failure.evidence_bytes)
-            raise EvaluationFailure(failure, result=error.result) from error
-
     def evaluate_many(self, points: list[dict], *, baseline: bool = False) -> list[dict]:
-        """Batch compatible leaves, restoring candidate and leaf order afterwards."""
+        """Evaluate declared quantity leaves through the shared dependency owner."""
         objectives = self.spec["objectives"]
         states, keys, representatives = [], [], {}
         for values in points:
@@ -236,7 +141,7 @@ class Evaluator:
                 continue
             representatives[key] = len(states)
             state = {"parameters": record, "objectives": [], "cost_f64": bits(0), "failure": None,
-                     "roots": {}, "views": {}, "values": values}
+                     "dependencies": {}, "result_cache": {}, "views": {}, "values": values}
             start = perf_counter_ns()
             try:
                 raw = compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized, preparation_cache=self.preparation_cache)
@@ -262,57 +167,34 @@ class Evaluator:
             term_values = [[] for _ in states]
             term_records = [[] for _ in states]
             for term_index, selector in enumerate(selectors):
-                jobs, active = [], []
                 for index, state in enumerate(states):
                     if state is None or state["failure"]:
                         continue
                     view = state["views"][canonical_json_bytes(selector["view"]).decode()]
-                    dependency = self.root_key(selector) if selector["type"] == "diagonal_root_projection" else canonical_json_bytes({"spec": selector["spec"], "view": selector["view"], "type": "response_element"}).decode()
-                    if dependency in state["roots"]:
-                        result = state["roots"][dependency]
-                        active.append((index, view, dependency, result))
-                        continue
                     identity = f"candidate:{index}:objective:{objective_index}:term:{term_index}"
-                    if selector["type"] == "diagonal_root_projection":
-                        jobs.append(self.root_job(identity, selector, view, None if baseline else self.anchors[dependency]))
-                    else:
-                        spec = selector["spec"]
-                        jobs.append(EvaluationJob(identity, "response_element", view, frequencies_hz=np.array([quantity(spec["frequency"])]),
-                                                  family=spec["family"], input_index=view.terminal_ids.index(spec["input_coordinate"]),
-                                                  output_index=view.terminal_ids.index(spec["output_coordinate"])))
-                    active.append((index, view, dependency, None))
-                new_results = iter(self.timed_results(tuple(jobs))) if jobs else iter(())
-                for index, view, dependency, result in active:
-                    state = states[index]
-                    if result is None:
-                        result = next(new_results)
                     try:
-                        if selector["type"] == "diagonal_root_projection":
-                            if not baseline and result.failure:
-                                result = self.continued_root(selector, state["values"], view, result)
-                            if result.failure:
-                                raise EvaluationFailure(result.failure)
-                            omega = result.root_omega_rad_s
-                            state["roots"][dependency] = result
-                            if baseline:
-                                self.anchors[dependency] = omega
-                            if omega.imag > 0:
-                                raise EvaluationFailure(NumericalFailure("numerical_resolution_unresolved", "newton_certificate", "diagonal root violates passive imaginary-root policy"))
-                            value = omega.real / (2 * np.pi) if selector["projection"] == "frequency" else -omega.imag / np.pi
-                            actual = complex_record(omega)
+                        evaluated = self.quantity_evaluator.evaluate(
+                            selector["spec"], view, view_declaration=selector["view"], identity=identity,
+                            baseline_values=self.base, values=state["values"], anchors=self.anchors,
+                            result_cache=state["result_cache"], baseline=baseline,
+                            candidate_view=lambda point, declaration=selector["view"]:
+                                self.candidate_view(point, declaration),
+                            selector=selector, dependency_bodies=state["dependencies"],
+                            candidate_failure_conversion=True,
+                        )
+                        result = evaluated["result"]
+                        value = evaluated["value"]
+                        state["dependencies"].update(evaluated["dependencies"])
+                        if result.root_omega_rad_s is not None:
+                            actual = complex_record(result.root_omega_rad_s)
+                        elif result.response_value is not None:
+                            actual = complex_record(result.response_value)
                         else:
-                            if result.failure:
-                                failure = result.failure
-                                if not baseline and failure.kind == "direct_response_formation":
-                                    failure = NumericalFailure("numerical_resolution_unresolved", failure.stage, failure.detail, failure.evidence_bytes)
-                                raise EvaluationFailure(failure)
-                            state["roots"][dependency] = result
-                            z = result.response_value
-                            value = {"real": lambda: z.real, "imag": lambda: z.imag, "magnitude": lambda: abs(z)}[selector["projection"]]()
-                            actual = complex_record(z)
+                            actual = complex_record(result.coupling_rad_s)
                         term_values[index].append(float(value))
                         term_records[index].append({"term_ordinal": term_index, "selector": selector, "status": "success",
                                                     "value_f64": bits(value), "actual_complex": actual,
+                                                    "body_id": evaluated["body_id"],
                                                     "lineage": json.loads(view.lineage_bytes), "evidence": json.loads(result.evidence_bytes)})
                     except (EvaluationFailure, SCNSimError) as error:
                         failure = error.failure if isinstance(error, EvaluationFailure) else NumericalFailure(error.kind, error.stage, str(error), record_bytes(error.evidence))
@@ -320,6 +202,8 @@ class Evaluator:
                             if isinstance(error, EvaluationFailure):
                                 raise numerical_error(failure) from error
                             raise
+                        if isinstance(error, EvaluationFailure):
+                            state["dependencies"].update(error.dependencies)
                         state["failure"] = dict(asdict(failure), evidence_bytes=json.loads(failure.evidence_bytes),
                                                 phase="quantity_evaluation", objective_ordinal=objective_index, term_ordinal=term_index)
                         state["cost_f64"] = bits(math.inf)
@@ -361,7 +245,8 @@ class Evaluator:
                 state["failure"] = {"kind": failure.kind, "stage": failure.stage, "detail": failure.detail,
                                     "phase": "total_aggregation"}
                 state["cost_f64"] = bits(math.inf)
-            self.cache[key] = {k: v for k, v in state.items() if k not in ("values", "views", "roots")}
+            self.cache[key] = {k: v for k, v in state.items()
+                               if k not in ("values", "views", "result_cache")}
         result, seen = [], set()
         for key in keys:
             result.append(dict(deepcopy(self.cache[key]), candidate_key=key,
@@ -482,7 +367,11 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
     optimizer._funhist_values.fill(0)
     if checkpoint:
         restore_cma(optimizer, checkpoint["cma"])
-        evaluator.anchors = {key: complex_value(value) for key, value in checkpoint["anchors"].items()}
+        baseline_dependencies = checkpoint["baseline"]["dependencies"]
+        evaluator.anchors = {
+            key: result_from_record(baseline_dependencies[body_id])
+            for key, body_id in checkpoint["anchors"].items()
+        }
         evaluator.cache = checkpoint["cache"]
         baseline, best = checkpoint["baseline"], checkpoint["best"]
         next_ordinal = checkpoint["next_ordinal"]
@@ -497,7 +386,7 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
     if checkpoint is None:
         emit("baseline_ready", {
             "baseline": baseline,
-            "anchors": {key: complex_record(value) for key, value in evaluator.anchors.items()},
+            "anchors": evaluator.anchor_references(),
             "resume_state": resume_state(),
         })
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):

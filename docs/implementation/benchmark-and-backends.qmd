@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0.dev13 development candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev14 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -74,15 +74,21 @@ Host SI declarations and CMA state remain binary64. Existing epsilon and
 stagnation procedures derive from the selected kernel dtype; no new tolerance,
 search envelope or numerical acceptance condition is introduced.
 
-The JAX scope is complete Direct S/Y/Z, DiagonalRoot, ResponseElement and their
-parameter sweeps and corresponding Optimization expressions. Original, retained
-and transformed Views share the existing physical compiler and View authority.
-HB, OperatorSpec, operator-element roots, hybridized poles, transfer zeros and
-residue-normalized coupling require explicit Julia. Selecting those with JAX
-fails with a feature-specific actionable error before numerical work; it never
-selects Julia automatically. Explicit Julia retains its current Float64 contract
-and requires the optional Julia extra plus a manually provided Julia executable;
-feature calls do not acquire Julia.
+The dev14 JAX candidate covers Direct S/Y/Z, DiagonalRoot, ResponseElement,
+OperatorElementRoot, HybridizedPole, S/Y/Z TransferZero,
+ResidueNormalizedCoupling (diagonal or hybridized branches; fixed frequency or
+complex-root midpoint), and Operator output. Public `evaluate`, parameter
+sweeps and all existing scalar Optimization selectors/expressions share one
+quantity authority across original, retained and transformed Views. Operator
+matrices are inspectable outputs and cannot become scalar objectives. The
+[Direct quantity contract](direct-poles-zeros-and-operators.qmd) owns the
+formulas, certificates, units, baseline rules and denominator amendment; this
+page does not introduce another numerical contract. Source-bound installed-wheel
+observations for the new scope remain pending.
+
+HB still requires explicit Julia. Explicit Julia retains its current Float64
+contract and requires the optional Julia extra plus a manually provided Julia
+executable; feature calls do not acquire Julia or automatically fall back.
 
 `configure_runtime(*, cpu_threads: int | None = None) -> RuntimeConfiguration`
 records an immutable process resource declaration. `None` leaves the existing
@@ -283,3 +289,100 @@ Retained roots factor only the eliminated block and form the selected Schur
 operator and analytic derivative; they never invert the full singular root
 operator. Timing distinguishes actual assembly, CSC construction, factorization,
 RHS solves and checks; these nested intervals are not additive wall-time parts.
+
+## Direct quantity extension (dev14 candidate)
+
+The new quantity kernels reuse sparse JAX assembly and CPU SuperLU. Global and
+eliminated operators remain sparse; local numerator/retained/output matrices
+and actual RHS blocks may be dense. Native SuperLU denominator determinants
+and analytic derivatives replace any requirement to reproduce handwritten
+Julia pivots, under a distinct recorded JAX algorithm identity. Singular local
+cofactor derivatives and the existing complete denominator solve residual
+remain required. There is no performance, numerical agreement or new
+convergence claim from this implementation description.
+
+The host owns root continuation, coupling branch dependency order, scalar
+projection and CMA; numerical adapters own local analytic quantity evaluation.
+Typed Result decoding consumes verified numerical records and preserves actual
+precision, units and axes without a Julia receipt. SQLite commits every ten
+completed generations by default, acknowledges baselines separately and
+notifies callbacks only after durable commit; this extension does not change
+checkpoint-off, interruption or exact same-version resume behavior.
+
+Coupling consumes two already-certified branch outcomes in declaration order;
+it does not locate or polish those roots again. The shared quantity codec retains
+actual scalar/vector/matrix dtype, including certified anchors restored on resume.
+`DirectQuantityResult.evidence` supplements scalar fields with detached ordered
+coordinate/channel bindings, certificates, hybridized null vectors and branch
+evidence; it does not introduce child result identities or another solve. Loaded
+operator arrays preserve `[frequency, row, column]` order, with the request grid
+as their frequency authority. Native Julia algorithm identifiers remain unchanged;
+JAX quantity and transitive Optimization identities distinguish this candidate.
+
+The current request layer records per-family
+`scnsim.jax.sparse_superlu.*` algorithm identities and the transitive
+`direct_cmaes.cmaes_0_13_1.v2` identity. The numerical adapter separately records
+its aggregate `scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v4`
+identity; these describe different layers and need not be identical. The shared
+selected-state factorization of the eliminated block Qee uses SuperLU
+`MMD_AT_PLUS_A` structural ordering. One factor supplies both the Schur solve
+and its analytic derivative solve. Other native factorization options, selected
+arithmetic dtype, equations and eliminated-solve residual conditions remain
+unchanged. The subsequent coupling reciprocity amendment below is a separate
+numerical certificate change. This ordering is recorded by the new adapter identity; it introduces
+no retry, alternate-order fallback, symmetrization or new tolerance. It does not
+by itself establish full-model convergence or numerical agreement. The shared
+`root_frequency_linewidth` projection converts certified complex omega into
+public Hz fields. Certified quantities use dtype-preserving array records,
+including scalar records, rather than a second persisted frequency result.
+
+Optimization candidate records retain a canonical `dependencies` mapping from
+content body ID to numerical quantity body. Objective terms carry `body_id`;
+coupling evidence carries ordered role/binding/body references into the same
+mapping. Public ledger rows preserve these joins without another result
+artifact, solver call or storage lookup by the decoder. Sealed baseline anchors
+reference certified bodies in the baseline authority and hydrate through the
+same codec on resume. Standalone and sweep point rows retain their primary
+quantity fields and the corresponding finished branch dependencies.
+
+## Backend-aware compiler explanation (dev14 CONVERGING)
+
+`CircuitRun.explain(ref, spec, *, parameters=None, backend=None, precision=None)`
+inherits the Run backend and precision; explicit keywords override them. JAX
+explanations use the existing sparse Python compiler and View realization at the
+effective parameter point, including every ordered scalar objective View. Their
+`scnsim.jax_preflight` evidence binds actual Plan/request hashes and declared
+backend/precision, ordered original/transformed/selected/eliminated axes, sparse
+COO coefficient and incidence records, local SeriesRL/Port blocks, resolved
+physical fields and realized line grids. Host SI lowering is binary64; no
+execution or numerical certificate is implied. There is no JAX initialization,
+JIT, global dense C/K/G allocation, numerical solve or Julia discovery.
+
+The existing ExplanationResult exposes the evidence and its line discretization
+and HTML presentation. Sparse records explicitly identify their format and
+shape; they are not native Julia dense compiler artifacts. Explicit Julia
+explanations retain the existing compiler preflight. Compiled schematic
+construction retains its separate native Julia authority.
+
+## Selected-Schur reciprocity amendment (CONVERGING)
+
+The JAX coupling reciprocity certificate accounts for the actual eliminated-solve
+residual and arithmetic rounding when Schur cancellation amplifies raw skew. It
+credits only the explained solve-residual contribution, preserving input-origin
+asymmetry and the raw selected operator for every downstream quantity. Its
+rounding envelope derives from selected dtype and operation counts, without an
+empirical multiplier or an infinite overflowed success budget. The existing
+eliminated-block checks run first; root, zero, residue, derivative and branch
+independence conditions remain unchanged. There is no symmetrization, extra
+solve/factorization, retry, fallback or mixed precision.
+
+The [Direct quantity contract](direct-poles-zeros-and-operators.qmd) owns the
+identity, corrected defect and evidence meaning. The aggregate v4
+identity distinguishes this certificate from prior source-bound observations.
+The shared helper records `raw_selected_matrix`, `raw_skew`,
+`residual_contribution`, `corrected_defect`, `rounding_budget`, `allowance`,
+`unit_roundoff`, `arithmetic_precision` and `input_skew`, alongside the raw
+numerator/scale/ratio. Bound arithmetic rounds outward in the selected real
+dtype, including operation-count-derived subnormal error terms. This
+is a numerical reciprocity certificate within rounding uncertainty, not a
+forward-accuracy, performance or complete-model convergence claim.

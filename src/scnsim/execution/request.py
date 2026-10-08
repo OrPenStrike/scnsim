@@ -1,7 +1,8 @@
 """Canonical prepared-request and parameter-source envelopes.
 
 This encoder consumes finalized declarations and preserves the operation-level
-algorithm identity; it does not select Views or resolve authoring parameters."""
+algorithm identity, including JAX quantity dependencies of CMA; native Julia
+identifiers remain independent. It does not select Views or resolve parameters."""
 
 from __future__ import annotations
 
@@ -26,7 +27,12 @@ _JAX_ALGORITHMS = {
     "solve_direct": "scnsim.jax.sparse_superlu.direct_response.v1",
     "diagonal_root": "scnsim.jax.sparse_superlu.diagonal_root.newton32.v1",
     "response_element": "scnsim.jax.sparse_superlu.response_element.v1",
-    "optimize_direct": "scnsim.jax.sparse_superlu.direct_cmaes.cmaes_0_13_1.v1",
+    "operator_element_root": "scnsim.jax.sparse_superlu.operator_element_root.newton32.v1",
+    "hybridized_pole": "scnsim.jax.sparse_superlu.hybridized_pole.newton32.v1",
+    "transfer_zero": "scnsim.jax.sparse_superlu.transfer_zero.newton32.v1",
+    "residue_normalized_coupling": "scnsim.jax.sparse_superlu.residue_normalized_coupling.v1",
+    "operator": "scnsim.jax.sparse_superlu.direct_operator.v1",
+    "optimize_direct": "scnsim.jax.sparse_superlu.direct_cmaes.cmaes_0_13_1.v2",
 }
 
 

@@ -7,6 +7,8 @@ Native Julia receipt decoding remains a separate unchanged verification boundary
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 
 from .. import units
@@ -14,14 +16,22 @@ from ..authoring.identity import canonical_parameters_sha256
 from ..benchmark.optimization import complex_value, numerical_error
 from ..benchmark.models import NumericalFailure
 from ..benchmark.prepared import array_from_record, decode_record, record_bytes
-from ..canonical import canonical_json_bytes, float64_from_hex
+from ..canonical import canonical_json_bytes, float64_from_hex, quantity_from_envelope
 from ..execution.prepared import _coordinate_binding_key, _encode_scalar_expression, _quantity_coordinates
 from ..errors import EvidenceIntegrityError
 from ..specs import QuantitySelector
 from .base import LineDiscretization, MatrixFamilyResult, MatrixView, ParameterPointIdentity, ResultIdentity
 from .derived import TraceResult
 from .factory import _verified_result
-from .matrix import DiagonalRootResult, DirectQuantityResult, DirectSolveResult, ScatteringMatrixResult
+from .matrix import (
+    DiagonalRootResult,
+    DirectQuantityResult,
+    DirectSolveResult,
+    OperatorElementRootResult,
+    OperatorPointResult,
+    OperatorResult,
+    ScatteringMatrixResult,
+)
 from .optimization import OptimizationBest, OptimizationResult
 from .sweep import _parameter_sweep_result, _point_accessor, _point_outcome
 
@@ -52,6 +62,64 @@ def _failure(record):
                                            record_bytes(failure.get("evidence", {}))))
 
 
+def _numeric_array(record, name):
+    """Read the precision-preserving quantity codec or a retained legacy scalar."""
+
+    value = record[name]
+    if isinstance(value, Mapping) and "dtype" in value:
+        return array_from_record(value)
+    return np.asarray(complex_value(value))
+
+
+def _numeric_quantity(record, name, unit):
+    return units.registry.Quantity(_numeric_array(record, name), unit)
+
+
+def _root_frequency_linewidth(record, root):
+    if "frequency_hz_f64" in record and "linewidth_hz_f64" in record:
+        return (
+            float64_from_hex(record["frequency_hz_f64"]),
+            float64_from_hex(record["linewidth_hz_f64"]),
+        )
+    # Host and readonly decoding share one public Hz projection; the canonical
+    # root scalar above remains at the backend's recorded arithmetic precision.
+    from ..execution.quantities import root_frequency_linewidth
+
+    return root_frequency_linewidth(root)
+
+
+def _quantity_evidence(record, request):
+    evidence = dict(record["evidence"])
+    spec = request["spec"]
+    if spec["type"] == "operator_element_root":
+        evidence["row"] = spec["row"]
+        evidence["column"] = spec["column"]
+    elif spec["type"] == "transfer_zero":
+        evidence["family"] = spec["family"]
+        evidence["input"] = spec["input_coordinate"]
+        evidence["output"] = spec["output_coordinate"]
+    return evidence
+
+
+def _coupling_branch_evidence(record, dependencies):
+    branch_evidence = []
+    for branch in record["evidence"]["branches"]:
+        body = dependencies[branch["body_id"]]
+        detail = {
+            "role": branch["role"],
+            "binding": branch["binding"],
+            "root": _numeric_quantity(body, "root_omega_rad_s", "radian / second"),
+            "slope": _numeric_quantity(body, "root_slope", "siemens"),
+            "certificates": body["evidence"]["certificates"],
+        }
+        if "null_vector" in body:
+            detail["null_vector"] = _numeric_quantity(body, "null_vector", "dimensionless")
+        residue_name = "residue_a" if branch["role"] == "a" else "residue_b"
+        detail["residue"] = _numeric_quantity(record, residue_name, "ohm")
+        branch_evidence.append(detail)
+    return tuple(branch_evidence)
+
+
 def _point_result(identity, record, request):
     if record.get("status") == "failure":
         raise _failure(record)
@@ -59,23 +127,107 @@ def _point_result(identity, record, request):
     grid = _discretization(record.get("discretization"))
     presentation = _presentation(record, request)
     if kind == "diagonal_root":
+        root = _numeric_quantity(record, "root_omega_rad_s", "radian / second")
+        frequency, linewidth = _root_frequency_linewidth(record, root.magnitude)
         return _verified_result(
             DiagonalRootResult, identity=identity, discretization=grid,
-            root=units.registry.Quantity(complex_value(record["root_omega_rad_s"]), "radian / second"),
-            frequency=units.registry.Quantity(float64_from_hex(record["frequency_hz_f64"]), "hertz"),
-            linewidth=units.registry.Quantity(float64_from_hex(record["linewidth_hz_f64"]), "hertz"),
-            slope=units.registry.Quantity(complex_value(record["root_slope"]), "siemens"),
+            root=root,
+            frequency=units.registry.Quantity(frequency, "hertz"),
+            linewidth=units.registry.Quantity(linewidth, "hertz"),
+            slope=_numeric_quantity(record, "root_slope", "siemens"),
             _presentation=presentation,
         )
     if kind == "response_element":
         family = request["spec"]["family"]
         unit = {"S": "dimensionless", "Y": "siemens", "Z": "ohm"}[family]
-        value = complex_value(record["response_value"])
+        value = _numeric_array(record, "response_value")
         return _verified_result(
             DirectQuantityResult, identity=identity, discretization=grid, family=family,
-            value=units.registry.Quantity(value, unit), magnitude=units.registry.Quantity(abs(value), unit),
+            value=units.registry.Quantity(value, unit), magnitude=units.registry.Quantity(np.abs(value), unit),
             real=units.registry.Quantity(value.real, unit), imag=units.registry.Quantity(value.imag, unit),
             _presentation=presentation,
+        )
+    if kind == "operator_element_root":
+        root = _numeric_quantity(record, "root_omega_rad_s", "radian / second")
+        frequency, _ = _root_frequency_linewidth(record, root.magnitude)
+        return _verified_result(
+            OperatorElementRootResult,
+            identity=identity,
+            discretization=grid,
+            root=root,
+            frequency=units.registry.Quantity(frequency, "hertz"),
+            slope=_numeric_quantity(record, "root_slope", "siemens"),
+            evidence=_quantity_evidence(record, request),
+            _presentation=presentation,
+        )
+    if kind == "hybridized_pole":
+        root = _numeric_quantity(record, "root_omega_rad_s", "radian / second")
+        frequency, linewidth = _root_frequency_linewidth(record, root.magnitude)
+        evidence = _quantity_evidence(record, request)
+        evidence["null_vector"] = _numeric_quantity(record, "null_vector", "dimensionless")
+        return _verified_result(
+            DirectQuantityResult,
+            identity=identity,
+            discretization=grid,
+            root=root,
+            frequency=units.registry.Quantity(frequency, "hertz"),
+            linewidth=units.registry.Quantity(linewidth, "hertz"),
+            slope=_numeric_quantity(record, "root_slope", "siemens"),
+            evidence=evidence,
+            _presentation=presentation,
+        )
+    if kind == "transfer_zero":
+        zero = _numeric_quantity(record, "root_omega_rad_s", "radian / second")
+        frequency, _ = _root_frequency_linewidth(record, zero.magnitude)
+        return _verified_result(
+            DirectQuantityResult,
+            identity=identity,
+            discretization=grid,
+            zero=zero,
+            frequency=units.registry.Quantity(frequency, "hertz"),
+            numerator_slope=_numeric_quantity(record, "numerator_slope", "dimensionless"),
+            denominator=_numeric_quantity(record, "denominator", "dimensionless"),
+            family=request["spec"]["family"],
+            evidence=_quantity_evidence(record, request),
+            _presentation=presentation,
+        )
+    if kind == "residue_normalized_coupling":
+        coupling = _numeric_array(record, "coupling_rad_s")
+        evidence = _quantity_evidence(record, request)
+        evidence["branches"] = _coupling_branch_evidence(record, record["dependencies"])
+        return _verified_result(
+            DirectQuantityResult,
+            identity=identity,
+            discretization=grid,
+            coupling=units.registry.Quantity(coupling, "radian / second"),
+            value=units.registry.Quantity(coupling, "radian / second"),
+            magnitude=units.registry.Quantity(np.abs(coupling), "radian / second"),
+            real=units.registry.Quantity(coupling.real, "radian / second"),
+            imag=units.registry.Quantity(coupling.imag, "radian / second"),
+            branch_a_residue=_numeric_quantity(record, "residue_a", "ohm"),
+            branch_b_residue=_numeric_quantity(record, "residue_b", "ohm"),
+            evaluation_omega=_numeric_quantity(record, "evaluation_omega_rad_s", "radian / second"),
+            evidence=evidence,
+            _presentation=presentation,
+        )
+    if kind == "operator":
+        values = array_from_record(record["operator_values"])
+        coordinates = tuple(record["evidence"]["terminal_ids"])
+        frequencies = tuple(
+            quantity_from_envelope(value, registry=units.registry)
+            for value in request["spec"]["frequencies"]
+        )
+        points = tuple(
+            _verified_result(
+                OperatorPointResult,
+                frequency=frequency,
+                matrix=units.registry.Quantity(matrix, "siemens / second"),
+                coordinates=coordinates,
+            )
+            for frequency, matrix in zip(frequencies, values, strict=True)
+        )
+        return _verified_result(
+            OperatorResult, identity=identity, discretization=grid, points=points
         )
     if kind != "direct_solve":
         raise EvidenceIntegrityError("JAX result has an unsupported quantity family", stage="result_decode")
@@ -113,14 +265,42 @@ def _point_result(identity, record, request):
 
 
 def _term_unit(selector):
-    if selector["type"] == "diagonal_root_projection":
+    selector_type = selector["type"]
+    if selector_type in {
+        "diagonal_root_projection",
+        "operator_element_root_projection",
+        "hybridized_pole_projection",
+        "transfer_zero_projection",
+    }:
         return "hertz", "inverse_time"
+    if selector_type == "residue_coupling_projection":
+        return "radian / second", "inverse_time"
     return {"S": ("dimensionless", "dimensionless"), "Y": ("siemens", "conductance"),
             "Z": ("ohm", "resistance")}[selector["spec"]["family"]]
 
 
+def _candidate_dependencies(record):
+    """Keep exact quantity bodies addressable from each public ledger row.
+
+    Successful objective terms point at canonical quantity bodies by content
+    id. Residue-coupling bodies in turn retain their ordered branch references
+    to the same candidate-level map, so the ledger does not duplicate bodies or
+    turn those references into synthetic result identities.
+    """
+    dependencies = dict(record.get("dependencies", {}))
+    for objective in record["objectives"]:
+        for term in objective["terms"]:
+            if term.get("status") != "success" or "body_id" not in term:
+                continue
+            body = dependencies[term["body_id"]]
+            for branch in body.get("evidence", {}).get("branches", ()):
+                dependencies[branch["body_id"]]
+    return dependencies
+
+
 def _candidate(record, spec):
     """Retain the actual record and adapt names to existing ledger presentation."""
+    dependencies = _candidate_dependencies(record)
     components = []
     for objective, definition in zip(record["objectives"], spec["objectives"], strict=True):
         component = dict(objective, objective_id=objective["id"], quantity=definition["quantity"])
@@ -148,7 +328,7 @@ def _candidate(record, spec):
         outcome["cost_f64"] = record["cost_f64"]
     else:
         outcome["failure"] = record["failure"]
-    return dict(record, outcome=outcome)
+    return dict(record, dependencies=dependencies, outcome=outcome)
 
 
 def _optimization(decoder, identity, projection, request):
@@ -192,8 +372,22 @@ def _sweep(decoder, identity, records, request):
                                        result=None if failed else _point_result(point_identity, row, request),
                                        failure=_failure(row) if failed else None))
     spec = request["spec"]
-    selector_kind = {"diagonal_root": "diagonal_root_projection", "response_element": "response_element_projection"}.get(spec["type"])
-    projections = {"diagonal_root": ("frequency", "linewidth"), "response_element": ("magnitude", "real", "imag")}.get(spec["type"], ())
+    selector_kind = {
+        "diagonal_root": "diagonal_root_projection",
+        "operator_element_root": "operator_element_root_projection",
+        "hybridized_pole": "hybridized_pole_projection",
+        "transfer_zero": "transfer_zero_projection",
+        "residue_normalized_coupling": "residue_coupling_projection",
+        "response_element": "response_element_projection",
+    }.get(spec["type"])
+    projections = {
+        "diagonal_root": ("frequency", "linewidth"),
+        "operator_element_root": ("frequency",),
+        "hybridized_pole": ("frequency", "linewidth"),
+        "transfer_zero": ("frequency",),
+        "residue_normalized_coupling": ("real", "imag", "magnitude"),
+        "response_element": ("magnitude", "real", "imag"),
+    }.get(spec["type"], ())
     allowed = tuple(canonical_json_bytes({"type": selector_kind, "spec": spec, "projection": p}) for p in projections)
     derived = {coordinate for transform in request["view"].get("transforms", ())
                for coordinate in transform.get("output_coordinates", ())}
@@ -220,7 +414,13 @@ def decode_jax_operation(decoder, *, projection, request, plan_sha256, request_s
     if request["operation"] == "optimize_direct":
         return _optimization(decoder, identity, projection, request)
     records = projection["evaluations"]
-    if request["spec"]["type"] == "diagonal_root":
+    if request["spec"]["type"] in {
+        "diagonal_root",
+        "operator_element_root",
+        "hybridized_pole",
+        "transfer_zero",
+        "residue_normalized_coupling",
+    }:
         records = [row for row in records if row.get("origin") == "requested_point"]
     if len(records) != projection["terminal"]["point_count"]:
         raise EvidenceIntegrityError("JAX terminal point count differs from its requested evaluations", stage="result_decode")
