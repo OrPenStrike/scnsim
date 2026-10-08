@@ -44,3 +44,17 @@ def _runtime_identity_base() -> dict[str, object]:
         "project_sha256": sha256(project.read_bytes()).hexdigest(),
         "manifest_sha256": sha256(julia_manifest.read_bytes()).hexdigest(),
     }
+
+
+def _jax_runtime_identity(base: dict[str, object], *, precision: str) -> dict[str, object]:
+    """Static JAX request identity; no import, device discovery or native probe."""
+    from importlib.metadata import version
+    from .config import runtime_resource_identity
+
+    return {
+        "backend": "jax", "precision": precision,
+        "python_source_sha256": base["python_source_sha256"],
+        "jax_version": version("jax"), "jaxlib_version": version("jaxlib"),
+        "cmaes_version": version("cmaes"),
+        "resources": runtime_resource_identity(),
+    }

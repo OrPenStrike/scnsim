@@ -181,10 +181,18 @@ include("structured_v2.jl")
 """Compile normalized physical tables. Ports remain outside intrinsic C/K/G."""
 function compile_primitive(plan_value, values::Dict{String,Any}; context_kind::String = "compile",
         authorized::Set{String} = Set{String}(), extrapolation_evidence::Union{Nothing,Vector{Any}} = nothing,
-        authorization_source::String = "none", emit_audit::Bool = false)::CompiledPrimitive
-    return structured_compile(plan_value, values; context_kind = context_kind, authorized = authorized,
+        authorization_source::String = "none", emit_audit::Bool = false, benchmark_context = nothing)::CompiledPrimitive
+    # Experimental task context is explicit; ordinary compilation has no observer or mesh override.
+    if benchmark_context === nothing
+        return structured_compile(plan_value, values; context_kind = context_kind, authorized = authorized,
+            extrapolation_evidence = extrapolation_evidence, authorization_source = authorization_source,
+            emit_audit = emit_audit)[1]
+    end
+    measured = @timed structured_compile(plan_value, values; context_kind = context_kind, authorized = authorized,
         extrapolation_evidence = extrapolation_evidence, authorization_source = authorization_source,
-        emit_audit = emit_audit)[1]
+        emit_audit = emit_audit, benchmark_context = benchmark_context)[1]
+    benchmark_context.observe("physical_compile", measured)
+    return measured.value
 end
 
 function rlgc_matrix(record, name::String)::Matrix{Float64}

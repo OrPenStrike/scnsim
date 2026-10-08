@@ -105,6 +105,12 @@ class WorkspaceVersioningDowngradeForbidden(SCNSimStateError):
     kind = "workspace_versioning_downgrade_forbidden"
 
 
+class WorkspaceRecoveryRequiredError(SCNSimStateError):
+    """Readonly access requires explicit recovery of the bound SQLite store."""
+
+    kind = "workspace_recovery_required"
+
+
 class WorkspaceCommitIndeterminateError(SCNSimStateError):
     """A workspace pointer may be committed but durable confirmation failed."""
 

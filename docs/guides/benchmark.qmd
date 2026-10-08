@@ -1,0 +1,191 @@
+---
+title: "Run Operations and Read-only Benchmark"
+subtitle: "Execute with JAX or Julia, then inspect actual recorded work"
+---
+
+**Status:** 1.0.0a2 Alpha `CONVERGING` candidate. This guide describes the current
+implementation contract, not completed performance or numerical acceptance.
+Historical dev10 comparison records keep their original runtime identities.
+
+## Configure once, execute normal operations
+
+Python 3.12 is required. The base installation supplies the pinned CPU JAX,
+jaxlib and CMA dependencies. JAX executes in the calling Python process and
+never discovers, preflights or invokes Julia.
+
+Set the CPU pool before the first JAX operation:
+
+```python
+from scnsim import CircuitRun, configure_runtime
+
+configure_runtime(cpu_threads=1)
+run = CircuitRun(plan=plan, workspace="workspaces/analysis")
+result = run.solve(run.original, direct_spec)
+root = run.evaluate(run.original, root_spec)
+```
+
+The Run defaults to `backend="jax", precision="float64"`. Per-call omitted
+backend/precision inherit the Run declaration; explicit values override it:
+
+```python
+result32 = run.solve(run.original, direct_spec, precision="float32")
+result64 = run.solve(run.original, direct_spec, precision="float64")
+```
+
+Float32 selects real Float32/Complex64 kernel arrays; Float64 selects
+Float64/Complex128. Host SI values and CMA state remain binary64. These are
+different recorded requests, not converted views of one computed result.
+Existing numerical procedures use the selected dtype's epsilon/stagnation
+behavior, without a new accuracy or convergence threshold.
+
+`configure_runtime(cpu_threads=None)` leaves the process default resource
+policy. Positive integer declarations use `PJRT_NPROC` before initialization,
+without altering affinity or global JAX precision/platform settings. Repeating
+a known configuration is idempotent; changing initialized resources requires a
+Kernel restart. An externally initialized pool's unknown size is not invented.
+
+Direct S/Y/Z, DiagonalRoot, ResponseElement and their parameter sweeps and
+Optimization expressions support original, retained and transformed Views.
+HB and the other quantity families require explicit Julia:
+
+```python
+native = run.solve(run.original, hb_spec, backend="julia", precision="float64")
+```
+
+Install `scnsim[julia]` and manually provide Julia 1.12.6 on PATH or
+`PYTHON_JULIAPKG_EXE`. Missing support gives an actionable feature-specific error;
+there is no automatic acquisition or backend fallback. Native compiler preflight
+and compiled schematics also require Julia. See
+[Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
+
+## Optimization and recovery
+
+Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics.
+JAX Optimization commits every 10 completed generations by default:
+
+```python
+best = run.optimize(run.original, optimization_spec, checkpoint="generation",
+                    commit_every_generations=10)
+```
+
+A baseline/anchor barrier precedes candidate work. Completed generation evidence
+is ordered; each commit publishes its group atomically with the latest full
+CMA/RNG state. `commit_every_generations=N` accepts a positive integer excluding
+booleans; `None` is invalid. Omission selects 10 for JAX and retains 1 for
+explicit Julia. Explicit Julia intervals other than 1 fail before launch.
+Baseline commits separately, then every N completed post-tell
+generations commit together; a normal or handleable-error tail flushes a shorter
+group. Larger N buffers more evidence in memory and can require recomputing
+uncommitted generations after process death. `checkpoint="off"` omits resumable snapshots, without deleting numerical
+observations, anchors or final results. Checkpoint policy and commit interval do not change the
+numerical request hash; a completed result can resolve under either policy.
+A cache-hit operation records requested policy and actual checkpoint availability
+without manufacturing missing snapshots.
+
+`resume_from` accepts an exact stored checkpoint reference from the same
+operation/task identity, generation policy and commit interval. An off-policy interrupted request
+has no resumable state. Resume verifies identities and committed references;
+it does not migrate old source state. Standalone root anchors are not CMA
+checkpoints. A generation callback is notified once per commit, using its latest
+committed generation, after durability acknowledgement and outside locks.
+Intermediate generations do not receive deferred callbacks; callback exceptions
+and KeyboardInterrupt keep their ownership.
+An unflushed hard-kill diagnostic tail remains unknown.
+
+Retrieve a committed reference through the public read-only record, selecting the
+operation you intend to resume:
+
+```python
+operation = run.benchmark(operations=operation_id).document()["operations"][0]
+checkpoint_ref = operation["details"]["checkpoint"]
+best = run.optimize(run.original, optimization_spec,
+                    checkpoint="generation", commit_every_generations=10,
+                    resume_from=checkpoint_ref)
+```
+
+`operation_id` comes from the `operations` rows returned by `run.benchmark()`.
+`details.checkpoint` is the latest committed snapshot for that operation's
+actual attempt, or its exact resume source when no newer snapshot exists;
+`details.checkpoint_attempt_id` identifies its owning attempt. A cache-hit row
+references the selected success's actual checkpoint. This read projection also
+reconstructs committed state after a hard kill without requiring a finished
+operation row. An interrupted `checkpoint="off"` operation has no resumable
+reference. Pass the complete public reference unchanged; do not reconstruct its
+checkpoint or ownership fields.
+For current SQLite records, content references use `schema_version=3`,
+`storage="sqlite"`, `database="operations.sqlite3"`, `role`, `byte_length` and
+`sha256`. The hash binds canonical object bytes, not the mutable database file.
+Pass the public reference unchanged; historical file references remain readonly.
+No private storage import or manual checkpoint reconstruction is needed.
+Use the same commit interval when resuming.
+
+Current JAX operation evidence lives in the bound Plan leaf’s
+`operations/operations.sqlite3`, using DELETE journaling and EXTRA synchronization.
+Readonly `resolve`, Benchmark and `BenchmarkResult.open` do not create, migrate
+or repair a database. If they raise `WorkspaceRecoveryRequiredError`, explicitly
+call `run.recover_workspace()` on the bound Run, then retry the readonly operation.
+Recovery is limited to that leaf; an absent database in a valid leaf is a no-op.
+Preserve the whole leaf, including any journal, when relocating it. Content
+references remain relative to its database and are not rewritten. This is not a
+physical power-loss guarantee. Explicit Julia retains its native storage and
+verification contract.
+
+## Read operation evidence
+
+```python
+record = run.benchmark()
+optimization_record = run.benchmark(method="optimize", backend="jax")
+html = record.to_html()
+record.write_html("operation-history.html")
+```
+
+`run.benchmark(*, operations=None, method=None, backend=None, precision=None,
+status=None)` reads the current Plan leaf. It does not accept a Spec, launch
+another calculation, initialize JAX, choose a comparison arm or mutate records.
+`run.resolve(...)` is likewise read-only and selects the exact verified numerical
+request using the Run defaults or explicit backend/precision overrides.
+
+A returned ParameterSweepResult may contain both successful and failed points.
+The operation status describes whether the public call completed; per-point
+statuses describe numerical outcomes. A completed sweep is not a claim that all
+points succeeded. Single-point numerical failures still raise typed errors.
+
+The timeline shows operation roots below their actual child details, with zoom,
+collapse, cursor inspection, counts and filters. It distinguishes compilation
+from verified result reuse and references ordered numerical evidence without
+copying candidate histories. One numerical batch owns one measured interval;
+there are no invented per-candidate timings. JAX intervals synchronize actual
+work before closing. Parent intervals are inclusive and overlapping, so nested
+durations must not be summed. Cumulative operation duration differs from wall
+span. Unaligned historical clocks and unknown timings remain explicit.
+
+The root begins at the method's first clock read. Its final
+`operation_finalization` child includes Plan-lock acquisition and pending-span
+archival, ending at the same tick as the root. Only the final root append and
+return tail remain outside that endpoint. Read-only resolve and Benchmark do not
+persist operation roots or recursive self-spans. Partial records retain actual
+failure/interruption state and numerical references; `operation["details"]["failure"]`
+exposes the exact saved failure when present. They do not acquire a fabricated
+winner or terminal result.
+
+For explicit Julia operations, trace references point to the native verified
+request, canonical attempt, receipt and result. Native `attempt_id` is the actual
+canonical attempt SHA, including when an existing result is reused; it does not
+claim a new launch. Native task/environment IDs remain null, with available
+native environment facts in `details.native_environment`. A failed operation
+retains the request and any verified numerical evidence actually available;
+missing results and unaligned native clocks remain explicit.
+
+## Historical comparison records
+
+The old public comparison executor and its arm declarations are superseded.
+Existing immutable records remain readable without execution or migration:
+
+```python
+from scnsim import BenchmarkResult
+historical = BenchmarkResult.open("workspaces/historical-benchmark")
+```
+
+Their original wheel/backend/precision/clock identities remain historical.
+They are not relabeled as normal dev11 execution. No GPU, automatic mesh choice,
+new CMA algorithm or numerical/performance acceptance condition is introduced.

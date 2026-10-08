@@ -72,7 +72,7 @@ restart_plan.add_port(
 ```{python}
 #| id: ch8-rebuild-request-after-restart
 restart_workspace = "workspaces/engineer-chapter-08"
-restart_run = CircuitRun(plan=restart_plan, workspace=restart_workspace)
+restart_run = CircuitRun(backend="julia", plan=restart_plan, workspace=restart_workspace)
 restart_view = restart_run.original.reduce(
     ReductionPipeline().retain(restart_coordinate)
 )

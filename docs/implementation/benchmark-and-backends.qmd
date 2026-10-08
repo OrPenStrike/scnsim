@@ -1,0 +1,247 @@
+---
+title: "Execution Backends and Operation Benchmark"
+subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
+---
+
+**Status:** CONVERGING, 1.0.0a2 Alpha candidate contract. The following interfaces are
+implementation targets, not completed execution, performance or acceptance
+claims. Historical dev10 comparison records remain bound to their original
+source, wheel, numerical outputs and publication identities. No durable tests
+or stabilization are assigned.
+
+## SQLite workspace candidate (dev12)
+
+The new CONVERGING workspace scope replaces the operation writer with one
+stdlib SQLite database per Plan leaf at `operations/operations.sqlite3`, using
+DELETE journaling and EXTRA synchronization. This is a target contract, not a
+claim that the implementation or observations below have completed. Dev11
+outputs remain historical evidence; the new goal does not rerun that writer or
+its old-flow tests. Historical workspace readers remain read-only, with no
+migration or fallback writer.
+
+JAX Optimization defaults to `commit_every_generations=10`, a positive integer
+excluding booleans. Explicit `None` remains invalid. Omission resolves after
+backend selection: JAX uses 10, while explicit Julia retains its native value 1. Baseline
+evidence commits separately. After N completed post-tell generations, one
+transaction publishes their ordered numerical records and the latest full
+CMA/RNG state. A short final group commits at the normal tail or a handleable
+error; incomplete generation work is never presented as a resumable generation.
+Checkpoint off retains evidence without fabricating a resumable snapshot. The
+interval binds operation/task/checkpoint identity, not the numerical request,
+so completed numeric cache lookup stays independent of commit granularity.
+Explicit Julia intervals other than 1 are unsupported and fail before launch.
+Numerical algorithms, precision, candidate order and winner meaning do not change.
+
+A generation callback is delivered once per committed group, for its latest
+committed generation, after commit acknowledgement and outside storage locks.
+Intermediate generations do not receive deferred callbacks. Baseline and separate
+terminal notifications retain their existing roles. Original callback, numerical and
+interruption errors remain primary if recording also fails. A transaction has a
+unique identity: an uncertain commit is reconciled from that identity, never
+blindly replayed. Canonical byte objects have content hashes; references identify
+the object inside the database, not a hash of its changing database file.
+
+Readonly `resolve`, Benchmark and public reopen never repair SQLite state.
+`WorkspaceRecoveryRequiredError` directs callers to explicit
+`run.recover_workspace()` when recovery is required. This method verifies the
+Run’s bound Plan leaf and recovers only its existing operation store. An absent
+operation database in a valid leaf is a no-op; recovery never creates a database
+or migrates historical data. A hot journal requiring rollback raises this typed
+error from readonly access rather than triggering an implicit repair. Operation/span
+indexes support timeline reads without replaying all numerical candidates.
+Existing clocks, result units/axes, partial provenance and rendering semantics
+remain; no UI redesign or physical power-loss promise is introduced.
+
+The bounded new performance observations are 14 CPU1 current-disk tasks and four
+SSD tasks over the existing LC and M80-fixed models. Separate authorized
+fault/state/function/render observations use the integrated candidate. Prior
+numbers remain classified historical; no speed or numerical acceptance
+threshold is added.
+
+## Public operations and runtime configuration
+
+Normal `CircuitRun.solve`, `evaluate`, `optimize` and `resolve` select JAX CPU
+with `precision="float64"` by default. The Run constructor defaults to `backend="jax", precision="float64"`. Their
+keyword-only `backend=None` and `precision=None` inherit those Run defaults;
+explicit per-call values override them, including `backend="julia"` and JAX
+`precision="float32"`. Existing positional declarations, parameter ownership,
+Views and typed result meanings remain. JAX runs in the calling Python process;
+there is no Python numerical child, Julia discovery, Julia preflight or fallback.
+Float32 uses real Float32/Complex64 kernel arrays, not rounded Float64 outputs.
+Host SI declarations and CMA state remain binary64. Existing epsilon and
+stagnation procedures derive from the selected kernel dtype; no new tolerance,
+search envelope or numerical acceptance condition is introduced.
+
+The JAX scope is complete Direct S/Y/Z, DiagonalRoot, ResponseElement and their
+parameter sweeps and corresponding Optimization expressions. Original, retained
+and transformed Views share the existing physical compiler and View authority.
+HB, OperatorSpec, operator-element roots, hybridized poles, transfer zeros and
+residue-normalized coupling require explicit Julia. Selecting those with JAX
+fails with a feature-specific actionable error before numerical work; it never
+selects Julia automatically. Explicit Julia retains its current Float64 contract
+and requires the optional Julia extra plus a manually provided Julia executable;
+feature calls do not acquire Julia.
+
+`configure_runtime(*, cpu_threads: int | None = None) -> RuntimeConfiguration`
+records an immutable process resource declaration. `None` leaves the existing
+process resource default; an integer configures `PJRT_NPROC` before JAX CPU
+initialization. Identical known declarations are idempotent. Changing a known
+initialized configuration raises an actionable Kernel-restart error. The
+implementation records externally initialized JAX honestly and cannot infer an
+unobserved pool size. It does not alter process affinity, global JAX platform or
+global x64 configuration. Per-call precision uses scoped dtype configuration.
+JAX initialization itself stays lazy. Resource profiles use separate observer
+Python interpreters; within each interpreter, normal operations run sequentially
+and both precision choices can share the declared pool. This observer isolation
+does not create a product numerical subprocess. The base installation requires Python
+3.12 and the pinned CPU JAX/jaxlib and CMA dependencies; Julia remains optional.
+
+Optimization retains generation checkpoints and boundary diagnostics. A public
+callback sees its event only after the corresponding evidence is durable;
+callback exceptions and KeyboardInterrupt retain their original ownership.
+Optimization accepts explicit checkpoint policy and exact checkpoint resume
+references. Resume verifies the same request/backend/precision/resource/source
+identity and policy. Checkpoint policy binds the operation/task/checkpoint, not the
+numerical request hash: completed numerical results resolve independently of
+generation/off. A cache-hit operation records its requested policy and actual
+checkpoint availability without creating missing snapshots. Checkpoint off does
+not discard numerical evidence or baseline/root
+anchors. Standalone root anchors never become CMA-resumable checkpoints.
+
+## One numerical and one result authority
+
+PreparedAnalysis remains the immutable semantic declaration: sealed Plan,
+selected View, Spec, effective parameter source and source-unit provenance.
+Backend, precision and actual configured resource identity bind the canonical
+request. Explicit Julia retains its native request/attempt/receipt verification;
+JAX never claims a Julia runtime or native artifact identity.
+
+The existing Python physical compiler, View realization, independent-job batch
+scheduler, baseline continuation and CMA implementation supply the numerical
+path. These implementations are reused, not translated into a second public
+executor. Compiled JAX kernels are retained by executable signature, selected
+dtype/device and resource initialization. They retain neither Plans, parameter
+histories nor result documents. Shape preparation is the first observed
+executable-signature preparation, not proof of uncached machine-code generation.
+Different numeric requests with matching shapes can reuse kernels; verified
+result-cache reuse remains a separate observation.
+
+The Plan workspace leaf owns request/attempt/evidence/checkpoint and typed result
+resolution. JAX numerical bodies are stored once with ordered occurrence and
+artifact references. The JAX verifier checks real JAX evidence and feeds the
+existing typed result constructors; it never fabricates a Julia VerifiedSuccess.
+DirectSolveResult, DiagonalRootResult, DirectQuantityResult, OptimizationResult
+and ParameterSweepResult keep their public quantity axes, units, detached-copy
+ownership and plotting meaning. Reports and trace records reference numerical
+authority rather than embedding another candidate history. `resolve` is read-only:
+no runtime initialization, numerical launch, retry, cleanup or migration.
+
+Explicit Julia operation traces link the actual verified native request,
+canonical attempt SHA, receipt SHA, result SHA and attempt directory. The native
+trace's `attempt_id` denotes that existing canonical attempt identity, rather
+than a new benchmark UUID. Native task/environment IDs remain null because the
+native authority does not define those records; `details.native_environment`
+retains the actual executable, platform and Julia/BLAS facts available in the
+verified attempt. Request facts survive preparation/execution failure without
+inventing a completed attempt or result. Native child-clock alignment remains
+unavailable unless actual clock evidence exists. Trace binding is published only
+after the native coordinator releases its evidence ownership lock.
+
+SQLite transactions own completed ordered evidence; snapshots contain CMA/RNG
+state and references to the baseline/anchor and committed cache/history objects.
+DELETE journaling with EXTRA synchronization uses SQLite’s commit and rollback
+mechanisms, without promising survival of arbitrary physical power loss or
+storage failure. An uncertain commit is reconciled by its unique transaction
+identity; a selected or unknown delta is never blindly replayed. Uncommitted
+objects do not establish a completed generation. Diagnostic persistence failures
+must not mask a primary numerical, callback or interruption exception.
+
+Grouped generations remain in process memory until commit. Increasing N can
+increase buffered evidence and recomputation after process death: only the latest
+committed full CMA/RNG snapshot is resumable, and an uncommitted tail is unknown.
+Normal completion or a handleable interruption flushes completed generations; a
+SIGKILL cannot run that flush. SQLite object references identify canonical bytes
+by role, length and hash within the relative database name, so relocation does
+not require rewriting content references. Relocation must preserve the complete
+Plan leaf, including SQLite journal state; readonly open performs no recovery.
+Explicit Julia retains its existing native evidence files and verification
+contract; this operation-store replacement does not rewrite native receipts.
+
+## Built-in read-only Benchmark
+
+`run.benchmark(*, operations=None, method=None, backend=None, precision=None, status=None) -> BenchmarkResult` reads this
+Run's current Plan leaf. Optional operation-ID and method/backend/precision/status filters select recorded
+operations; omitted filters select all recorded operations in that leaf. It does
+not accept a Spec, backend arm, alternate workspace or launch controls. The old
+public comparison executor is superseded; historical comparison documents remain
+readable through `BenchmarkResult.open(workspace)` without execution or migration.
+
+Every solve/evaluate/optimize operation has one root span beginning at the
+method's first clock read. Before its endpoint, `operation_finalization` measures
+Plan ownership acquisition and pending-span archival; its end coincides with the
+root endpoint. Only the final root append and return tail remain outside that
+endpoint. Large evidence, checkpoint and span-archive work stays inside the root;
+no child interval extends past its root. Resolve and Benchmark remain fully
+read-only and persist no spans.
+Actual nested spans describe preparation, cache lookup, lowering/View, transfer,
+executable preparation, synchronized numerical batches, sweep points and CMA
+ask/tell/generations/checkpoint publication. Every span binds `operation_id`,
+`span_id`, nullable `parent_span_id`, kind, clock, actual start/end and status.
+A sweep operation can return a real mixed-outcome ParameterSweepResult: its
+operation status describes completion of the public call, while each requested
+point retains its own numerical success/failure. Operation success does not
+assert every point succeeded. A single-point numerical failure still raises its
+typed error; infrastructure failures remain fatal.
+Ordered batch work is not assigned invented per-candidate durations. Numerical
+outcomes and candidate occurrences carry references to their original evidence.
+Trace buffering at generation/end follows the evidence barriers; callback
+notification preserves durability-before-notify. Interrupted submissions and
+terminated processes retain partial evidence; missing tails stay unknown.
+For a recorded failure/interruption, the public root's `details.failure` exposes
+the exact saved failure record, including available type, kind, stage, message
+and evidence. The reader does not infer a failure or result that was not saved.
+
+The current process spans use one recorded monotonic clock per invocation.
+Historical or Julia child intervals keep their actual clock and alignment
+provenance; unknown starts/durations remain unknown. Parent/child intervals are
+inclusive and may overlap. Cumulative operation duration is distinct from elapsed
+wall span and must not be presented as summed nested work. JAX timings end only
+after device completion is synchronized.
+
+Benchmark JSON/HTML projects verified records without mutation. The timeline
+places operation roots below their details and supports zoom, collapse and
+cursor inspection, with counts and filters. It distinguishes complete, failed,
+interrupted, cache-hit and historical/unaligned records; a partial report has no
+fabricated winner or terminal numerical artifact. Report generation is not a
+solver launch. Read-only aggregation does not create a recursive self-span.
+
+```{mermaid}
+flowchart LR
+  R[Public Run operation] --> P[Immutable prepared request]
+  P --> J[Same-process JAX: compiler / View / batch / continuation / CMA]
+  P --> U[Explicit Julia execution]
+  J --> E[Plan-leaf verified numerical evidence and checkpoints]
+  U --> E
+  E --> T[Existing typed Results and read-only resolve]
+  R --> S[Parented real clock spans: numerical refs only]
+  S --> B[Read-only Run Benchmark timeline]
+  E --> B
+```
+
+## Ownership and observations
+
+Runtime owns public dispatch, configuration and semantic preparation. Numerical
+execution owns lowering, dtype-local kernels, continuation and CMA scheduling.
+Workspace owns durable evidence, trace publication, resume verification and
+read-only typed decoding. Visualization owns timeline projection and rendering.
+No report, kernel cache or trace creates a competing numerical authority.
+
+Required new installed-wheel observations follow the exact dev12 work packet:
+Julia-blocked Direct/root/Optimization/sweep, grouped commit resume/tail/off and
+callback/interruption ownership, actual SQLite capacity/transaction fault cases,
+new/partial/relocated readonly projection and HTML inspection, and the 18 new
+performance tasks described above. Unchanged dev11 observations are historical
+evidence, not rerun or relabeled as dev12. New observations remain pending until
+source-bound receipts exist. No speed,
+accuracy, memory, convergence or mesh Gate is implied. GPU, Windows Workspace,
+Float16/mixed precision and new algorithms are excluded.

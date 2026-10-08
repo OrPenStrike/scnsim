@@ -74,6 +74,7 @@ from .errors import (
     UnsupportedSingularCapacitanceForDiagonalRootV1,
     WorkspacePlanReplacedError,
     WorkspaceCommitIndeterminateError,
+    WorkspaceRecoveryRequiredError,
     WorkspaceVersioningDowngradeForbidden,
 )
 from .io import load_q2d_rlgc
@@ -111,6 +112,7 @@ from .results import (
     ScatteringMatrixResult,
     TraceResult,
 )
+from .execution.config import RuntimeConfiguration, configure_runtime
 from .runtime import CircuitRun, NetworkViewRef, ReductionPipeline
 from .specs import (
     CMAESSpec,
@@ -153,6 +155,7 @@ if TYPE_CHECKING:
 
 
 _LAZY_DIAGRAM_EXPORTS = {
+    "BenchmarkResult": (".benchmark", "BenchmarkResult"),
     "CircuitDiagramAudit": (".results", "CircuitDiagramAudit"),
     "CircuitDiagramResult": (".results", "CircuitDiagramResult"),
     "CircuitDiagramSpec": (".specs", "CircuitDiagramSpec"),
@@ -165,7 +168,7 @@ _LAZY_DIAGRAM_EXPORTS = {
 
 
 def __getattr__(name: str) -> object:
-    """Resolve diagram presentation names only when a caller asks for one."""
+    """Resolve presentation and read-only Benchmark names only when requested."""
 
     target = _LAZY_DIAGRAM_EXPORTS.get(name)
     if target is None:
@@ -178,6 +181,7 @@ def __getattr__(name: str) -> object:
 __version__ = metadata_version("scnsim")
 
 __all__ = [
+    "BenchmarkResult",
     "RLGC",
     "AffineMap",
     "ElectricalResolution",
@@ -192,6 +196,8 @@ __all__ = [
     "CircuitDiagramSpec",
     "CircuitPlan",
     "CircuitRun",
+    "RuntimeConfiguration",
+    "configure_runtime",
     "CompilerInvariantError",
     "ComponentInstance",
     "CompositePlan",
@@ -301,6 +307,7 @@ __all__ = [
     "UnsupportedSingularCapacitanceForDiagonalRootV1",
     "WorkspacePlanReplacedError",
     "WorkspaceCommitIndeterminateError",
+    "WorkspaceRecoveryRequiredError",
     "WorkspaceVersioningDowngradeForbidden",
     "components",
     "load_q2d_rlgc",

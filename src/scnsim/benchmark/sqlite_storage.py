@@ -1,0 +1,675 @@
+"""Current operation-domain writer and verified SQLite projections.
+
+The core owns native transactions and byte objects; this adapter owns task,
+occurrence, checkpoint and selected-result meanings. Completed generation groups
+publish atomically. Only their latest CMA/RNG state is retained; an unfinished
+population can be archived diagnostically but never enters resumable evidence.
+Historical file records are read through storage.py and are never rewritten.
+"""
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from ..workspace.operation_store import OperationStore, Snapshot
+from .identity import checkpoint_seal
+from .models import BenchmarkResult
+from .prepared import record_bytes, record_document
+
+_ACTIVE: ContextVar[tuple[Path, Snapshot] | None] = ContextVar('operation_sql_snapshot', default=None)
+_MARKER = '$scnsim_benchmark_journal'
+_OCCURRENCE = frozenset({'attempt_id','candidate_key','cache_hit','evaluation_ordinal','generation',
+                        'population_column','latent_coordinates','source_index','origin','continuation_t_f64'})
+_DIAGNOSTIC = frozenset({'timing','population_observed','evaluation','progress','operation_span'})
+
+
+def _legacy():
+    from . import storage
+    return storage
+
+
+def _error(message, **evidence):
+    return _legacy()._integrity(message, **evidence)
+
+
+def _root(workspace):
+    return Path(workspace).expanduser().resolve(strict=False)
+
+
+def operation_workspace(binding):
+    return Path(binding.leaf) / 'operations'
+
+
+def _bound(binding, *, phase_scope=None):
+    return OperationStore(operation_workspace(binding), plan_sha256=binding.plan_sha256,
+                          workspace_instance_id=binding.workspace_instance_id, phase_scope=phase_scope)
+
+
+def _writer_store(workspace, binding, *, phase_scope=None):
+    store = _bound(binding, phase_scope=phase_scope)
+    if _root(workspace) != store.root:
+        raise _error('Operation write root differs from its bound Plan leaf.')
+    return store
+
+
+def _existing(root, *, phase_scope=None):
+    store = OperationStore.open_readonly(root)
+    if store is None:
+        raise _error('Current operation database is absent.', path=str(root))
+    if phase_scope is not None:
+        # Preserve the archived binding while passing the caller's optional
+        # trace dependency through the normal constructor.
+        store = OperationStore(root, plan_sha256=store.plan_sha256,
+                               workspace_instance_id=store.workspace_instance_id, phase_scope=phase_scope)
+    return store
+
+
+@contextmanager
+def _snapshot(store):
+    with store.reader() as snapshot:
+        if snapshot is None:
+            raise _error('Operation database disappeared before its read.')
+        token = _ACTIVE.set((store.root, snapshot))
+        try:
+            yield snapshot
+        finally:
+            _ACTIVE.reset(token)
+
+
+def read_object(root, reference, *, role):
+    if reference.get('role') != role:
+        raise _error('SQLite object has the wrong domain role.', expected=role, actual=reference.get('role'))
+    active = _ACTIVE.get()
+    if active is not None and active[0] == Path(root):
+        return active[1].get_object(reference)
+    with _snapshot(_existing(Path(root))) as snapshot:
+        return snapshot.get_object(reference)
+
+
+def read_document(root, reference, *, schema, role, bind):
+    raw = read_object(root, reference, role=role)
+    value = record_document(raw)
+    if not isinstance(value, dict) or record_bytes(value) != raw or value.get('schema') != schema or value.get('schema_version') != 3:
+        raise _error('SQLite domain object is malformed or noncanonical.', reference=dict(reference))
+    if any(value.get(key) != expected for key, expected in bind.items()):
+        raise _error('SQLite domain object belongs to another task.', reference=dict(reference))
+    return value
+
+
+def _decode(snapshot, reference):
+    raw = snapshot.get_object(reference)
+    value = record_document(raw)
+    if record_bytes(value) != raw:
+        raise _error('SQLite operation object is not canonical.', reference=dict(reference))
+    return value
+
+
+def _pointer(snapshot, name):
+    pointer = snapshot.read_pointer(name)
+    return None if pointer is None else _decode(snapshot, pointer['reference'])
+
+
+def initialize_operation_record(binding, *, clock_binding):
+    store = _bound(binding)
+    store.initialize()
+    declaration = {'schema':'scnsim.operation_trace','schema_version':1,
+                   'plan_sha256':binding.plan_sha256,'workspace_instance_id':binding.workspace_instance_id}
+    manifest = {'schema':'scnsim.benchmark_record','schema_version':3,
+                'benchmark_sha256':sha256(record_bytes(declaration)).hexdigest(),
+                'declaration':declaration,'plan_sha256':binding.plan_sha256,
+                'workspace_instance_id':binding.workspace_instance_id,'clock':dict(clock_binding)}
+    raw = record_bytes(manifest)
+    with store.reader() as snapshot:
+        present = snapshot.read_pointer('manifest')
+    if present is None:
+        with store.transaction(str(uuid4()), expected_revisions={}) as tx:
+            tx.select_first('manifest', tx.put_object(raw, role='operation_manifest'))
+    return store.root
+
+
+def recover_operation_workspace(binding):
+    store = _bound(binding)
+    if not store.path.exists() and not store.path.is_symlink():
+        return
+    store.recover()
+
+
+def _index_operation(tx, row, reference):
+    tx.index_operation(row['operation_id'], reference, method=row.get('method'), backend=row.get('backend'),
+                       precision=row.get('precision'), status=row.get('status'), start_ns=row.get('start_ns'),
+                       end_ns=row.get('end_ns'), clock_id=row.get('clock',{}).get('id'))
+
+
+def _index_span(tx, row, reference):
+    tx.index_span(row['span_id'], reference, operation_id=row['operation_id'],
+                  parent_span_id=row.get('parent_span_id'), kind=row.get('kind'),
+                  start_ns=row.get('start_ns'), end_ns=row.get('end_ns'), clock_id=row.get('clock',{}).get('id'))
+
+
+def _publish_operation(binding, row=None, *, event=None, spans=()):
+    store = _bound(binding)
+    if row is not None:
+        row=dict(row)
+        if row.get('task_id') is not None and row.get('attempt_id') is not None:
+            with _snapshot(store) as snapshot:
+                checkpoint=_pointer(snapshot,'checkpoint/'+row['task_id']+'/'+row['attempt_id'])
+            if checkpoint is not None:
+                row['details']={**row.get('details',{}),'checkpoint':checkpoint,
+                                'checkpoint_attempt_id':row['attempt_id']}
+    row_bytes = None if row is None else record_bytes(row)
+    span_bytes = [(dict(span), record_bytes(span)) for span in spans]
+    event_bytes = None if event is None else record_bytes(event)
+    txid = str(uuid4())
+    with store.transaction(txid, expected_revisions={}) as tx:
+        if row is not None:
+            _index_operation(tx, row, tx.put_object(row_bytes, role='operation'))
+        for span, raw in span_bytes:
+            _index_span(tx, span, tx.put_object(raw, role='operation_span'))
+        if event is not None:
+            tx.append('operation_events', 'operation_event', event_bytes)
+    return {'committed':True, 'checkpoint':None,'latest_generation':None,
+            'committed_spans':[span for span,_ in span_bytes], 'transaction_id':txid}
+
+
+def start_operation(binding, row):
+    return _publish_operation(binding, row, event={'event':'started','row':dict(row)})
+
+
+def bind_operation(binding, *, row):
+    return _publish_operation(binding, row)
+
+
+def bind_operation_attempt(binding, *, row):
+    return _publish_operation(binding, row)
+
+
+def record_operation_event(binding, value):
+    spans = value.get('spans',())
+    row = value.get('row')
+    return _publish_operation(binding, row, event=dict(value), spans=spans)
+
+
+def finish_operation(binding, row, *, failure, spans=()):
+    value = dict(row)
+    if failure is not None:
+        value['details'] = {**value.get('details',{}), 'failure':_legacy()._error_evidence(failure)}
+    return _publish_operation(binding, value, spans=spans)
+
+
+def query_operation_rows(binding, *, operation_ids=None, method=None, backend=None, precision=None, status=None):
+    store = _bound(binding)
+    if not store.path.exists() and not store.path.is_symlink():
+        return None
+    with _snapshot(store) as snapshot:
+        rows = snapshot.query_operations(operation_ids=operation_ids,method=method,backend=backend,
+                                          precision=precision,status=status)
+        operations = [record_document(row['payload']) for row in rows]
+        spans = [record_document(row['payload']) for row in snapshot.query_spans([row['operation_id'] for row in operations])]
+        return {'operations':operations,'spans':spans}
+
+
+def open_record(workspace):
+    root = _root(workspace)
+    store = OperationStore.open_readonly(root)
+    if store is None:
+        return _legacy()._legacy_open_record(root)
+    from .operations import project_indexed_operation_rows
+    with _snapshot(store) as snapshot:
+        operations = [record_document(row['payload']) for row in snapshot.query_operations()]
+        spans = [record_document(row['payload']) for row in snapshot.query_spans([row['operation_id'] for row in operations])]
+    current = project_indexed_operation_rows({'operations':operations,'spans':spans}, workspace=root,
+                plan_sha256=store.plan_sha256,workspace_instance_id=store.workspace_instance_id)
+    # Path-only open must retain coexistence, using the same domain merger as
+    # bound Run.benchmark instead of silently hiding readonly historical rows.
+    if (root/'benchmark.json').exists():
+        return _legacy()._merge_sqlite_legacy(root, current)
+    return current
+
+
+def _manifest(snapshot):
+    value = _pointer(snapshot, 'manifest')
+    if value is None:
+        raise _error('SQLite operation store lacks its bound manifest.')
+    return value
+
+
+def _descriptor(snapshot, task_id):
+    descriptor = _pointer(snapshot, 'task/'+task_id)
+    if descriptor is None:
+        raise _error('Operation task identity is not recorded.',task_id=task_id)
+    return descriptor
+
+
+def ensure_task(workspace, task, *, binding):
+    root = _root(workspace)
+    descriptor = _legacy()._new_task_descriptor(task)
+    raw = record_bytes(descriptor)
+    store = _writer_store(root, binding)
+    with store.transaction(str(uuid4()),expected_revisions={}) as tx:
+        prior = _pointer(tx,'task/'+descriptor['task_id'])
+        if prior is not None:
+            fields=('task_id','request_sha256','arm','sample')
+            if any(prior[key]!=descriptor[key] for key in fields) or prior['environment']['environment_sha256']!=descriptor['environment']['environment_sha256']:
+                raise _error('Benchmark task identity was rebound.',task_id=descriptor['task_id'])
+        else:
+            ref=tx.put_object(raw,role='task_descriptor')
+            tx.set_pointer('task/'+descriptor['task_id'],ref)
+            tx.append('tasks','task_descriptor',raw)
+    return task_record(root, descriptor['task_id'])
+
+
+def ensure_operation_task(binding, task):
+    return ensure_task(operation_workspace(binding), task, binding=binding)
+
+
+def _stream(task_id):
+    return 'task/'+task_id+'/history'
+
+
+def _append_change(store, task_id, change):
+    raw=record_bytes(change)
+    with store.transaction(str(uuid4()),expected_revisions={}) as tx:
+        _descriptor(tx,task_id)
+        tx.append(_stream(task_id),'task_change',raw)
+
+
+def begin_attempt(workspace, *, binding, task_id, attempt_id, resume_from=None):
+    root=_root(workspace)
+    store=_writer_store(root,binding)
+    attempt={'attempt_id':attempt_id,'status':'allocated','resume_from':resume_from,
+             'artifacts':[],'failure':None,'interruption':None}
+    raw=record_bytes({'kind':'attempt_begin','attempt':attempt})
+    with store.transaction(str(uuid4()),expected_revisions={}) as tx:
+        _descriptor(tx,task_id)
+        if tx.read_pointer('attempt/'+task_id+'/'+attempt_id) is not None:
+            raise _error('Attempt identifier is already recorded.',attempt_id=attempt_id)
+        ref=tx.put_object(record_bytes(attempt),role='attempt')
+        tx.set_pointer('attempt/'+task_id+'/'+attempt_id,ref)
+        tx.set_pointer('current_attempt/'+task_id,ref)
+        tx.append(_stream(task_id),'task_change',raw)
+
+
+def update_attempt(workspace, *, binding, task_id, attempt_id, status, failure=None, interruption=None, artifacts=(),checkpoint=None):
+    _append_change(_writer_store(workspace,binding),task_id,{'kind':'attempt_update','attempt_id':attempt_id,'status':status,
+          'failure':failure,'interruption':interruption,'checkpoint':checkpoint,'artifacts':list(artifacts)})
+
+
+def task_record(workspace, task_id):
+    root=_root(workspace)
+    store=OperationStore.open_readonly(root)
+    if store is None:
+        return _legacy()._legacy_task_record(root,task_id)
+    with _snapshot(store) as snapshot:
+        descriptor=_pointer(snapshot,'task/'+task_id)
+        if descriptor is None:
+            return _legacy()._legacy_task_record(root,task_id)
+        return _materialize_task(root,snapshot,descriptor)
+
+
+def _materialize_task(root,snapshot,descriptor):
+    stream=snapshot.read_stream(_stream(descriptor['task_id']))
+    changes=[_decode(snapshot,row['reference']) for row in stream['entries']]
+    events=[row['event'] for row in changes if row['kind']=='event']
+    head={'task_id':descriptor['task_id'],'event_sequence':len(events)}
+    task,_=_legacy()._task_document_from_chain(root,descriptor,head,
+                       [{'operation':row} for row in changes],_manifest(snapshot))
+    return task
+
+
+def operation_task_record(binding,task_id):
+    store=_bound(binding)
+    if store.path.exists() or store.path.is_symlink():
+        with _snapshot(store) as snapshot:
+            descriptor=_pointer(snapshot,'task/'+task_id)
+            task=None if descriptor is None else _materialize_task(store.root,snapshot,descriptor)
+    else:
+        task=None
+    if task is None:
+        task=_legacy()._legacy_task_record(operation_workspace(binding),task_id)
+    request=next((item for item in task['artifacts'] if item.get('role')=='operation_request'),None)
+    if request is None or request['sha256']!=task['request_sha256']:
+        raise _error('Operation task lacks its canonical request.',task_id=task_id)
+    raw=(_legacy()._read_immutable(operation_workspace(binding),request,role='operation_request'))
+    if sha256(raw).hexdigest()!=task['request_sha256']:
+        raise _error('Operation request differs from task identity.',task_id=task_id)
+    return task
+
+
+def write_artifact(workspace, relative_path, payload, *, binding, role):
+    # Historical callers supplied a suggested filename. Current content refs
+    # deliberately identify an object, never a pretend row-as-file path.
+    with _writer_store(workspace,binding).transaction(str(uuid4()),expected_revisions={}) as tx:
+        return tx.put_object(payload,role=role)
+
+
+def store_operation_request(binding, *, request_sha256,request_bytes):
+    if sha256(request_bytes).hexdigest()!=request_sha256:
+        raise _error('Prepared operation request does not match its identity.')
+    return write_artifact(operation_workspace(binding),None,request_bytes,binding=binding,role='operation_request')
+
+
+class _Objects:
+    """Encode one publication delta before entering native SQL."""
+    def __init__(self):
+        self.objects={}
+    def put(self,value,role):
+        raw=record_bytes(value)
+        digest=sha256(raw).hexdigest()
+        ref={'schema_version':3,'storage':'sqlite','database':'operations.sqlite3',
+             'role':role,'sha256':digest,'byte_length':len(raw)}
+        self.objects[(digest,role)]=(raw,role)
+        return ref
+    def publish(self,tx):
+        for raw,role in self.objects.values():
+            tx.put_object(raw,role=role)
+
+
+class TaskWriter:
+    """One attempt's staged completed prefix and latest exact CMA snapshot."""
+    def __init__(self,root,task_id,attempt_id,*,binding,diagnostics,checkpoint_document=None,
+                 phase_scope=None,commit_every_generations=1):
+        self.root=Path(root); self.task_id=task_id; self.attempt_id=attempt_id
+        self.store=_writer_store(self.root,binding,phase_scope=phase_scope)
+        self.diagnostics=diagnostics; self.phase_scope=phase_scope
+        self.commit_every_generations=commit_every_generations
+        self.pending=[]; self.completed=[]; self.generation_rows=[]
+        self.latest_state=None; self.publication_uncertain=None; self.last_ack=self._empty_ack()
+        links=checkpoint_document.get('_journal_links',{}) if checkpoint_document else {}
+        self.baseline_block=links.get('baseline_evidence'); self.generation_block=links.get('generation_evidence')
+        self.value_refs=dict(links.get('value_refs',{}))
+        self.known_costs={}
+        if checkpoint_document is not None:
+            best=checkpoint_document['best']
+            self.known_costs[best['evaluation_ordinal']]=best['cost_f64']
+        with _snapshot(self.store) as snapshot:
+            self.descriptor=_descriptor(snapshot,task_id)
+            self.revision=snapshot.stream_revision(_stream(task_id))
+            pointer=snapshot.read_pointer('event_sequence/'+task_id)
+            self.sequence_hint=0 if pointer is None else _decode(snapshot,pointer['reference'])['next_sequence']
+
+    @staticmethod
+    def _empty_ack():
+        return {'committed':False,'checkpoint':None,'latest_generation':None,'committed_spans':[]}
+
+    def _ensure_publishable(self):
+        if self.publication_uncertain is not None:
+            raise _error('Task writer cannot replay an unacknowledged publication.',
+                         task_id=self.task_id,publication=self.publication_uncertain)
+
+    def append_event(self,*,kind,payload,force=False):
+        self._ensure_publishable(); self.last_ack=self._empty_ack()
+        value=record_document(record_bytes(payload))
+        if kind=='evaluation' and isinstance(value.get('generation'),int) and value['generation']>0:
+            self.generation_rows.append(value)
+        self.pending.append((kind,value))
+        event={'task_id':self.task_id,'sequence':self.sequence_hint,'kind':kind,'payload':value}
+        self.sequence_hint+=1
+        if kind not in _DIAGNOSTIC or force:
+            # A terminal/error archive may contain the unfinished generation's
+            # diagnostics; it does not publish resumable generation evidence.
+            self._publish([],extra_events=list(self.pending))
+            self.pending.clear(); self.generation_rows.clear()
+        return event
+
+    def commit_barrier(self,kind,payload):
+        self._ensure_publishable(); self.last_ack=self._empty_ack()
+        value=dict(payload)
+        state=value.pop('resume_state',None)
+        self.latest_state=state
+        segment={'kind':kind,'payload':value,'events':list(self.pending),'rows':list(self.generation_rows)}
+        self.pending.clear(); self.generation_rows.clear()
+        self.completed.append(segment)
+        event={'task_id':self.task_id,'sequence':self.sequence_hint,'kind':kind,'payload':value}
+        self.sequence_hint+=1
+        if kind=='baseline_ready' or len(self.completed)>=self.commit_every_generations:
+            self._publish(self.completed)
+            self.completed.clear(); self.latest_state=None
+        return event,self.last_ack
+
+    def flush_completed(self,reason):
+        self._ensure_publishable(); self.last_ack=self._empty_ack()
+        if self.completed:
+            self._publish(self.completed)
+            self.completed.clear(); self.latest_state=None
+        return self.last_ack
+
+    def flush(self):
+        self.flush_completed('flush')
+        if self.pending:
+            self._publish([],extra_events=list(self.pending))
+            self.pending.clear(); self.generation_rows.clear()
+
+    def _value(self,objects,value,refs):
+        occurrence={key:value[key] for key in _OCCURRENCE if key in value}
+        body={key:item for key,item in value.items() if key not in _OCCURRENCE}
+        key=value.get('candidate_key')
+        if isinstance(key,str) and key in refs:
+            reference=refs[key]
+            if key in self.value_refs:
+                with _snapshot(self.store):
+                    inherited=read_document(self.root,reference,schema='scnsim.benchmark_value',
+                                            role='benchmark_value',bind={'task_id':self.task_id})
+                if inherited.get('key_kind')!='candidate_key' or inherited.get('key')!=key:
+                    raise _error('Inherited optimizer value does not bind its cache key.',task_id=self.task_id)
+        else:
+            key_kind='candidate_key' if isinstance(key,str) else 'numerical_source_id'
+            value_key=key if isinstance(key,str) else value.get('numerical_source_id')
+            if value_key is None:
+                key_kind='event'
+                value_key=str(value.get('evaluation_ordinal',value.get('source_index','baseline')))
+            reference=objects.put({'schema':'scnsim.benchmark_value','schema_version':3,
+                'task_id':self.task_id,'key_kind':key_kind,'key':value_key,'value':body},'benchmark_value')
+            if isinstance(key,str): refs[key]=reference
+        return {'reference':reference,'occurrence':occurrence}
+
+    def _publish(self,segments,*,extra_events=(),terminal=None):
+        self._ensure_publishable()
+        objects=_Objects(); refs=dict(self.value_refs); changes=[]; spans=[]
+        costs=dict(self.known_costs)
+        baseline=self.baseline_block; generation=self.generation_block; checkpoint=None
+        # A completed prefix can be flushed while a new incomplete population
+        # is buffered. Its diagnostic sequence hints must not shift publication.
+        with _snapshot(self.store) as snapshot:
+            pointer=snapshot.read_pointer('event_sequence/'+self.task_id)
+            sequence=0 if pointer is None else _decode(snapshot,pointer['reference'])['next_sequence']
+            revision=snapshot.stream_revision(_stream(self.task_id))
+        latest=None
+
+        def event(kind,payload,**additional):
+            nonlocal sequence
+            value=dict(payload)
+            compact=value
+            if kind=='evaluation':
+                compact={_MARKER:{'kind':'value',**self._value(objects,value,refs)}}
+                if 'attempt_id' in value: compact['attempt_id']=value['attempt_id']
+            if kind=='operation_span' and isinstance(value.get('span'),Mapping):
+                span=dict(value['span']); spans.append(span)
+            item={'task_id':self.task_id,'sequence':sequence,'kind':kind,'payload':compact}
+            changes.append({'kind':'event','event':item,**additional}); sequence+=1
+
+        for index,segment in enumerate(segments):
+            for kind,payload in segment['events']: event(kind,payload)
+            kind=segment['kind']; payload=segment['payload']
+            for row in segment['rows']:
+                if 'cost_f64' in row: costs[row['evaluation_ordinal']]=row['cost_f64']
+            if kind=='baseline_ready':
+                marker=self._value(objects,payload['baseline'],refs)
+                if 'cost_f64' in payload['baseline']:
+                    costs[payload['baseline'].get('evaluation_ordinal',0)]=payload['baseline']['cost_f64']
+                anchors=None
+                if isinstance(payload.get('anchors'),Mapping):
+                    anchors=objects.put({'schema':'scnsim.benchmark_anchor_values','schema_version':3,
+                        'task_id':self.task_id,'anchors':payload['anchors']},'benchmark_anchor_values')
+                attributes={k:v for k,v in payload.items() if k not in {'attempt_id','baseline','anchors'}}
+                block={'schema':'scnsim.benchmark_baseline_evidence','schema_version':3,'task_id':self.task_id,
+                    'attempt_id':self.attempt_id,'baseline':marker['reference'],
+                    'baseline_occurrence':marker['occurrence'],'anchors':anchors,'attributes':attributes}
+                baseline=objects.put(block,'benchmark_baseline_evidence'); generation=None; evidence=baseline
+                cpgen=int(payload['baseline'].get('generation',0))
+                nextordinal=int(payload['baseline'].get('evaluation_ordinal',0))+1
+                bestordinal=int(payload['baseline'].get('evaluation_ordinal',0))
+            else:
+                if baseline is None: raise _error('Generation evidence lacks its committed baseline.')
+                rows=[{'value':m['reference'],'occurrence':m['occurrence']} for m in
+                      (self._value(objects,row,refs) for row in segment['rows'])]
+                block={'schema':'scnsim.benchmark_generation_evidence','schema_version':3,
+                    'task_id':self.task_id,'attempt_id':self.attempt_id,'baseline':baseline,
+                    'previous':generation,'rows':rows,
+                    'attributes':{k:v for k,v in payload.items() if k!='attempt_id'}}
+                generation=objects.put(block,'benchmark_generation_evidence'); evidence=generation
+                cpgen=payload['generation']; nextordinal=payload['next_ordinal']; bestordinal=payload['best_ordinal']
+                latest=dict(payload)
+            artifacts=[]
+            if index==len(segments)-1 and isinstance(self.latest_state,Mapping):
+                cp={'schema':'scnsim.benchmark_cma_checkpoint','schema_version':3,'task_id':self.task_id,
+                    'request_sha256':self.descriptor['request_sha256'],'arm':self.descriptor['arm'],
+                    'sample':self.descriptor['sample'],'environment_sha256':self.descriptor['environment']['environment_sha256'],
+                    'attempt_id':self.attempt_id,'generation':cpgen,'next_ordinal':nextordinal,'best_ordinal':bestordinal,
+                    'baseline_evidence':baseline,'generation_evidence':generation,'cma':self.latest_state['cma']}
+                details={'generation':cpgen}
+                with (self.phase_scope('checkpoint_state_publish',details) if self.phase_scope else nullcontext()):
+                    cpref=objects.put(cp,'checkpoint'); details['checkpoint_bytes']=cpref['byte_length']
+                    seal=checkpoint_seal(task_id=self.task_id,request_sha256=cp['request_sha256'],arm=cp['arm'],sample=cp['sample'],
+                        environment_sha256=cp['environment_sha256'],attempt_id=self.attempt_id,
+                        checkpoint_sha256=cpref['sha256'],byte_length=cpref['byte_length'])
+                    sealref=objects.put(seal,'checkpoint_seal')
+                    checkpoint={k:cp[k] for k in ('task_id','request_sha256','arm','sample','environment_sha256','attempt_id')}
+                    checkpoint.update(checkpoint=cpref,seal=sealref,seal_sha256=seal['seal_sha256'])
+                    artifacts=[cpref,sealref]
+            event(kind,{'attempt_id':self.attempt_id,_MARKER:{'kind':'barrier','evidence':evidence,'checkpoint':checkpoint}},
+                  evidence=evidence,checkpoint=checkpoint,artifacts=artifacts)
+        for kind,payload in extra_events: event(kind,payload)
+        result_ref=None
+        if terminal is not None:
+            result_ref=objects.put(terminal,'operation_result')
+            event('completed',{'attempt_id':self.attempt_id,'result':result_ref})
+            changes.append({'kind':'attempt_update','attempt_id':self.attempt_id,'status':'success',
+                  'failure':None,'interruption':None,'checkpoint':None,'artifacts':[result_ref]})
+        operation_updates=[]
+        if checkpoint is not None and spans:
+            operation_ids=list(dict.fromkeys(span['operation_id'] for span in spans))
+            with _snapshot(self.store) as snapshot:
+                for indexed in snapshot.query_operations(operation_ids=operation_ids):
+                    row=record_document(indexed['payload'])
+                    row['details']={**row.get('details',{}),'checkpoint':checkpoint,
+                                    'checkpoint_attempt_id':self.attempt_id}
+                    operation_updates.append((row,objects.put(row,'operation')))
+        span_refs=[(span,objects.put(span,'operation_span')) for span in spans]
+        checkpoint_selection=None if checkpoint is None else objects.put(checkpoint,'checkpoint_selection')
+        checkpoint_selection_bytes=None if checkpoint is None else record_bytes(checkpoint)
+        success_selection=None
+        if result_ref is not None:
+            selected={'event':'request_success_selected','request_sha256':self.descriptor['request_sha256'],
+                      'task_id':self.task_id,'attempt_id':self.attempt_id,'result_ref':result_ref}
+            success_selection=objects.put(selected,'success_selection')
+        change_bytes=[record_bytes(change) for change in changes]
+        nextref=objects.put({'next_sequence':sequence},'event_sequence')
+        txid=str(uuid4()); store=self.store
+        transaction=None
+        try:
+            with store.transaction(txid,expected_revisions={_stream(self.task_id):revision}) as tx:
+                transaction=tx
+                current=_pointer(tx,'current_attempt/'+self.task_id)
+                if current is None or current['attempt_id']!=self.attempt_id:
+                    raise _error('Operation event belongs to another current attempt.',attempt_id=self.attempt_id)
+                objects.publish(tx)
+                for row,reference in operation_updates: _index_operation(tx,row,reference)
+                for raw in change_bytes: tx.append(_stream(self.task_id),'task_change',raw)
+                tx.set_pointer('event_sequence/'+self.task_id,nextref)
+                for span,reference in span_refs: _index_span(tx,span,reference)
+                if checkpoint is not None:
+                    tx.set_pointer('checkpoint/'+self.task_id+'/'+self.attempt_id,checkpoint_selection)
+                    tx.append('checkpoints/'+self.task_id+'/'+self.attempt_id,'checkpoint_selection',checkpoint_selection_bytes)
+                if result_ref is not None:
+                    tx.select_first('success/'+self.descriptor['request_sha256'],success_selection)
+        except BaseException as error:
+            self.publication_uncertain=getattr(error,'operation_transaction_outcome',None) or (
+                transaction.outcome if transaction is not None else {'status':'unknown','transaction_id':txid})
+            raise
+        self.revision=revision+len(changes); self.value_refs=refs; self.known_costs=costs
+        self.baseline_block=baseline; self.generation_block=generation
+        self.sequence_hint=sequence+len(self.pending)
+        self.last_ack={'committed':True,'checkpoint':checkpoint,'evidence':generation or baseline,
+                      'latest_generation':None if latest is None else latest['generation'],
+                      'latest_generation_payload':latest,
+                      'best_cost_f64':None if latest is None else costs[latest['best_ordinal']],
+                      'committed_spans':spans,'transaction_id':txid}
+        return result_ref,self.last_ack
+
+
+def begin_task_writer(workspace,*,binding,task_id,attempt_id,diagnostics,checkpoint_document=None,phase_scope=None,commit_every_generations=1):
+    return TaskWriter(_root(workspace),task_id,attempt_id,binding=binding,diagnostics=diagnostics,
+        checkpoint_document=checkpoint_document,phase_scope=phase_scope,commit_every_generations=commit_every_generations)
+
+
+def append_event(workspace,*,task_id,kind,payload,writer,force=False):
+    return writer.append_event(kind=kind,payload=payload,force=force)
+
+
+def commit_barrier(workspace,*,writer,kind,payload):
+    return writer.commit_barrier(kind,payload)
+
+
+def flush_completed(workspace,*,writer,reason):
+    return writer.flush_completed(reason)
+
+
+def complete_operation(binding,*,writer,terminal_bytes):
+    if (operation_workspace(binding)!=writer.root or binding.plan_sha256!=writer.store.plan_sha256
+            or binding.workspace_instance_id!=writer.store.workspace_instance_id):
+        raise _error('Operation completion belongs to another bound Plan leaf.')
+    if writer.completed:
+        raise _error('Completed generation tail must be committed before terminal publication.')
+    terminal=record_document(terminal_bytes)
+    if record_bytes(terminal)!=terminal_bytes:
+        raise _error('Operation terminal bytes are not canonical.')
+    result,ack=writer._publish([],extra_events=list(writer.pending),terminal=terminal)
+    writer.pending.clear(); writer.generation_rows.clear()
+    return result,ack
+
+
+def read_operation_success(binding,task_id,*,attempt_id=None):
+    return _legacy()._operation_success_from_task(operation_task_record(binding,task_id),attempt_id=attempt_id)
+
+
+def find_operation_success(binding,request_sha256):
+    store=_bound(binding)
+    if store.path.exists() or store.path.is_symlink():
+        with _snapshot(store) as snapshot:
+            selected=_pointer(snapshot,'success/'+request_sha256)
+            if selected is not None:
+                descriptor=_descriptor(snapshot,selected['task_id'])
+                task=_materialize_task(store.root,snapshot,descriptor)
+                success=_legacy()._operation_success_from_task(task,attempt_id=selected['attempt_id'])
+                if success is None or success['result_ref']!=selected['result_ref'] or descriptor['request_sha256']!=request_sha256:
+                    raise _error('Selected operation success differs from committed task evidence.')
+                return success
+    return _legacy()._legacy_find_operation_success(binding,request_sha256)
+
+
+def read_checkpoint(workspace,reference,*,binding,expected_task_id,expected_request_sha256,expected_arm,expected_sample,expected_environment_sha256):
+    if reference.get('checkpoint',{}).get('storage')!='sqlite':
+        return _legacy()._legacy_read_checkpoint(workspace,reference,expected_task_id=expected_task_id,
+            expected_request_sha256=expected_request_sha256,expected_arm=expected_arm,
+            expected_sample=expected_sample,expected_environment_sha256=expected_environment_sha256)
+    root=_root(workspace)
+    expected={'task_id':expected_task_id,'request_sha256':expected_request_sha256,'arm':expected_arm,
+              'sample':expected_sample,'environment_sha256':expected_environment_sha256}
+    if any(reference.get(k)!=v for k,v in expected.items()):
+        raise _error('Checkpoint binding differs from requested task.')
+    with _snapshot(_writer_store(root,binding)) as snapshot:
+        descriptor=_descriptor(snapshot,expected_task_id)
+        if any(descriptor.get(k)!=v for k,v in expected.items() if k!='environment_sha256') or descriptor['environment']['environment_sha256']!=expected_environment_sha256:
+            raise _error('Checkpoint task/environment identity changed.')
+        selections=snapshot.read_stream('checkpoints/'+expected_task_id+'/'+reference['attempt_id'])
+        if not any(_decode(snapshot,row['reference'])==dict(reference) for row in selections['entries']):
+            raise _error('Checkpoint is not the selected committed state for its attempt.')
+        cp,_=_legacy()._verify_checkpoint_file(root,reference,task_binding=descriptor)
+        if any(cp.get(k)!=v for k,v in expected.items()) or cp.get('attempt_id')!=reference['attempt_id']:
+            raise _error('Checkpoint content differs from sealed identity.')
+        return record_bytes(_legacy()._hydrate_cma_checkpoint(root,expected_task_id,cp))

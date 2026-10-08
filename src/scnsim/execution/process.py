@@ -11,7 +11,9 @@ import queue
 import re
 import signal
 import subprocess
+import sys
 import threading
+from time import perf_counter_ns
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -69,19 +71,23 @@ def _terminal_argv(
     entrypoint: Path,
     request_path: Path,
     staging_directory: Path,
+    *,
+    julia_threads: int = 1,
+    entrypoint_arguments: tuple[str, ...] | None = None,
 ) -> list[str]:
-    return [
+    argv = [
         str(prepared.executable),
         "--startup-file=no",
         "--history-file=no",
-        "--threads=1",
+        f"--threads={julia_threads}",
         f"--project={project}",
         str(entrypoint),
-        "--request",
-        str(request_path),
-        "--staging",
-        str(staging_directory),
     ]
+    if entrypoint_arguments is None:
+        argv.extend(("--request", str(request_path), "--staging", str(staging_directory)))
+    else:
+        argv.extend(entrypoint_arguments)
+    return argv
 
 
 def _read_lines(
@@ -118,6 +124,105 @@ def _protocol_error(
     return BackendProtocolError(message, stage=stage, evidence=evidence)
 
 
+def _validate_bootstrap_for_threads(
+    raw: str,
+    *,
+    request_sha256: str,
+    attempt_ordinal: int,
+    expected_version: str,
+    hb_operation: bool,
+    expected_julia_threads: int,
+    expected_blas_threads: int,
+) -> BootstrapReady:
+    """Validate the opt-in benchmark thread profile; ordinary calls remain 1-thread."""
+    if expected_julia_threads == 1 and expected_blas_threads == 1:
+        return _validate_bootstrap(
+            raw,
+            request_sha256=request_sha256,
+            attempt_ordinal=attempt_ordinal,
+            expected_version=expected_version,
+            hb_operation=hb_operation,
+        )
+
+    frame = _decode_canonical_line(raw, stage="bootstrap")
+    required = {
+        "schema": "scnsim.bootstrap_ready",
+        "schema_version": 1,
+        "request_sha256": request_sha256,
+        "attempt_ordinal": attempt_ordinal,
+        "julia_version": expected_version,
+        "julia_threads": expected_julia_threads,
+        "blas_threads": expected_blas_threads,
+    }
+    expected_fields = {*required, "blas_vendor"}
+    if hb_operation:
+        expected_fields.add("fftw_threads")
+    if (
+        set(frame) != expected_fields
+        or any(frame.get(key) != value for key, value in required.items())
+        or not isinstance(frame.get("blas_vendor"), str)
+        or not frame["blas_vendor"]
+        or (hb_operation and frame.get("fftw_threads") != 1)
+    ):
+        raise BackendProtocolError(
+            "child bootstrap evidence does not match the sealed benchmark thread profile",
+            stage="bootstrap",
+            evidence={
+                "frame": frame,
+                "expected_julia_threads": expected_julia_threads,
+                "expected_blas_threads": expected_blas_threads,
+            },
+        )
+    return BootstrapReady(
+        request_sha256=request_sha256,
+        attempt_ordinal=attempt_ordinal,
+        julia_version=expected_version,
+        julia_threads=expected_julia_threads,
+        blas_threads=expected_blas_threads,
+        blas_vendor=str(frame["blas_vendor"]),
+        fftw_threads=1 if hb_operation else None,
+    )
+
+
+def _observe_timing(
+    observer: Callable[[str, int, int, Mapping[str, object]], object] | None,
+    stage: str,
+    start_ns: int,
+    end_ns: int,
+    **details: object,
+) -> None:
+    """Send one actual process interval through optional benchmark plumbing."""
+    if observer is not None:
+        observer(stage, start_ns, end_ns, details)
+
+
+def _cpu_limited_argv(argv: list[str], profile: Mapping[str, object] | None) -> list[str]:
+    """Exec the target only after the benchmark worker receives its CPU set."""
+    if profile is None:
+        return argv
+    cpus = profile.get("cpus")
+    topology = profile.get("topology")
+    if cpus is None:
+        return argv
+    bootstrap = (
+        "import json,os,sys; p=json.loads(sys.argv[1]); "
+        "os.sched_setaffinity(0,set(p['cpus'])); "
+        "a=sorted(os.sched_getaffinity(0)); "
+        "os.environ['SCNSIM_BENCHMARK_CPU_AFFINITY']=json.dumps(" 
+        "{'requested_cpus':p['cpus'],'actual_cpus':a,'topology':p['topology']},"
+        "sort_keys=True,separators=(',',':')); "
+        "v=sys.argv[2:]; os.execvpe(v[0],v,os.environ)"
+    )
+    return [
+        sys.executable,
+        "-S",
+        "-c",
+        bootstrap,
+        json.dumps({"cpus": list(cpus), "topology": topology}, sort_keys=True, separators=(",", ":")),
+        *argv,
+    ]
+
+
 def _terminate_process_group(process: subprocess.Popen[str]) -> str:
     if process.poll() is not None:
         return "terminated"
@@ -150,6 +255,13 @@ def run_terminal(
     on_progress: Callable[[Mapping[str, object]], object] | None = None,
     point_recovery: tuple[Mapping[str, object], ...] | None = None,
     publish_point: Callable[[Mapping[str, object]], Mapping[str, object]] | None = None,
+    _timing_observer: Callable[[str, int, int, Mapping[str, object]], object] | None = None,
+    _entrypoint: str | os.PathLike[str] | None = None,
+    _entrypoint_arguments: tuple[str, ...] | None = None,
+    _julia_threads: int = 1,
+    _julia_blas_threads: int = 1,
+    _cpu_affinity: Mapping[str, object] | None = None,
+    _preserve_progress_callback_exception: bool = False,
 ) -> TerminalOutcome:
     """Run exactly one authorized Julia request and return transport evidence.
 
@@ -179,6 +291,11 @@ def run_terminal(
             stage="launch_arguments",
             evidence={"request": str(request)},
         )
+    if (_entrypoint is None) != (_entrypoint_arguments is None):
+        raise BackendProtocolError(
+            "alternate Julia entrypoint and argument vector must be supplied together",
+            stage="launch_arguments",
+        )
     hb_operation = request_document.get("operation") == "solve_hb"
     optimization_operation = request_document.get("operation") == "optimize_direct"
     sweep_operation = request_document.get("parameter_source", {}).get("kind") in {"grid", "points"}
@@ -206,10 +323,33 @@ def run_terminal(
                 stage="runtime_identity_after_allocation",
                 evidence={"prepared": prepared.julia_version, "expected": expected_version},
             )
-        argv = _terminal_argv(prepared, project, entrypoint, request, staging)
+        selected_entrypoint = entrypoint if _entrypoint is None else _require_absolute_file(
+            _entrypoint, label="alternate Julia entrypoint"
+        )
+        argv = _terminal_argv(
+            prepared,
+            project,
+            selected_entrypoint,
+            request,
+            staging,
+            julia_threads=_julia_threads,
+            entrypoint_arguments=_entrypoint_arguments,
+        )
+        child_environment = _child_environment()
+        child_environment["JULIA_NUM_THREADS"] = str(_julia_threads)
+        for name in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+            child_environment[name] = str(_julia_blas_threads)
+        if _cpu_affinity is not None:
+            child_environment["SCNSIM_BENCHMARK_CPU_AFFINITY"] = json.dumps(
+                {"requested_cpus": _cpu_affinity.get("cpus"), "actual_cpus": None,
+                 "topology": _cpu_affinity.get("topology")}, sort_keys=True, separators=(",", ":")
+            )
+        launch_argv = _cpu_limited_argv(argv, _cpu_affinity)
+        terminal_started_ns = perf_counter_ns()
+        launch_started_ns = terminal_started_ns
         try:
             process = subprocess.Popen(
-                argv,
+                launch_argv,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -219,15 +359,29 @@ def run_terminal(
                 bufsize=1,
                 shell=False,
                 cwd=str(project),
-                env=_child_environment(),
+                env=child_environment,
                 start_new_session=True,
             )
         except OSError as error:
+            _observe_timing(
+                _timing_observer, "julia_process_start", launch_started_ns,
+                perf_counter_ns(), status="launch_error", error_type=type(error).__name__,
+            )
             raise BackendProtocolError(
                 "Julia child process could not be created after attempt allocation",
                 stage="process_start",
                 evidence={"argv": tuple(argv), "error": str(error)},
             ) from error
+        try:
+            actual_affinity = tuple(sorted(os.sched_getaffinity(process.pid))) if hasattr(os, "sched_getaffinity") else None
+        except OSError:
+            actual_affinity = None
+        _observe_timing(
+            _timing_observer, "julia_process_start", launch_started_ns,
+            perf_counter_ns(), status="started", pid=process.pid,
+            cpu_affinity=actual_affinity,
+            observation_boundary="after_popen_before_validated_bootstrap_ready",
+        )
         assert process.stdin is not None and process.stdout is not None and process.stderr is not None
         stdout_reader = threading.Thread(
             target=_read_lines,
@@ -242,7 +396,12 @@ def run_terminal(
         stdout_reader.start()
         stderr_reader.start()
         try:
+            ready_wait_started_ns = perf_counter_ns()
             first = stdout_lines.get()
+            _observe_timing(
+                _timing_observer, "julia_ready_wait", ready_wait_started_ns,
+                perf_counter_ns(), status="received" if first is not None else "eof",
+            )
             if first is None:
                 raise _protocol_error(
                     "Julia child ended before its required bootstrap frame",
@@ -254,13 +413,39 @@ def run_terminal(
                         "reader_errors": tuple(str(error) for error in reader_errors),
                     },
                 )
-            bootstrap = _validate_bootstrap(
+            bootstrap = _validate_bootstrap_for_threads(
                 first,
                 request_sha256=request_sha256,
                 attempt_ordinal=attempt_ordinal,
                 expected_version=expected_version,
                 hb_operation=hb_operation,
+                expected_julia_threads=_julia_threads,
+                expected_blas_threads=_julia_blas_threads,
             )
+            if _timing_observer is not None:
+                affinity_started_ns = perf_counter_ns()
+                bootstrap_affinity = None
+                affinity_status = "unavailable"
+                if hasattr(os, "sched_getaffinity"):
+                    try:
+                        bootstrap_affinity = tuple(
+                            sorted(os.sched_getaffinity(process.pid))
+                        )
+                        affinity_status = "observed"
+                    except OSError:
+                        pass
+                _observe_timing(
+                    _timing_observer,
+                    "julia_bootstrap_affinity",
+                    affinity_started_ns,
+                    perf_counter_ns(),
+                    status=affinity_status,
+                    pid=process.pid,
+                    cpu_affinity=bootstrap_affinity,
+                    observation_boundary="validated_bootstrap_ready",
+                    process_role="julia_child",
+                )
+            authorization_started_ns = perf_counter_ns()
             attempt_sha256 = authorize(bootstrap)
             if not _is_sha256(attempt_sha256):
                 raise BackendProtocolError(
@@ -276,6 +461,10 @@ def run_terminal(
             }
             process.stdin.write(_canonical_json_line(authorization))
             process.stdin.flush()
+            _observe_timing(
+                _timing_observer, "julia_authorization", authorization_started_ns,
+                perf_counter_ns(), status="authorized", attempt_sha256=attempt_sha256,
+            )
             checkpoint_committed = False
             if optimization_operation and checkpoint is not None:
                 if (
@@ -297,10 +486,15 @@ def run_terminal(
                     "seal_sha256": checkpoint["seal_sha256"],
                     "disposition": "reused",
                 }
+                checkpoint_ack_started_ns = perf_counter_ns()
                 process.stdin.write(_canonical_json_line(committed))
                 process.stdin.flush()
                 process.stdin.close()
                 checkpoint_committed = True
+                _observe_timing(
+                    _timing_observer, "julia_checkpoint_ack", checkpoint_ack_started_ns,
+                    perf_counter_ns(), disposition="reused",
+                )
             elif sweep_operation:
                 recovery = {"schema": "scnsim.point_recovery", "schema_version": 1,
                     "request_sha256": request_sha256, "attempt_sha256": attempt_sha256,
@@ -326,6 +520,7 @@ def run_terminal(
                     ready = _validate_point_ready(line, request_sha256=request_sha256,
                         attempt_sha256=attempt_sha256)
                     assert publish_point is not None
+                    checkpoint_started_ns = perf_counter_ns()
                     published = publish_point(ready)
                     if set(published) != {"record_sha256", "seal_sha256"} or published["record_sha256"] != ready["record_sha256"] or not _is_sha256(published["seal_sha256"]):
                         raise BackendProtocolError("point publisher returned inconsistent identity", stage="point_checkpoint")
@@ -335,6 +530,10 @@ def run_terminal(
                         "ordinal": ready["ordinal"], "record_sha256": ready["record_sha256"],
                         "seal_sha256": published["seal_sha256"]}))
                     process.stdin.flush()
+                    _observe_timing(
+                        _timing_observer, "julia_point_checkpoint", checkpoint_started_ns,
+                        perf_counter_ns(), status="committed", ordinal=ready["ordinal"],
+                    )
                     continue
                 if _reserved_optimization_frame(line):
                     if not optimization_operation or checkpoint_committed:
@@ -350,6 +549,7 @@ def run_terminal(
                         attempt_sha256=attempt_sha256,
                     )
                     assert publish_checkpoint is not None
+                    checkpoint_started_ns = perf_counter_ns()
                     published = publish_checkpoint(ready)
                     if (
                         set(published) != {"checkpoint_sha256", "seal_sha256"}
@@ -374,6 +574,10 @@ def run_terminal(
                     process.stdin.flush()
                     process.stdin.close()
                     checkpoint_committed = True
+                    _observe_timing(
+                        _timing_observer, "julia_checkpoint_commit", checkpoint_started_ns,
+                        perf_counter_ns(), status="committed",
+                    )
                     continue
                 event = _validate_progress(
                     line,
@@ -403,11 +607,18 @@ def run_terminal(
                         except KeyboardInterrupt:
                             raise
                         except Exception as error:
+                            if _preserve_progress_callback_exception:
+                                raise
                             raise OptimizationProgressCallbackError(
                                 "optimization progress callback failed",
                                 stage="progress_callback", evidence={"error_type": type(error).__name__},
                             ) from error
+            process_wait_started_ns = perf_counter_ns()
             returncode = process.wait()
+            _observe_timing(
+                _timing_observer, "julia_process_wait", process_wait_started_ns,
+                perf_counter_ns(), returncode=returncode,
+            )
             stderr_reader.join()
             if reader_errors:
                 raise _protocol_error(
@@ -425,10 +636,15 @@ def run_terminal(
                     stderr_log=stderr_log,
                     extra={"returncode": returncode},
                 )
+            outcome_decode_started_ns = perf_counter_ns()
             outcome = _read_outcome(
                 staging,
                 request_sha256=request_sha256,
                 attempt_sha256=attempt_sha256,
+            )
+            _observe_timing(
+                _timing_observer, "julia_outcome_read", outcome_decode_started_ns,
+                perf_counter_ns(), status=outcome.get("status", "unknown"),
             )
             if optimization_operation and not checkpoint_committed and outcome.get("status") == "success":
                 raise _protocol_error(
@@ -460,6 +676,10 @@ def run_terminal(
         finally:
             if process.poll() is None:
                 _terminate_process_group(process)
+            _observe_timing(
+                _timing_observer, "julia_terminal_transport", terminal_started_ns,
+                perf_counter_ns(), returncode=process.poll(),
+            )
             stdout_reader.join()
             stderr_reader.join()
             for stream in (process.stdin, process.stdout, process.stderr):

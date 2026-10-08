@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scnsim"
-version = "1.0.0a1"
+version = "1.0.0a2"
 description = "Superconducting Circuit Network Simulation."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 dependencies = [
-  "juliapkg>=0.1.26,<0.2",
+  "cmaes==0.13.1",
+  "jax==0.11.2",
+  "jaxlib==0.11.2",
   "matplotlib>=3.10.9,<3.11",
   "numpy>=2.2.6,<2.3",
   "pint>=0.24.4,<0.25",
@@ -22,11 +24,14 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/OrPenStrike/scnsim"
-Documentation = "https://github.com/OrPenStrike/scnsim/blob/v1.0.0a1/docs/index.qmd"
+Documentation = "https://orpenstrike.github.io/scnsim/"
 Issues = "https://github.com/OrPenStrike/scnsim/issues"
 Repository = "https://github.com/OrPenStrike/scnsim"
 
 [project.optional-dependencies]
+julia = [
+    "juliapkg>=0.1.26,<0.2",
+]
 static-export = [
     "kaleido>=1,<2",
 ]

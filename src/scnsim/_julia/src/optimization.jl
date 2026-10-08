@@ -414,7 +414,7 @@ end
 
 function selector_root_with_continuation(plan, request, baseline_values, candidate_values, baseline_root::ComplexF64, selector;
         context_kind::String = "optimization_candidate",
-        candidate_view::Union{Nothing,RealizedView} = nothing)
+        candidate_view::Union{Nothing,RealizedView} = nothing, benchmark_context = nothing)
     function values_at(t::Float64)
         t == 0.0 && return copy(baseline_values)
         t == 1.0 && return copy(candidate_values)
@@ -437,7 +437,8 @@ function selector_root_with_continuation(plan, request, baseline_values, candida
             else
                 raw = compile_primitive(plan, values_at(right_t); context_kind = context_kind,
                     authorized = context_kind == "optimization_candidate" ? optimization_authorizations(request) : parameter_set_authorizations(request),
-                    authorization_source = context_kind == "optimization_candidate" ? "optimization_spec" : "parameter_set")
+                    authorization_source = context_kind == "optimization_candidate" ? "optimization_spec" : "parameter_set",
+                    benchmark_context = benchmark_context)
                 declaration = get(selector, "view", request["view"])
                 realize_candidate_view(plan, request, raw, declaration)[2]
             end
@@ -535,14 +536,14 @@ function selector_value_in_unit(value::Float64, source::String, target::String):
     fail("validation", "invalid_optimization_spec", "quantity_sum", "optimization_candidate", "QuantitySum terms do not share a convertible public unit convention")
 end
 
-function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator)
+function root_selector_value(selector, plan, request, baseline_values, values, baseline_roots, roots, compiled::CompiledPrimitive, view::RealizedView, candidate, locator; benchmark_context = nothing)
     selector_type = get(selector, "type", nothing)
     projection = selector["projection"]
     if selector_type in ("diagonal_root_projection", "operator_element_root_projection")
         key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view, benchmark_context = benchmark_context)
         end
         selector_type == "diagonal_root_projection" && imag(root) > 0.0 &&
             fail("execution", "numerical_resolution_unresolved", "newton_certificate", "optimization_candidate", "diagonal root violates the passive imaginary-root policy")
@@ -552,7 +553,7 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
         key = root_selector_key(selector)
         root = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view, benchmark_context = benchmark_context)
         end
         projection == "frequency" && return (real(root) / (2.0 * pi), nothing)
         projection == "linewidth" && return (-2.0 * imag(root) / (2.0 * pi), nothing)
@@ -562,7 +563,7 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
         key = root_selector_key(selector)
         zero = get!(roots, key) do
             same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view)
+                selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], selector; candidate_view = view, benchmark_context = benchmark_context)
         end
         projection == "frequency" && return (real(zero) / (2.0 * pi), nothing)
     elseif selector_type == "response_element_projection"
@@ -591,7 +592,7 @@ function root_selector_value(selector, plan, request, baseline_values, values, b
             try
                 return get!(roots, key) do
                     same_parameter_values(baseline_values, values) ? baseline_roots[key] :
-                        selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], branch_selector; candidate_view = view)
+                        selector_root_with_continuation(plan, request, baseline_values, values, baseline_roots[key], branch_selector; candidate_view = view, benchmark_context = benchmark_context)
                 end
             catch error
                 failure = optimization_backend_failure(error, "quantity_evaluation")
@@ -714,13 +715,13 @@ end
 
 function objective_outcome(plan, request, baseline_values, values, baseline_roots;
         extrapolation_evidence::Vector{Any} = Any[], prepared_raw = nothing,
-        prepared_views = nothing, candidate)
+        prepared_views = nothing, candidate, benchmark_context = nothing)
     raw_compiled = if prepared_raw === nothing
         try
             compile_primitive(
                 plan, values; context_kind = "optimization_candidate",
                 authorized = optimization_authorizations(request), extrapolation_evidence = extrapolation_evidence,
-                authorization_source = "optimization_spec",
+                authorization_source = "optimization_spec", benchmark_context = benchmark_context,
             )
         catch error
             failure = optimization_backend_failure(error, "candidate_compile")
@@ -754,7 +755,7 @@ function objective_outcome(plan, request, baseline_values, values, baseline_root
                 view = selected["view"]::RealizedView
                 term_value, term_evidence = root_selector_value(
                     term, plan, request, baseline_values, values, baseline_roots,
-                    roots, view.compiled, view, candidate, locator,
+                    roots, view.compiled, view, candidate, locator; benchmark_context = benchmark_context,
                 )
                 isfinite(term_value) || fail(
                     "execution", "numerical_resolution_unresolved", "selector",
@@ -1215,13 +1216,13 @@ function verify_callback_costs(expected::Vector{Float64}, received)
 end
 
 function optimization_baseline_roots(plan, request, values;
-        extrapolation_evidence::Vector{Any} = Any[])
+        extrapolation_evidence::Vector{Any} = Any[], benchmark_context = nothing)
     candidate = optimization_candidate_position(0, 0, nothing)
     raw = try
         compile_primitive(plan, values; context_kind = "optimization_candidate",
             authorized = optimization_authorizations(request),
             extrapolation_evidence = extrapolation_evidence,
-            authorization_source = "optimization_spec")
+            authorization_source = "optimization_spec", benchmark_context = benchmark_context)
     catch error
         failure = optimization_backend_failure(error, "candidate_compile")
         throw(with_optimization_context(failure, optimization_context(
@@ -1254,7 +1255,7 @@ function optimization_baseline_roots(plan, request, values;
     return roots, raw, views
 end
 
-function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vector{Float64}, latent, generation::Int, column::Int, ordinal::Int, cache::Dict{String,Any})
+function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vector{Float64}, latent, generation::Int, column::Int, ordinal::Int, cache::Dict{String,Any}; benchmark_context = nothing)
     candidate = optimization_candidate_position(ordinal, generation, column)
     values, parameters = try
         prepared_values = parameter_values_for_z(request, baseline_values, z)
@@ -1285,7 +1286,7 @@ function candidate_from_z(plan, request, baseline_values, baseline_roots, z::Vec
         end
         empty!(extrapolation_evidence)
         cost, components, extrapolation_evidence, objective_failure, discretization = objective_outcome(plan, request, baseline_values, values, baseline_roots;
-            extrapolation_evidence = extrapolation_evidence, candidate = candidate)
+            extrapolation_evidence = extrapolation_evidence, candidate = candidate, benchmark_context = benchmark_context)
         outcome = if objective_failure === nothing
             Dict{String,Any}(
                 "status" => "success",
@@ -1525,7 +1526,7 @@ end
 
 function optimize_direct(request, plan, request_sha::String, attempt_sha::String, staging::String;
         resume_ledger_sha::Union{Nothing,AbstractString} = nothing,
-        request_directory::String, attempt)
+        request_directory::String, attempt, benchmark_context = nothing)
     spec = request["spec"]
     controls = spec["optimizer"]
     variables = spec["variables"]
@@ -1563,14 +1564,14 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
     else
         baseline_evidence = Any[]
         roots, baseline_raw, baseline_views = optimization_baseline_roots(
-            plan, request, base_values; extrapolation_evidence = baseline_evidence,
+            plan, request, base_values; extrapolation_evidence = baseline_evidence, benchmark_context = benchmark_context,
         )
         baseline_parameters = candidate_parameter_set(request, base_values)
         cost, components, baseline_evidence, baseline_failure, baseline_discretization = objective_outcome(
             plan, request, base_values, base_values, roots;
             extrapolation_evidence = baseline_evidence,
             prepared_raw = baseline_raw, prepared_views = baseline_views,
-            candidate = optimization_candidate_position(0, 0, nothing),
+            candidate = optimization_candidate_position(0, 0, nothing), benchmark_context = benchmark_context,
         )
         baseline_failure === nothing || throw(baseline_failure)
         outcome = Dict{String,Any}(
@@ -1651,7 +1652,7 @@ function optimize_direct(request, plan, request_sha::String, attempt_sha::String
         costs = Float64[]
         for column in axes(transformed, 2)
             z = collect(@view transformed[:, column])
-            record, cost = candidate_from_z(plan, request, base_values, baseline_roots, z, nothing, generation, column, evaluation_ordinal[], cache)
+            record, cost = candidate_from_z(plan, request, base_values, baseline_roots, z, nothing, generation, column, evaluation_ordinal[], cache; benchmark_context = benchmark_context)
             push!(records, record)
             push!(costs, cost)
             if isfinite(cost) && cost < best_cost

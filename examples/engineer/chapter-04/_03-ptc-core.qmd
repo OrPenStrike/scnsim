@@ -8,7 +8,7 @@ requested scattering boundary.
 
 ```{python}
 #| id: ch4-derive-ptc-view
-run = CircuitRun(plan=plan, workspace="workspaces/engineer-chapter-04")
+run = CircuitRun(backend="julia", plan=plan, workspace="workspaces/engineer-chapter-04")
 raw_loaded_view = run.original
 raw_transmission_trace = SParameterTrace(
     id="transmission",

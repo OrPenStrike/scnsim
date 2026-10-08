@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from itertools import product
+from typing import Literal, overload
 
 from ...canonical import canonical_json_bytes as _canonical_bytes, sha256_hex as _sha256
 from ..artifacts import _verify_manifest_tree
@@ -63,7 +64,7 @@ def _parameter_source_points(source: Mapping[str, object]) -> Iterator[tuple[obj
 
 def _verify_point_checkpoint_record(record: Mapping[str, object], point_root: Path,
         request: Mapping[str, object], plan: Mapping[str, object], ordinal: int,
-        producer_attempt_sha256: str) -> None:
+        producer_attempt_sha256: str) -> Mapping[str, object] | None:
     from ...authoring.identity import canonical_parameters_sha256
 
     source = request.get("parameter_source")
@@ -101,7 +102,7 @@ def _verify_point_checkpoint_record(record: Mapping[str, object], point_root: Pa
         _verify_failure_document(metadata["failure"], request["operation"])
         if "ref_lineage" in metadata:
             _verify_v1_lineage(metadata["ref_lineage"], plan)
-        return
+        return None
     if set(metadata) != common | {"ref_lineage", "payload_path"} or metadata["payload_path"] != f"artifacts/parameter_points/points/{ordinal:06d}/payload.json":
         raise _integrity("Successful point checkpoint metadata is invalid.")
     payload = _load_canonical(point_root / "payload.json")
@@ -130,9 +131,35 @@ def _verify_point_checkpoint_record(record: Mapping[str, object], point_root: Pa
             if not isinstance(artifact_relative, str) or not artifact_relative.startswith(prefix):
                 raise _integrity("Point checkpoint artifact manifest path is invalid.")
             _verify_manifest_tree(_inside(point_root, artifact_relative[len(prefix):]), manifest)
+    return payload
 
-def _verify_point_checkpoints(request_directory: Path, request: Mapping[str, object],
-        plan: Mapping[str, object]) -> tuple[PointCheckpoint, ...]:
+@overload
+def _verify_point_checkpoints(
+    request_directory: Path,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+    *,
+    include_payloads: Literal[False] = False,
+) -> tuple[PointCheckpoint, ...]: ...
+
+
+@overload
+def _verify_point_checkpoints(
+    request_directory: Path,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+    *,
+    include_payloads: Literal[True],
+) -> tuple[tuple[PointCheckpoint, Mapping[str, object] | None], ...]: ...
+
+
+def _verify_point_checkpoints(
+    request_directory: Path,
+    request: Mapping[str, object],
+    plan: Mapping[str, object],
+    *,
+    include_payloads: bool = False,
+) -> tuple[PointCheckpoint | tuple[PointCheckpoint, Mapping[str, object] | None], ...]:
     root = request_directory / "point-checkpoints"
     anchor_path = request_directory / "point-checkpoint-anchor.json"
     if _path_entry_exists(anchor_path):
@@ -153,7 +180,7 @@ def _verify_point_checkpoints(request_directory: Path, request: Mapping[str, obj
     names = {path.name for path in root.iterdir()}
     if names != {"index.json", *(f"{i:06d}" for i in range(len(entries)))}:
         raise _integrity("Point checkpoint index does not cover its directories.")
-    verified = []
+    verified: list[PointCheckpoint | tuple[PointCheckpoint, Mapping[str, object] | None]] = []
     for ordinal, entry in enumerate(entries):
         directory = root / f"{ordinal:06d}"
         if not isinstance(entry, Mapping) or set(entry) != {"ordinal", "seal_sha256"} or entry["ordinal"] != ordinal or directory.is_symlink() or not directory.is_dir() or {p.name for p in directory.iterdir()} != {"record.json", "source-attempt.json", "seal.json", "point"}:
@@ -172,16 +199,19 @@ def _verify_point_checkpoints(request_directory: Path, request: Mapping[str, obj
         if source_attempt.get("request_sha256") != request_sha or source_attempt.get("attempt_state") != "launched":
             raise _integrity("Point checkpoint source attempt is invalid.")
         record = _decode_bytes(record_bytes, "point checkpoint record")
-        _verify_point_checkpoint_record(record, directory / "point", request, plan,
+        payload = _verify_point_checkpoint_record(record, directory / "point", request, plan,
             ordinal, seal["source_attempt_sha256"])
-        verified.append(PointCheckpoint(record, entry["seal_sha256"], directory))
+        checkpoint = PointCheckpoint(record, entry["seal_sha256"], directory)
+        verified.append((checkpoint, payload) if include_payloads else checkpoint)
     return tuple(verified)
 
 def _verify_parameter_sweep_artifacts(
     directory: Path,
     result: Mapping[str, object],
     receipt: Mapping[str, object],
-) -> None:
+    *,
+    include_records: bool = False,
+) -> list[dict[str, object]] | None:
     from ...authoring.identity import canonical_parameters_sha256
 
     link = result["manifest"]
@@ -243,6 +273,7 @@ def _verify_parameter_sweep_artifacts(
     checkpoints = _verify_point_checkpoints(directory.parent.parent, request, plan)
     if len(checkpoints) != len(expected_points):
         raise _integrity("Final sweep does not bind every published point checkpoint.")
+    verified_points: list[dict[str, object]] | None = [] if include_records else None
     point_ordinal = 0
     for chunk_link in result["chunks"]:
         relative = str(chunk_link["path"])[len("artifacts/parameter_points/"):]
@@ -263,6 +294,7 @@ def _verify_parameter_sweep_artifacts(
         ):
             raise _integrity("Parameter-sweep chunk envelope is malformed.")
         for point in chunk["points"]:
+            payload: Mapping[str, object] | None = None
             expected_source_index, expected_parameters = expected_points[point_ordinal]
             common = {"ordinal", "source_index", "parameters", "parameters_sha256", "status", "producer_attempt_sha256", "checkpoint_seal_sha256"}
             if (
@@ -391,6 +423,21 @@ def _verify_parameter_sweep_artifacts(
                     point["producer_attempt_sha256"],
                     plan,
                 )
+            if verified_points is not None:
+                payload_file = None
+                if point["status"] == "success":
+                    payload_relative = point["payload_path"][
+                        len("artifacts/parameter_points/"):
+                    ]
+                    payload_file = manifest_by_path[payload_relative]
+                verified_points.append({
+                    "point": dict(point),
+                    "payload": payload,
+                    "chunk_link": dict(chunk_link),
+                    "chunk_file": dict(row),
+                    "payload_file": None if payload_file is None else dict(payload_file),
+                })
             point_ordinal += 1
     if point_ordinal != result["point_count"]:
         raise _integrity("Parameter-sweep chunks do not cover every point.")
+    return verified_points

@@ -9,10 +9,10 @@ import sys
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace as _dataclass_replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 if sys.platform in {"linux", "darwin"}:
     import fcntl
@@ -104,6 +104,8 @@ class WorkspaceBinding:
     leaf: Path
     plan_sha256: str
     workspace_instance_id: str
+    _expected_julia_threads: int = field(default=1, repr=False, compare=False)
+    _expected_blas_threads: int = field(default=1, repr=False, compare=False)
 
     @contextmanager
     def writer(self) -> Iterator[WorkspaceBinding]:
@@ -278,13 +280,33 @@ class WorkspaceBinding:
         return _verify_baseline_checkpoint_directory(
             checkpoint_directory, request_sha256=request_sha256,
             request=request, plan=plan,
+            expected_julia_threads=self._expected_julia_threads,
+            expected_blas_threads=self._expected_blas_threads,
         )
 
     def point_checkpoints(self, request_sha256: str) -> tuple[PointCheckpoint, ...]:
+        return cast(
+            tuple[PointCheckpoint, ...],
+            self._verified_point_checkpoints(request_sha256),
+        )
+
+    def _verified_point_checkpoints(
+        self, request_sha256: str, *, include_payloads: bool = False,
+    ) -> tuple[PointCheckpoint | tuple[PointCheckpoint, Mapping[str, object] | None], ...]:
         request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
         return _verify_point_checkpoints(request_directory,
             _load_canonical(request_directory / "request.json"),
-            _load_canonical(self.leaf / "plan.json"))
+            _load_canonical(self.leaf / "plan.json"),
+            include_payloads=include_payloads,
+        )
+
+    def _point_checkpoints_with_payloads(
+        self, request_sha256: str,
+    ) -> tuple[tuple[PointCheckpoint, Mapping[str, object] | None], ...]:
+        return cast(
+            tuple[tuple[PointCheckpoint, Mapping[str, object] | None], ...],
+            self._verified_point_checkpoints(request_sha256, include_payloads=True),
+        )
 
     def publish_point_checkpoint(self, request_sha256: str, attempt_sha256: str,
             staging: Path, ready: Mapping[str, object]) -> PointCheckpoint:
@@ -395,6 +417,8 @@ class WorkspaceBinding:
         if _path_entry_exists(final):
             existing = _verify_baseline_checkpoint_directory(
                 final, request_sha256=request_sha256, request=request, plan=plan,
+                expected_julia_threads=self._expected_julia_threads,
+                expected_blas_threads=self._expected_blas_threads,
             )
             if existing.checkpoint_sha256 != expected_sha256:
                 raise _integrity("A different baseline checkpoint is already published.")
@@ -421,6 +445,8 @@ class WorkspaceBinding:
             _fsync_tree(staging)
             verified = _verify_baseline_checkpoint_directory(
                 staging, request_sha256=request_sha256, request=request, plan=plan,
+                expected_julia_threads=self._expected_julia_threads,
+                expected_blas_threads=self._expected_blas_threads,
             )
             if _path_entry_exists(final):
                 raise _integrity(
@@ -430,6 +456,8 @@ class WorkspaceBinding:
             _fsync_directory(request_directory)
             published = _verify_baseline_checkpoint_directory(
                 final, request_sha256=request_sha256, request=request, plan=plan,
+                expected_julia_threads=self._expected_julia_threads,
+                expected_blas_threads=self._expected_blas_threads,
             )
             producer_path.unlink()
             _fsync_directory(producer_path.parent)
@@ -701,6 +729,8 @@ class WorkspaceBinding:
                 receipt["artifacts"],
                 request_sha256=request_sha256,
                 attempt_sha256=_sha256(_canonical_bytes(attempt)),
+                expected_julia_threads=self._expected_julia_threads,
+                expected_blas_threads=self._expected_blas_threads,
             )
             if ledgers:
                 generation, digest = ledgers[-1]
@@ -903,6 +933,8 @@ class WorkspaceBinding:
                     producer_receipt["artifacts"],
                     request_sha256=request_sha256,
                     attempt_sha256=_sha256(_canonical_bytes(producer_attempt)),
+                    expected_julia_threads=self._expected_julia_threads,
+                    expected_blas_threads=self._expected_blas_threads,
                 )
                 if any(digest == resume for _, digest in ledgers):
                     found = True
@@ -1073,6 +1105,8 @@ class WorkspaceBinding:
                     receipt["artifacts"],
                     request_sha256=request_sha256,
                     attempt_sha256=attempt_sha256,
+                    expected_julia_threads=self._expected_julia_threads,
+                    expected_blas_threads=self._expected_blas_threads,
                 )
                 completed_generation_count = len(verified_generations)
         elif receipt.get("result_sha256") is not None or (directory / "result.json").exists():
@@ -1083,6 +1117,8 @@ class WorkspaceBinding:
                 receipt["artifacts"],
                 request_sha256=request_sha256,
                 attempt_sha256=attempt_sha256,
+                expected_julia_threads=self._expected_julia_threads,
+                expected_blas_threads=self._expected_blas_threads,
             )
             completed_generation_count = len(verified_generations)
             if outcome_sha is not None:
@@ -1145,6 +1181,8 @@ def bind_workspace(
     plan_bytes: bytes,
     versioned: bool,
     commit: Callable[[], None],
+    _expected_julia_threads: int = 1,
+    _expected_blas_threads: int = 1,
 ) -> WorkspaceBinding:
     """Bind prepared Plan evidence, then invoke its non-failing seal commit."""
 
@@ -1230,7 +1268,11 @@ def bind_workspace(
             # Publication and Plan sealing are already committed. Exact pending
             # cleanup remains visible in the root inventory for the next lock.
             pass
-        return binding
+        return _dataclass_replace(
+            binding,
+            _expected_julia_threads=_expected_julia_threads,
+            _expected_blas_threads=_expected_blas_threads,
+        )
 
 def _retired_leaf_maintenance(binding: WorkspaceBinding, root: Path) -> dict[str, object]:
     pointer = _leaf_pointer(binding, root)

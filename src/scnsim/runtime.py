@@ -8,16 +8,18 @@ and artifact manifests remain the only authority for reconstructing results.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from os import PathLike
 from pathlib import Path
 from types import MappingProxyType
 from typing import overload
+from time import perf_counter_ns
 
 import numpy as np
 
 from . import units
 from .execution.compilation import _run_preflight
-from .execution.identity import _runtime_identity_base
+from .execution.identity import _runtime_identity_base, _jax_runtime_identity
 from .execution.prepared import (
     BoundOptimization,
     BoundOptimizationLeaf,
@@ -55,6 +57,7 @@ from .errors import (
     InvalidOptimizationSpec,
     PortRealizabilityError,
     SCNSimValidationError,
+    RuntimePreparationError,
 )
 from .results import (
     DiagonalRootResult,
@@ -91,6 +94,9 @@ from .specs import (
     _selector_unit,
 )
 
+
+# Omission selects the backend default; explicit None remains invalid.
+_OMITTED_COMMIT_EVERY_GENERATIONS = object()
 
 def _coordinate_id(value: str | ElectricNodeRef | CoordinateRef) -> str:
     if isinstance(value, str):
@@ -353,6 +359,8 @@ class CircuitRun:
     """Execution namespace for one permanently sealed Plan and workspace leaf."""
 
     __slots__ = (
+        "_backend",
+        "_precision",
         "_plan",
         "_snapshot",
         "_baseline_point",
@@ -375,11 +383,14 @@ class CircuitRun:
         plan: CircuitPlan,
         workspace: str | PathLike[str],
         versioned: bool = False,
+        backend: str = "jax",
+        precision: str = "float64",
     ) -> None:
         if not isinstance(plan, CircuitPlan):
             raise TypeError("plan must be a CircuitPlan")
         if not isinstance(versioned, bool):
             raise TypeError("versioned must be bool")
+        self._backend, self._precision = self._backend_options(backend, precision)
         with plan._run_seal_preparation() as seal_token:
             self._prepare_run(
                 plan=plan,
@@ -615,6 +626,44 @@ class CircuitRun:
             coordinate_load_states=load_states,
         )
 
+    @staticmethod
+    def _backend_options(backend: str, precision: str) -> tuple[str, str]:
+        if backend not in ("jax", "julia"):
+            raise ValueError("backend must be jax or julia")
+        if precision not in ("float64", "float32"):
+            raise ValueError("precision must be float64 or float32")
+        return backend, precision
+
+    def _selected_backend(self, backend, precision) -> tuple[str, str]:
+        return self._backend_options(
+            self._backend if backend is None else backend,
+            self._precision if precision is None else precision,
+        )
+
+    @staticmethod
+    def _require_backend_spec(backend, precision, spec) -> None:
+        if backend == "julia":
+            if precision != "float64":
+                raise RuntimePreparationError(
+                    "The Julia backend requires precision='float64'.", stage="runtime_prepare")
+            return
+        supported = (DirectSolveSpec, DiagonalRootSpec, ResponseElementSpec)
+        quantities = (selector.spec for objective in spec.objectives
+                      for selector in _quantity_selectors(objective.quantity)) if isinstance(spec, OptimizationSpec) else (spec,)
+        for quantity in quantities:
+            if not isinstance(quantity, supported):
+                raise RuntimePreparationError(
+                    f"{type(quantity).__name__} requires backend='julia', scnsim[julia] "
+                    "and manually provided Julia 1.12.6; JAX has no fallback.", stage="runtime_prepare")
+
+    @contextmanager
+    def _operation_scope(self, method, backend, precision, start_tick_ns):
+        from .benchmark.operations import OperationRecorder
+        backend, precision = self._selected_backend(backend, precision)
+        with OperationRecorder(self._binding, kind=method, backend=backend,
+                               precision=precision, start_tick_ns=start_tick_ns) as trace:
+            yield backend, precision, trace
+
     @overload
     def solve(
         self,
@@ -622,6 +671,8 @@ class CircuitRun:
         spec: DirectSolveSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> DirectSolveResult: ...
 
     @overload
@@ -631,6 +682,8 @@ class CircuitRun:
         spec: HBSolveSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> HBBatchResult: ...
 
     @overload
@@ -640,6 +693,8 @@ class CircuitRun:
         spec: DirectSolveSpec | HBSolveSpec,
         *,
         parameters: ParameterSpace,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> ParameterSweepResult: ...
 
     def solve(
@@ -648,13 +703,20 @@ class CircuitRun:
         spec: DirectSolveSpec | HBSolveSpec,
         *,
         parameters: ParameterSet | ParameterSpace | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> DirectSolveResult | HBBatchResult | ParameterSweepResult:
         """Execute the selected Direct response or one shared-basis HB batch."""
 
-        self._require_ref(ref)
-        operation = "solve_hb" if isinstance(spec, HBSolveSpec) else "solve_direct"
-        prepared = self._prepare_analysis(operation, ref, spec, parameters)
-        return self._execute(prepared, bound_spec=spec)
+        started_ns = perf_counter_ns()
+        with self._operation_scope("solve", backend, precision, started_ns) as (backend, precision, trace):
+            self._require_ref(ref)
+            self._require_backend_spec(backend, precision, spec)
+            operation = "solve_hb" if isinstance(spec, HBSolveSpec) else "solve_direct"
+            with trace.span("preparation"):
+                prepared = self._prepare_analysis(operation, ref, spec, parameters,
+                                                  backend=backend, precision=precision)
+            return self._execute(prepared, bound_spec=spec, trace=trace)
 
     @overload
     def evaluate(
@@ -663,6 +725,8 @@ class CircuitRun:
         spec: DiagonalRootSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> DiagonalRootResult: ...
 
     @overload
@@ -672,6 +736,8 @@ class CircuitRun:
         spec: OperatorElementRootSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> OperatorElementRootResult: ...
 
     @overload
@@ -681,6 +747,8 @@ class CircuitRun:
         spec: OperatorSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> OperatorResult: ...
 
     @overload
@@ -690,6 +758,8 @@ class CircuitRun:
         spec: HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> DirectQuantityResult: ...
 
     @overload
@@ -699,6 +769,8 @@ class CircuitRun:
         spec: DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec,
         *,
         parameters: ParameterSpace,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> ParameterSweepResult: ...
 
     def evaluate(
@@ -713,6 +785,8 @@ class CircuitRun:
         | OperatorSpec,
         *,
         parameters: ParameterSet | ParameterSpace | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> (
         DiagonalRootResult
         | OperatorElementRootResult
@@ -722,9 +796,30 @@ class CircuitRun:
     ):
         """Evaluate one typed Direct quantity without an unrelated sweep."""
 
-        self._require_ref(ref)
-        prepared = self._prepare_analysis("evaluate_direct", ref, spec, parameters)
-        return self._execute(prepared, bound_spec=spec)
+        started_ns = perf_counter_ns()
+        with self._operation_scope("evaluate", backend, precision, started_ns) as (backend, precision, trace):
+            self._require_ref(ref)
+            self._require_backend_spec(backend, precision, spec)
+            with trace.span("preparation"):
+                prepared = self._prepare_analysis("evaluate_direct", ref, spec, parameters,
+                                                  backend=backend, precision=precision)
+            return self._execute(prepared, bound_spec=spec, trace=trace)
+
+    def benchmark(
+        self, *, operations=None, method=None, backend=None, precision=None,
+        status=None,
+    ):
+        """Read recorded operation traces from this Plan leaf without execution."""
+        from .benchmark.api import benchmark
+        return benchmark(self, operations=operations, method=method,
+                         backend=backend, precision=precision, status=status)
+
+    def recover_workspace(self) -> None:
+        """Explicitly recover only this Run's bound Plan-leaf operation store."""
+        from .benchmark.storage import recover_operation_workspace
+
+        with self._binding.writer():
+            recover_operation_workspace(self._binding)
 
     @overload
     def optimize(
@@ -732,7 +827,12 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
+        checkpoint: str = "generation",
+        resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 10,
     ) -> OptimizationResult: ...
 
     @overload
@@ -742,7 +842,12 @@ class CircuitRun:
         spec: OptimizationSpec,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
+        checkpoint: str = "generation",
+        resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 10,
     ) -> OptimizationResult: ...
 
     def optimize(
@@ -751,46 +856,72 @@ class CircuitRun:
         spec: OptimizationSpec | None = None,
         *,
         parameters: ParameterSet | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
+        checkpoint: str = "generation",
+        resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int | object = _OMITTED_COMMIT_EVERY_GENERATIONS,
     ) -> OptimizationResult:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
-        if parameters is not None and not isinstance(parameters, ParameterSet):
-            raise TypeError(
-                "OptimizationSpec parameters must be a ParameterSet or None"
+        started_ns = perf_counter_ns()
+        with self._operation_scope("optimize", backend, precision, started_ns) as (backend, precision, trace):
+            if commit_every_generations is _OMITTED_COMMIT_EVERY_GENERATIONS:
+                commit_every_generations = 10 if backend == "jax" else 1
+            if isinstance(commit_every_generations, bool) or not isinstance(commit_every_generations, int):
+                raise TypeError("commit_every_generations must be a positive integer")
+            if commit_every_generations <= 0:
+                raise ValueError("commit_every_generations must be a positive integer")
+            if backend == "julia" and commit_every_generations != 1:
+                raise RuntimePreparationError(
+                    "commit_every_generations overrides require the JAX backend.", stage="runtime_prepare"
+                )
+            if parameters is not None and not isinstance(parameters, ParameterSet):
+                raise TypeError(
+                    "OptimizationSpec parameters must be a ParameterSet or None"
+                )
+            if on_progress is not None and not callable(on_progress):
+                raise TypeError("on_progress must be callable or None")
+            default_ref, optimization_spec = self._optimization_arguments(ref_or_spec, spec)
+            ref, selector_views = self._optimization_views(
+                optimization_spec, default_ref=default_ref
             )
-        if on_progress is not None and not callable(on_progress):
-            raise TypeError("on_progress must be callable or None")
-        default_ref, optimization_spec = self._optimization_arguments(ref_or_spec, spec)
-        ref, selector_views = self._optimization_views(
-            optimization_spec, default_ref=default_ref
-        )
-        prepared = self._prepare_analysis(
-            "optimize_direct",
-            ref,
-            optimization_spec,
-            parameters,
-            selector_views=selector_views,
-        )
-        return self._execute(prepared, bound_spec=optimization_spec, on_progress=on_progress)
+            self._require_backend_spec(backend, precision, optimization_spec)
+            if checkpoint not in ("generation", "off"):
+                raise ValueError("checkpoint must be generation or off")
+            if backend == "julia" and (checkpoint != "generation" or resume_from is not None):
+                raise RuntimePreparationError("Explicit checkpoint overrides require the JAX backend.", stage="runtime_prepare")
+            with trace.span("preparation"):
+                prepared = self._prepare_analysis(
+                    "optimize_direct",
+                    ref,
+                    optimization_spec,
+                    parameters,
+                    selector_views=selector_views,
+                    backend=backend, precision=precision,
+                )
+            return self._execute(prepared, bound_spec=optimization_spec, on_progress=on_progress,
+                                 checkpoint_policy=checkpoint, resume_from=resume_from,
+                                 commit_every_generations=commit_every_generations, trace=trace)
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DirectSolveResult | ParameterSweepResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: DirectSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> DirectSolveResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> DiagonalRootResult | ParameterSweepResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: DiagonalRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> DiagonalRootResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: OperatorElementRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> OperatorElementRootResult | ParameterSweepResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: OperatorElementRootSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> OperatorElementRootResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec, *, parameters: ParameterSet | None = None) -> OptimizationResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: OptimizationSpec, *, parameters: ParameterSet | None = None, backend: str | None = None, precision: str | None = None) -> OptimizationResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: HBSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> HBBatchResult | ParameterSweepResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: HBSolveSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> HBBatchResult | ParameterSweepResult: ...
 
     @overload
-    def resolve(self, ref: NetworkViewRef, spec: OperatorSpec, *, parameters: ParameterSet | ParameterSpace | None = None) -> OperatorResult | ParameterSweepResult: ...
+    def resolve(self, ref: NetworkViewRef, spec: OperatorSpec, *, parameters: ParameterSet | ParameterSpace | None = None, backend: str | None = None, precision: str | None = None) -> OperatorResult | ParameterSweepResult: ...
 
     @overload
     def resolve(
@@ -799,6 +930,8 @@ class CircuitRun:
         spec: HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec,
         *,
         parameters: ParameterSet | ParameterSpace | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> DirectQuantityResult | ParameterSweepResult: ...
 
     def resolve(
@@ -816,6 +949,8 @@ class CircuitRun:
         | OptimizationSpec,
         *,
         parameters: ParameterSet | ParameterSpace | None = None,
+        backend: str | None = None,
+        precision: str | None = None,
     ) -> (
         DirectSolveResult
         | HBBatchResult
@@ -828,6 +963,8 @@ class CircuitRun:
     ):
         """Verify and load the success for this exact request without retrying."""
 
+        backend, precision = self._selected_backend(backend, precision)
+        self._require_backend_spec(backend, precision, spec)
         self._require_ref(ref)
         if isinstance(spec, DirectSolveSpec):
             operation = "solve_direct"
@@ -863,7 +1000,12 @@ class CircuitRun:
             spec,
             parameters,
             selector_views=selector_views,
+            backend=backend, precision=precision,
         )
+        if backend == "jax":
+            from .execution.jax_operation import resolve_jax_operation
+            return resolve_jax_operation(binding=self._binding, prepared_analysis=prepared,
+                                         decoder=self._result_decoder(), bound_spec=spec)
         with self._binding.reader():
             success = self._binding.resolve_success(prepared.request_sha256)
             evidence_lease = _verified_evidence_lease(self._binding, success)
@@ -1453,6 +1595,8 @@ class CircuitRun:
         parameters: ParameterSet | ParameterSpace | None,
         *,
         selector_views: Mapping[int, NetworkViewRef] | None = None,
+        backend: str = "julia",
+        precision: str = "float64",
     ) -> PreparedAnalysis:
         """Normalize one non-executable analysis declaration exactly once."""
 
@@ -1565,6 +1709,12 @@ class CircuitRun:
             raise CompilerInvariantError(
                 "operation is outside the runtime", stage="request_encode"
             )
+        if backend == "jax":
+            from .execution.request import _JAX_ALGORITHMS
+            semantic = _jax_runtime_identity(self._runtime_base, precision=precision)
+            semantic["algorithm_id"] = _JAX_ALGORITHMS[
+                encoded_spec["type"] if operation == "evaluate_direct" else operation
+            ]
         return PreparedAnalysis.create(
             plan_sha256=self._plan_sha256,
             operation=operation,
@@ -1584,23 +1734,88 @@ class CircuitRun:
         self,
         prepared_analysis: PreparedAnalysis,
         *,
+        trace,
         bound_spec: object | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
+        checkpoint_policy: str = "generation",
+        resume_from: Mapping[str, object] | None = None,
+        commit_every_generations: int = 1,
     ):
+        if prepared_analysis.request()["runtime_semantic"].get("backend") == "jax":
+            from .execution.jax_operation import execute_jax_operation
+            return execute_jax_operation(
+                binding=self._binding, plan_document=self._plan_document,
+                prepared_analysis=prepared_analysis, decoder=self._result_decoder(),
+                bound_spec=bound_spec, on_progress=on_progress,
+                checkpoint_policy=checkpoint_policy, resume_from=resume_from,
+                commit_every_generations=commit_every_generations, trace=trace,
+            )
         from .execution.coordinator import execute_prepared
 
-        with execute_prepared(
-            binding=self._binding,
-            plan_document=self._plan_document,
-            prepared_analysis=prepared_analysis,
-            on_progress=on_progress,
-        ) as success:
-            evidence_lease = _verified_evidence_lease(self._binding, success)
-            return self._decode_success(
-                success,
-                bound_spec=bound_spec,
-                evidence_lease=evidence_lease,
-            )
+        request = prepared_analysis.request()
+        # Native evidence has request/attempt/receipt authorities, rather than a
+        # benchmark task or environment record. Keep unavailable IDs null.
+        trace.bind(operation=request["operation"], request_sha256=prepared_analysis.request_sha256,
+                   task_id=None, environment_sha256=None, attempt_id=None,
+                   details={"native_clock": "unavailable", "runtime_semantic": request["runtime_semantic"]})
+        native_success = None
+        with trace.span("julia_execution", details={"request_sha256": prepared_analysis.request_sha256}):
+            try:
+                with execute_prepared(
+                    binding=self._binding,
+                    plan_document=self._plan_document,
+                    prepared_analysis=prepared_analysis,
+                    on_progress=on_progress,
+                    _timing_observer=lambda stage, start, end, details: trace.measure(
+                        stage, start_tick_ns=start, end_tick_ns=end, details=dict(details)),
+                ) as success:
+                    native_success = success
+                    evidence_lease = _verified_evidence_lease(self._binding, success)
+                    with trace.span("result_decode"):
+                        result = self._decode_success(
+                            success, bound_spec=bound_spec, evidence_lease=evidence_lease,
+                        )
+            finally:
+                if native_success is not None:
+                    # execute_prepared has released its reader/writer before
+                    # trace.bind starts its own short Plan transaction.
+                    from sys import exception
+                    primary = exception()
+                    try:
+                        attempt = native_success.attempt
+                        attempt_sha = sha256_hex(canonical_json_bytes(attempt))
+                        receipt_sha = sha256_hex(canonical_json_bytes(native_success.receipt))
+                        environment = {
+                            key: attempt[key] for key in (
+                                "julia_executable_sha256", "os", "architecture", "cpu",
+                                "julia_threads", "blas_threads", "blas_vendor",
+                            ) if key in attempt
+                        }
+                        trace.bind(
+                            operation=request["operation"], request_sha256=prepared_analysis.request_sha256,
+                            task_id=None, environment_sha256=None, attempt_id=attempt_sha,
+                            details={"native_clock": "unavailable", "native_environment": environment,
+                                     "runtime_semantic": request["runtime_semantic"],
+                                     "native_attempt_directory": attempt["directory"],
+                                     "native_identity": {"attempt_sha256": attempt_sha,
+                                                         "attempt_id_kind": "canonical_attempt_sha256",
+                                                         "receipt_sha256": receipt_sha}},
+                        )
+                        trace.add_numerical_ref({
+                            "role": "native_verified_success",
+                            "request_sha256": prepared_analysis.request_sha256,
+                            "attempt_sha256": attempt_sha,
+                            "result_sha256": native_success.receipt["result_sha256"],
+                            "receipt_sha256": receipt_sha,
+                            "attempt_directory": attempt["directory"],
+                        })
+                    except BaseException as trace_error:
+                        if primary is None:
+                            raise
+                        primary.add_note(
+                            f"Native operation trace binding also failed: {type(trace_error).__name__}: {trace_error}"
+                        )
+        return result
 
     def _source_units(
         self,
@@ -1889,6 +2104,14 @@ class CircuitRun:
                             field = "root_hint" if isinstance(branch, DiagonalRootSpec) else "anchor"
                             add(_source_unit_identity(scope="request_optimization_objective", parameter_id=parameter_id, field=f"{prefix}:{branch_name}:{field}"), getattr(branch, field), "hertz")
         return sorted(evidence, key=lambda item: str(item["identity"]))
+
+    def _result_decoder(self):
+        from .results.decode import VerifiedResultDecoder
+        return VerifiedResultDecoder(
+            plan_sha256=self._plan_sha256, plan=self._plan,
+            parameter_lookup=self._parameter_lookup,
+            coordinate_lookup=self._coordinate_lookup,
+        )
 
     def _decode_success(
         self,

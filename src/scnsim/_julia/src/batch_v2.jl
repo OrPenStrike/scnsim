@@ -130,7 +130,7 @@ function point_payload!(point_root::String, attempt_prefix::String)
 end
 
 function run_parameter_batch(request, plan, request_sha::String, attempt_sha::String, staging::String;
-        request_directory::String, recovery)
+        request_directory::String, recovery, benchmark_context = nothing)
     source = request["parameter_source"]; count, points = parameter_points(source)
     root_relative = "artifacts/parameter_points/"; root = joinpath(staging, root_relative)
     mkpath(joinpath(root, "chunks")); mkpath(joinpath(root, "points"))
@@ -175,7 +175,7 @@ function run_parameter_batch(request, plan, request_sha::String, attempt_sha::St
         try
             context = point_request["operation"] == "evaluate_direct" ? "direct_quantity" : "compile"
             raw = compile_primitive(plan, structured_parameter_values(parameters); context_kind = context,
-                authorized = structured_authorizations(parameters), authorization_source = "parameter_set")
+                authorized = structured_authorizations(parameters), authorization_source = "parameter_set", benchmark_context = benchmark_context)
             point_request["discretization"] = raw.discretization
             lineage, view = realized_ref_lineage(raw, declarative_lineage(plan, point_request, raw))
             point_request["ref_lineage"] = lineage; metadata["ref_lineage"] = lineage

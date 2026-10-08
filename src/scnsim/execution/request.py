@@ -22,6 +22,14 @@ _DIRECT_ALGORITHMS = {
 }
 
 
+_JAX_ALGORITHMS = {
+    "solve_direct": "scnsim.jax.direct_response.v1",
+    "diagonal_root": "scnsim.jax.diagonal_root.newton32.v1",
+    "response_element": "scnsim.jax.response_element.v1",
+    "optimize_direct": "scnsim.jax.direct_cmaes.cmaes_0_13_1.v1",
+}
+
+
 _EVALUATION_ALGORITHMS = {
     "diagonal_root": "scnsim.diagonal_root.newton32.v2",
     "operator_element_root": "scnsim.operator_element_root.newton32.v1",
@@ -116,6 +124,10 @@ def canonical_request_document(
         if selected_operation == "evaluate_direct"
         else _DIRECT_ALGORITHMS.get(selected_operation)
     )
+    if runtime.get("backend") == "jax":
+        expected_algorithm = _JAX_ALGORITHMS.get(
+            str(spec_type) if selected_operation == "evaluate_direct" else selected_operation
+        )
     expected_spec = {
         "solve_direct": "direct_solve",
         "solve_hb": "hb_solve",

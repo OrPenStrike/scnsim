@@ -169,7 +169,7 @@ function structured_endpoint_map(plan)
     return result, ground
 end
 
-function structured_line_realizations(plan, resolved, context_kind)
+function structured_line_realizations(plan, resolved, context_kind; benchmark_context = nothing, values = nothing)
     realizations = Dict{String,Dict{String,Any}}()
     for leaf in plan["physical_leaves"]
         String(leaf["model"]) == "transmission_line" || continue
@@ -240,6 +240,12 @@ function structured_line_realizations(plan, resolved, context_kind)
             record["modal_velocities"] = [quantity(v, "meter / second", "velocity") for v in velocities]
             record["hmax"] = quantity(hmax, "meter", "length")
             max(1, ceil(Int, ratio))
+        end
+        if benchmark_context !== nothing
+            # The physical policy is validated above before a request-owned experiment chooses N.
+            sections = benchmark_context.mesh(path, values, sections)
+            sections isa Integer && !(sections isa Bool) && sections > 0 ||
+                fail("execution", "compiler_invariant", "compile", context_kind, "benchmark mesh section count is invalid")
         end
         dx = length_value / sections
         isfinite(dx) && dx > 0.0 && all(isfinite, R .* dx) && all(isfinite, L .* dx) &&
@@ -324,7 +330,7 @@ end
 function structured_compile(plan_value, values::Dict{String,Any}; context_kind::String = "compile",
         authorized::Set{String} = Set{String}(), extrapolation_evidence::Union{Nothing,Vector{Any}} = nothing,
         authorization_source::String = "none", emit_audit::Bool = false, resolved_rows = nothing,
-        fail_unauthorized::Bool = true)
+        fail_unauthorized::Bool = true, benchmark_context = nothing)
     plan = plain(plan_value)
     get(plan, "schema", nothing) == "scnsim.plan" && get(plan, "schema_version", nothing) == 2 ||
         fail("execution", "compiler_invariant", "compile", "compile", "structured Plan schema/version is invalid")
@@ -334,7 +340,7 @@ function structured_compile(plan_value, values::Dict{String,Any}; context_kind::
         structured_resolve_fields(plan, values; context_kind = context_kind, authorized = authorized,
             extrapolation_evidence = extrapolation_evidence, authorization_source = authorization_source,
             fail_unauthorized = fail_unauthorized) : structured_resolved_rows(plan, resolved_rows)
-    realizations = structured_line_realizations(plan, resolved, context_kind)
+    realizations = structured_line_realizations(plan, resolved, context_kind; benchmark_context = benchmark_context, values = values)
     nodes = structured_node_basis(plan, resolved, realizations); node_index = Dict(node => index for (index, node) in enumerate(nodes))
     endpoint_to_node, ground = structured_endpoint_map(plan)
     valid_nets = Set(vcat(nodes, [ground]))

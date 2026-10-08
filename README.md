@@ -20,6 +20,41 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
+The current release candidate is Alpha `1.0.0a2`, requiring Python 3.12. Normal
+`CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
+Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
+[Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
+the current Plan leaf without executing another calculation. Generation
+checkpoints and boundary diagnostics preserve recovery and numerical evidence.
+JAX Optimization defaults to `commit_every_generations=10`; explicit positive
+integers select a different group size in the Plan leaf’s SQLite store. Omitted
+intervals with explicit Julia keep its existing native value of 1. See the
+guide for recovery, durability and recomputation limits.
+This candidate is `CONVERGING` and does not replace the immutable Alpha trial
+snapshot; no performance or numerical acceptance is implied.
+
+## Alpha 1.0.0a2 release notes
+
+This candidate retains `CONVERGING` semantics; it is not a stable release or a
+claim of new numerical certainty. Publication and its exact tag remain separate
+delivery steps. The immutable `v1.0.0a1` snapshot and historical course outputs
+keep their original identities.
+
+Python 3.12 or newer and pinned CPU JAX/CMA dependencies supply the default
+same-process JAX path. Julia is optional and explicitly selected; Julia-only
+features require the extra and a manually provided compatible executable.
+JAX Optimization now defaults to committing every 10 completed generations;
+explicit positive intervals remain available, and omitted Julia intervals retain
+its existing native value of 1. A larger interval trades fewer commits for more
+buffered evidence and possible recomputation after interruption.
+
+Current JAX operation evidence uses a Plan-leaf SQLite store. Same-version exact
+checkpoint references resume only committed full CMA/RNG state; checkpoint off
+creates no resumable state. Readonly access never repairs a hot journal: recovery
+is explicit on the bound Run. Historical workspaces remain readonly without
+migration. Public interfaces and saved workspace compatibility may change before
+a stable release; pin exact versions and preserve their environments.
+
 ## A first Direct S11 result
 
 This Chapter 1 example builds a grounded parallel LC resonator, couples it to
@@ -103,7 +138,8 @@ baseline_s11.show(component="magnitude", magnitude="db")
 selected_s11.show(component="magnitude", magnitude="db")
 ```
 
-The first `run.solve()` may prepare the locked Julia runtime. These are
+New `run.solve()` execution requires the optional Julia support and an already
+installed Julia 1.12.6; it may prepare the committed native project dependencies. These are
 previously published Chapter 1 figures—not generated during this README or the
 website build—and show the same model, sample grid, and `signal_in ← signal_in`
 channel. The figures present the complete S11 magnitude and phase; the named
@@ -146,7 +182,8 @@ responsibilities.
 
 ## Install and learn
 
-In a consuming project, install the exact Alpha tag and retain the resulting
+The immutable first-Alpha snapshot remains available for historical trial use.
+To install that snapshot, retain the resulting
 lockfile and environment for reproducibility:
 
 ```bash
@@ -154,11 +191,25 @@ uv add "scnsim @ git+https://github.com/OrPenStrike/scnsim.git@v1.0.0a1"
 uv run python -c "import scnsim; print(scnsim.__version__)"
 ```
 
+For the current development checkout, `uv sync --locked` installs the pinned CPU
+JAX/CMA runtime on Python 3.12. The default JAX path does not install JuliaPkg,
+discover Julia or launch a numerical child process. Configure its CPU pool before
+first execution with `configure_runtime(cpu_threads=...)`; per-call `backend`
+and `precision` override the Run defaults. `run.benchmark()` and `resolve()` are
+read-only. See the [operation guide](docs/guides/benchmark.qmd).
+
+Explicit Julia execution, HB and the other Julia-only quantity families, compiler
+preflight (`run.explain()`) and compiled schematics require
+`uv sync --locked --extra julia` and manually provided Julia 1.12.6 on PATH or
+`PYTHON_JULIAPKG_EXE`. Feature calls never download Julia or change backends.
+Historical Engineer-course execution sources explicitly select Julia so their
+original outputs retain their original numerical authority.
+
 The Engineer-course generators use repository-local Jupyter tooling and an
 optional static-export extra:
 
 ```bash
-uv sync --locked --group course-generation --extra static-export
+uv sync --locked --group course-generation --extra static-export --extra julia
 ```
 
 The site uses the vendored, unmodified Askr v0.4.0 `askr-html` format with

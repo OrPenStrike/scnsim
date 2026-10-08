@@ -49,7 +49,7 @@ function bootstrap_record(request, request_sha::String, ordinal::Int)
     return record
 end
 
-function read_authorization(request, request_sha::String, staging::String, ordinal::Int)
+function read_authorization(request, request_sha::String, staging::String, ordinal::Int; benchmark_context = nothing)
     eof(stdin) && error("launch authorization is absent")
     payload = readline(stdin; keep = false)
     authorization = plain(JSON3.read(payload))
@@ -66,7 +66,14 @@ function read_authorization(request, request_sha::String, staging::String, ordin
     attempt["request_sha256"] == request_sha || error("attempt request hash mismatches request")
     attempt["ordinal"] == ordinal || error("attempt ordinal mismatches staging directory")
     attempt["attempt_state"] == "launched" || error("attempt is not launched")
-    attempt["julia_threads"] == 1 && attempt["blas_threads"] == 1 || error("attempt thread evidence violates the single-thread execution policy")
+    if benchmark_context === nothing
+        attempt["julia_threads"] == 1 && attempt["blas_threads"] == 1 || error("attempt thread evidence violates the single-thread execution policy")
+    else
+        expected_julia = benchmark_context.julia_threads
+        expected_blas = benchmark_context.julia_blas_threads
+        attempt["julia_threads"] == expected_julia && attempt["blas_threads"] == expected_blas || error("attempt thread evidence violates the declared execution profile")
+        Threads.nthreads() == expected_julia && BLAS.get_num_threads() == expected_blas || error("benchmark native thread settings disagree with attempt evidence")
+    end
     if get(request, "operation", nothing) == "solve_hb"
         get(attempt, "fftw_threads", nothing) == 1 || error("attempt FFTW thread evidence violates HB policy")
     end
@@ -129,12 +136,12 @@ function read_point_committed(request_sha::String, attempt_sha::String, ordinal:
     return String(frame["seal_sha256"])
 end
 
-function run_terminal(request_path::String, staging::String)
+function run_terminal(request_path::String, staging::String; benchmark_context = nothing)
     request, request_sha, plan = read_request_and_plan(request_path)
     ordinal = staging_ordinal(staging)
     println(canonical_json(bootstrap_record(request, request_sha, ordinal)))
     flush(stdout)
-    attempt_sha, attempt = read_authorization(request, request_sha, staging, ordinal)
+    attempt_sha, attempt = read_authorization(request, request_sha, staging, ordinal; benchmark_context = benchmark_context)
     # Python owns this envelope and its canonical encoder. Use the exact bytes
     # already hashed and validated by read_authorization; a second path read
     # would not remain bound to the authorization digest.
@@ -149,18 +156,18 @@ function run_terminal(request_path::String, staging::String)
             operation == "optimize_direct" && fail("execution", "compiler_invariant", "parameter_source", "compile", "optimization requires one fixed point parameter source")
             recovery = read_point_recovery(request_sha, attempt_sha)
             run_parameter_batch(request, plan, request_sha, attempt_sha, staging;
-                request_directory = dirname(request_path), recovery = recovery)
+                request_directory = dirname(request_path), recovery = recovery, benchmark_context = benchmark_context)
             return nothing
         end
         if operation == "optimize_direct"
             optimize_direct(request, plan, request_sha, attempt_sha, staging;
                 resume_ledger_sha = resume_ledger_sha,
-                request_directory = dirname(request_path), attempt = attempt)
+                request_directory = dirname(request_path), attempt = attempt, benchmark_context = benchmark_context)
             return nothing
         end
         compile_context = operation == "evaluate_direct" ? "direct_quantity" : "compile"
         raw_compiled = compile_primitive(plan, parameter_values(request); context_kind = compile_context,
-            authorized = parameter_set_authorizations(request), authorization_source = "parameter_set")
+            authorized = parameter_set_authorizations(request), authorization_source = "parameter_set", benchmark_context = benchmark_context)
         request["discretization"] = raw_compiled.discretization
         realized_lineage, view = realized_ref_lineage(raw_compiled, declarative_lineage(plan, request, raw_compiled))
         request["ref_lineage"] = realized_lineage
