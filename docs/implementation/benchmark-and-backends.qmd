@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0.dev15 development candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev16 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -115,6 +115,46 @@ generation/off. A cache-hit operation records its requested policy and actual
 checkpoint availability without creating missing snapshots. Checkpoint off does
 not discard numerical evidence or baseline/root
 anchors. Standalone root anchors never become CMA-resumable checkpoints.
+
+## Same-generation JAX Optimization resources
+
+`configure_runtime(cpu_threads=N)` declares the task's CPU budget. JAX
+Optimization uses a persistent thread pool for independent objective work
+within one generation; `None` retains serial execution with the existing
+environment, and 1 is serial. Candidates from another generation are never
+submitted before the current generation is consumed. The coordinator alone
+owns CMA ask/tell, candidate mapping and ordering, cache registration, winner
+selection, storage and callbacks. Duplicate candidates retain their ordered
+occurrences while sharing the existing numerical-cache authority.
+
+Objective waves share the task budget through a fair resource gate: JAX work
+holds exclusive access and native sparse work shares available capacity.
+For an integer CPU declaration, `threadpoolctl==3.7.0` establishes BLAS1 in the
+coordinator and at worker initialization; the managed limits remain in force
+until the pool is joined, then the prior library limits are restored. Task cleanup joins outstanding
+workers before releasing this ownership. `None` leaves existing library limits
+unchanged. This does not introduce Julia
+candidate parallelism, change process affinity or replace numerical failures
+with a fallback. Runtime and checkpoint identities bind the allocation policy
+and its actual resource declaration; resume must match that identity.
+The process resource lease covers all normal same-process JAX numerical calls,
+including Direct: an integer declaration manages BLAS1 while Direct retains the
+declared PJRT pool. `None` retains serial/environment behavior. Read-only
+operations neither initialize the runtime nor acquire numerical resources.
+
+Numerical evidence remains complete and ordered. Commit grouping remains 10
+completed generations by default, with the existing baseline, tail and
+durability-before-callback boundaries. Optimization timing records a generation's
+population wall interval and its population average; the average is wall time
+divided by the population count, not individual candidate latency. Fine-grained
+Optimization clocks are removed rather than retaining redundant per-objective
+timing work; numerical outcomes and checkpoint evidence are retained. These
+resource and timing changes do not change the numerical or CMA/search algorithm.
+The summary is `details.generation_performance` on the existing
+`population_evaluation` span, not an additional task-history event or projection
+schema. Its `active_worker_count` is the actual peak number of callback
+invocations, including callbacks waiting for assembly access; it does not
+measure CPU utilization or establish overlapping native computation.
 
 ## One numerical and one result authority
 

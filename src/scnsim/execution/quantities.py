@@ -232,7 +232,8 @@ class QuantityEvaluator:
         return canonical_json_bytes({"spec": spec, "view": view, "type": spec["type"]}).decode()
 
     def evaluate_jobs(self, jobs: tuple[EvaluationJob, ...]) -> tuple[EvaluationResult, ...]:
-        start = perf_counter_ns()
+        emit = self.emit
+        start = perf_counter_ns() if emit is not None else None
         try:
             results = self.backend.evaluate_batch(jobs)
             if len(results) != len(jobs) or any(job.id != result.id for job, result in zip(jobs, results)):
@@ -240,9 +241,9 @@ class QuantityEvaluator:
                 raise CompilerInvariantError("numerical batch changed job identity/order", stage="benchmark_protocol")
             return results
         finally:
-            if self.emit is not None:
-                self.emit("timing", {"stage": "numerical_evaluation", "start_tick_ns": start,
-                                      "end_tick_ns": perf_counter_ns(), "counts": {"jobs": len(jobs)}})
+            if emit is not None:
+                emit("timing", {"stage": "numerical_evaluation", "start_tick_ns": start,
+                                "end_tick_ns": perf_counter_ns(), "counts": {"jobs": len(jobs)}})
 
     @staticmethod
     def _anchor_omega(spec: Mapping[str, object]) -> complex:

@@ -143,14 +143,50 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                 return _decode(success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec)
 
     from ..benchmark.backends.jax_backend import get_jax_backend
-    from .python_host import execute_analysis
+    from .resources import operation_resources
 
     resources = request["runtime_semantic"]["resources"]
     precision = request["runtime_semantic"]["precision"]
     if runtime_resource_identity() != resources:
         raise RuntimePreparationError("Prepared JAX resources changed before execution", stage="runtime_prepare")
-    with trace.span("backend_prepare"):
-        backend = get_jax_backend(precision=precision, resources=get_runtime_configuration(), trace=trace)
+    runtime_configuration = get_runtime_configuration()
+    with operation_resources(cpu_threads=runtime_configuration.cpu_threads) as operation_resource:
+        with trace.span("backend_prepare"):
+            backend = get_jax_backend(
+                precision=precision, resources=runtime_configuration,
+                trace=None if optimization else trace,
+                operation_resources=operation_resource, diagnostics=not optimization,
+            )
+
+        worker_backend_factory = None
+        if optimization:
+            def worker_backend_factory():
+                return operation_resource.worker_state(
+                    "scnsim.optimization.jax_backend",
+                    lambda: get_jax_backend(
+                        precision=precision, resources=runtime_configuration, trace=None,
+                        operation_resources=operation_resource, diagnostics=False,
+                    ),
+                )
+
+        return _execute_with_backend(
+            binding=binding, plan_document=plan_document, prepared_analysis=prepared_analysis,
+            decoder=decoder, bound_spec=bound_spec, on_progress=on_progress,
+            checkpoint_policy=checkpoint_policy, resume_from=resume_from,
+            commit_every_generations=commit_every_generations, trace=trace,
+            request=request, request_sha=request_sha, optimization=optimization, precision=precision,
+            resources=resources, backend=backend, operation_resource=operation_resource,
+            worker_backend_factory=worker_backend_factory,
+            notify_committed_generation=notify_committed_generation,
+        )
+
+
+def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
+                          on_progress, checkpoint_policy, resume_from, commit_every_generations,
+                          trace, request, request_sha, optimization, precision, resources, backend,
+                          operation_resource, worker_backend_factory, notify_committed_generation):
+    from .python_host import execute_analysis
+
     writer = None
     attempt_id = None
     completed = False
@@ -267,7 +303,9 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                                      payload={"attempt_id": attempt_id, "checkpoint": dict(resume_from)})
             _notify(on_progress, request, phase="resume", generation=checkpoint["generation"], best_cost=best_cost, trace=trace)
         terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
-                                    checkpoint=checkpoint, checkpoint_policy=checkpoint_policy)
+                                    checkpoint=checkpoint, checkpoint_policy=checkpoint_policy,
+                                    operation_resources=operation_resource,
+                                    worker_backend_factory=worker_backend_factory)
         if writer is not None:
             trace.publish_pending_spans(writer)
             with binding.writer():

@@ -20,11 +20,16 @@ from scipy.sparse.linalg import splu
 
 
 class Measurements:
-    def __init__(self, trace=None, parent=None):
+    """Optional presentation intervals; disabled collection never reads a clock."""
+    def __init__(self, trace=None, parent=None, *, enabled=True):
         self.trace, self.parent, self.rows = trace, parent, []
+        self.enabled = enabled
 
     @contextmanager
     def phase(self, kind, **details):
+        if not self.enabled:
+            yield
+            return
         start = perf_counter_ns()
         def record(status):
             end = perf_counter_ns()

@@ -1,7 +1,9 @@
-"""Process-owned immutable JAX CPU pool declaration, independent of Plans.
+"""Process-owned immutable JAX/task CPU declaration, independent of Plans.
 
 PJRT_NPROC is applied before backend initialization. This module neither imports
 JAX nor changes affinity, platform selection or process-global precision.
+The resource owner consumes the declared Optimization capacity and manages
+native library limits; None preserves serial execution with the environment.
 """
 from __future__ import annotations
 
@@ -23,6 +25,11 @@ class RuntimeConfiguration:
                 raise TypeError("cpu_threads must be an integer or None")
             if self.cpu_threads <= 0:
                 raise ValueError("cpu_threads must be positive")
+
+    @property
+    def optimization_workers(self) -> int:
+        """Task capacity; an omitted declaration preserves serial execution."""
+        return 1 if self.cpu_threads is None else self.cpu_threads
 
 
 _configuration = RuntimeConfiguration()
@@ -48,7 +55,7 @@ def _restart_error() -> RuntimePreparationError:
 
 
 def configure_runtime(*, cpu_threads: int | None = None) -> RuntimeConfiguration:
-    """Declare the CPU pool before JAX initialization; known repeats are inert."""
+    """Declare JAX pool and task budget before initialization; repeats are inert."""
     global _configuration, _prior_pjrt_nproc, _owns_pjrt_nproc
     requested = RuntimeConfiguration(cpu_threads)
     with _lock:
@@ -107,4 +114,6 @@ def runtime_resource_identity() -> dict[str, object]:
     """Bind declaration and observed environment without claiming pool discovery."""
     configuration = get_runtime_configuration()
     return {"cpu_threads": configuration.cpu_threads,
-            "pjrt_nproc": os.environ.get("PJRT_NPROC")}
+            "pjrt_nproc": os.environ.get("PJRT_NPROC"),
+            "allocation_policy": "scnsim.same_generation_fair_gate_blas1.v1",
+            "optimization_workers": configuration.optimization_workers}

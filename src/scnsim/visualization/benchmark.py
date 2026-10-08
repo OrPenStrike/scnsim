@@ -1540,6 +1540,282 @@ def _timeline_root_summaries(
     return cumulative_label, rows
 
 
+_GENERATION_PERFORMANCE_KEYS = (
+    "generation",
+    "population_size",
+    "population_evaluation_wall_ns",
+    "average_candidate_wall_ns",
+    "new_unique_candidates",
+    "cache_hit_occurrences",
+    "same_generation_duplicate_occurrences",
+    "numerical_failure_occurrences",
+    "worker_capacity",
+    "active_worker_count",
+)
+
+
+def _generation_performance_section(
+    operations: Sequence[_TimelineOperation],
+    spans: Sequence[_TimelineSpan],
+) -> str | None:
+    """Present recorded complete-population summaries, without candidate timing inference."""
+
+    population_spans = [span for span in spans if span.kind == "population_evaluation"]
+    if not population_spans:
+        return None
+
+    operation_by_id = {operation.operation_id: operation for operation in operations}
+    operation_order = {
+        operation.operation_id: index
+        for index, operation in enumerate(operations, 1)
+    }
+    summaries_by_operation: dict[
+        str,
+        list[tuple[_TimelineSpan, Mapping[str, object], dict[str, int | None]]],
+    ] = {}
+    unreported_by_status: dict[str, int] = {}
+    for span in population_spans:
+        details = span.details if isinstance(span.details, Mapping) else None
+        summary_value = None if details is None else details.get("generation_performance")
+        if summary_value is None:
+            unreported_by_status[span.status] = unreported_by_status.get(span.status, 0) + 1
+            continue
+        summary = _required_mapping(
+            summary_value,
+            f"population_evaluation {span.span_id}.generation_performance",
+        )
+        parsed_summary: dict[str, int | None] = {}
+        for key in _GENERATION_PERFORMANCE_KEYS:
+            if key not in summary:
+                raise KeyError(
+                    f"population generation summary is missing required field {key!r}"
+                )
+            parsed_summary[key] = _timeline_integer(
+                summary[key], f"population generation summary {key}"
+            )
+        summaries_by_operation.setdefault(span.operation_id, []).append(
+            (span, summary, parsed_summary)
+        )
+
+    if not summaries_by_operation:
+        statuses = ", ".join(
+            f"{status}: {count}" for status, count in sorted(unreported_by_status.items())
+        ) or "not recorded"
+        return (
+            "<h2>Generation population performance</h2>"
+            "<p>No completed population summary was recorded. Population-evaluation "
+            f"spans without a summary are retained as unreported ({escape(statuses)}); "
+            "no missing generation is filled with zero.</p>"
+        )
+
+    table_rows: list[tuple[object, ...]] = []
+    weighted_rows: list[tuple[object, ...]] = []
+    plot_traces: list[tuple[str, list[int], list[float], list[str], bool]] = []
+    run_labels: dict[str, str] = {}
+    for operation_id, summaries in summaries_by_operation.items():
+        operation = operation_by_id[operation_id]
+        run_number = operation_order[operation_id]
+        run_label = f"Run {run_number}"
+        run_labels[operation_id] = run_label
+        ordered = sorted(
+            summaries,
+            key=lambda item: (
+                item[2]["generation"] is None,
+                item[2]["generation"] or 0,
+            ),
+        )
+        run_segments: list[tuple[list[int], list[float], list[str]]] = []
+        x_generation: list[int] = []
+        y_average_ms: list[float] = []
+        hover: list[str] = []
+        previous_generation: int | None = None
+
+        def finish_segment() -> None:
+            nonlocal x_generation, y_average_ms, hover
+            if x_generation:
+                run_segments.append((x_generation, y_average_ms, hover))
+            x_generation, y_average_ms, hover = [], [], []
+
+        total_wall_ns = 0
+        total_population = 0
+        aggregate_generation_count = 0
+        for span, summary, parsed_summary in ordered:
+            generation = parsed_summary["generation"]
+            population_size = parsed_summary["population_size"]
+            population_wall_ns = parsed_summary["population_evaluation_wall_ns"]
+            average_wall_ns = parsed_summary["average_candidate_wall_ns"]
+            new_unique = summary["new_unique_candidates"]
+            cache_hits = summary["cache_hit_occurrences"]
+            same_generation_duplicates = summary["same_generation_duplicate_occurrences"]
+            numerical_failures = summary["numerical_failure_occurrences"]
+            worker_capacity = summary["worker_capacity"]
+            active_callbacks = summary["active_worker_count"]
+            extra_counters = {
+                str(key): value
+                for key, value in summary.items()
+                if key not in _GENERATION_PERFORMANCE_KEYS
+            }
+            recorded_average = (
+                f"{average_wall_ns} ns ({average_wall_ns / 1e6:.9g} ms)"
+                if average_wall_ns is not None else "not recorded"
+            )
+            population_wall = (
+                f"{population_wall_ns} ns ({population_wall_ns / 1e6:.9g} ms)"
+                if population_wall_ns is not None else "not recorded"
+            )
+            table_rows.append((
+                run_label,
+                _recorded(generation),
+                span.status,
+                _recorded(population_size),
+                population_wall,
+                recorded_average,
+                _recorded(new_unique),
+                _recorded(cache_hits),
+                _recorded(same_generation_duplicates),
+                _recorded(numerical_failures),
+                _recorded(worker_capacity),
+                _recorded(active_callbacks),
+                _native_compact(extra_counters) if extra_counters else "not recorded",
+            ))
+            if generation is None or average_wall_ns is None:
+                finish_segment()
+                previous_generation = None
+            else:
+                if previous_generation is not None and generation != previous_generation + 1:
+                    finish_segment()
+                x_generation.append(generation)
+                y_average_ms.append(average_wall_ns / 1e6)
+                previous_generation = generation
+            point_hover = "<br>".join((
+                f"{escape(run_label)} · generation {_recorded(generation)}",
+                f"population size: {escape(str(_recorded(population_size)))}",
+                f"population evaluation wall: {escape(population_wall)}",
+                f"recorded wall per population slot: {escape(recorded_average)}",
+                f"new unique candidates: {escape(str(new_unique))}",
+                f"cache-hit occurrences: {escape(str(cache_hits))}",
+                f"same-generation duplicates: {escape(str(same_generation_duplicates))}",
+                f"numerical-failure occurrences: {escape(str(numerical_failures))}",
+                f"worker capacity: {escape(str(worker_capacity))}",
+                f"peak active candidate callbacks: {escape(str(active_callbacks))}",
+                f"operation method/backend/precision: {escape(str(_recorded(operation.method)))}/"
+                f"{escape(str(_recorded(operation.backend)))}/{escape(str(_recorded(operation.precision)))}",
+                f"span status: {escape(span.status)}",
+            ))
+            if generation is not None and average_wall_ns is not None:
+                hover.append(point_hover)
+            if population_wall_ns is not None and population_size is not None:
+                total_wall_ns += population_wall_ns
+                total_population += population_size
+                aggregate_generation_count += 1
+
+        if aggregate_generation_count and total_population:
+            weighted_ns = total_wall_ns / total_population
+            weighted_value = (
+                f"{total_wall_ns}/{total_population} ns/slot "
+                f"({weighted_ns / 1e6:.9g} ms/slot)"
+            )
+        else:
+            weighted_value = "unavailable; no recorded population wall/slot denominator"
+        weighted_rows.append((
+            run_label,
+            len(ordered),
+            total_population if aggregate_generation_count else "not recorded",
+            (
+                f"{total_wall_ns} ns ({total_wall_ns / 1e9:.9g} s)"
+                if aggregate_generation_count else "not recorded"
+            ),
+            weighted_value,
+        ))
+        finish_segment()
+        plot_traces.extend(
+            (run_label, segment_x, segment_y, segment_hover, index == 0)
+            for index, (segment_x, segment_y, segment_hover) in enumerate(run_segments)
+        )
+
+    go, pio, _ = _plotly()
+    figure = go.Figure()
+    for run_label, x_generation, y_average_ms, hover, show_legend in plot_traces:
+        figure.add_trace(go.Scatter(
+            x=x_generation,
+            y=y_average_ms,
+            mode="lines+markers",
+            name=run_label,
+            legendgroup=run_label,
+            showlegend=show_legend,
+            connectgaps=False,
+            text=hover,
+            hovertemplate="%{text}<extra></extra>",
+        ))
+    figure.update_xaxes(title_text="Recorded generation", rangemode="tozero")
+    figure.update_yaxes(title_text="Recorded population-evaluation wall / population size (ms)")
+    _style(figure, Theme.AUTO, title="Generation population evaluation")
+    figure.update_layout(hovermode="closest")
+
+    body = [
+        "<h2>Generation population performance</h2>",
+        "<p>Each point is one recorded complete population evaluation. The per-slot "
+        "value is the recorded population-evaluation wall divided by population size; "
+        "it is a generation-level aggregate, not an individual candidate duration. "
+        "It can include dispatch, waits, and parallel overlap. Callback concurrency "
+        "is reported as callbacks in flight, not as CPU-core use or proof of native "
+        "overlap. Missing partial-generation summaries remain unfilled.</p>",
+        "<h3>Weighted population wall per population slot</h3>",
+        _table(
+            ("run", "summarized generations", "population slots", "summed population wall", "weighted wall per slot"),
+            weighted_rows,
+        ),
+        "<h3>Recorded generation summaries</h3>",
+        _table(
+            (
+                "run", "generation", "span status", "population size",
+                "population-evaluation wall", "recorded wall per slot",
+                "new unique candidates", "cache-hit occurrences",
+                "same-generation duplicate occurrences", "numerical-failure occurrences",
+                "worker capacity", "peak active callbacks (not CPU cores)",
+                "additional assembly/JIT/cache counters",
+            ),
+            table_rows,
+        ),
+        "<p>Worker capacity is the configured candidate-worker capacity. Peak active "
+        "candidate callbacks may include jobs waiting for assembly; it does not "
+        "establish simultaneous native execution. JAX PJRT pool settings are a "
+        "separate recorded runtime fact.</p>",
+    ]
+    if unreported_by_status:
+        statuses = ", ".join(
+            f"{status}: {count}" for status, count in sorted(unreported_by_status.items())
+        )
+        body.append(
+            "<p>Population-evaluation spans without a generation summary were not "
+            f"averaged ({escape(statuses)}).</p>"
+        )
+    if plot_traces:
+        figure_id = "scnsim-generation-performance"
+        body.append(
+            pio.to_html(
+                figure,
+                include_plotlyjs=True,
+                full_html=False,
+                auto_play=False,
+                div_id=figure_id,
+                config={"responsive": True, "scrollZoom": True},
+            )
+        )
+    else:
+        body.append("<p>No generation curve points have complete recorded timing values.</p>")
+    body.append(_details("Recorded generation_performance summaries", [
+        {
+            "run": run_labels[operation_id],
+            "generation": summary.get("generation"),
+            "summary": summary,
+        }
+        for operation_id, summaries in summaries_by_operation.items()
+        for _, summary, _ in summaries
+    ]))
+    return "".join(body)
+
+
 def _timeline_hover(operation: _TimelineOperation, span: _TimelineSpan) -> str:
     start = "unavailable" if span.start_ns is None else f"{span.start_ns} ns ({span.start_ns / 1e9:.9g} s from origin)"
     if span.start_ns is None or span.end_ns is None:
@@ -1759,6 +2035,9 @@ def _timeline_section(document: Mapping[str, object]) -> str:
         ("clock domain", "root operations", "wall envelope", "clock binding"),
         wall_rows,
     ))
+    generation_section = _generation_performance_section(operations, spans)
+    if generation_section is not None:
+        body.append(generation_section)
     if figure is None:
         body.append("<h2>Timeline</h2><p>No clock-aligned span intervals were recorded.</p>")
     else:

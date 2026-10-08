@@ -44,6 +44,17 @@ without altering affinity or global JAX precision/platform settings. Repeating
 a known configuration is idempotent; changing initialized resources requires a
 Kernel restart. An externally initialized pool's unknown size is not invented.
 
+For JAX Optimization, an integer also declares the task CPU budget for a
+persistent objective-worker pool within each generation. `None` keeps serial
+execution with the existing environment, and 1 is serial. A fair gate gives
+JAX work exclusive access and shares capacity among native sparse tasks.
+For integer declarations, managed BLAS1 in the coordinator and workers remains
+in force until workers join,
+then prior limits are restored. CMA, numerical-cache registration, storage and
+callbacks remain coordinator-owned; no next-generation work runs ahead.
+Generation population wall time and its per-population average describe this
+parallel work; the average is not an individual candidate latency.
+
 Direct S/Y/Z, diagonal and operator-element roots, hybridized poles, S/Y/Z
 transfer zeros, residue-normalized coupling and loaded operators support JAX
 original, retained and transformed Views. Existing scalar selectors also serve

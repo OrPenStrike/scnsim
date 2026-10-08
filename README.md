@@ -30,6 +30,11 @@ JAX Optimization defaults to `commit_every_generations=10`; explicit positive
 integers select a different group size in the Plan leaf’s SQLite store. Omitted
 intervals with explicit Julia keep its existing native value of 1. See the
 guide for recovery, durability and recomputation limits.
+For same-generation JAX Optimization, `configure_runtime(cpu_threads=N)`
+declares the task CPU budget for persistent objective workers. `None` retains
+serial execution with the existing environment; 1 is serial. The coordinator
+preserves CMA order, cache ownership and durable callbacks. Population wall
+time divided by population size is an average, not candidate latency.
 The dev14 candidate extends JAX evaluation to operator-element roots, hybridized
 poles, S/Y/Z transfer zeros, residue-normalized coupling and loaded operators.
 Scalar quantity selectors also serve Optimization; operators remain matrix

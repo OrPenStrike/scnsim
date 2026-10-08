@@ -13,6 +13,7 @@ import json
 import math
 import struct
 from importlib.metadata import version
+from threading import Lock
 from typing import Callable
 from time import perf_counter_ns
 
@@ -75,20 +76,31 @@ def checked_results(backend: NumericalBackend, jobs: tuple[EvaluationJob, ...]) 
 class Evaluator:
     """One task's baseline anchor and physical-parameter cache authority."""
 
-    def __init__(self, plan: dict, analysis: dict, mesh: MeshSpec, backend: NumericalBackend, *, emit=None, trace=None):
+    def __init__(self, plan: dict, analysis: dict, mesh: MeshSpec, backend: NumericalBackend, *, emit=None,
+                 trace=None, operation_resources=None, worker_backend_factory=None, worker_capacity: int = 1):
         self.plan, self.analysis, self.mesh, self.backend = plan, analysis, mesh, backend
         self.spec = analysis["spec"]
         self.emit = emit
         self.trace = trace
+        self.operation_resources = operation_resources
+        self.worker_backend_factory = worker_backend_factory
+        self.worker_capacity = worker_capacity
         self.preparation_cache = {}
         source = analysis["parameter_source"]
         point = source["parameters"] if source["kind"] == "point" else source["baseline_parameters"] if source["kind"] == "points" else source["base_parameters"]
         self.templates = {parameter_key(binding["parameter"]): binding for binding in point["bindings"]}
         self.base = parameter_values(point)
         self.authorized = {parameter_key(record) for record in self.spec.get("allow_extrapolation", point.get("allow_extrapolation", []))}
-        self.quantity_evaluator = QuantityEvaluator(backend, emit=emit)
+        self.quantity_evaluator = QuantityEvaluator(backend, emit=None)
         self.anchors: dict[str, EvaluationResult] = {}
         self.cache: dict[str, dict] = {}
+        self.last_batch_stats = {
+            "new_unique_candidates": 0,
+            "cache_hit_occurrences": 0,
+            "same_generation_duplicate_occurrences": 0,
+            "numerical_failure_occurrences": 0,
+        }
+        self.last_active_worker_count = 0
 
     def anchor_references(self) -> dict[str, str]:
         """Return references into the baseline candidate's dependency bodies."""
@@ -118,31 +130,71 @@ class Evaluator:
             bindings.append({"parameter": template["parameter"], "value": encoded})
         return {"type": "parameter_set_v2", "bindings": bindings, "allow_extrapolation": []}
 
-    def candidate_view(self, values: dict, declaration: dict):
-        start = perf_counter_ns()
-        try:
-            return realize_view(compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized,
-                                             preparation_cache=self.preparation_cache), declaration)
-        finally:
-            if self.emit is not None:
-                self.emit("timing", {"stage": "continuation_lowering_and_view", "start_tick_ns": start,
-                                     "end_tick_ns": perf_counter_ns(), "counts": {"points": 1}})
+    def candidate_view(self, values: dict, declaration: dict, *, preparation_cache: dict | None = None):
+        cache = self.preparation_cache if preparation_cache is None else preparation_cache
+        return realize_view(compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized,
+                                          preparation_cache=cache), declaration)
 
-    def evaluate_many(self, points: list[dict], *, baseline: bool = False) -> list[dict]:
+    def _worker_quantity_evaluator(self) -> QuantityEvaluator:
+        if self.operation_resources is None:
+            return self.quantity_evaluator
+        if self.worker_backend_factory is None:
+            raise RuntimeError("parallel optimization resources require a worker backend factory")
+        return self.operation_resources.worker_state(
+            "scnsim.optimization.quantity_evaluator",
+            lambda: QuantityEvaluator(self.worker_backend_factory(), emit=None),
+        )
+
+    def _evaluate_leaf(self, item, *, objective_index: int, term_index: int, selector: dict,
+                       baseline: bool) -> tuple[int, dict | None, NumericalFailure | None, dict]:
+        index, state, view = item
+        identity = f"candidate:{index}:objective:{objective_index}:term:{term_index}"
+        quantity_evaluator = self.quantity_evaluator if baseline else self._worker_quantity_evaluator()
+        try:
+            evaluated = quantity_evaluator.evaluate(
+                selector["spec"], view, view_declaration=selector["view"], identity=identity,
+                baseline_values=self.base, values=state["values"], anchors=self.anchors,
+                result_cache=state["result_cache"], baseline=baseline,
+                candidate_view=lambda point, declaration=selector["view"],
+                    cache=state["preparation_cache"]:
+                        self.candidate_view(point, declaration, preparation_cache=cache),
+                selector=selector, dependency_bodies=state["dependencies"],
+                candidate_failure_conversion=True,
+            )
+            return index, evaluated, None, {}
+        except (EvaluationFailure, SCNSimError) as error:
+            failure = error.failure if isinstance(error, EvaluationFailure) else NumericalFailure(
+                error.kind, error.stage, str(error), record_bytes(error.evidence)
+            )
+            if baseline or failure.kind not in CANDIDATE_FAILURES:
+                if isinstance(error, EvaluationFailure):
+                    raise numerical_error(failure) from error
+                raise
+            dependencies = error.dependencies if isinstance(error, EvaluationFailure) else {}
+            return index, None, failure, dependencies
+
+    def evaluate_many(self, points: list[dict], *, baseline: bool = False,
+                      generation: int | None = None) -> list[dict]:
         """Evaluate declared quantity leaves through the shared dependency owner."""
         objectives = self.spec["objectives"]
         states, keys, representatives = [], [], {}
+        cache_hits = 0
+        same_generation_duplicates = 0
         for values in points:
             record = self.parameter_record(values)
             key = canonical_json_bytes(record).decode()
             keys.append(key)
-            if key in self.cache or key in representatives:
+            if key in self.cache:
+                cache_hits += 1
+                states.append(None)
+                continue
+            if key in representatives:
+                same_generation_duplicates += 1
                 states.append(None)
                 continue
             representatives[key] = len(states)
             state = {"parameters": record, "objectives": [], "cost_f64": bits(0), "failure": None,
                      "dependencies": {}, "result_cache": {}, "views": {}, "values": values}
-            start = perf_counter_ns()
             try:
                 raw = compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized, preparation_cache=self.preparation_cache)
                 state["discretization"] = json.loads(raw.evidence_bytes)["discretization"]
@@ -157,31 +209,62 @@ class Evaluator:
                 state["failure"] = {"kind": error.kind, "stage": error.stage, "detail": str(error),
                                     "evidence": json.loads(record_bytes(error.evidence)), "phase": "candidate_compile"}
                 state["cost_f64"] = bits(math.inf)
-            finally:
-                if self.emit is not None:
-                    self.emit("timing", {"stage": "lowering_and_view", "start_tick_ns": start,
-                                         "end_tick_ns": perf_counter_ns(), "counts": {"candidate": len(states)}})
             states.append(state)
+
+        # The shared preparation cache is mutated only by this ordered
+        # compile-first pass. Each candidate receives an independent mapping
+        # for any later continuation compilation; cached values are immutable.
+        for state in states:
+            if state is not None and state["failure"] is None:
+                state["preparation_cache"] = dict(self.preparation_cache)
+
+        active_lock = Lock()
+        active_workers = 0
+        peak_active_workers = 0
+
+        def tracked_leaf(item, *, objective_index: int, term_index: int,
+                         selector: dict) -> tuple[int, dict | None, NumericalFailure | None, dict]:
+            nonlocal active_workers, peak_active_workers
+            with active_lock:
+                active_workers += 1
+                peak_active_workers = max(peak_active_workers, active_workers)
+            try:
+                return self._evaluate_leaf(item, objective_index=objective_index,
+                                           term_index=term_index, selector=selector,
+                                           baseline=baseline)
+            finally:
+                with active_lock:
+                    active_workers -= 1
+
         for objective_index, objective in enumerate(objectives):
             selectors = leaves(objective["quantity"])
             term_values = [[] for _ in states]
             term_records = [[] for _ in states]
             for term_index, selector in enumerate(selectors):
-                for index, state in enumerate(states):
-                    if state is None or state["failure"]:
-                        continue
-                    view = state["views"][canonical_json_bytes(selector["view"]).decode()]
-                    identity = f"candidate:{index}:objective:{objective_index}:term:{term_index}"
-                    try:
-                        evaluated = self.quantity_evaluator.evaluate(
-                            selector["spec"], view, view_declaration=selector["view"], identity=identity,
-                            baseline_values=self.base, values=state["values"], anchors=self.anchors,
-                            result_cache=state["result_cache"], baseline=baseline,
-                            candidate_view=lambda point, declaration=selector["view"]:
-                                self.candidate_view(point, declaration),
-                            selector=selector, dependency_bodies=state["dependencies"],
-                            candidate_failure_conversion=True,
-                        )
+                wave = [
+                    (index, state, state["views"][canonical_json_bytes(selector["view"]).decode()])
+                    for index, state in enumerate(states)
+                    if state is not None and not state["failure"]
+                ]
+                if self.operation_resources is not None and not baseline:
+                    outcomes = list(self.operation_resources.map_ordered(
+                        lambda item: tracked_leaf(item, objective_index=objective_index,
+                                                  term_index=term_index, selector=selector),
+                        wave,
+                        identity=lambda item: (
+                            f"generation:{generation}:objective:{objective_index}:"
+                            f"term:{term_index}:candidate:{item[0]}"
+                        ),
+                    ))
+                else:
+                    outcomes = [tracked_leaf(item, objective_index=objective_index,
+                                             term_index=term_index, selector=selector)
+                                for item in wave]
+
+                for index, evaluated, failure, failure_dependencies in outcomes:
+                    state = states[index]
+                    if evaluated is not None:
+                        view = state["views"][canonical_json_bytes(selector["view"]).decode()]
                         result = evaluated["result"]
                         value = evaluated["value"]
                         state["dependencies"].update(evaluated["dependencies"])
@@ -196,14 +279,8 @@ class Evaluator:
                                                     "value_f64": bits(value), "actual_complex": actual,
                                                     "body_id": evaluated["body_id"],
                                                     "lineage": json.loads(view.lineage_bytes), "evidence": json.loads(result.evidence_bytes)})
-                    except (EvaluationFailure, SCNSimError) as error:
-                        failure = error.failure if isinstance(error, EvaluationFailure) else NumericalFailure(error.kind, error.stage, str(error), record_bytes(error.evidence))
-                        if baseline or failure.kind not in CANDIDATE_FAILURES:
-                            if isinstance(error, EvaluationFailure):
-                                raise numerical_error(failure) from error
-                            raise
-                        if isinstance(error, EvaluationFailure):
-                            state["dependencies"].update(error.dependencies)
+                    else:
+                        state["dependencies"].update(failure_dependencies)
                         state["failure"] = dict(asdict(failure), evidence_bytes=json.loads(failure.evidence_bytes),
                                                 phase="quantity_evaluation", objective_ordinal=objective_index, term_ordinal=term_index)
                         state["cost_f64"] = bits(math.inf)
@@ -246,12 +323,19 @@ class Evaluator:
                                     "phase": "total_aggregation"}
                 state["cost_f64"] = bits(math.inf)
             self.cache[key] = {k: v for k, v in state.items()
-                               if k not in ("values", "views", "result_cache")}
+                               if k not in ("values", "views", "result_cache", "preparation_cache")}
         result, seen = [], set()
         for key in keys:
             result.append(dict(deepcopy(self.cache[key]), candidate_key=key,
                                cache_hit=key not in representatives or key in seen))
             seen.add(key)
+        self.last_batch_stats = {
+            "new_unique_candidates": len(representatives),
+            "cache_hit_occurrences": cache_hits,
+            "same_generation_duplicate_occurrences": same_generation_duplicates,
+            "numerical_failure_occurrences": sum(record["failure"] is not None for record in result),
+        }
+        self.last_active_worker_count = peak_active_workers
         return result
 
 
@@ -376,7 +460,11 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         baseline, best = checkpoint["baseline"], checkpoint["best"]
         next_ordinal = checkpoint["next_ordinal"]
     else:
-        baseline = dict(evaluator.evaluate_many([evaluator.base], baseline=True)[0], evaluation_ordinal=0, generation=0, population_column=0)
+        baseline_context = (evaluator.operation_resources.candidate_compute()
+                            if evaluator.operation_resources is not None else nullcontext())
+        with baseline_context:
+            baseline = dict(evaluator.evaluate_many([evaluator.base], baseline=True)[0],
+                            evaluation_ordinal=0, generation=0, population_column=0)
         best, next_ordinal = baseline, 1
 
     def resume_state() -> dict | None:
@@ -396,7 +484,35 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             emit("timing", {"stage": "cma_ask", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),
                             "counts": {"population": len(raw)}})
             emit("population_observed", {"generation": generation, "latent": array_record(np.stack(raw))})
-            records = evaluator.evaluate_many([mapped_values(evaluator.spec, evaluator.base, value) for value in raw])
+            points = [mapped_values(evaluator.spec, evaluator.base, value) for value in raw]
+            before_counters = (evaluator.operation_resources.counters()
+                               if evaluator.operation_resources is not None else None)
+            population_start = perf_counter_ns()
+            records = evaluator.evaluate_many(points, generation=generation)
+            population_end = perf_counter_ns()
+            if evaluator.operation_resources is not None and trace is not None:
+                after_counters = evaluator.operation_resources.counters()
+                stats = evaluator.last_batch_stats
+                performance = {
+                    "generation": generation,
+                    "population_size": len(raw),
+                    "population_evaluation_wall_ns": population_end - population_start,
+                    "average_candidate_wall_ns": (population_end - population_start) // len(raw),
+                    "new_unique_candidates": stats["new_unique_candidates"],
+                    "cache_hit_occurrences": stats["cache_hit_occurrences"],
+                    "same_generation_duplicate_occurrences": stats["same_generation_duplicate_occurrences"],
+                    "numerical_failure_occurrences": stats["numerical_failure_occurrences"],
+                    "worker_capacity": evaluator.worker_capacity,
+                    "active_worker_count": evaluator.last_active_worker_count,
+                }
+                if before_counters is not None:
+                    for name in ("assembly_calls", "new_shape_count", "executable_cache_hits"):
+                        performance[name] = after_counters[name] - before_counters[name]
+                trace.measure(
+                    "population_evaluation", start_tick_ns=population_start,
+                    end_tick_ns=population_end,
+                    details={"generation_performance": performance},
+                )
             costs = []
             for column, record in enumerate(records):
                 record.update(evaluation_ordinal=next_ordinal, generation=generation, population_column=column,
