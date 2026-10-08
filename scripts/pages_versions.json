@@ -6,10 +6,10 @@
   },
   "releases": [
     {
-      "label": "1.0.0a1",
-      "root": "/scnsim/1.0.0a1/",
-      "tag": "v1.0.0a1",
-      "commit": "66053ac315ff4ddc24d15ea4d66d26fe968beed0"
+      "label": "1.0.0a2",
+      "root": "/scnsim/1.0.0a2/",
+      "tag": "v1.0.0a2",
+      "commit": "74e2a45c53814527c2b28e19df0b5f7bb8a1bfbe"
     }
   ]
 }
