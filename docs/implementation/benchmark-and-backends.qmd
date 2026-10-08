@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0.dev14 development candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev15 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -144,6 +144,23 @@ ownership and plotting meaning. Reports and trace records reference numerical
 authority rather than embedding another candidate history. `resolve` is read-only:
 no runtime initialization, numerical launch, retry, cleanup or migration.
 
+Numerical-result readback projects verified numerical evidence separately from
+diagnostic history. Returning, resolving or reusing a completed JAX
+`OptimizationResult` materializes the full ordered numerical ledger and winner
+eagerly as detached immutable values; inspecting that Result performs no later
+workspace reads. The projection traverses the required ordered evidence once,
+without replaying the complete operation/span history. Snapshot ownership,
+Plan/task bindings, committed selection and reference role, byte length and hash
+verification remain in force. Successful numerical readback requires the
+selected success's explicit `numerical_evidence` locator for the baseline,
+ordered generation evidence and terminal event. A missing locator fails
+directly; this flow does not reconstruct it from an older layout, replay
+diagnostic history as a fallback or migrate records. Historical files are
+preserved, without an old-layout numerical-read guarantee for this flow.
+Benchmark and recovery readers retain their separate diagnostic and checkpoint
+responsibilities. This readback change does not change numerical requests,
+cache selection, optimization order or winner semantics.
+
 Explicit Julia operation traces link the actual verified native request,
 canonical attempt SHA, receipt SHA, result SHA and attempt directory. The native
 trace's `attempt_id` denotes that existing canonical attempt identity, rather
@@ -205,6 +222,12 @@ outcomes and candidate occurrences carry references to their original evidence.
 Trace buffering at generation/end follows the evidence barriers; callback
 notification preserves durability-before-notify. Interrupted submissions and
 terminated processes retain partial evidence; missing tails stay unknown.
+After durable acknowledgement, the recorder releases the acknowledged spans
+from its pending buffer instead of retaining and resubmitting the full history.
+It retains the identity and active parent/clock state needed by subsequent
+spans. Unacknowledged spans and the available failure tail remain pending under
+the existing commit/reconciliation contract; an uncertain publication is not
+treated as acknowledged. Archival does not discard persisted diagnostic data.
 For a recorded failure/interruption, the public root's `details.failure` exposes
 the exact saved failure record, including available type, kind, stage, message
 and evidence. The reader does not infer a failure or result that was not saved.

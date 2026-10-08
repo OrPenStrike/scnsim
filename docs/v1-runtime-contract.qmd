@@ -2335,6 +2335,22 @@ Result SHA-256 values. `DiagonalRootResult` is the concrete result of
 `DiagonalRootSpec`; `resolve()` overloads preserve the corresponding concrete
 type.
 
+Completed JAX Optimization readback eagerly materializes the complete ordered
+numerical ledger and winner as detached immutable values. Result inspection
+does not defer reads into its workspace. Return, cache reuse and `resolve()`
+project the necessary numerical evidence in one verified ordered traversal,
+separately from the complete diagnostic history. The snapshot lock, Plan/task
+bindings, committed selection and reference role, byte length and SHA-256 checks
+are preserved. Successful readback requires the selected success's explicit
+`numerical_evidence` locator for baseline, ordered generation evidence and the
+terminal event. Missing locators fail directly, with no old-layout fallback or
+migration. Historical files are preserved, without promising old-layout
+numerical readback in this flow. Read-only Benchmark and checkpoint readers
+retain their distinct responsibilities. Diagnostic spans leave the
+pending recorder buffer only after durable acknowledgement, preserving span
+IDs, parent/clock relationships and the available unacknowledged failure tail.
+These ownership changes do not alter numerical, ledger-order or winner meaning.
+
 `ExplanationResult`, `CircuitDiagramResult`, and `ReportResult` are derived
 Results. They do not fabricate request or receipt identity. `ReportSpec.inputs`
 accepts explicit `AnalysisResult` objects, including inputs from different

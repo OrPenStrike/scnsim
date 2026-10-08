@@ -246,6 +246,7 @@ def _descriptor(snapshot, task_id):
 
 
 def ensure_task(workspace, task, *, binding):
+    """Register or verify identity without reading the task's saved history."""
     root = _root(workspace)
     descriptor = _legacy()._new_task_descriptor(task)
     raw = record_bytes(descriptor)
@@ -260,11 +261,10 @@ def ensure_task(workspace, task, *, binding):
             ref=tx.put_object(raw,role='task_descriptor')
             tx.set_pointer('task/'+descriptor['task_id'],ref)
             tx.append('tasks','task_descriptor',raw)
-    return task_record(root, descriptor['task_id'])
 
 
 def ensure_operation_task(binding, task):
-    return ensure_task(operation_workspace(binding), task, binding=binding)
+    ensure_task(operation_workspace(binding), task, binding=binding)
 
 
 def _stream(task_id):
@@ -544,10 +544,15 @@ class TaskWriter:
             event(kind,{'attempt_id':self.attempt_id,_MARKER:{'kind':'barrier','evidence':evidence,'checkpoint':checkpoint}},
                   evidence=evidence,checkpoint=checkpoint,artifacts=artifacts)
         for kind,payload in extra_events: event(kind,payload)
-        result_ref=None
+        result_ref=None; numerical_evidence=None
         if terminal is not None:
             result_ref=objects.put(terminal,'operation_result')
-            event('completed',{'attempt_id':self.attempt_id,'result':result_ref})
+            completion={'attempt_id':self.attempt_id,'result':result_ref}
+            if terminal.get('type') == 'optimization':
+                numerical_evidence={'baseline_evidence':baseline,'generation_evidence':generation,
+                                    'terminal_event_sequence':sequence}
+                completion['numerical_evidence']=numerical_evidence
+            event('completed',completion)
             changes.append({'kind':'attempt_update','attempt_id':self.attempt_id,'status':'success',
                   'failure':None,'interruption':None,'checkpoint':None,'artifacts':[result_ref]})
         operation_updates=[]
@@ -566,6 +571,8 @@ class TaskWriter:
         if result_ref is not None:
             selected={'event':'request_success_selected','request_sha256':self.descriptor['request_sha256'],
                       'task_id':self.task_id,'attempt_id':self.attempt_id,'result_ref':result_ref}
+            if numerical_evidence is not None:
+                selected['numerical_evidence']=numerical_evidence
             success_selection=objects.put(selected,'success_selection')
         change_bytes=[record_bytes(change) for change in changes]
         nextref=objects.put({'next_sequence':sequence},'event_sequence')
@@ -634,7 +641,18 @@ def complete_operation(binding,*,writer,terminal_bytes):
 
 
 def read_operation_success(binding,task_id,*,attempt_id=None):
-    return _legacy()._operation_success_from_task(operation_task_record(binding,task_id),attempt_id=attempt_id)
+    from .evidence_reader import read_success
+    store = _bound(binding)
+    if store.path.exists() or store.path.is_symlink():
+        with _snapshot(store) as snapshot:
+            descriptor = _pointer(snapshot, 'task/'+task_id)
+            if descriptor is not None:
+                selected = _pointer(snapshot, 'success/'+descriptor['request_sha256'])
+                if selected is not None and attempt_id is not None and selected['attempt_id'] != attempt_id:
+                    selected = None
+                return read_success(store.root, snapshot, descriptor, attempt_id=attempt_id, selection=selected)
+    return _legacy()._operation_success_from_task(
+        operation_task_record(binding,task_id),attempt_id=attempt_id)
 
 
 def find_operation_success(binding,request_sha256):
@@ -644,8 +662,9 @@ def find_operation_success(binding,request_sha256):
             selected=_pointer(snapshot,'success/'+request_sha256)
             if selected is not None:
                 descriptor=_descriptor(snapshot,selected['task_id'])
-                task=_materialize_task(store.root,snapshot,descriptor)
-                success=_legacy()._operation_success_from_task(task,attempt_id=selected['attempt_id'])
+                from .evidence_reader import read_success
+                success=read_success(store.root,snapshot,descriptor,
+                                     attempt_id=selected['attempt_id'],selection=selected)
                 if success is None or success['result_ref']!=selected['result_ref'] or descriptor['request_sha256']!=request_sha256:
                     raise _error('Selected operation success differs from committed task evidence.')
                 return success

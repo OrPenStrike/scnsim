@@ -247,7 +247,7 @@ def _read_value(root: Path, task_id: str, reference: Mapping[str, object]) -> di
     value = document.get("value")
     if not isinstance(value, dict):
         raise _integrity("Benchmark numerical value block is malformed.", path=reference.get("path"))
-    return value
+    return dict(value)
 
 
 def _materialize_value_marker(root: Path, task_id: str, value: Mapping[str, object]) -> dict[str, object]:
@@ -440,6 +440,7 @@ def _task_document_from_chain(
     head: Mapping[str, object],
     commits: Sequence[Mapping[str, object]],
     manifest: Mapping[str, object],
+    *, payload_expander=None, project_observations=True, sparse_events=False,
 ) -> tuple[dict[str, Any], dict[int, dict[str, object]]]:
     task: dict[str, Any] = dict(binding)
     task["attempts"] = []
@@ -494,14 +495,14 @@ def _task_document_from_chain(
             if not isinstance(event, Mapping):
                 raise _integrity("Benchmark task event commit is malformed.", task_id=binding["task_id"])
             sequence = event.get("sequence")
-            if sequence != expected_event_sequence:
+            if (sequence < expected_event_sequence if sparse_events else sequence != expected_event_sequence):
                 raise _integrity("Benchmark task event sequence is not contiguous.", task_id=binding["task_id"])
-            expected_event_sequence += 1
+            expected_event_sequence = sequence + 1
             kind = str(event["kind"])
             compact_payload = event.get("payload")
             if not isinstance(compact_payload, Mapping):
                 raise _integrity("Benchmark task event payload is malformed.", task_id=binding["task_id"])
-            payload, baseline_reference = _expand_payload(
+            payload, baseline_reference = (payload_expander or _expand_payload)(
                 root, str(binding["task_id"]), binding, kind, compact_payload,
             )
             materialized = {
@@ -561,9 +562,9 @@ def _task_document_from_chain(
             raise _integrity("Benchmark task commit has an unsupported operation.", kind=action)
 
     expected = head.get("event_sequence")
-    if expected != expected_event_sequence:
+    if not sparse_events and expected != expected_event_sequence:
         raise _integrity("Benchmark task head event sequence does not match its commit chain.", task_id=binding["task_id"])
-    for event in task["events"]:
+    for event in task["events"] if project_observations else ():
         if event["kind"] in {"completed", "failed", "interrupted"} and "numerical_observations" not in event["payload"]:
             observations = _project_python_observations(
                 root, manifest, binding, task, event, values_by_sequence,

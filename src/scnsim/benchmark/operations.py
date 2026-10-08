@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter_ns
-from typing import Iterator, Mapping, Sequence
+from typing import Iterator, Mapping, NamedTuple, Sequence
 from uuid import uuid4
 
 from ..errors import EvidenceIntegrityError
@@ -19,6 +19,13 @@ from .prepared import record_bytes
 
 _PROCESS_CLOCK_ID: str | None = None
 _PROCESS_CLOCK_ORIGIN_NS: int | None = None
+
+
+class _SpanWindow(NamedTuple):
+    rows: list[dict[str, object]]
+    base: int
+    persisted: int
+    handed: int
 
 
 def _clock_binding(start_tick_ns: int | None) -> dict[str, object]:
@@ -65,9 +72,8 @@ class OperationRecorder:
         self._origin_ns = int(self.clock["monotonic_origin_ns"])
         self._start_tick_ns = perf_counter_ns() if start_tick_ns is None else start_tick_ns
         self._stack: list[str] = [self.root_span_id]
-        self._spans: list[dict[str, object]] = []
-        self._persisted_spans = 0
-        self._handed_spans = 0
+        # One pointer swap keeps retained rows and absolute offsets coherent across interrupts.
+        self._span_window = _SpanWindow([], 0, 0, 0)
         self._entered = False
         self._closed = False
         self._request_sha256: str | None = None
@@ -139,7 +145,7 @@ class OperationRecorder:
                     status="failure" if archive_error is not None else "success",
                     details={"pending_span_count": len(pending)},
                 )
-                self._spans.append(finalization_span)
+                self._span_window.rows.append(finalization_span)
                 self._finish_root(finalization_end, status)
                 finish_operation(
                     self.binding,
@@ -200,22 +206,30 @@ class OperationRecorder:
 
     def publish_pending_spans(self, writer: object) -> tuple[dict[str, object], ...]:
         """Stage unhanded spans for a writer without claiming they are durable."""
-        rows = tuple(dict(row) for row in self._spans[self._handed_spans :])
+        window = self._span_window
+        start = window.handed - window.base
+        rows = tuple(dict(row) for row in window.rows[start:])
         appended: list[dict[str, object]] = []
         for row in rows:
             writer.append_event(  # type: ignore[attr-defined]
                 kind="operation_span",
                 payload={"operation_id": self.operation_id, "span": row},
             )
-            self._handed_spans += 1
+            window = self._span_window
+            self._span_window = _SpanWindow(
+                window.rows, window.base, window.persisted, window.handed + 1
+            )
             appended.append(row)
         return tuple(appended)
 
     def handed_pending_spans(self) -> tuple[dict[str, object], ...]:
         """Return spans staged for a writer that have not received commit ACK."""
+        window = self._span_window
+        start = window.persisted - window.base
+        end = window.handed - window.base
         return tuple(
             dict(row)
-            for row in self._spans[self._persisted_spans : self._handed_spans]
+            for row in window.rows[start:end]
         )
 
     @property
@@ -249,7 +263,7 @@ class OperationRecorder:
             if self._stack and self._stack[-1] == span_id:
                 self._stack.pop()
             end_tick = perf_counter_ns()
-            self._spans.append(
+            self._span_window.rows.append(
                 self._span_row(
                     span_id=span_id,
                     parent_span_id=parent_span_id,
@@ -275,7 +289,7 @@ class OperationRecorder:
         status: str = "success",
     ) -> None:
         """Record an observed inclusive interval supplied by a numerical owner."""
-        self._spans.append(
+        self._span_window.rows.append(
             self._span_row(
                 span_id=str(uuid4()),
                 parent_span_id=parent_span_id or (self._stack[-1] if self._stack else None),
@@ -289,16 +303,24 @@ class OperationRecorder:
 
     def pending_spans(self) -> tuple[dict[str, object], ...]:
         """Return unpersisted rows without changing the local acknowledgement."""
-        return tuple(dict(row) for row in self._spans[self._persisted_spans :])
+        window = self._span_window
+        start = window.persisted - window.base
+        return tuple(dict(row) for row in window.rows[start:])
 
     def mark_spans_persisted(self, rows: tuple[Mapping[str, object], ...]) -> None:
-        pending = self._spans[self._persisted_spans :]
+        window = self._span_window
+        start = window.persisted - window.base
+        pending = window.rows[start:]
         if [record_bytes(dict(row)) for row in pending[: len(rows)]] != [
             record_bytes(dict(row)) for row in rows
         ]:
             raise RuntimeError("operation span persistence cursor no longer matches its committed prefix")
-        self._persisted_spans += len(rows)
-        self._handed_spans = max(self._handed_spans, self._persisted_spans)
+        persisted = window.persisted + len(rows)
+        handed = max(window.handed, persisted)
+        released = persisted - window.base
+        retained = window.rows[released:] if released else window.rows
+        base = persisted if released else window.base
+        self._span_window = _SpanWindow(retained, base, persisted, handed)
 
     def root_row(self) -> dict[str, object]:
         return {

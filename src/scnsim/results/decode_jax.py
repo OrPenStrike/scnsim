@@ -335,7 +335,8 @@ def _optimization(decoder, identity, projection, request):
     baseline = projection["baseline"]
     records = projection["evaluations"]
     best_ordinal = projection["terminal"]["best_ordinal"]
-    best = next(row for row in (baseline, *records) if row["evaluation_ordinal"] == best_ordinal)
+    best = baseline if baseline["evaluation_ordinal"] == best_ordinal else next(
+        row for row in records if row["evaluation_ordinal"] == best_ordinal)
     generations = {}
     for row in records:
         generations.setdefault(row["generation"], []).append(_candidate(row, request["spec"]))

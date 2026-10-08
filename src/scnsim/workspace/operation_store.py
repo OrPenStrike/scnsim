@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import json
 import os
 import sqlite3
 import sys
@@ -326,13 +327,34 @@ class Snapshot:
 
     def __init__(self, connection: sqlite3.Connection):
         self._connection = connection
+        self._verified_objects = {}
+        self._reuse_verified = False
 
-    def get_object(self, reference: Mapping[str, Any]) -> bytes:
+    @contextmanager
+    def reuse_verified_objects(self):
+        """Reuse verified bytes only within one numerical projection."""
+        previous = self._reuse_verified
+        self._reuse_verified = True
+        try:
+            yield self
+        finally:
+            self._reuse_verified = previous
+            if not previous:
+                self._verified_objects.clear()
+
+    @staticmethod
+    def _object_key(reference: Mapping[str, Any]):
         if set(reference) != {"schema_version", "storage", "database", "role", "sha256", "byte_length"} or (
             reference["schema_version"] != _VERSION or reference["storage"] != "sqlite"
             or reference["database"] != _DATABASE
         ):
             raise _integrity("Invalid SQLite object reference.", reference=dict(reference))
+        return (reference["sha256"], reference["role"], reference["byte_length"])
+
+    def get_object(self, reference: Mapping[str, Any]) -> bytes:
+        key = self._object_key(reference)
+        if key in self._verified_objects:
+            return self._verified_objects[key]
         row = self._connection.execute(
             "SELECT o.payload FROM objects o JOIN object_roles r USING(sha256) WHERE r.sha256=? AND r.role=?",
             (reference["sha256"], reference["role"]),
@@ -342,7 +364,77 @@ class Snapshot:
         payload = bytes(row[0])
         if len(payload) != reference["byte_length"] or hashlib.sha256(payload).hexdigest() != reference["sha256"]:
             raise _integrity("SQLite object bytes do not match their content reference.", reference=dict(reference))
+        if self._reuse_verified:
+            self._verified_objects[key] = payload
         return payload
+
+    def get_objects(self, references: Sequence[Mapping[str, Any]]):
+        """JOIN one evidence group's references to bytes, preserving input order."""
+        for reference in references:
+            self._object_key(reference)
+        cursor = self._connection.execute(
+            "SELECT j.key,o.payload,r.role FROM json_each(?) j "
+            "LEFT JOIN objects o ON o.sha256=json_extract(j.value,'$.sha256') "
+            "LEFT JOIN object_roles r ON r.sha256=o.sha256 AND r.role=json_extract(j.value,'$.role') "
+            "ORDER BY cast(j.key AS INTEGER)", (json.dumps(list(references)),))
+        for index, payload, role in cursor:
+            reference = references[index]
+            key = self._object_key(reference)
+            if payload is None or role is None:
+                raise _integrity("Referenced SQLite object is missing.", reference=dict(reference))
+            if key in self._verified_objects:
+                yield self._verified_objects[key]
+                continue
+            payload = bytes(payload)
+            if len(payload) != reference['byte_length'] or hashlib.sha256(payload).hexdigest() != reference['sha256']:
+                raise _integrity("SQLite object bytes do not match their content reference.", reference=dict(reference))
+            if self._reuse_verified:
+                self._verified_objects[key] = payload
+            yield payload
+
+    def iter_task_changes(self, stream: str, *, include_evaluations: bool):
+        """Locate numerical/control rows; SQL filtering is never verification.
+
+        Old task streams have only task_change as their indexed kind. Native
+        JSON inspection avoids Python materialization of diagnostic payloads.
+        Malformed JSON is included so it cannot disappear as a filtered row.
+        Selected payloads still pass the ordinary role/length/hash boundary.
+        """
+        # Preserve the task event sequence invariant without decoding or returning
+        # diagnostic bodies to Python. Malformed JSON is verified below.
+        count, first, last, distinct, wrong_type = self._connection.execute(
+            "WITH rows AS (SELECT CASE WHEN json_valid(o.payload) THEN o.payload ELSE '{}' END AS body "
+            "FROM entries e LEFT JOIN objects o ON o.sha256=e.sha256 WHERE e.stream=?) "
+            "SELECT count(*),min(json_extract(body,'$.event.sequence')),"
+            "max(json_extract(body,'$.event.sequence')),count(DISTINCT json_extract(body,'$.event.sequence')),"
+            "sum(CASE WHEN json_type(body,'$.event.sequence')='integer' THEN 0 ELSE 1 END) "
+            "FROM rows WHERE json_extract(body,'$.kind')='event'", (stream,)
+        ).fetchone()
+        if count and (first != 0 or last != count-1 or distinct != count or wrong_type):
+            raise _integrity("Benchmark task event sequence is not contiguous.", stream=stream)
+        excluded = ["operation_span", "timing", "population_observed", "progress"]
+        if not include_evaluations:
+            excluded.append("evaluation")
+        marks = ",".join("?" for _ in excluded)
+        cursor = self._connection.execute(
+            "SELECT e.sequence,e.sha256,e.role,o.payload,r.role FROM entries e "
+            "LEFT JOIN objects o ON o.sha256=e.sha256 "
+            "LEFT JOIN object_roles r ON r.sha256=e.sha256 AND r.role=e.role "
+            "WHERE e.stream=? AND CASE WHEN o.payload IS NULL OR NOT json_valid(o.payload) THEN 1 "
+            "WHEN json_extract(o.payload,'$.kind')='measurement' THEN 0 "
+            "WHEN json_extract(o.payload,'$.kind')='event' THEN "
+            f"coalesce(json_extract(o.payload,'$.event.kind') NOT IN ({marks}),1) ELSE 1 END "
+            "ORDER BY e.sequence", (stream, *excluded))
+        for sequence, digest, role, payload, registered_role in cursor:
+            if payload is None or registered_role is None:
+                raise _integrity("Task stream references missing object bytes or role.", sequence=sequence)
+            payload = bytes(payload)
+            reference = _reference(digest, role, len(payload))
+            if hashlib.sha256(payload).hexdigest() != digest:
+                raise _integrity("Task stream object bytes do not match their content reference.", reference=reference)
+            if self._reuse_verified:
+                self._verified_objects[(digest, role, len(payload))] = payload
+            yield sequence, reference, payload
 
     def _ref(self, digest: str, role: str) -> dict[str, Any]:
         row = self._connection.execute("SELECT length(payload) FROM objects WHERE sha256=?", (digest,)).fetchone()
@@ -357,9 +449,15 @@ class Snapshot:
 
     def read_stream(self, stream: str) -> dict[str, Any]:
         row = self._connection.execute("SELECT revision FROM streams WHERE name=?", (stream,)).fetchone()
-        entries = [{"sequence": sequence, "kind": kind, "reference": self._ref(digest, role)}
-                   for sequence, kind, digest, role in self._connection.execute(
-                       "SELECT sequence,kind,sha256,role FROM entries WHERE stream=? ORDER BY sequence", (stream,))]
+        entries = []
+        for sequence, kind, digest, role, length in self._connection.execute(
+            "SELECT e.sequence,e.kind,e.sha256,e.role,length(o.payload) FROM entries e "
+            "LEFT JOIN objects o ON o.sha256=e.sha256 WHERE e.stream=? ORDER BY e.sequence", (stream,)
+        ):
+            if length is None:
+                raise _integrity("SQLite stream references missing bytes.", sha256=digest)
+            entries.append({"sequence": sequence, "kind": kind,
+                            "reference": _reference(digest, role, length)})
         return {"revision": 0 if row is None else row[0], "entries": entries}
 
     def read_pointer(self, name: str) -> dict[str, Any] | None:
