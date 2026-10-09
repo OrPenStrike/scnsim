@@ -118,12 +118,41 @@ RHS, numerator/cofactor and requested output blocks are permitted; there is no
 dense global fallback. $D_{\mathrm{circ}}$ here includes any realized series-RL
 section contributions and their analytic derivatives, as in the
 [root procedure](diagonal-root-numerical-procedure.qmd); they are not replaced
-by frequency-independent K/C/G stamps. Every nonempty
+by frequency-independent K/C/G stamps in general. For a realized section resistance exactly $R=0$
+at nonzero $\omega$, the same local contribution reduces to
+$(-i\omega)(R-i\omega L)^{-1}=L^{-1}$. The dev20 CONVERGING candidate
+tests the realized binary64 section resistance after section scaling and
+before the backend dtype cast. It prepares that inverse once in the actual
+selected arithmetic dtype and uses zero frequency derivative, with unchanged ordinary-transpose incidence
+congruence. Width one evaluates the direct reciprocal. Width two evaluates
+entrywise mantissa/exponent products and a shared aligned determinant, then
+forms each adjugate ratio with exponent-aware scaling in the actual dtype.
+This avoids global maximum normalization of the input matrix.
+Both off-diagonal entries use the same determinant; actual input entries are
+not projected or averaged. Wider local blocks retain LU, and existing
+actual-dtype residual/status/tolerance conditions remain unchanged. Nonzero-$R$ sections and the existing zero-frequency path are
+unchanged. No physical quantity, Newton condition or certification threshold
+is replaced by this algebraic evaluation. Every nonempty
 solve must satisfy its backward-residual certificate; failure is
 `EliminatedBlockSolveFailure`. The exact Ref lineage, coordinate maps, PTC
 mask, retained/eliminated order, ParameterSet, $C/G/K$, solve evidence, and
 operator identity are inputs to the quantity dependency node. A cache entry
 with any different input is ineligible.
+
+The dev20 CONVERGING compensation candidate is restricted to retained,
+non-port-realizable Z transfer-zero. Assembly and selected Schur formation
+retain high and low components in the selected base dtype, with one fixed
+low-aware correction using the same high-part factorization. Its
+corrected-equation certificate uses the pair-valued numerical authority;
+F/Fp are formed consistently before projection to declared-dtype Y/Yp.
+The current Z cofactor/denominator calculation consumes that projection,
+without a claim that it retains the expansion. H/Hp are not formed when this
+Z branch does not consume them. Other Quantity scopes are unchanged.
+The effective arithmetic coverage is explicit metadata, not a new precision
+selector or a claim of 128-bit accuracy. The strict TransferZero conditions,
+tau, 0.01 Hz condition and typed failure remain current; no mean return or
+fallback is selected. This candidate is not yet an affected-case success
+claim.
 
 Response quantities use the same physical Ref but a different, deliberate
 boundary. All backend source resistors are first de-embedded. Omitted logical
@@ -646,7 +675,9 @@ $F$ continues into all physical quantities. There is no symmetrization,
 additional solve or factorization, retry, fallback or mixed precision. No new
 $F'$ rejection is introduced. All other branch root, zero, residue, vector
 independence and derivative conditions remain unchanged. The implementation
-records a distinct aggregate v4 algorithm identity; installed observations keep
+introduced a distinct aggregate v4 algorithm identity. The subsequent
+pure-inductive evaluation binds aggregate v6 without changing this reciprocity
+certificate; installed observations keep
 their own original source identities.
 
 For each branch,

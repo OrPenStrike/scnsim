@@ -116,7 +116,11 @@ def hybridized(system, start, assemble, measurements):
 
 def _family_state(system, omega, family, assemble, measurements):
     cd, rd = system.complex_dtype, system.real_dtype
-    assembled = assemble(omega, loaded=not system.view.port_realizable, derivative=True)
+    compensated = family == 'Z' and not system.view.port_realizable
+    if compensated:
+        assembled = assemble(omega, loaded=True, derivative=True, compensated=True)
+    else:
+        assembled = assemble(omega, loaded=not system.view.port_realizable, derivative=True)
     if system.view.port_realizable:
         values, status = network(system, omega, assembled, family, measurements, derivative=True)
         if status:
@@ -125,14 +129,16 @@ def _family_state(system, omega, family, assemble, measurements):
     else:
         if family == 'S':
             fail('port_realizability', 'selected_network', 'S transfer zero requires a Port-realizable View')
-        state, status = selected_state(system, assembled, measurements)
+        state, status = selected_state(system, assembled, measurements, compensated=compensated)
         if status:
             numerical_code(status, transfer=True)
-        F, Fp, Q, Qp, _, _, _, _ = state
+        F, Fp, Q, Qp, _, _, _, _ = state[:8]
         divisor = cd(-cd(1j)*omega)
         Y = np.asarray(F/divisor, dtype=cd)
         Yp = np.asarray((Fp*divisor+cd(1j)*F)/cd(divisor*divisor), dtype=cd)
-        H, Hp = Q/divisor, (Qp*divisor+cd(1j)*Q)/cd(divisor*divisor)
+        # This Z route uses projected Y/Yp; high-only H would misstate its authority.
+        H, Hp = (None, None) if compensated else (
+            Q/divisor, (Qp*divisor+cd(1j)*Q)/cd(divisor*divisor))
         S = Sp = Z = Zp = None
         if family == 'Z':
             Z, status, _ = dense_solve(Y, np.eye(len(Y), dtype=cd), len(Y), 7, status, rd, measurements)
@@ -140,7 +146,7 @@ def _family_state(system, omega, family, assemble, measurements):
                 numerical_code(status, transfer=True)
             Zp = np.asarray(-Z @ Yp @ Z, dtype=cd)
     matrices = {'S': (S, Sp), 'Y': (Y, Yp), 'Z': (Z, Zp)}
-    return matrices[family], Y, Yp, H.tocsc(), Hp.tocsc(), assembled
+    return matrices[family], Y, Yp, None if H is None else H.tocsc(), None if Hp is None else Hp.tocsc(), assembled
 
 
 def _denominator(matrix, prime, system, measurements):
@@ -271,6 +277,8 @@ def transfer_at(system, omega, job, assemble, measurements, *, final=False):
     facts = dict(numerator=determinant_facts, denominator=denominator_facts,
                  numerator_residual=eta_n, normalizer=normalizer, slope_ratio=slope_ratio,
                  slope_scale=slope_scale, rank_min=rank_min, rank_gap=rank_gap, correction_hz=correction)
+    if job.family == 'Z' and not system.view.port_realizable:
+        facts['arithmetic'] = dict(system.compensation_evidence)
     if final:
         if not (np.isfinite(omega) and omega.real > 0):
             fail('numerical_resolution_unresolved', 'transfer_frequency', 'transfer-zero frequency is unresolved', **facts)

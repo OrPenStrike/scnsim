@@ -119,6 +119,23 @@ class SparseFactor:
         system.factor_facts.append(dict(nodes=matrix.shape[0], nnz=matrix.nnz,
                                         L_nnz=self.factor.L.nnz, U_nnz=self.factor.U.nnz))
 
+    def seed_solve(self, rhs, code=None):
+        """Native seed/correction solve; represented-pair caller certifies later.
+
+        High-only backward error is not the compensated equation certificate.
+        Native singularity/input/output failures keep their original ownership.
+        """
+        code = self.code if code is None else code
+        if self.factor is None:
+            return np.zeros(rhs.shape, dtype=self.system.complex_dtype), self.status
+        if not np.all(np.isfinite(rhs)):
+            self.status = first(self.status, True, code)
+            return np.zeros(rhs.shape, dtype=self.system.complex_dtype), self.status
+        with self.measurements.phase('sparse_rhs_solve', stage=code, columns=rhs.shape[1]):
+            x = self.factor.solve(np.asarray(rhs, dtype=self.system.complex_dtype))
+        self.status = first(self.status, not np.all(np.isfinite(x)), code)
+        return x, self.status
+
     def solve(self, rhs, code=None):
         code = self.code if code is None else code
         if self.factor is None:
@@ -223,7 +240,13 @@ class System:
                 weights[index,:len(block.incidence.values)]=block.incidence.values
             groups.append((np.asarray([block.resistance for block in blocks],dtype=real_dtype),
                            np.asarray([block.inductance for block in blocks],dtype=real_dtype),
-                           weights,columns,pair_map,global_map))
+                           weights,columns,pair_map,global_map,
+                           np.asarray([np.all(block.resistance == 0) for block in blocks],dtype=np.bool_),
+                           np.zeros((len(blocks),blocks[0].inductance.shape[0],blocks[0].inductance.shape[1]),dtype=real_dtype),
+                           np.zeros(len(blocks),dtype=np.int32)))
+        # Classification uses original physical values: a nonzero resistance
+        # underflowing in float32 must retain the generic series-RL equation.
+        self.inductive_coefficients_ready = False
         self.payload=(np.zeros(len(self.rows),dtype=real_dtype),base,load,tuple(groups))
         self.B,self.Bk=B,Bk
         self.Bk_rhs=None if Bk is None else _rhs(Bk,complex_dtype)
@@ -310,7 +333,116 @@ def network(system, omega, assembled, family, measurements, *, derivative=False)
     return (S, Y, Z), status
 
 
-def selected_state(system, assembled, measurements):
+def _selected_compensated_state(system, assembled, measurements):
+    """Scoped retained-Z equation over Q_hi+Q_lo, with one fixed correction.
+
+    State10 retains both sparse matrix components. F/Fp are projected once to
+    the declared complex dtype; no other quantity inherits this arithmetic.
+    """
+    from . import compensated as cp
+    q, qp, bound, status, qlo, qplo = assembled
+    # Reset on every omega, including an assembly failure: a previous state's
+    # correction certificate must never describe the current failed call.
+    system.compensation_evidence = dict(
+        scope='transfer_zero.Z.non_port_realizable',
+        representation='Q_hi_plus_Q_lo_and_Qp_hi_plus_Qp_lo',
+        assembly_status=int(status), correction_policy='not_reached')
+    status = int(status)
+    if status:
+        return None, status
+    rd, cd = system.real_dtype, system.complex_dtype
+    Q, Qp = system.csc(q, measurements), system.csc(qp, measurements)
+    Qlo, Qplo = system.csc(qlo, measurements), system.csc(qplo, measurements)
+    selected, eliminated = system.selected, system.eliminated
+    kw = dict(xp=np)
+    def dense_pair(hi, lo, rows, columns):
+        return hi[rows][:,columns].toarray(), lo[rows][:,columns].toarray()
+    rr = dense_pair(Q,Qlo,selected,selected)
+    rrp = dense_pair(Qp,Qplo,selected,selected)
+    evidence = dict(scope='transfer_zero.Z.non_port_realizable',
+                    representation='Q_hi_plus_Q_lo_and_Qp_hi_plus_Qp_lo',
+                    factor_operand='Q_hi_eliminated_block',
+                    base_dtype=np.dtype(rd).name,
+                    projection='F_Fp_then_Y_Yp_declared_complex_dtype',
+                    correction_policy='one_primal_and_one_derivative_same_high_factor')
+    if len(eliminated):
+        ee, eelo = Q[eliminated][:,eliminated].tocsc(), Qlo[eliminated][:,eliminated].tocsc()
+        er = dense_pair(Q,Qlo,eliminated,selected)
+        re, relo = Q[selected][:,eliminated], Qlo[selected][:,eliminated]
+        eep, eeplo = Qp[eliminated][:,eliminated], Qplo[eliminated][:,eliminated]
+        erp = dense_pair(Qp,Qplo,eliminated,selected)
+        rep, replo = Qp[selected][:,eliminated], Qplo[selected][:,eliminated]
+        # Host pair products consume rows; native factorization retains CSC.
+        ee_csr, eelo_csr = ee.tocsr(), eelo.tocsr()
+        re, relo = re.tocsr(), relo.tocsr()
+        eep, eeplo = eep.tocsr(), eeplo.tocsr()
+        rep, replo = rep.tocsr(), replo.tocsr()
+        # Align sparse entries before pair subtraction: projecting A first
+        # would discard low-component input skew. This is the original A-A.T
+        # certificate, not a symmetry projection or an error allowance.
+        entries = ee.tocoo()
+        keys = entries.row.astype(np.int64)*ee.shape[0]+entries.col
+        transposed = entries.col.astype(np.int64)*ee.shape[0]+entries.row
+        union = np.unique(np.concatenate((keys,transposed)))
+        positions, reverse = np.searchsorted(union,keys), np.searchsorted(union,transposed)
+        direct = (np.zeros(len(union),dtype=cd),np.zeros(len(union),dtype=cd))
+        flipped = (np.zeros(len(union),dtype=cd),np.zeros(len(union),dtype=cd))
+        for target, locations in ((direct,positions),(flipped,reverse)):
+            target[0][locations] = entries.data
+            target[1][locations] = eelo.tocoo().data
+        skew = cp.project(cp.add(direct,cp.negate(flipped),**kw),**kw)
+        scale = np.abs(cp.project(direct,**kw))+np.abs(cp.project(flipped,**kw))
+        asym = ratio(maximum_abs(skew,rd),maximum_abs(scale,rd),rd)
+        evidence['input_reciprocity_ratio'] = asym
+        system.compensation_evidence = evidence
+        status = first(status, not (np.isfinite(asym) and asym <= tau(len(eliminated),rd)), 3)
+        status = first(status, not np.all(np.isfinite(eelo.data)), 3)
+        factor = SparseFactor(ee,3,status,system,measurements,permc_spec='MMD_AT_PLUS_A')
+        def corrected_solve(rhs, code):
+            x, code_status = factor.seed_solve(cp.project(rhs, **kw), code)
+            if code_status:
+                return x, code_status, rd(np.inf), None
+            with measurements.phase('sparse_residual_check',stage=code,columns=rhs[0].shape[1]):
+                residual_pair = cp.negate(cp.residual(ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs))
+            delta, code_status = factor.seed_solve(cp.project(residual_pair, **kw),code)
+            if code_status:
+                return x, code_status, rd(np.inf), None
+            x = np.asarray(cp.project(cp.add(cp.from_value(x,xp=np),cp.from_value(delta,xp=np),**kw),**kw),dtype=cd)
+            with measurements.phase('sparse_residual_check',stage=code,columns=rhs[0].shape[1]):
+                eta, numerator, denominator = cp.solve_certificate(
+                    ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs,real_dtype=rd)
+            bad = not (np.all(np.isfinite(rhs[0])) and np.all(np.isfinite(rhs[1]))
+                       and np.all(np.isfinite(x)) and np.isfinite(eta)
+                       and eta <= tau(len(eliminated),rd))
+            code_status = first(code_status,bad,code)
+            return x,code_status,eta,dict(numerator=numerator,denominator=denominator,residual=eta)
+        X,status,ex,primal_facts = corrected_solve(er,3)
+        evidence['primal_certificate'] = primal_facts
+        system.compensation_evidence = evidence
+        if status:
+            return None,status
+        prime_rhs = cp.add(erp,cp.negate(cp.sparse_matmul(eep,eeplo,cp.from_value(X,xp=np))),**kw)
+        Xp,status,exp,prime_facts = corrected_solve(prime_rhs,4)
+        evidence['derivative_certificate'] = prime_facts
+        if status:
+            return None,status
+        Fpair = cp.add(rr,cp.negate(cp.sparse_matmul(re,relo,cp.from_value(X,xp=np))),**kw)
+        Fppair = cp.add(cp.add(rrp,cp.negate(cp.sparse_matmul(rep,replo,cp.from_value(X,xp=np))),**kw),
+                       cp.negate(cp.sparse_matmul(re,relo,cp.from_value(Xp,xp=np))),**kw)
+        eta_e = rd(np.maximum(ex,exp))
+    else:
+        Fpair,Fppair,eta_e = rr,rrp,rd(0)
+        X = np.empty((0,len(selected)),dtype=cd)
+        Xp = np.empty_like(X)
+        evidence['correction_policy'] = 'no_eliminated_block_no_factor_or_correction'
+        system.compensation_evidence = evidence
+    F,Fp = (np.asarray(cp.project(value,**kw),dtype=cd) for value in (Fpair,Fppair))
+    return (F,Fp,Q,Qp,system.csc(bound,measurements),X,Xp,eta_e,Qlo,Qplo),status
+
+
+def selected_state(system, assembled, measurements, *, compensated=False):
+    if compensated:
+        return _selected_compensated_state(system, assembled, measurements)
     q, qp, bound, status = assembled
     status = int(status)
     if status:

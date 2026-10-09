@@ -351,7 +351,38 @@ Compiler and View own binary64 SI lowering and declaration order. The backend
 owns requested arithmetic precision, local frequency assembly, direct factors,
 analytic derivatives and existing numerical certificates. C/K/G are coalesced
 before their separate absolute bounds; each series-RL section is bounded before
-section summation. Host continuation/CMA and Workspace commit/checkpoint
+section summation. For a realized section resistance that is exactly zero and nonzero
+frequency, the dev20 CONVERGING candidate evaluates the same local equation
+`(-i omega) (R - i omega L)^-1 = L^-1` as a constant inductive
+stamp. The local inverse uses the selected actual arithmetic dtype and is
+prepared once per realized section; its frequency derivative is exactly zero.
+Width one uses the direct reciprocal; width two uses entrywise
+mantissa/exponent determinant and adjugate-ratio evaluation in the actual
+dtype, without global maximum normalization. Wider local blocks retain LU. One shared 2-by-2 determinant supplies both off-diagonal
+entries without projecting or averaging the input matrix. Existing actual-dtype
+residual, status and tolerance conditions remain unchanged.
+The zero mask tests the realized binary64 section resistance after physical
+section scaling and before casting to the backend arithmetic dtype; it is not
+a test of the unscaled Plan resistance or a dtype-rounded zero.
+Ordinary transpose, incidence weights, physical inputs and coalescing order
+remain unchanged. Nonzero-resistance sections and the original zero-frequency
+path retain their existing evaluation. This change does not alter root
+conditions, add a tolerance or certify a previously failed candidate.
+For retained, non-port-realizable Z transfer-zero only, the dev20 CONVERGING
+candidate uses two-component expansions in the selected base dtype
+(Float32/Complex64 or Float64/Complex128) through assembly and selected Schur
+formation. The high-part factorization is performed once and reused for one
+fixed low-aware correction. Corrected-equation certification retains the pair
+representation as its numerical authority. Consistently formed F/Fp are then
+projected to declared-dtype Y/Yp for the current Z cofactor and denominator
+calculation. Unconsumed H/Hp are omitted on this Z branch. Other Quantity
+scopes retain their current arithmetic. Effective compensated coverage is
+recorded explicitly; this is not a 128-bit-accuracy claim or a public mode.
+Physical inputs, ordinary transpose, strict result/failure ownership, tau and
+the 0.01 Hz condition remain unchanged. No mean estimate, fallback, automatic
+precision change or new certification condition is selected.
+
+Host continuation/CMA and Workspace commit/checkpoint
 authorities remain separate. The private Python-to-Julia transport may materialize
 a dense descriptor at that adapter boundary; explicit ordinary Julia is unchanged.
 
@@ -405,8 +436,10 @@ JAX quantity and transitive Optimization identities distinguish this candidate.
 The current request layer records per-family
 `scnsim.jax.sparse_superlu.*` algorithm identities and the transitive
 `direct_cmaes.cmaes_0_13_1.v2` identity. The numerical adapter separately records
-its aggregate `scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v4`
-identity; these describe different layers and need not be identical. The shared
+its aggregate `scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v7`
+identity, including the retained non-port-realizable Z transfer-zero
+compensation scope described above; these layer identities need not be identical.
+Other Quantity scopes retain their current arithmetic. The shared
 selected-state factorization of the eliminated block Qee uses SuperLU
 `MMD_AT_PLUS_A` structural ordering. One factor supplies both the Schur solve
 and its analytic derivative solve. Other native factorization options, selected
