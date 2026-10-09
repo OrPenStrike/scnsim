@@ -47,6 +47,24 @@ def _decode(success, *, decoder, prepared_analysis, bound_spec):
     )
 
 
+def _candidate_actor_declaration(*, operation_id, plan_document, request, request_sha256,
+                                 prepared_analysis, precision, resources):
+    return record_bytes({
+        "schema": "scnsim.candidate-actor-declaration.v1",
+        "schema_version": 1,
+        "operation_id": operation_id,
+        "plan": {"sha256": request["plan_sha256"], "document": plan_document},
+        "request": {"sha256": request_sha256, "document": request},
+        "source_units": [value.hex() for value in prepared_analysis.source_unit_bytes],
+        "mesh": {"kind": "dynamic", "sections": [], "parameter_key": None,
+                 "groups": [], "derivation": {}},
+        "precision": precision,
+        "resources": resources,
+        "algorithm_id": request["runtime_semantic"]["algorithm_id"],
+        "population_size": request["spec"]["optimizer"]["resolved_population_size"],
+    })
+
+
 def _acknowledge_spans(trace, ack) -> None:
     """Advance the trace cursor only for rows the storage commit confirms."""
     if not isinstance(ack, Mapping) or ack.get("committed") is not True:
@@ -151,6 +169,31 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
         raise RuntimePreparationError("Prepared JAX resources changed before execution", stage="runtime_prepare")
     runtime_configuration = get_runtime_configuration()
     with operation_resources(cpu_threads=runtime_configuration.cpu_threads) as operation_resource:
+        if optimization and runtime_configuration.optimization_workers > 1:
+            from .candidate_pool import CandidatePool
+
+            declaration_bytes = _candidate_actor_declaration(
+                operation_id=trace.operation_id, plan_document=plan_document, request=request,
+                request_sha256=request_sha, prepared_analysis=prepared_analysis,
+                precision=precision, resources=resources,
+            )
+            with CandidatePool(
+                declaration_bytes, capacity=runtime_configuration.optimization_workers
+            ) as candidate_pool:
+                readiness = candidate_pool.snapshot_statistics()["actor_readiness"]
+                backend_identity = readiness[0]["backend_identity"]
+                return _execute_with_backend(
+                    binding=binding, plan_document=plan_document, prepared_analysis=prepared_analysis,
+                    decoder=decoder, bound_spec=bound_spec, on_progress=on_progress,
+                    checkpoint_policy=checkpoint_policy, resume_from=resume_from,
+                    commit_every_generations=commit_every_generations, trace=trace,
+                    request=request, request_sha=request_sha, optimization=optimization, precision=precision,
+                    resources=resources, backend=None, backend_identity=backend_identity,
+                    operation_resource=operation_resource, worker_backend_factory=None,
+                    candidate_pool=candidate_pool,
+                    notify_committed_generation=notify_committed_generation,
+                )
+
         with trace.span("backend_prepare"):
             backend = get_jax_backend(
                 precision=precision, resources=runtime_configuration,
@@ -175,8 +218,9 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             checkpoint_policy=checkpoint_policy, resume_from=resume_from,
             commit_every_generations=commit_every_generations, trace=trace,
             request=request, request_sha=request_sha, optimization=optimization, precision=precision,
-            resources=resources, backend=backend, operation_resource=operation_resource,
-            worker_backend_factory=worker_backend_factory,
+            resources=resources, backend=backend, backend_identity=backend.identity(),
+            operation_resource=operation_resource, worker_backend_factory=worker_backend_factory,
+            candidate_pool=None,
             notify_committed_generation=notify_committed_generation,
         )
 
@@ -184,7 +228,8 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
 def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
                           on_progress, checkpoint_policy, resume_from, commit_every_generations,
                           trace, request, request_sha, optimization, precision, resources, backend,
-                          operation_resource, worker_backend_factory, notify_committed_generation):
+                          backend_identity, operation_resource, worker_backend_factory, candidate_pool,
+                          notify_committed_generation):
     from .python_host import execute_analysis
 
     writer = None
@@ -193,7 +238,7 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
     try:
         arm = f"{trace.method}/jax/{precision}/{checkpoint_policy}"
         environment = environment_snapshot(arm=arm, device="cpu", cpu_threads=resources["cpu_threads"],
-                                           backend=backend.identity())
+                                           backend=backend_identity)
         environment["runtime_semantic"] = request["runtime_semantic"]
         environment["resources"] = resources
         environment_sha = environment_identity(environment)
@@ -305,7 +350,8 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
                                     checkpoint=checkpoint, checkpoint_policy=checkpoint_policy,
                                     operation_resources=operation_resource,
-                                    worker_backend_factory=worker_backend_factory)
+                                    worker_backend_factory=worker_backend_factory,
+                                    candidate_pool=candidate_pool)
         if writer is not None:
             trace.publish_pending_spans(writer)
             with binding.writer():
@@ -364,7 +410,8 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
     finally:
         primary = sys.exception()
         try:
-            backend.close()
+            if backend is not None:
+                backend.close()
         except BaseException as finalization_error:
             if primary is None:
                 raise

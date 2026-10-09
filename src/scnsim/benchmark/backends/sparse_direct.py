@@ -10,7 +10,9 @@ The coupling reciprocity certificate explains residual-induced Schur skew while
 retaining input-origin asymmetry and the raw physical selected matrix.
 """
 from __future__ import annotations
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from types import MappingProxyType
+import json
 from hashlib import sha256
 from time import perf_counter_ns
 import numpy as np
@@ -21,12 +23,19 @@ from scipy.sparse.linalg import splu
 
 class Measurements:
     """Optional presentation intervals; disabled collection never reads a clock."""
-    def __init__(self, trace=None, parent=None, *, enabled=True):
+    def __init__(self, trace=None, parent=None, *, enabled=True, resource=None):
         self.trace, self.parent, self.rows = trace, parent, []
         self.enabled = enabled
+        self.resource = resource
 
     @contextmanager
     def phase(self, kind, **details):
+        scope = nullcontext() if self.resource is None else self.resource.phase(kind)
+        with scope, self._phase(kind, **details):
+            yield
+
+    @contextmanager
+    def _phase(self, kind, **details):
         if not self.enabled:
             yield
             return
@@ -145,61 +154,86 @@ def _rhs(matrix, dtype):
 
 class System:
     """One candidate/View's runtime sparse operands and index preparation."""
-    def __init__(self, view, real_dtype, complex_dtype):
+    def __init__(self, view, real_dtype, complex_dtype, *, template_cache=None, resource=None):
         self.view = view
         self.real_dtype, self.complex_dtype = real_dtype, complex_dtype
-        model = view.model
-        self.n = len(model.node_ids)
+        self.n = len(view.model.node_ids)
         self.factor_facts = []
+        model = view.model
         B, Bk = model.B, view.Bk
         bases = (model.C, model.K, model.G)
-        section_keys = [_pairs(block.incidence, self.n) for block in model.series_rl]
-        all_keys = [_keys(m, self.n) for m in bases] + section_keys + [_pairs(B, self.n)]
-        if Bk is not None:
-            all_keys.append(_pairs(Bk, self.n))
-        pattern = np.unique(np.concatenate(all_keys))
-        self.rows, self.cols = pattern // self.n, pattern % self.n
-        self.pattern_sha256 = sha256(pattern.tobytes() + np.asarray((self.n, self.n), dtype=np.int64).tobytes()).hexdigest()
-        def locations(keys):
-            return np.asarray(np.searchsorted(pattern, keys), dtype=np.int32)
-        base = tuple(part for matrix in bases for part in
-                     (locations(_keys(matrix, self.n)), np.asarray(matrix.values, dtype=real_dtype)))
-        load = (np.asarray(model.R, dtype=real_dtype), np.asarray(model.M, dtype=real_dtype),
-                np.asarray(B.values, dtype=real_dtype), np.asarray(B.cols, dtype=np.int32),
-                locations(_pairs(B, self.n)).reshape((len(B.values),) * 2))
-        grouped = {}
-        for block, keys in zip(model.series_rl, section_keys, strict=True):
-            grouped.setdefault(block.resistance.shape[0], []).append((block, keys))
-        groups = []
-        for width, blocks in grouped.items():
-            count = max(len(block.incidence.values) for block, _ in blocks)
-            weights = np.zeros((len(blocks), count), dtype=real_dtype)
-            columns = np.zeros((len(blocks), count), dtype=np.int32)
-            pair_map = np.zeros((len(blocks), count, count), dtype=np.int32)
-            global_maps, offset = [], 0
-            for index, (block, keys) in enumerate(blocks):
-                length = len(block.incidence.values)
-                weights[index, :length] = block.incidence.values
-                columns[index, :length] = block.incidence.cols
-                unique = np.unique(keys)
-                pair_map[index, :length, :length] = (offset + np.searchsorted(unique, keys)).reshape(length, length)
-                global_maps.append(locations(unique))
-                offset += len(unique)
-            groups.append((np.asarray([block.resistance for block, _ in blocks], dtype=real_dtype),
-                           np.asarray([block.inductance for block, _ in blocks], dtype=real_dtype),
-                           weights, columns, pair_map, np.concatenate(global_maps)))
-        self.payload = (np.zeros(len(pattern), dtype=real_dtype), base, load, tuple(groups))
-        self.B = B
-        self.Bk = Bk
-        self.Bk_rhs = None if Bk is None else _rhs(Bk, complex_dtype)
-        self.Rk = None if view.Rk is None else np.asarray(view.Rk, dtype=complex_dtype)
-        self.Dk = None if view.Dk is None else np.asarray(view.Dk, dtype=complex_dtype)
-        self.Go = None if view.Go is None else np.asarray(view.Go, dtype=complex_dtype)
-        self.B_pair_map = locations(_pairs(B, self.n))
-        self.Bk_pair_map = None if Bk is None else locations(_pairs(Bk, self.n))
-        self.selected = np.asarray(view.selected_indices, dtype=np.intp)
-        selected_set = set(view.selected_indices)
-        self.eliminated = np.asarray([i for i in range(self.n) if i not in selected_set], dtype=np.intp)
+        matrices = (*bases, B, *((Bk,) if Bk is not None else ()),
+                    *(block.incidence for block in model.series_rl))
+        from ...canonical import canonical_json_bytes
+        declaration = json.loads(view.lineage_bytes)['declaration']
+        # Exact ordered indices/mesh/View establish structure. Numerical values,
+        # pair weights and coefficients are refreshed even on a template hit.
+        key = (view.signature, canonical_json_bytes(declaration), np.dtype(real_dtype).str,
+               tuple((matrix.shape, matrix.rows.tobytes(),matrix.cols.tobytes()) for matrix in matrices))
+        template = None if template_cache is None else template_cache.get(key)
+        if resource is not None:
+            resource.statistic('pattern_template_hit' if template is not None else 'pattern_template_miss')
+        if template is None:
+            section_keys = [_pairs(block.incidence,self.n) for block in model.series_rl]
+            all_keys = [_keys(matrix,self.n) for matrix in bases] + section_keys + [_pairs(B,self.n)]
+            if Bk is not None: all_keys.append(_pairs(Bk,self.n))
+            pattern = np.unique(np.concatenate(all_keys))
+            def fixed(array):
+                array=np.asarray(array)
+                return np.frombuffer(array.tobytes(),dtype=array.dtype).reshape(array.shape)
+            def locations(keys):
+                return np.asarray(np.searchsorted(pattern,keys),dtype=np.int32)
+            groups={}
+            for index,block in enumerate(model.series_rl):
+                groups.setdefault(block.resistance.shape[0],[]).append(index)
+            specs=[]
+            for width,indices in groups.items():
+                count=max(len(model.series_rl[index].incidence.values) for index in indices)
+                columns=np.zeros((len(indices),count),dtype=np.int32)
+                pair_map=np.zeros((len(indices),count,count),dtype=np.int32)
+                global_maps=[]; offset=0
+                for group_index,index in enumerate(indices):
+                    block=model.series_rl[index]; keys=section_keys[index]
+                    length=len(block.incidence.values)
+                    columns[group_index,:length]=block.incidence.cols
+                    unique=np.unique(keys)
+                    pair_map[group_index,:length,:length]=(offset+np.searchsorted(unique,keys)).reshape(length,length)
+                    global_maps.append(locations(unique)); offset+=len(unique)
+                specs.append((tuple(indices),count,fixed(columns),fixed(pair_map),fixed(np.concatenate(global_maps))))
+            template=MappingProxyType(dict(
+                rows=fixed(pattern//self.n), cols=fixed(pattern%self.n),
+                pattern_sha256=sha256(pattern.tobytes()+np.asarray((self.n,self.n),dtype=np.int64).tobytes()).hexdigest(),
+                base_maps=tuple(fixed(locations(_keys(matrix,self.n))) for matrix in bases),
+                B_pair_map=fixed(locations(_pairs(B,self.n))),
+                Bk_pair_map=None if Bk is None else fixed(locations(_pairs(Bk,self.n))),
+                load_pair_map=fixed(locations(_pairs(B,self.n)).reshape((len(B.values),)*2)),
+                groups=tuple(specs)))
+            if template_cache is not None: template_cache[key]=template
+        self.rows,self.cols=template['rows'],template['cols']
+        self.pattern_sha256=template['pattern_sha256']
+        base=tuple(part for matrix,locations in zip(bases,template['base_maps'])
+                   for part in (locations,np.asarray(matrix.values,dtype=real_dtype)))
+        load=(np.asarray(model.R,dtype=real_dtype),np.asarray(model.M,dtype=real_dtype),
+              np.asarray(B.values,dtype=real_dtype),np.asarray(B.cols,dtype=np.int32),template['load_pair_map'])
+        groups=[]
+        for indices,count,columns,pair_map,global_map in template['groups']:
+            blocks=[model.series_rl[index] for index in indices]
+            weights=np.zeros((len(blocks),count),dtype=real_dtype)
+            for index,block in enumerate(blocks):
+                weights[index,:len(block.incidence.values)]=block.incidence.values
+            groups.append((np.asarray([block.resistance for block in blocks],dtype=real_dtype),
+                           np.asarray([block.inductance for block in blocks],dtype=real_dtype),
+                           weights,columns,pair_map,global_map))
+        self.payload=(np.zeros(len(self.rows),dtype=real_dtype),base,load,tuple(groups))
+        self.B,self.Bk=B,Bk
+        self.Bk_rhs=None if Bk is None else _rhs(Bk,complex_dtype)
+        self.Rk=None if view.Rk is None else np.asarray(view.Rk,dtype=complex_dtype)
+        self.Dk=None if view.Dk is None else np.asarray(view.Dk,dtype=complex_dtype)
+        self.Go=None if view.Go is None else np.asarray(view.Go,dtype=complex_dtype)
+        self.B_pair_map,self.Bk_pair_map=template['B_pair_map'],template['Bk_pair_map']
+        self.selected=np.asarray(view.selected_indices,dtype=np.intp)
+        selected_set=set(view.selected_indices)
+        self.eliminated=np.asarray([i for i in range(self.n) if i not in selected_set],dtype=np.intp)
 
     def csc(self, values, measurements):
         with measurements.phase('sparse_csc_build', nodes=self.n, nnz=len(values)):

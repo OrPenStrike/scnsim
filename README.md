@@ -20,7 +20,7 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current development candidate is `1.0.0.dev14`, requiring Python 3.12. Normal
+The current development candidate is `1.0.0.dev17`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
@@ -31,10 +31,14 @@ integers select a different group size in the Plan leaf’s SQLite store. Omitte
 intervals with explicit Julia keep its existing native value of 1. See the
 guide for recovery, durability and recomputation limits.
 For same-generation JAX Optimization, `configure_runtime(cpu_threads=N)`
-declares the task CPU budget for persistent objective workers. `None` retains
-serial execution with the existing environment; 1 is serial. The coordinator
-preserves CMA order, cache ownership and durable callbacks. Population wall
-time divided by population size is an average, not candidate latency.
+declares the task CPU budget. Persistent candidate threads preserve isolated
+candidate preparation and continuation state; capacity is bounded by N and the
+population size. Compatible ready JAX assembly requests share a finite batch,
+while native sparse work shares the budget. `None` retains serial execution with
+the existing environment; 1 is serial. The coordinator alone owns CMA order,
+cache admission, winner selection, SQLite commits and durable callbacks.
+Population wall time divided by population size is an average, not candidate
+latency. There is one scheduler and no public executor selector or fallback.
 The dev14 candidate extends JAX evaluation to operator-element roots, hybridized
 poles, S/Y/Z transfer zeros, residue-normalized coupling and loaded operators.
 Scalar quantity selectors also serve Optimization; operators remain matrix

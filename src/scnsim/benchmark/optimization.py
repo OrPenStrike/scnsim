@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from copy import deepcopy
 from contextlib import nullcontext
+from hashlib import sha256
 import json
 import math
 import struct
@@ -37,6 +38,14 @@ from .views import realize_view
 
 CANDIDATE_FAILURES = frozenset(("invalid_candidate_physical_parameter", "eliminated_block_solve_failure",
                                 "root_slope_unresolved", "numerical_resolution_unresolved"))
+
+
+def _candidate_actor_error(record: dict):
+    """Restore an actual SCNSim actor error without reclassifying its owner."""
+    cls = getattr(errors, record.get("error_type", ""), None)
+    if not isinstance(cls, type) or not issubclass(cls, SCNSimError):
+        raise CompilerInvariantError("candidate actor returned an unknown error type", stage="candidate_protocol")
+    return cls(record["detail"], stage=record["stage"], evidence=record.get("evidence", {}))
 
 
 def bits(value: float) -> str:
@@ -77,7 +86,8 @@ class Evaluator:
     """One task's baseline anchor and physical-parameter cache authority."""
 
     def __init__(self, plan: dict, analysis: dict, mesh: MeshSpec, backend: NumericalBackend, *, emit=None,
-                 trace=None, operation_resources=None, worker_backend_factory=None, worker_capacity: int = 1):
+                 trace=None, operation_resources=None, worker_backend_factory=None, worker_capacity: int = 1,
+                 candidate_pool=None):
         self.plan, self.analysis, self.mesh, self.backend = plan, analysis, mesh, backend
         self.spec = analysis["spec"]
         self.emit = emit
@@ -85,6 +95,7 @@ class Evaluator:
         self.operation_resources = operation_resources
         self.worker_backend_factory = worker_backend_factory
         self.worker_capacity = worker_capacity
+        self.candidate_pool = candidate_pool
         self.preparation_cache = {}
         source = analysis["parameter_source"]
         point = source["parameters"] if source["kind"] == "point" else source["baseline_parameters"] if source["kind"] == "points" else source["base_parameters"]
@@ -93,6 +104,7 @@ class Evaluator:
         self.authorized = {parameter_key(record) for record in self.spec.get("allow_extrapolation", point.get("allow_extrapolation", []))}
         self.quantity_evaluator = QuantityEvaluator(backend, emit=None)
         self.anchors: dict[str, EvaluationResult] = {}
+        self._candidate_anchor_references: dict[str, str] = {}
         self.cache: dict[str, dict] = {}
         self.last_batch_stats = {
             "new_unique_candidates": 0,
@@ -101,12 +113,21 @@ class Evaluator:
             "numerical_failure_occurrences": 0,
         }
         self.last_active_worker_count = 0
+        self.last_workers_used = 0
 
     def anchor_references(self) -> dict[str, str]:
         """Return references into the baseline candidate's dependency bodies."""
         from ..execution.quantities import quantity_body_id
 
         return {key: quantity_body_id(result)[0] for key, result in self.anchors.items()}
+
+    def install_anchor_records(self, references: dict[str, str], bodies: dict[str, dict]) -> None:
+        """Install only the parent's already-committed baseline anchor bodies."""
+        self.anchors = {key: result_from_record(bodies[body_id])
+                        for key, body_id in references.items()}
+        if self.candidate_pool is not None:
+            from ..execution.candidate_state import encode_anchors
+            self.candidate_pool.install_anchors(encode_anchors(references, bodies))
 
     def cohort_values(self, point: dict) -> dict:
         """Apply declared overrides to the task's effective baseline closure."""
@@ -195,32 +216,107 @@ class Evaluator:
             representatives[key] = len(states)
             state = {"parameters": record, "objectives": [], "cost_f64": bits(0), "failure": None,
                      "dependencies": {}, "result_cache": {}, "views": {}, "values": values}
-            try:
-                raw = compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized, preparation_cache=self.preparation_cache)
-                state["discretization"] = json.loads(raw.evidence_bytes)["discretization"]
-                for objective in objectives:
-                    for leaf in leaves(objective["quantity"]):
-                        declaration_key = canonical_json_bytes(leaf["view"]).decode()
-                        if declaration_key not in state["views"]:
-                            state["views"][declaration_key] = realize_view(raw, leaf["view"])
-            except SCNSimError as error:
-                if baseline or error.kind not in CANDIDATE_FAILURES:
-                    raise
-                state["failure"] = {"kind": error.kind, "stage": error.stage, "detail": str(error),
-                                    "evidence": json.loads(record_bytes(error.evidence)), "phase": "candidate_compile"}
-                state["cost_f64"] = bits(math.inf)
+            if self.candidate_pool is None:
+                try:
+                    raw = compile_model(self.plan, values, mesh=self.mesh, authorized=self.authorized, preparation_cache=self.preparation_cache)
+                    state["discretization"] = json.loads(raw.evidence_bytes)["discretization"]
+                    for objective in objectives:
+                        for leaf in leaves(objective["quantity"]):
+                            declaration_key = canonical_json_bytes(leaf["view"]).decode()
+                            if declaration_key not in state["views"]:
+                                state["views"][declaration_key] = realize_view(raw, leaf["view"])
+                except SCNSimError as error:
+                    if baseline or error.kind not in CANDIDATE_FAILURES:
+                        raise
+                    state["failure"] = {"kind": error.kind, "stage": error.stage, "detail": str(error),
+                                        "evidence": json.loads(record_bytes(error.evidence)), "phase": "candidate_compile"}
+                    state["cost_f64"] = bits(math.inf)
             states.append(state)
+
+        if self.candidate_pool is not None:
+            from ..execution.candidate_state import encode_point, PREPARATION_SCHEMA
+
+            point_generation = 0 if baseline else generation
+            if point_generation is None:
+                raise CompilerInvariantError("parallel candidate wave has no generation", stage="candidate_protocol")
+            operation_id = self.candidate_pool.declaration["operation_id"]
+            submitted = []
+            submitted_indexes = []
+            for key, index in representatives.items():
+                state = states[index]
+                point = encode_point(
+                    operation_id=operation_id,
+                    generation=point_generation,
+                    population_column=index,
+                    parameter_set=state["parameters"],
+                    baseline=baseline,
+                )
+                submitted.append(point)
+                submitted_indexes.append((key, index))
+            prepared_rows = iter(self.candidate_pool.prepare_candidates(
+                tuple(submitted), generation=point_generation
+            ))
+            try:
+                for key, index in submitted_indexes:
+                    try:
+                        encoded = next(prepared_rows)
+                    except StopIteration as error:
+                        raise CompilerInvariantError(
+                            "candidate preparation changed batch length", stage="candidate_protocol"
+                        ) from error
+                    row = record_document(encoded)
+                    state = states[index]
+                    expected_route = {
+                        "schema": PREPARATION_SCHEMA,
+                        "schema_version": 1,
+                        "operation_id": operation_id,
+                        "generation": point_generation,
+                        "population_column": index,
+                        "candidate_key": key,
+                        "parameter_digest": sha256(canonical_json_bytes(state["parameters"])).hexdigest(),
+                    }
+                    if any(row.get(name) != value for name, value in expected_route.items()):
+                        raise CompilerInvariantError("candidate preparation changed routing identity", stage="candidate_protocol")
+                    if row.get("status") == "error":
+                        error = _candidate_actor_error(row["failure"])
+                        if baseline or error.kind not in CANDIDATE_FAILURES:
+                            raise error
+                        state["failure"] = {
+                            "kind": error.kind,
+                            "stage": error.stage,
+                            "detail": str(error),
+                            "evidence": json.loads(record_bytes(error.evidence)),
+                            "phase": "candidate_compile",
+                        }
+                        state["cost_f64"] = bits(math.inf)
+                        continue
+                    if row.get("status") != "prepared":
+                        raise CompilerInvariantError("candidate actor returned an unknown preparation status", stage="candidate_protocol")
+                    state["discretization"] = row["discretization"]
+                    state["views"] = row["views"]
+                try:
+                    next(prepared_rows)
+                except StopIteration:
+                    pass
+                else:
+                    raise CompilerInvariantError("candidate preparation changed batch length", stage="candidate_protocol")
+            finally:
+                close = getattr(prepared_rows, "close", None)
+                if close is not None:
+                    close()
 
         # The shared preparation cache is mutated only by this ordered
         # compile-first pass. Each candidate receives an independent mapping
         # for any later continuation compilation; cached values are immutable.
-        for state in states:
-            if state is not None and state["failure"] is None:
-                state["preparation_cache"] = dict(self.preparation_cache)
+        if self.candidate_pool is None:
+            for state in states:
+                if state is not None and state["failure"] is None:
+                    state["preparation_cache"] = dict(self.preparation_cache)
 
         active_lock = Lock()
         active_workers = 0
         peak_active_workers = 0
+        used_actor_ids = set()
 
         def tracked_leaf(item, *, objective_index: int, term_index: int,
                          selector: dict) -> tuple[int, dict | None, NumericalFailure | None, dict]:
@@ -246,7 +342,100 @@ class Evaluator:
                     for index, state in enumerate(states)
                     if state is not None and not state["failure"]
                 ]
-                if self.operation_resources is not None and not baseline:
+                if self.candidate_pool is not None:
+                    from ..execution.candidate_state import encode_wave
+
+                    operation_id = self.candidate_pool.declaration["operation_id"]
+                    point_generation = 0 if baseline else generation
+                    actor_ids = []
+                    for index, state, _ in wave:
+                        digest = sha256(canonical_json_bytes(state["parameters"])).hexdigest()
+                        actor = self.candidate_pool.residency[
+                            (operation_id, point_generation, index, digest)
+                        ]
+                        actor_ids.append(actor.actor_id)
+                    commands = tuple(encode_wave(
+                        operation_id=operation_id,
+                        generation=point_generation,
+                        population_column=index,
+                        parameter_set=state["parameters"],
+                        objective_index=objective_index,
+                        term_index=term_index,
+                        selector=selector,
+                        baseline=baseline,
+                    ) for index, state, _ in wave)
+                    encoded_outcomes = iter(self.candidate_pool.evaluate_wave(commands))
+                    outcomes = []
+                    try:
+                        for index, state, _ in wave:
+                            try:
+                                encoded = next(encoded_outcomes)
+                            except StopIteration as error:
+                                raise CompilerInvariantError(
+                                    "candidate wave changed batch length", stage="candidate_protocol"
+                                ) from error
+                            row = record_document(encoded)
+                            expected_route = {
+                                "schema": "scnsim.candidate-evaluation.v1",
+                                "schema_version": 1,
+                                "operation_id": operation_id,
+                                "generation": point_generation,
+                                "population_column": index,
+                                "candidate_key": canonical_json_bytes(state["parameters"]).decode("utf-8"),
+                                "parameter_digest": sha256(canonical_json_bytes(state["parameters"])).hexdigest(),
+                                "objective_index": objective_index,
+                                "term_index": term_index,
+                            }
+                            if any(row.get(name) != value for name, value in expected_route.items()):
+                                raise CompilerInvariantError("candidate evaluation changed routing identity", stage="candidate_protocol")
+                            if row.get("dependencies"):
+                                state["dependencies"].update(row["dependencies"])
+                            if baseline and row.get("anchor_references") is not None:
+                                self._candidate_anchor_references = row["anchor_references"]
+                            status = row.get("status")
+                            if status == "evaluated":
+                                body_id = row["body_id"]
+                                result_record = row.get("result") or state["dependencies"].get(body_id)
+                                if result_record is None:
+                                    raise CompilerInvariantError("candidate reply omitted an unarchived quantity body", stage="candidate_protocol")
+                                evaluated = {
+                                    "result": result_from_record(result_record),
+                                    "value": row["value"],
+                                    "dependencies": row.get("dependencies", {}),
+                                    "body_id": body_id,
+                                }
+                                outcomes.append((index, evaluated, None, {}))
+                            elif status == "numerical_failure":
+                                failure_record = row["failure"]
+                                failure = NumericalFailure(
+                                    failure_record["kind"], failure_record["stage"],
+                                    failure_record["detail"], record_bytes(failure_record.get("evidence", {})),
+                                )
+                                if baseline or failure.kind not in CANDIDATE_FAILURES:
+                                    raise numerical_error(failure)
+                                outcomes.append((index, None, failure, row.get("dependencies", {})))
+                            elif status == "error":
+                                error = _candidate_actor_error(row["failure"])
+                                if baseline or error.kind not in CANDIDATE_FAILURES:
+                                    raise error
+                                failure = NumericalFailure(
+                                    error.kind, error.stage, str(error), record_bytes(error.evidence)
+                                )
+                                outcomes.append((index, None, failure, row.get("dependencies", {})))
+                            else:
+                                raise CompilerInvariantError("candidate actor returned an unknown evaluation status", stage="candidate_protocol")
+                        try:
+                            next(encoded_outcomes)
+                        except StopIteration:
+                            pass
+                        else:
+                            raise CompilerInvariantError("candidate wave changed batch length", stage="candidate_protocol")
+                    finally:
+                        close = getattr(encoded_outcomes, "close", None)
+                        if close is not None:
+                            close()
+                    used_actor_ids.update(actor_ids)
+                elif self.operation_resources is not None and not baseline:
                     outcomes = list(self.operation_resources.map_ordered(
                         lambda item: tracked_leaf(item, objective_index=objective_index,
                                                   term_index=term_index, selector=selector),
@@ -278,7 +467,8 @@ class Evaluator:
                         term_records[index].append({"term_ordinal": term_index, "selector": selector, "status": "success",
                                                     "value_f64": bits(value), "actual_complex": actual,
                                                     "body_id": evaluated["body_id"],
-                                                    "lineage": json.loads(view.lineage_bytes), "evidence": json.loads(result.evidence_bytes)})
+                                                    "lineage": view["lineage"] if self.candidate_pool is not None else json.loads(view.lineage_bytes),
+                                                    "evidence": json.loads(result.evidence_bytes)})
                     else:
                         state["dependencies"].update(failure_dependencies)
                         state["failure"] = dict(asdict(failure), evidence_bytes=json.loads(failure.evidence_bytes),
@@ -322,6 +512,12 @@ class Evaluator:
                 state["failure"] = {"kind": failure.kind, "stage": failure.stage, "detail": failure.detail,
                                     "phase": "total_aggregation"}
                 state["cost_f64"] = bits(math.inf)
+            if baseline and self.candidate_pool is not None:
+                references = self._candidate_anchor_references
+                self.anchors = {
+                    anchor_key: result_from_record(state["dependencies"][body_id])
+                    for anchor_key, body_id in references.items()
+                }
             self.cache[key] = {k: v for k, v in state.items()
                                if k not in ("values", "views", "result_cache", "preparation_cache")}
         result, seen = [], set()
@@ -335,7 +531,8 @@ class Evaluator:
             "same_generation_duplicate_occurrences": same_generation_duplicates,
             "numerical_failure_occurrences": sum(record["failure"] is not None for record in result),
         }
-        self.last_active_worker_count = peak_active_workers
+        self.last_active_worker_count = None if self.candidate_pool is not None else peak_active_workers
+        self.last_workers_used = len(used_actor_ids)
         return result
 
 
@@ -456,12 +653,15 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             key: result_from_record(baseline_dependencies[body_id])
             for key, body_id in checkpoint["anchors"].items()
         }
+        if evaluator.candidate_pool is not None:
+            evaluator.install_anchor_records(checkpoint["anchors"], baseline_dependencies)
         evaluator.cache = checkpoint["cache"]
         baseline, best = checkpoint["baseline"], checkpoint["best"]
         next_ordinal = checkpoint["next_ordinal"]
     else:
         baseline_context = (evaluator.operation_resources.candidate_compute()
-                            if evaluator.operation_resources is not None else nullcontext())
+                            if evaluator.operation_resources is not None and evaluator.candidate_pool is None
+                            else nullcontext())
         with baseline_context:
             baseline = dict(evaluator.evaluate_many([evaluator.base], baseline=True)[0],
                             evaluation_ordinal=0, generation=0, population_column=0)
@@ -472,11 +672,16 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         return {"cma": cma_snapshot(optimizer)} if checkpoint_policy == "generation" else None
 
     if checkpoint is None:
-        emit("baseline_ready", {
+        baseline_ack = emit("baseline_ready", {
             "baseline": baseline,
             "anchors": evaluator.anchor_references(),
             "resume_state": resume_state(),
         })
+        if evaluator.candidate_pool is not None:
+            if not isinstance(baseline_ack, dict) or baseline_ack.get("committed") is not True:
+                raise CompilerInvariantError("candidate actors require an acknowledged baseline", stage="candidate_protocol")
+            evaluator.install_anchor_records(evaluator.anchor_references(), baseline["dependencies"])
+            evaluator.candidate_pool.release_generation(0)
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):
         with (nullcontext() if trace is None else trace.span("generation", details={"generation": generation})):
             start = perf_counter_ns()
@@ -487,9 +692,13 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             points = [mapped_values(evaluator.spec, evaluator.base, value) for value in raw]
             before_counters = (evaluator.operation_resources.counters()
                                if evaluator.operation_resources is not None else None)
+            before_pool_statistics = (evaluator.candidate_pool.snapshot_statistics()
+                                      if evaluator.candidate_pool is not None else None)
             population_start = perf_counter_ns()
             records = evaluator.evaluate_many(points, generation=generation)
             population_end = perf_counter_ns()
+            after_pool_statistics = (evaluator.candidate_pool.snapshot_statistics()
+                                     if evaluator.candidate_pool is not None else None)
             if evaluator.operation_resources is not None and trace is not None:
                 after_counters = evaluator.operation_resources.counters()
                 stats = evaluator.last_batch_stats
@@ -504,10 +713,19 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
                     "numerical_failure_occurrences": stats["numerical_failure_occurrences"],
                     "worker_capacity": evaluator.worker_capacity,
                     "active_worker_count": evaluator.last_active_worker_count,
+                    "workers_used": evaluator.last_workers_used,
                 }
                 if before_counters is not None:
                     for name in ("assembly_calls", "new_shape_count", "executable_cache_hits"):
                         performance[name] = after_counters[name] - before_counters[name]
+                before_workers = (before_pool_statistics.get("worker_statistics")
+                                  if isinstance(before_pool_statistics, dict) else None)
+                after_workers = (after_pool_statistics.get("worker_statistics")
+                                 if isinstance(after_pool_statistics, dict) else None)
+                if isinstance(before_workers, dict) and isinstance(after_workers, dict):
+                    for name in ("assembly_calls", "new_shape_count", "executable_cache_hits"):
+                        if name in before_workers and name in after_workers:
+                            performance[f"worker_{name}"] = after_workers[name] - before_workers[name]
                 trace.measure(
                     "population_evaluation", start_tick_ns=population_start,
                     end_tick_ns=population_end,
@@ -530,6 +748,8 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             emit("generation_ready", {"generation": optimizer.generation, "next_ordinal": next_ordinal,
                                       "best_ordinal": best["evaluation_ordinal"],
                                       "resume_state": resume_state()})
+            if evaluator.candidate_pool is not None:
+                evaluator.candidate_pool.release_generation(generation)
     return {"type": "optimization", "best_ordinal": best["evaluation_ordinal"],
             "completed_generations": optimizer.generation, "unused_evaluations": controls["unused_evaluations"],
             "algorithm_id": "scnsim.python_cmaes_0.13.1.ask_tell.v1"}

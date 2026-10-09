@@ -195,7 +195,7 @@ def execute_quantity_points(plan, analysis, mesh, backend, points, emit):
 
 def execute_analysis(plan_document, prepared_analysis, *, backend, emit, trace,
                      checkpoint=None, checkpoint_policy="generation",
-                     operation_resources=None, worker_backend_factory=None) -> dict:
+                     operation_resources=None, worker_backend_factory=None, candidate_pool=None) -> dict:
     """Execute one prepared ordinary request through the caller's durable sink."""
     analysis = prepared_analysis.request()
     plan = plan_document
@@ -216,6 +216,7 @@ def execute_analysis(plan_document, prepared_analysis, *, backend, emit, trace,
                 plan, analysis, mesh, backend, operation_resources=operation_resources,
                 worker_backend_factory=worker_backend_factory,
                 worker_capacity=analysis["runtime_semantic"]["resources"]["optimization_workers"],
+                candidate_pool=candidate_pool,
             )
             return optimize(evaluator, observe, checkpoint, checkpoint_policy=checkpoint_policy, trace=trace)
         return _execute_points(plan, analysis, mesh, backend, observe)

@@ -7,9 +7,11 @@ Only local conductor/coupling support is dense; no nodal dense forms are built.
 from __future__ import annotations
 
 import math
+from hashlib import sha256
+import json
 import numpy as np
 
-from ..canonical import canonical_json_bytes, sha256_hex
+from ..canonical import canonical_json_bytes, float64_hex, sha256_hex
 from ..errors import CompilerInvariantError, InvalidCandidatePhysicalParameter
 from .mesh import prepare_rlgc, quantity, realize_line
 from .models import CompiledModel, MeshSpec, SeriesRL, SparseMatrix
@@ -69,21 +71,99 @@ def internal_node(leaf: dict, sections: int, station: int, conductor: str) -> st
     return "internal-" + sha256_hex(record)
 
 
-def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), authorized: set = frozenset(), preparation_cache: dict | None = None) -> CompiledModel:
+def _mesh_template_document(mesh: MeshSpec) -> dict:
+    return {
+        "kind": mesh.kind,
+        "sections": [[list(path), count] for path, count in mesh.sections],
+        "parameter_key": None if mesh.parameter_key is None else list(mesh.parameter_key),
+        "groups": [
+            {
+                "lower_f64": float64_hex(group.lower),
+                "upper_f64": float64_hex(group.upper),
+                "lower_inclusive": group.lower_inclusive,
+                "upper_inclusive": group.upper_inclusive,
+                "sections": [[list(path), count] for path, count in group.sections],
+            }
+            for group in mesh.groups
+        ],
+        "derivation": json.loads(mesh.derivation_bytes),
+    }
+
+
+def model_template_key(plan: dict, mesh: MeshSpec, model: CompiledModel) -> str:
+    """Key View structure by this Plan, realized topology and sparse indices."""
+    digest = sha256()
+    digest.update(canonical_json_bytes({
+        "plan_connectivity": plan["connectivity"],
+        "node_ids": list(model.node_ids),
+        "port_ids": list(model.port_ids),
+        "mesh": _mesh_template_document(mesh),
+    }))
+    for name, matrix in (("C", model.C), ("K", model.K), ("G", model.G), ("B", model.B)):
+        digest.update(name.encode("ascii"))
+        digest.update(canonical_json_bytes(list(matrix.shape)))
+        digest.update(memoryview(matrix.rows).cast("B"))
+        digest.update(memoryview(matrix.cols).cast("B"))
+    return digest.hexdigest()
+
+
+def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), authorized: set = frozenset(), preparation_cache: dict | None = None, template_cache: dict | None = None) -> CompiledModel:
     fields, extrapolation = resolve_fields(plan, values, authorized)
     connectivity = plan["connectivity"]
     ground = connectivity["canonical_ground"]
-    endpoints = {(tuple(row["path"]), row["pin"]): row["net"] for row in connectivity["physical_endpoints"]}
-    nodes = [row["compiler_node_id"] for row in connectivity["node_coordinates"]]
     grids = {}
     for leaf in plan["physical_leaves"]:
         if leaf["model"] == "transmission_line":
             path = tuple(leaf["path"])
             rlgc = fields[path, "rlgc"]
             grids[path] = realize_line(leaf, fields[path, "length"], rlgc, values, mesh, preparation_cache)
-            for station in range(1, grids[path]["n_sections"]):
-                nodes.extend(internal_node(leaf, grids[path]["n_sections"], station, c) for c in rlgc["conductors"])
-    indices = {node: i for i, node in enumerate(nodes)}
+    line_structure = [
+        {
+            "path": list(leaf["path"]),
+            "sections": grids[tuple(leaf["path"])]["n_sections"],
+            "conductors": list(fields[tuple(leaf["path"]), "rlgc"]["conductors"]),
+        }
+        for leaf in plan["physical_leaves"] if leaf["model"] == "transmission_line"
+    ]
+    template_document = {
+        "connectivity": connectivity,
+        "physical_structure": [
+            {
+                "path": leaf["path"],
+                "model": leaf["model"],
+                "pin_order": leaf.get("pin_order", []),
+                "oriented_branches": leaf.get("oriented_branches", []),
+            }
+            for leaf in plan["physical_leaves"]
+        ],
+        "line_structure": line_structure,
+        "mesh": _mesh_template_document(mesh),
+    }
+    topology_cache_key = ("compiler_topology", sha256_hex(canonical_json_bytes(template_document)))
+    template = None if template_cache is None else template_cache.get(topology_cache_key)
+    if template is None:
+        endpoints = {(tuple(row["path"]), row["pin"]): row["net"] for row in connectivity["physical_endpoints"]}
+        nodes = [row["compiler_node_id"] for row in connectivity["node_coordinates"]]
+        for leaf in plan["physical_leaves"]:
+            if leaf["model"] == "transmission_line":
+                path = tuple(leaf["path"])
+                for station in range(1, grids[path]["n_sections"]):
+                    nodes.extend(
+                        internal_node(leaf, grids[path]["n_sections"], station, conductor)
+                        for conductor in fields[path, "rlgc"]["conductors"]
+                    )
+        template = {
+            "endpoints": endpoints,
+            "node_ids": tuple(nodes),
+            "indices": {node: index for index, node in enumerate(nodes)},
+            "station_maps": {},
+            "section_bindings": {},
+        }
+        if template_cache is not None:
+            template_cache[topology_cache_key] = template
+    endpoints = template["endpoints"]
+    nodes = template["node_ids"]
+    indices = template["indices"]
     n = len(nodes)
     C, K, G = (dict(rows=[], cols=[], values=[]) for _ in range(3))
 
@@ -114,6 +194,42 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
     def incidence(net: str) -> dict:
         return {} if net == ground else {indices[net]: 1.0}
 
+    def station_map(leaf: dict, station: int) -> SparseMatrix:
+        path = tuple(leaf["path"])
+        key = (path, station)
+        cached = template["station_maps"].get(key)
+        if cached is not None:
+            return cached
+        sections = grids[path]["n_sections"]
+        conductors = fields[path, "rlgc"]["conductors"]
+        rr, cc, vv = [], [], []
+        for col, conductor in enumerate(conductors):
+            net = (
+                endpoints[path, ("head." if station == 0 else "tail.") + conductor]
+                if station in (0, sections)
+                else internal_node(leaf, sections, station, conductor)
+            )
+            for row, value in incidence(net).items():
+                rr.append(row)
+                cc.append(col)
+                vv.append(value)
+        result = SparseMatrix.from_entries((n, len(conductors)), rr, cc, vv)
+        template["station_maps"][key] = result
+        return result
+
+    def section_binding(leaf: dict, section: int) -> SparseMatrix:
+        path = tuple(leaf["path"])
+        key = (path, section)
+        cached = template["section_bindings"].get(key)
+        if cached is not None:
+            return cached
+        left, right = station_map(leaf, section), station_map(leaf, section + 1)
+        result = SparseMatrix.from_entries(left.shape, np.r_[left.rows, right.rows],
+                                           np.r_[left.cols, right.cols],
+                                           np.r_[left.values, -right.values])
+        template["section_bindings"][key] = result
+        return result
+
     for leaf in plan["physical_leaves"]:
         path = tuple(leaf["path"])
         model = leaf["model"]
@@ -123,20 +239,10 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
             sections, dx = grid["n_sections"], grid["dx_m"]
             conductors = rlgc["conductors"]
 
-            def station_map(station: int) -> SparseMatrix:
-                rr, cc, vv = [], [], []
-                for col, conductor in enumerate(conductors):
-                    net = (endpoints[path, ("head." if station == 0 else "tail.") + conductor]
-                           if station in (0, sections) else internal_node(leaf, sections, station, conductor))
-                    for row, value in incidence(net).items():
-                        rr.append(row); cc.append(col); vv.append(value)
-                return SparseMatrix.from_entries((n, len(conductors)), rr, cc, vv)
-
             Rline, Lline, Gline, Cline = (value * dx for value in prepare_rlgc(rlgc, preparation_cache)[:4])
             for section in range(sections):
-                left, right = station_map(section), station_map(section + 1)
-                binding = SparseMatrix.from_entries(left.shape, np.r_[left.rows, right.rows],
-                            np.r_[left.cols, right.cols], np.r_[left.values, -right.values])
+                left, right = station_map(leaf, section), station_map(leaf, section + 1)
+                binding = section_binding(leaf, section)
                 blocks.append(SeriesRL(binding, Rline, Lline))
                 for station in (left, right):
                     active = np.unique(station.rows)
@@ -236,5 +342,16 @@ def compile_model(plan: dict, values: dict, *, mesh: MeshSpec = MeshSpec(), auth
                 "discretization": list(grids.values()), "branches": rows, "extrapolation": extrapolation,
                 "resolved_fields": [{"component_path": list(path), "field": name, "value_si": value}
                                     for (path, name), value in fields.items()]}
-    return CompiledModel(tuple(nodes), tuple(port["id"] for port in ports), C, K, G, B, R,
-                         np.ones(len(ports)), tuple(blocks), record_bytes(evidence))
+    compiled = CompiledModel(tuple(nodes), tuple(port["id"] for port in ports), C, K, G, B, R,
+                             np.ones(len(ports)), tuple(blocks), record_bytes(evidence))
+    if template_cache is not None:
+        # compile_model and realize_view run serially inside one candidate actor.
+        # Cache the exact digest of realized COO indices once per topology. The
+        # actor's topology key binds the Plan connectivity, line structure and
+        # mesh; candidate-specific coefficients remain outside both keys.
+        model_structure_key = template.get("model_structure_key")
+        if model_structure_key is None:
+            model_structure_key = model_template_key(plan, mesh, compiled)
+            template["model_structure_key"] = model_structure_key
+        template_cache["_active_compiled_model_structure"] = model_structure_key
+    return compiled

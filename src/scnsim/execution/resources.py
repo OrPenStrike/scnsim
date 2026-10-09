@@ -8,12 +8,17 @@ existing process JAX pool is unchanged. This is not a Notebook-wide CPU quota.
 from __future__ import annotations
 
 from collections import deque
-from concurrent.futures import CancelledError, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from threading import Condition, RLock, local
+from threading import Condition, RLock, Thread, local
+from time import perf_counter_ns
 
 _OPERATION_LOCK = RLock()
+_OPERATION_CONTEXT = local()
+
+def current_operation_resources():
+    return getattr(_OPERATION_CONTEXT, "resource", None)
 
 
 @dataclass
@@ -92,6 +97,9 @@ class OperationResources:
         self._closed = False
         self._worker_states = []
         self._states_lock = RLock()
+        self._broker = None
+        self.assembly_batching = False
+        self._statistics = {}
         self._counts = dict(assembly_calls=0, new_shape_count=0, executable_cache_hits=0)
 
     def _initialize_worker(self):
@@ -99,6 +107,58 @@ class OperationResources:
             # Keep the limiter alive for this worker; do not nest restoring
             # contexts around jobs. The coordinator restores after all joins.
             self._local.blas_limit = self._controller.limit(limits=1, user_api='blas')
+
+    def statistic(self, name, amount=1):
+        with self._states_lock:
+            self._statistics[name] = self._statistics.get(name, 0) + amount
+
+    def snapshot_statistics(self):
+        with self._states_lock:
+            return dict(self._statistics, **self.counters())
+
+    @contextmanager
+    def phase(self, name):
+        started = perf_counter_ns()
+        try:
+            yield
+        finally:
+            self.statistic(name + '_wall_ns', perf_counter_ns() - started)
+            self.statistic(name + '_count')
+
+    def stop_assembly(self, error):
+        with self._states_lock:
+            broker = self._broker
+        if broker is not None:
+            broker._fail(error)
+
+    def assemble(self, request, execute_group):
+        # Waiting for the broker must never retain the shared permit it needs.
+        suspended = getattr(self._local, 'shared_owned', False)
+        if suspended:
+            self._local.shared_owned = False
+            self._gate.release(False)
+        original = None
+        try:
+            with self._states_lock:
+                if self._broker is None:
+                    self._broker = AssemblyBroker(self)
+                broker = self._broker
+            return broker.submit(request, execute_group).result()
+        except BaseException as error:
+            original = error
+            raise
+        finally:
+            if suspended:
+                try:
+                    started = perf_counter_ns()
+                    self._gate.acquire(False)
+                    self.statistic('shared_reacquisition_wait_ns', perf_counter_ns() - started)
+                    self.statistic('shared_reacquisition_count')
+                    self._local.shared_owned = True
+                except BaseException as error:
+                    if original is None:
+                        raise
+                    _secondary(original, 'Shared numerical reacquisition also failed', error)
 
     def current_candidate(self):
         return getattr(self._local, 'candidate', None)
@@ -118,7 +178,10 @@ class OperationResources:
     def candidate_compute(self):
         depth = getattr(self._local, 'depth', 0)
         if depth == 0:
+            started = perf_counter_ns()
             self._gate.acquire(False)
+            self.statistic("shared_wait_ns", perf_counter_ns() - started)
+            self.statistic("shared_acquisition_count")
             self._local.shared_owned = True
         self._local.depth = depth + 1
         try:
@@ -138,8 +201,12 @@ class OperationResources:
         acquired = False
         original = None
         try:
+            started = perf_counter_ns()
             self._gate.acquire(True)
+            self.statistic("exclusive_wait_ns", perf_counter_ns() - started)
+            self.statistic("exclusive_acquisition_count")
             acquired = True
+            held_start = perf_counter_ns()
             yield
         except BaseException as error:
             original = error
@@ -148,6 +215,7 @@ class OperationResources:
             try:
                 if acquired:
                     self._gate.release(True)
+                    self.statistic("exclusive_held_ns", perf_counter_ns() - held_start)
             except BaseException as error:
                 if original is None:
                     raise
@@ -244,6 +312,15 @@ class OperationResources:
                     if first_error is None:
                         first_error = error
             self._pool = None
+        if self._broker is not None:
+            try:
+                self._broker.close()
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+                else:
+                    _secondary(first_error, "Assembly broker cleanup also failed", error)
+            self._broker = None
         self._futures.clear()
         self._closed = True
         for states in self._worker_states:
@@ -278,11 +355,13 @@ def operation_resources(*, cpu_threads):
         try:
             if controller is not None:
                 controller.limit(limits=1, user_api='blas')
+            _OPERATION_CONTEXT.resource = resource
             yield resource
         except BaseException as error:
             original = error
             raise
         finally:
+            _OPERATION_CONTEXT.resource = None
             try:
                 resource.close(cancel=original is not None)
             except BaseException as error:
@@ -304,3 +383,117 @@ def operation_resources(*, cpu_threads):
                             _secondary(restoration_error, 'Another BLAS restoration also failed', error)
                 if restoration_error is not None:
                     raise restoration_error
+
+
+class AssemblyBroker:
+    """Finite ready snapshot after exclusive acquisition; no fill barrier/padding."""
+    def __init__(self, resource):
+        self.resource = resource
+        self.condition = Condition()
+        self.queue = []
+        self.active_snapshot = ()
+        self.stopping = False
+        self.failure = None
+        self.thread = Thread(target=self._run, name='scnsim-assembly', daemon=False)
+        self.thread.start()
+
+    @staticmethod
+    def _failure_copy(error):
+        # Future consumers attach their own candidate diagnostics/traceback.
+        from copy import copy
+        try:
+            return copy(error)
+        except BaseException:
+            cloned = RuntimeError(f'Assembly broker failed: {type(error).__name__}: {error}')
+            cloned.__cause__ = error
+            return cloned
+
+    def submit(self, request, execute_group):
+        future = Future()
+        with self.condition:
+            if self.failure is not None:
+                future.set_exception(self._failure_copy(self.failure))
+            elif self.stopping:
+                future.set_exception(RuntimeError('assembly broker is closed'))
+            else:
+                self.queue.append((request, execute_group, future))
+                self.condition.notify_all()
+        return future
+
+    def _fail(self, error, snapshot=()):
+        with self.condition:
+            self.failure = error
+            self.stopping = True
+            pending, self.queue = self.queue, []
+            active = self.active_snapshot
+            self.condition.notify_all()
+        for _, _, future in (*snapshot, *active, *pending):
+            if not future.done():
+                future.set_exception(self._failure_copy(error))
+
+    def _run(self):
+        snapshot = []
+        completed = []
+        try:
+            self.resource._initialize_worker()
+            while True:
+                with self.condition:
+                    while not self.queue and not self.stopping:
+                        self.condition.wait()
+                    if not self.queue and self.stopping:
+                        return
+                completed = []
+                with self.resource.exclusive_assembly():
+                    # Include arrivals during the gate wait; snapshot is finite.
+                    with self.condition:
+                        snapshot, self.queue = self.queue, []
+                        self.active_snapshot = tuple(snapshot)
+                    groups = {}
+                    for item in snapshot:
+                        groups.setdefault(item[0]['compatibility'], []).append(item)
+                    for items in groups.values():
+                        try:
+                            outputs = items[0][1]([item[0] for item in items])
+                            if len(outputs) != len(items):
+                                raise RuntimeError('assembly batch changed request count')
+                        except BaseException as error:
+                            # This group's numerical call owns its error. Other
+                            # candidates may still need subsequent Newton calls;
+                            # only ordered coordinator consumption cancels them.
+                            completed.extend((item[2], None, error) for item in items)
+                        else:
+                            completed.extend((item[2], output, None) for item, output in zip(items, outputs))
+                        self.resource.statistic('ready_batch_count')
+                        self.resource.statistic('ready_batch_items', len(items))
+                        self.resource.statistic('ready_batch_size_' + str(len(items)))
+                # Exclusive is released before any worker becomes runnable.
+                for future, output, error in completed:
+                    if not future.done():
+                        if error is None: future.set_result(output)
+                        else: future.set_exception(self._failure_copy(error))
+                with self.condition:
+                    self.active_snapshot = ()
+                snapshot = []
+        except BaseException as error:
+            # Infrastructure failure is broker-wide. Preserve already owned
+            # group outcomes after exclusive unwind before failing other work.
+            for future, output, group_error in completed:
+                if not future.done():
+                    if group_error is None: future.set_result(output)
+                    else: future.set_exception(self._failure_copy(group_error))
+            self._fail(error, snapshot)
+
+    def close(self):
+        with self.condition:
+            self.stopping = True
+            self.condition.notify_all()
+        original = None
+        while self.thread.is_alive():
+            try:
+                self.thread.join()
+            except (KeyboardInterrupt, SystemExit) as error:
+                if original is None:
+                    original = error
+                self._fail(error)
+        if original is not None:
+            raise original

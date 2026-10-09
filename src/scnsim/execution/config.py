@@ -4,6 +4,8 @@ PJRT_NPROC is applied before backend initialization. This module neither imports
 JAX nor changes affinity, platform selection or process-global precision.
 The resource owner consumes the declared Optimization capacity and manages
 native library limits; None preserves serial execution with the environment.
+Optimization uses one fixed candidate-thread scheduler; no public mode switch.
+Pool fields below bind declarations, not discovered native cardinality.
 """
 from __future__ import annotations
 
@@ -31,6 +33,8 @@ class RuntimeConfiguration:
         """Task capacity; an omitted declaration preserves serial execution."""
         return 1 if self.cpu_threads is None else self.cpu_threads
 
+
+_OPTIMIZATION_SCHEDULER = "scnsim.candidate-thread-ready-batch.v1"
 
 _configuration = RuntimeConfiguration()
 _initialized_configuration: RuntimeConfiguration | None = None
@@ -113,7 +117,12 @@ def mark_jax_initialized(configuration: RuntimeConfiguration) -> None:
 def runtime_resource_identity() -> dict[str, object]:
     """Bind declaration and observed environment without claiming pool discovery."""
     configuration = get_runtime_configuration()
+    parallel = configuration.optimization_workers > 1
     return {"cpu_threads": configuration.cpu_threads,
             "pjrt_nproc": os.environ.get("PJRT_NPROC"),
-            "allocation_policy": "scnsim.same_generation_fair_gate_blas1.v1",
-            "optimization_workers": configuration.optimization_workers}
+            "allocation_policy": _OPTIMIZATION_SCHEDULER,
+            "optimization_workers": configuration.optimization_workers,
+            "optimization_execution_model": "threads" if parallel else "serial",
+            "optimization_numeric_pool_location": "parent",
+            "optimization_pjrt_nproc": os.environ.get("PJRT_NPROC"),
+            "optimization_blas_threads": None if configuration.cpu_threads is None else 1}

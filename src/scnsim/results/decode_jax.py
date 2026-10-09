@@ -16,7 +16,12 @@ from ..authoring.identity import canonical_parameters_sha256
 from ..benchmark.optimization import complex_value, numerical_error
 from ..benchmark.models import NumericalFailure
 from ..benchmark.prepared import array_from_record, decode_record, record_bytes
-from ..canonical import canonical_json_bytes, float64_from_hex, quantity_from_envelope
+from ..canonical import (
+    canonical_json_bytes,
+    complex_quantity_envelope,
+    float64_from_hex,
+    quantity_from_envelope,
+)
 from ..execution.prepared import _coordinate_binding_key, _encode_scalar_expression, _quantity_coordinates
 from ..errors import EvidenceIntegrityError
 from ..specs import QuantitySelector
@@ -73,6 +78,30 @@ def _numeric_array(record, name):
 
 def _numeric_quantity(record, name, unit):
     return units.registry.Quantity(_numeric_array(record, name), unit)
+
+
+def _complex_angular_frequency(record, name):
+    return complex_quantity_envelope(
+        _numeric_quantity(record, name, "radian / second"),
+        si_unit="radian / second",
+        dimensionality="inverse_time",
+        registry=units.registry,
+    )
+
+
+def _residue_coupling_evidence(term, dependencies):
+    """Project canonical coupling and branch bodies into the public term schema."""
+    coupling = dependencies[term["body_id"]]
+    branches = {
+        branch["role"]: dependencies[branch["body_id"]]
+        for branch in coupling["evidence"]["branches"]
+    }
+    return {
+        "branch_a_root": _complex_angular_frequency(branches["a"], "root_omega_rad_s"),
+        "branch_b_root": _complex_angular_frequency(branches["b"], "root_omega_rad_s"),
+        "evaluation_omega": _complex_angular_frequency(coupling, "evaluation_omega_rad_s"),
+        "coupling": _complex_angular_frequency(coupling, "coupling_rad_s"),
+    }
 
 
 def _root_frequency_linewidth(record, root):
@@ -319,6 +348,9 @@ def _candidate(record, spec):
                 adapted["ref_lineage"] = term["lineage"]
             if "failure" in term:
                 adapted["failure"] = dict(term["failure"], message=term["failure"]["detail"])
+            if (term.get("status") == "success" and "body_id" in term
+                    and term["selector"]["type"] == "residue_coupling_projection"):
+                adapted["residue_coupling_evidence"] = _residue_coupling_evidence(term, dependencies)
             terms.append(adapted)
         component["terms"] = terms
         components.append(component)

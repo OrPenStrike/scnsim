@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0.dev16 development candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev17 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -118,43 +118,63 @@ anchors. Standalone root anchors never become CMA-resumable checkpoints.
 
 ## Same-generation JAX Optimization resources
 
-`configure_runtime(cpu_threads=N)` declares the task's CPU budget. JAX
-Optimization uses a persistent thread pool for independent objective work
-within one generation; `None` retains serial execution with the existing
-environment, and 1 is serial. Candidates from another generation are never
-submitted before the current generation is consumed. The coordinator alone
-owns CMA ask/tell, candidate mapping and ordering, cache registration, winner
-selection, storage and callbacks. Duplicate candidates retain their ordered
-occurrences while sharing the existing numerical-cache authority.
+`configure_runtime(cpu_threads=N)` declares the task's CPU budget. Optimization
+uses persistent candidate threads, with capacity bounded by N and the declared
+population size. `None` retains coordinator serial execution with the existing
+environment, and 1 is serial. The baseline is evaluated first and its actual
+anchors are sealed by the coordinator. A global candidate-preparation barrier
+precedes ordered objective/term waves. Candidates from another generation are
+never submitted before the current generation is consumed.
 
-Objective waves share the task budget through a fair resource gate: JAX work
-holds exclusive access and native sparse work shares available capacity.
+Each candidate retains its own View, dependency and continuation state. Immutable
+structure templates reuse topology and sparse index work within the operation;
+physical validation, coefficients and current transformed-capacitance weights
+remain candidate-specific. Dynamic sections are realized before selecting a
+matching template. Transform declaration order and ordered numerical consumption
+are unchanged. The coordinator alone owns CMA ask/tell and RNG, candidate mapping,
+cache admission/registration, occurrence ordinals, cost aggregation, winner,
+SQLite state and callbacks. Duplicate candidates share numerical bodies while
+retaining their original ordered occurrences.
+
+The fixed scheduler is `scnsim.candidate-thread-ready-batch.v1`. Its broker takes
+a finite snapshot of compatible ready assembly requests after exclusive resource
+acquisition, including requests queued while waiting for that permit. It does
+not wait for the full population or pad missing candidates. JAX executes using
+the shared parent PJRT pool and runtime coefficients/indices; exclusive ownership
+is released before outputs or errors are delivered. Native sparse work then
+shares the available budget through the fair gate.
+
 For an integer CPU declaration, `threadpoolctl==3.7.0` establishes BLAS1 in the
-coordinator and at worker initialization; the managed limits remain in force
-until the pool is joined, then the prior library limits are restored. Task cleanup joins outstanding
-workers before releasing this ownership. `None` leaves existing library limits
-unchanged. This does not introduce Julia
-candidate parallelism, change process affinity or replace numerical failures
-with a fallback. Runtime and checkpoint identities bind the allocation policy
-and its actual resource declaration; resume must match that identity.
-The process resource lease covers all normal same-process JAX numerical calls,
-including Direct: an integer declaration manages BLAS1 while Direct retains the
-declared PJRT pool. `None` retains serial/environment behavior. Read-only
-operations neither initialize the runtime nor acquire numerical resources.
+coordinator and at worker initialization. Managed limits remain in force until
+owned workers join, then prior library limits are restored. `None` leaves library
+limits unchanged. The process resource lease also covers normal same-process
+Direct/evaluate calls: integer declarations manage BLAS1 while retaining the
+parent's declared PJRT pool. Read-only operations do not initialize numerical
+resources. There is no executor selector, automatic fallback, Julia candidate
+parallelism or process-affinity change. Runtime and checkpoint identities bind
+the scheduler, source and resource declaration; resume must match.
+
+The candidate scaling scope remains `CONVERGING`. Numerical algorithms,
+precision, mesh policy, View replay and failure categories are unchanged. Only
+existing typed candidate numerical failures become `Inf`; infrastructure and
+worker failures remain fatal. On interruption, queued work is canceled, active
+numerical work drains to its actual return, and owned workers join. Cleanup
+errors are secondary to the original exception; there is no forced-termination
+promise for a hung native call.
 
 Numerical evidence remains complete and ordered. Commit grouping remains 10
-completed generations by default, with the existing baseline, tail and
-durability-before-callback boundaries. Optimization timing records a generation's
-population wall interval and its population average; the average is wall time
-divided by the population count, not individual candidate latency. Fine-grained
-Optimization clocks are removed rather than retaining redundant per-objective
-timing work; numerical outcomes and checkpoint evidence are retained. These
-resource and timing changes do not change the numerical or CMA/search algorithm.
-The summary is `details.generation_performance` on the existing
-`population_evaluation` span, not an additional task-history event or projection
-schema. Its `active_worker_count` is the actual peak number of callback
-invocations, including callbacks waiting for assembly access; it does not
-measure CPU utilization or establish overlapping native computation.
+completed generations by default, with the existing baseline, complete tail and
+acknowledgement-before-callback boundaries. Timing aggregates remain
+`details.generation_performance` on the existing `population_evaluation` span.
+Population average is wall time divided by population count, not individual
+candidate latency. Preparation, permit wait, assembly and ordered collection
+counters classify work without permanent per-candidate spans. Worker sums and
+permit-held intervals are not CPU utilization or additive population-wall
+components; overlapping work must not be summed into an exclusive total.
+Necessary first-start imports, runtime discovery, pool initialization and
+compilation are startup costs, not automatically redundant work or a universal
+optimization target. Subsequent executable reuse does not imply Result-cache
+reuse. This contract makes no universal speed or numerical-acceptance claim.
 
 ## One numerical and one result authority
 

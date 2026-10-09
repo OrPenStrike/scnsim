@@ -17,6 +17,47 @@ from .models import CompiledModel, RealizedView, SeriesRL
 from .prepared import record_bytes, record_document
 
 
+def _view_template_key(model: CompiledModel, declaration: dict, template_cache: dict | None):
+    if template_cache is None:
+        return None
+    structure = template_cache.get("_active_compiled_model_structure")
+    if structure is None:
+        return None
+    declaration_bytes = canonical_json_bytes(declaration)
+    return ("view_topology", structure, declaration_bytes.decode("utf-8"))
+
+
+def _transform_structure(node_ids: tuple[str, ...], declaration_transform: dict, *,
+                         i: int, j: int, common: str, differential: str) -> dict:
+    """Build only the immutable routing template for one reached transform."""
+    left, right = declaration_transform["input_coordinates"]
+    next_nodes = tuple(name for name in node_ids if name not in (left, right)) + (common, differential)
+    next_indices = {name: index for index, name in enumerate(next_nodes)}
+    routes = []
+    for row, name in enumerate(node_ids):
+        if row == i:
+            routes.append(("left", next_indices[common], next_indices[differential]))
+        elif row == j:
+            routes.append(("right", next_indices[common], next_indices[differential]))
+        else:
+            routes.append(("single", next_indices[name]))
+    return {"left": left, "right": right, "common": common,
+            "differential": differential, "i": i, "j": j,
+            "next_nodes": next_nodes, "routes": tuple(routes)}
+
+
+def _weighted_mapping(template: dict, alpha: float, beta: float) -> tuple:
+    mapping = []
+    for route in template["routes"]:
+        if route[0] == "left":
+            mapping.append(((route[1], 1.0), (route[2], beta)))
+        elif route[0] == "right":
+            mapping.append(((route[1], 1.0), (route[2], -alpha)))
+        else:
+            mapping.append(((route[1], 1.0),))
+    return tuple(mapping)
+
+
 def spd_root(matrix: np.ndarray) -> np.ndarray:
     try:
         np.linalg.cholesky(matrix)
@@ -32,7 +73,7 @@ def spd_root(matrix: np.ndarray) -> np.ndarray:
     return (root + root.T) / 2
 
 
-def realize_view(model: CompiledModel, declaration: dict) -> RealizedView:
+def realize_view(model: CompiledModel, declaration: dict, *, template_cache: dict | None = None) -> RealizedView:
     original_coordinates = json.loads(model.evidence_bytes)["original_coordinates"]
     p = len(model.port_ids)
     mask = model.M.copy()
@@ -41,6 +82,12 @@ def realize_view(model: CompiledModel, declaration: dict) -> RealizedView:
         for port in ptc["selected_ports"]:
             mask[model.port_ids.index(port)] = 0
     working = replace(model, M=mask)
+    template_key = _view_template_key(model, declaration, template_cache)
+    view_template = None if template_key is None else template_cache.get(template_key)
+    if view_template is None:
+        view_template = {"transforms": {}}
+        if template_key is not None:
+            template_cache[template_key] = view_template
     names = list(original_coordinates)
     maps = {name: model.B.row(model.node_ids.index(name)) for name in names}
     logical = {port: np.eye(p)[i] for i, port in enumerate(model.port_ids)}
@@ -51,7 +98,7 @@ def realize_view(model: CompiledModel, declaration: dict) -> RealizedView:
             raise PortRealizabilityError("logical Port must select one physical coordinate", stage="selected_network")
         coordinate_map[entries[0], column] = 1
     transforms = []
-    for declaration_transform in declaration.get("transforms", []):
+    for transform_index, declaration_transform in enumerate(declaration.get("transforms", [])):
         left, right = declaration_transform["input_coordinates"]
         outputs = declaration_transform.get("output_coordinates")
         common, differential = outputs if outputs is not None else (declaration_transform["common_id"], declaration_transform["differential_id"])
@@ -60,15 +107,16 @@ def realize_view(model: CompiledModel, declaration: dict) -> RealizedView:
         if not np.isfinite(cl) or not np.isfinite(cr) or cl < 0 or cr < 0 or cl + cr <= 0:
             raise PortRealizabilityError("external capacitance cut does not define pair weights", stage="transform_pair")
         alpha, beta = cl / (cl + cr), cr / (cl + cr)
-        next_nodes = [name for name in working.node_ids if name not in (left, right)] + [common, differential]
-        # Inverse of u=alpha*left+beta*right, d=left-right.
-        # Every old row contributes to its new sparse coordinate support.
-        next_indices = {name: index for index, name in enumerate(next_nodes)}
-        mapping = tuple(
-            ((next_indices[common], 1.0), (next_indices[differential], beta)) if row == i else
-            ((next_indices[common], 1.0), (next_indices[differential], -alpha)) if row == j else
-            ((next_indices[name], 1.0),)
-            for row, name in enumerate(working.node_ids))
+        transform_template = view_template["transforms"].get(transform_index)
+        if transform_template is None:
+            transform_template = _transform_structure(
+                working.node_ids, declaration_transform, i=i, j=j,
+                common=common, differential=differential,
+            )
+            view_template["transforms"][transform_index] = transform_template
+        # Refresh candidate weights over the immutable row-routing template.
+        mapping = _weighted_mapping(transform_template, alpha, beta)
+        next_nodes = transform_template["next_nodes"]
         local_A = np.asarray([[alpha, beta], [1.0, -1.0]])
         local_T = np.asarray([[1.0, beta], [1.0, -alpha]])
         reconstruction = backward_residual(local_A, local_T, np.eye(2))

@@ -67,6 +67,7 @@ class JaxBackend:
         self.complex_dtype = np.complex64 if precision == "float32" else np.complex128
         self.cpu_threads = resources.cpu_threads
         self._closed = False
+        self._template_cache = {}
         self.initialization_ns = perf_counter_ns() - started
 
     def identity(self) -> dict[str, object]:
@@ -94,6 +95,51 @@ class JaxBackend:
             return self._evaluate_batch(jobs)
 
     def _assembly(self, system, omegas, *, loaded, derivative, measurements, batches):
+        if self.operation_resources is not None and self.operation_resources.assembly_batching:
+            omega_array = np.asarray(omegas, dtype=self.complex_dtype)
+            leaves, tree = self.jax.tree.flatten((system.payload, omega_array))
+            compatibility = (self.device.platform, self.device.id, self.precision,
+                             loaded, derivative, system.n, tree,
+                             tuple((tuple(value.shape), str(value.dtype)) for value in leaves))
+            request = dict(compatibility=compatibility, payload=system.payload,
+                           omegas=omega_array, loaded=loaded, derivative=derivative)
+            return self.operation_resources.assemble(request, self._assemble_candidates_exclusive)
+        return self._assembly_single(system, omegas, loaded=loaded, derivative=derivative,
+                                     measurements=measurements, batches=batches)
+
+    def _assemble_candidates_exclusive(self, requests):
+        # Broker owns its own dtype context. All operands, including stamp maps,
+        # are paired runtime inputs; neither topology nor coefficients are constants.
+        with self.jax.enable_x64(self.precision == 'float64'):
+            with self.operation_resources.phase('ready_assembly_transfer_compute'):
+                payloads = self.jax.tree.map(lambda *parts: np.stack(parts),
+                                            *(request['payload'] for request in requests))
+                omegas = np.stack([request['omegas'] for request in requests])
+                args = self.jax.device_put((payloads, omegas), self.device)
+                self.jax.block_until_ready(args)
+                leaves, tree = self.jax.tree.flatten(args)
+                loaded, derivative = requests[0]['loaded'], requests[0]['derivative']
+                signature = (self.device.platform, self.device.id, self.cpu_threads,
+                             self.precision, 'candidate_sparse_assembly', loaded, derivative,
+                             tree, tuple((tuple(a.shape),str(a.dtype)) for a in leaves))
+                with _EXECUTABLE_LOCK:
+                    executable = _EXECUTABLES.get(signature)
+                    new_shape = executable is None
+                    if new_shape:
+                        core = self.core
+                        one_candidate = self.jax.vmap(
+                            lambda data,omega: core.assemble(data,omega,loaded=loaded,derivative=derivative),
+                            in_axes=(None,0))
+                        function = self.jax.vmap(one_candidate,in_axes=(0,0))
+                        executable = self.jax.jit(function).lower(*args).compile()
+                        _EXECUTABLES[signature] = executable
+                self.operation_resources.record_assembly(new_shape=new_shape)
+                output = executable(*args)
+                self.jax.block_until_ready(output)
+                output = self.jax.tree.map(np.asarray,output)
+                return [tuple(part[index] for part in output) for index in range(len(requests))]
+
+    def _assembly_single(self, system, omegas, *, loaded, derivative, measurements, batches):
         """Exclusive transfer/JIT/compute/download before acquiring cache lock."""
         exclusive = nullcontext() if self.operation_resources is None else self.operation_resources.exclusive_assembly()
         with exclusive:
@@ -173,9 +219,9 @@ class JaxBackend:
             started = perf_counter_ns() if self.diagnostics else None
             with _span(self.trace if self.diagnostics else None, 'numerical_batch', operation=job.kind,
                        batch_size=1, arithmetic_precision=self.precision) as parent:
-                measurements = Measurements(self.trace, parent, enabled=self.diagnostics)
+                measurements = Measurements(self.trace, parent, enabled=self.diagnostics, resource=self.operation_resources)
                 with measurements.phase('sparse_pattern_prepare'):
-                    system = System(job.view, self.real_dtype, self.complex_dtype)
+                    system = System(job.view, self.real_dtype, self.complex_dtype, template_cache=self._template_cache, resource=self.operation_resources)
                 batches = []
                 def assemble(omega, *, loaded, derivative):
                     arrays = self._assembly(system, [omega], loaded=loaded, derivative=derivative,
@@ -287,5 +333,6 @@ class JaxBackend:
         return tuple(results)
 
     def close(self) -> None:
+        self._template_cache.clear()
         self._closed = True
         self.trace = None
