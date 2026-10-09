@@ -11,6 +11,8 @@ identity integration, and certified diagrams are another `CONVERGING` scope
 with an integrated implementation baseline; see the
 [central evidence status](../contracts/index.qmd#implementation-evidence-status). Adaptive
 presentation-theme semantics remain a separate `CONVERGING` candidate.
+The scalar Quantity HTML/Figure presentation described below is also
+`CONVERGING`; it does not change numerical Result mechanics.
 
 ## Separate materialized values from analysis evidence
 
@@ -53,12 +55,44 @@ No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
 unit disagreement, forbidden non-finite values, or a real/imag manifest
 mismatch fails verification instead of returning a partial typed object.
 
+## Scalar Quantity presentation
+
+```python
+quantity_result.show(theme=Theme.AUTO, detailed=False)  # HtmlPresentation
+quantity_result.plot(theme=Theme.AUTO, detailed=False)  # detached Plotly Figure
+```
+
+`DirectQuantityResult.show(*, theme=Theme.AUTO, detailed=False)` returns an
+`HtmlPresentation` with themed HTML tables. Its `plot()` accepts the same
+keywords and returns a detached Figure containing grouped tables. Both consume
+one shared immutable presentation record; field selection, value formatting
+and provenance selection have one authority. Scalar quantities are evidence
+tables, not invented response curves. Existing `add_to()` behavior is unchanged.
+
+The default view separates Quantity, Value and Unit columns, with definition
+bindings in separate tables. Numeric declaration units have their own column.
+Values use at most 12 significant digits and engineering display units in the
+existing unit family. Real and imaginary components share one unit and scale;
+small nonzero components remain visible. Display formatting does not convert
+angular frequency into cyclic frequency or recompute a root, slope, residue,
+response or coupling.
+
+`detailed=True` adds provenance and original magnitude/unit tables. Original
+magnitudes use their stored representation, preserving access to values behind
+the compact display. HTML escapes text; Figure tables retain the same ordered
+content. Theme, long names and complex values affect only presentation. Neither
+surface mutates the Result, Workspace, decoder, numerical values or identity,
+and neither launches a calculation. Other Result presentation contracts remain
+unchanged.
+
 ## Keep presentation downstream of execution
 
-Plotly renders every numerical Result surface. `plot()` returns one detached
-native `plotly.graph_objects.Figure` without displaying it; `show()` displays
-the same presentation exactly once and returns `None`, preventing a final
-notebook expression from displaying its MIME representation a second time.
+For numerical plots, `plot()` returns one detached native
+`plotly.graph_objects.Figure` without displaying it. Matrix, sweep, operator,
+HB and Optimization `show()` display the plot once and return `None`, preventing
+a final notebook expression from displaying its MIME representation a second
+time. Scalar `DirectQuantityResult.show()` instead returns the HTML value
+described below, for the Notebook or IDE to display.
 Editing a Figure returned by `plot()` cannot mutate verified Result arrays,
 evidence, or identity. `add_to(fig, row=..., col=..., ...)` adds one
 explicitly selected trace, heatmap, or table to a compatible caller-owned

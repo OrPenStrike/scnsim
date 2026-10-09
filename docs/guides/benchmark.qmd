@@ -77,6 +77,24 @@ execution precision is bound in the request, not a claim that a kernel ran.
 This backend-aware explanation is `CONVERGING`. See
 [Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
 
+## Present a saved scalar Quantity
+
+For a returned scalar root, pole, zero, response or coupling, `show()` returns
+HTML and `plot()` returns a detached Plotly Figure:
+
+```python
+root.show()                   # compact Quantity / Value / Unit tables
+root.show(detailed=True)      # include provenance and original stored values
+root.plot(detailed=True)      # grouped Figure tables; no calculation
+```
+
+Complex components share an engineering unit and scale. The display preserves
+small nonzero components and does not recompute numerical values. This scalar
+presentation is `CONVERGING`; the
+[presentation contract](../implementation/results-reports-and-diagrams.qmd#scalar-quantity-presentation)
+defines its ownership and formatting. Operation Benchmark, matrix, sweep and
+Optimization presentations retain their existing interfaces.
+
 ## Optimization and recovery
 
 Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics.

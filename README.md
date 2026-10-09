@@ -20,7 +20,7 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current development candidate is `1.0.0.dev17`, requiring Python 3.12. Normal
+The current development candidate is `1.0.0.dev18`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
@@ -45,6 +45,12 @@ Scalar quantity selectors also serve Optimization; operators remain matrix
 outputs. These additions remain `CONVERGING` pending source-bound functional
 observations; no performance or numerical acceptance is implied. Published
 Alpha snapshots and historical outputs retain their original identities.
+
+Scalar root, pole, zero, response and coupling Results offer themed HTML through
+`result.show(detailed=False)` and detached Figure tables through
+`result.plot(detailed=False)`. Set `detailed=True` to include provenance and
+original stored magnitude/unit values. This presentation remains `CONVERGING`
+and does not execute or modify a calculation.
 
 ## Alpha 1.0.0a2 release notes
 

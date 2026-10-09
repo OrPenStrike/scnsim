@@ -2415,10 +2415,12 @@ ownership rule does not eagerly load a sweep.
 
 ### Display is explicit
 
-Numeric `result.show()` displays one native Plotly Figure and returns `None`, so
-a final notebook expression does not trigger a duplicate MIME display. Numeric
-`result.plot()` returns the Figure without displaying it. Diagram and HTML
-presentation objects retain their documented return behavior. Presentation
+Scalar `DirectQuantityResult.show()` returns an `HtmlPresentation`; its
+`plot()` returns a detached Figure without displaying it. Other numeric
+`result.show()` methods display one native Plotly Figure and return `None`, so
+a final notebook expression does not trigger a duplicate MIME display. Their
+`result.plot()` methods return the Figure without displaying it. Diagram and
+HTML presentation objects retain their documented return behavior. Presentation
 cannot execute, interpolate, or alter result identity.
 
 `plot()` is not a universal Result method. Only a Result subtype with a natural

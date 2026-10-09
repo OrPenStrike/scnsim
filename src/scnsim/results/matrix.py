@@ -12,7 +12,7 @@ from ..canonical import float64_from_hex
 from ..construction import unavailable
 from ..value_storage import quantity_view
 from ..visualization.presentation import Theme
-from .base import AnalysisResult, MatrixFamilyResult, MatrixView, _fresh_quantity_attribute
+from .base import AnalysisResult, HtmlPresentation, MatrixFamilyResult, MatrixView, _fresh_quantity_attribute
 
 if TYPE_CHECKING:
     from plotly.graph_objects import Figure
@@ -139,15 +139,15 @@ class DirectQuantityResult(AnalysisResult):
             and frequency > float64_from_hex(row.policy["max_frequency"]["si_value_f64"])
         )
 
-    def plot(self, *, theme: Theme = Theme.AUTO) -> Figure:
+    def plot(self, *, theme: Theme = Theme.AUTO, detailed: bool = False) -> Figure:
         from ..visualization.plots.numerical import scalar_plot
 
-        return scalar_plot(self, theme=theme)
+        return scalar_plot(self, theme=theme, detailed=detailed)
 
-    def show(self, *, theme: Theme = Theme.AUTO) -> None:
-        from ..visualization.plots.common import show_figure
+    def show(self, *, theme: Theme = Theme.AUTO, detailed: bool = False) -> HtmlPresentation:
+        from ..visualization.quantity_html import scalar_show
 
-        return show_figure(self.plot(theme=theme))
+        return scalar_show(self, theme=theme, detailed=detailed)
 
     def add_to(self, fig: Figure, *, row: int, col: int) -> Figure:
         from ..visualization.plots.numerical import scalar_add_to
