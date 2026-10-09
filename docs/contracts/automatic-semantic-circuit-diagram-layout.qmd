@@ -1,16 +1,17 @@
 ---
-title: "Automatic Semantic Circuit Diagram Layout Contract"
+title: "Structured Circuit Diagram Layout Contract"
 subtitle: "One physical declaration for numerical lowering and reviewable projections"
 toc-depth: 3
 ---
 
 ::: {.callout-warning}
-## CONVERGING contract — integrated implementation baseline
+## CONVERGING contract — explicit-layout successor
 
 This document is the single target authority for diagram composition and
 certified authoring/compiled projections. Common circuit assembly is owned by
-the [assembly contract](circuit-plan-assembly.qmd). The implementation baseline
-is integrated, but this scope is not Human-accepted or stabilized. The
+the [assembly contract](circuit-plan-assembly.qmd). The explicit-layout successor replaces authoring automatic completion; its
+implementation and actual rendering evidence remain separate from this target
+contract. This scope is not Human-accepted or stabilized. The
 [central evidence status](index.qmd#implementation-evidence-status) bounds
 current execution and delivery claims.
 
@@ -67,10 +68,8 @@ Native R/L/C/JJ branches are visible electrical symbols. Local ground
 occurrences derive from authored structural terminations, never one scope-wide
 ground tree. A Parallel's shared grounded end rail has one ground glyph;
 separate grounded shunts each retain their own local glyph, including the two
-shunts of a floating network. Their default presentation is outward from the
-owning structure. `composition.ground_side(...)` controls a grounded
-structure's termination side, rotating the structure when necessary without
-reversing its electrical reference or creating a ground domain. Eligible
+shunts of a floating network. Their explicit cardinal poses preserve the owning structure's termination
+identity without reversing its electrical reference or creating a ground domain. Eligible
 parent-applied ground pins retain parent-side presentation, and Port loads
 retain their own graphical role. Several glyphs may denote the same canonical
 reference; their placement or call grouping does not create distinct
@@ -101,489 +100,126 @@ range use scientific notation rather than truncating to zero. This display
 rule covers physical values, length, Port reference impedance, and coupling
 coefficient; exact model, source, parameter, and request values do not change.
 
-## Diagram request and composition {#schematic-layout}
+## Diagram request and explicit layout {#schematic-layout}
 
-The target keeps one diagram request:
-
-```python
-CircuitDiagramSpec(
-    representation="authoring",
-    theme=Theme.AUTO,
-    show_parameter_values=True,
-    show_provenance=True,
-    layout=None,
-)
-```
-
-Its exact target signature and Plan operation are:
+The authoring target has one complete geometry authority, `SchematicLayout`.
+Electrical declaration and numerical use do not require a layout. Preparation
+captures actual diagram targets and measurements before a caller supplies
+geometry:
 
 ```text
+CircuitPlan.prepare_schematic(
+    spec: CircuitDiagramSpec | None = None,
+    *, parameters: ParameterSet | None = None,
+) -> SchematicPreparation
+CircuitPlan.render_schematic(
+    spec: CircuitDiagramSpec = CircuitDiagramSpec(),
+    *, parameters: ParameterSet | None = None,
+) -> CircuitDiagramResult
 CircuitDiagramSpec(
     *, representation: Literal["authoring", "compiled"] = "authoring",
     theme: Theme = Theme.AUTO,
     show_parameter_values: bool = True,
     show_provenance: bool = True,
-    layout: SchematicComposition | SchematicLayout | None = None,
+    layout: SchematicLayout | None = None,
 ) -> CircuitDiagramSpec
-CircuitPlan.render_schematic(
-    spec: CircuitDiagramSpec = CircuitDiagramSpec(),
-    *, parameters: ParameterSet | None = None,
-) -> CircuitDiagramResult
 ```
 
-`representation` selects the original structured-authoring projection or the
-compiler-expanded projection. It cannot select a reduced View, transformed
-coordinate system, `ParameterSpace`, PTC result, or solver Result. The optional
-single `ParameterSet` selects physical values for that projection; it is not a
-View or an optimizer-candidate lookup.
+Preparation accepts an authoring request without layout. It captures the exact
+Plan and effective parameter point, resolves native representation, and returns
+immutable inventory and measurements. It performs no solver work, JAX or Julia
+initialization, workspace allocation, or whole-scene certification. Authoring
+rendering with `layout=None` fails and points to `prepare_schematic()`.
+Compiled rendering retains its existing compiler-evidence path and rejects a
+non-`None` layout; it is not a fallback for missing authoring geometry.
 
-Composition and layout hints apply only to the authoring projection. A compiled
-request with a non-`None` layout rejects with
-`SCNSimValidationError(stage="schematic_layout")`; compiled matrix-stamp
-projection and its evidence are unchanged.
+### One full layout authority {#schematic-composition}
 
-### One public composition path {#schematic-composition}
+A preparation supplies readonly diagram refs for each captured scope, physical
+occurrence, contact, Port, ground, caption and analysis target. These are not
+mutable electrical handles. Composite interiors may be addressed for drawing
+without exposing or changing their electrical pins. Inventory also retains
+Plan-declared groups, order, buses, taps, exposures and required contact sets;
+those source facts do not substitute for observed connectivity.
 
-`SchematicComposition(plan=plan)`, `SchematicComposition.automatic(plan=plan,
-hints=None)`, and `layout=None` share one fixed Default completion flow. The
-constructor permits a partial configuration: explicit per-field choices win,
-and omitted fields receive stable defaults. There is no separate whole-manual
-completeness mode. `SchematicLayout` supplies its existing optional hints to
-this same flow. `show()` and inventory/wiring reads are nonmutating and may
-distinguish explicit settings from fields awaiting Default completion.
+Each `SchematicScopeLayout` declares its frame, boundary contact sites, physical
+occurrence poses, whole-child poses, Port and ground poses, routes, junctions,
+jumps, captions, leaders, coupling guides and complete child layouts. Geometry uses scope-local
+drawing units, separately from physical SI quantities. Every physical
+occurrence has a pose; Series/Parallel/branch membership does not authorize
+automatic packing of its members. Native atomic bodies retain intrinsic
+contacts under whole-body translation and cardinal rotation (0, 90, 180 or
+270 degrees), without stretch or mirror.
 
-A Block is an existing scope peer or assembly structure, not a new component,
-ownership boundary, or electrical declaration. Built-Composite internals remain
-nonaddressable to callers. Default uses the same public builders as explicit
-composition; it does not rank alternatives or search for a preferred recipe.
-There is no global reset-to-auto, coordinate, length, size, or gap API.
+The public records are `DiagramPose`, `DiagramEndpoint`, `DiagramRoute`,
+`DiagramJunction`, `DiagramJump`, `DiagramCaption`, `DiagramLeader` and
+`DiagramCoupling`.
+A route binds actual preparation contacts or a scope-local named junction arm
+and declares its complete ordered cardinal waypoints. Junction centers and
+straight/elbow/T/Cross arms are explicit. A jump declares the actual crossing
+and which route carries it. Captions use captured text identity and an explicit
+anchor. An analysis leader starts at its actual contact and declares the knee
+and free end of two connected cardinal segments; it remains nonconductive.
+There are no free-coordinate electrical endpoints or inferred net-label wires.
 
-Replacing wiring is different from omitting a setting: `replace_wiring()`
-replaces one complete owner-local group. Its edited attachments and arms may
-be temporarily incomplete, but capture rejects missing connections. Default
-never guesses missing wires in an explicit replacement.
+`DiagramCoupling(target, waypoints, at)` declares the guide geometry and label
+anchor for one captured mutual-coupling structure. Its branch identities,
+coefficient and relative polarity remain source-owned. Native measurements
+retain nonconductive winding-dot markers with exact branch identity and
+positive/negative sites; these are not electrical contacts. Guide and visible
+polarity evidence remain independently observed, with no automatic coupling
+lane or caption-only substitute.
 
-The public setting operations use the existing typed handles and strict
-`DiagramAxis` / `DiagramSide` enums:
+Native measurement fixes orientation before measuring actual contacts and
+upright text. Immutable measured fragments retain the local scene, body and
+occupied bounds, keyed text measurements, owned obstacles and exact terminal
+access. Explicit text relocation retains its captured content and ownership.
 
 ```text
-composition.axis(block, axis)
-composition.order(scope_or_parallel, members=(...))
-composition.terminal_side(pin_or_tap, side)
-composition.port_side(port, side)
-composition.port_orientation(port, *, boundary_side=..., load_side=...)
-composition.tap_order(bus, taps=(...))
-composition.ground_side(grounded_structure_or_eligible_parent_ground_pin, side)
+prepared.measure_scope(scope_ref, scope_layout) -> ScopeMeasurement
+SchematicLayout(preparation, root_scope_layout)
+layout.to_json() -> str
+SchematicLayout.from_json(preparation, text) -> SchematicLayout
 ```
 
-These operations configure presentation, never component contents, ownership,
-ordered model endpoints, or connectivity. There are no public coordinates,
-line lengths, sizes, or spacing controls. A setting within an inline scope
-configures that scope; a parent cannot address child-private internals. Complete
-local orders preserve the existing ownership and member boundaries:
-`order(scope, members=...)` includes only its independent complete component
-peers and child regions, while `order(parallel, members=...)` includes its
-complete branch collection. Connector structures are placed through their
-declared endpoints, not added to the scope peer permutation. Block inventory
-does include those structures for axis and endpoint selection.
-`composition.axis(...)` also accepts a complete `ComponentInstance` Block;
-the existing five-map convenience retains its narrower eligible handle types.
-Private Series midpoints and Parallel rails remain inside their structures.
+Child measurement requires the complete child-local layout and descendants,
+but not its parent layout. `ScopeMeasurement` retains the fully realized
+immutable child scene, actual exposed contacts, bounds, owned obstacles,
+terminal access and native winding-dot markers keyed by captured occurrence
+ref and branch ID. These nonconductive marker facts can support parent coupling
+guides without electrical exposure or display-name lookup. Parent realization
+adopts that same fragment and marker geometry under its
+explicit pose; it does not remeasure, pack or route hidden contents. Measurement
+is not whole-diagram certification. Existing owner-aware collision and legal
+terminal-access checks still apply, including other contacts of the same owner
+or net. All realized geometry joins one NeutralScene and the existing
+certify-before-freeze flow.
 
-`port_orientation()` sets two perpendicular `DiagramSide` directions in the
-root frame, giving eight poses. `boundary_side` is the hollow marker's side;
-`load_side` points from the internal T toward the load and ground. The complete
-setter replaces both atomically. `port_side()` changes only the boundary side
-in that same state, preserves an explicit load side, and atomically rejects an
-incompatible change. `ground_side()` does not accept a Port. Each Port is one
-complete measured Block with its T, marker, load, ground, labels, and circuit
-lead. Its external attachment is the circuit-facing lead end, not its hollow
-marker, ground, or internal center.
+A plain Python or Notebook helper may generate new layouts from this inventory.
+It creates new refs and declarations for each point and instance; there is no
+template registry, cross-instance ref adapter or automatic completion callback.
+Changed parameters, value labels, font metrics or presentation source require
+new preparation and helper output. Built-in native leaf measurements do not
+provide a missing Composite layout.
 
-| Boundary side | Perpendicular load-side choices |
-|---|---|
-| `LEFT` | `TOP`, `BOTTOM` |
-| `RIGHT` | `TOP`, `BOTTOM` |
-| `TOP` | `LEFT`, `RIGHT` |
-| `BOTTOM` | `LEFT`, `RIGHT` |
+Lossless layout JSON binds the exact Plan, effective parameters, presentation
+options, font metrics and implementation source identity. It records the full
+scope tree and exact binary64 geometry. Reading against another binding fails;
+there is no remap or migration. Reopening a layout requires preparation with
+the same binding and fresh rendering/certification, not a persisted Drawing or
+certificate reader.
 
-A `SeriesRef` generated as a Parallel branch shares its containing Parallel's
-orientation; it is not an independently rotatable Block. An axis constraint
-on that branch, including one supplied through `SchematicLayout.axes`, is a
-redundant constraint checked at capture against the Parallel's effective axis.
-An equal axis succeeds; a conflicting axis rejects with the branch and
-Parallel IDs. Setter order does not select a winning orientation.
+The engineer course keeps its authored drawing recipes in
+`examples/engineer/diagram_layouts.py`. They are ordinary Python examples,
+with explicit per-topology poses, frames, routes, junctions and annotations.
+Shared ref lookup and measured-contact translation do not perform packing,
+route search or unknown-Plan completion. A parameter point or new instance
+requires fresh preparation and newly bound declarations.
 
-A composition binds the exact Plan captured at construction. Updating that
-Plan makes the old composition stale rather than silently rebuilding it. Render
-captures one `AuthoringSnapshot`, its effective `ResolvedPlanPoint`, display
-settings, and font environment. One isolated Default completion supplies one
-measured body per child, one constructive placement, and one fixed routing
-realization. Success and failure leave caller state and refs unchanged. The
-completed recipe and the same verified scene are frozen together; later recipe edits cannot change an existing
-`CircuitDiagramResult` or its Drawing, SVG, or Notebook presentation.
-
-### Attachments and owner-local wiring {#composition-wiring}
-
-Signal wiring groups follow owner-local Bus/Tap relations, Links,
-exposure/backing relations, and structural boundary incidence. Grouping does
-not cross a child or any physical body. Two external groups can therefore
-share one global electrical node through genuine child wiring while remaining
-independently editable. A coupling ending at `plus_1` and a probe-side Link
-from intrinsically equivalent `plus_2` are distinct parent-local groups.
-Canonical ground does not merge these groups; ground presentation stays local.
-
-Every public boundary and its side target remains visible, including open
-boundaries. An unused pin contributes no imaginary outward Parent wire.
-Only actual outward incidence enters a parent wiring inventory. A Port belongs
-to the local class of its unique root Bus, never an arbitrary same-net group.
-The child's entire internal measured drawing remains child-owned; the parent
-only translates it whole. Electrical witness A observes real continuity,
-structural witness B observes named boundaries and ownership, and composition
-conformance checks the corresponding local visible wire component without
-claiming wires from a sibling group.
-
-`composition.endpoint(ref, boundary=...)` returns a typed presentation
-attachment, not an `ElectricNodeRef` or `CoordinateRef`. A structure selects
-its explicit `"start"` or `"end"` boundary; a Branch selects `"at"` or
-`"end"`. A public Pin, logical Port, or authored Tap selects its existing
-attachment without a structure-boundary selector. Two structures sharing a
-Bus still have distinct boundary attachments. Aliases of one actual attachment
-normalize to that attachment; the Bus itself is not an additional junction arm.
-
-`composition.replace_wiring(at=bus_or_link_or_public_pin)` selects one
-owner-local inter-Block wiring group. A Subsystem public Pin selects its
-parent-facing incidence; a ComponentInstance public Pin selects incidence in
-the occurrence's owning scope. Neither selects child-private wiring or falls
-back to the child's internal side. No legal outward group means failure.
-`endpoint(pin)` resolves within the selected group. An ambiguous Tap requires
-an explicit structure boundary; it never selects the first or unused contact
-or creates another arm. Bus, Link, and Pin aliases only within the same local
-class share one
-replacement authority. Its complete attachment inventory comes from all
-authored relations, not the number of endpoints in a selected `link()` call.
-Replacing a group clears its previous wiring and invalidates its old wiring
-refs so they cannot create a competing recipe. General replacement rejects
-ground networks; their per-structure graphical roles remain separate.
-
-The returned wiring group exposes:
-
-```text
-wiring.straight(id=..., axis=DiagramAxis...)
-wiring.elbow(id=..., sides=(adjacent sides))
-wiring.tee(id=..., branch=DiagramSide...)
-wiring.cross(id=...)
-wiring.connect(a, b)
-```
-
-Each requested primitive has only its eligible `.left`, `.right`, `.top`,
-and `.bottom` arm refs. Straight has two opposite arms along its axis; an
-elbow has its two adjacent arms; a tee has the selected branch and its
-perpendicular through-arms; a cross has all four arms at one junction. These
-are local conductive arm patterns, not new electrical elements, nets, taps, or
-analysis coordinates. Every external attachment and every requested arm must
-be connected exactly once, and all members of the group must be connected.
-Duplicate, missing, foreign-net, foreign-group, invalid-side, invalid-shape,
-and stale refs reject; an incomplete edited group cannot render.
-
-`connect()` may add route elbows needed to avoid obstacles, using the same
-straight/L primitive machinery and preserving the requested arm directions.
-It cannot replace a requested Cross with two Ts, even though those alternatives
-could express the same electrical node. Shape verification checks the actual
-visible arm geometry separately from electrical witness A and ownership
-witness B. Passing A/B cannot excuse a different requested composition. T/Cross
-sides constrain local arms, not a global half-plane for distant Blocks;
-necessary elbows remain legal without turning a chosen arm into a huge detour.
-
-The capstone can replace one root group without changing its four Ports,
-physical model, or numerical requests. The named handles below are from its
-completed feedline/readout/floating declaration:
-
-```python
-composition = SchematicComposition.automatic(plan=plan)
-wiring = composition.replace_wiring(at=readout_root_bus)
-readout_t = wiring.tee(id="readout_attachment", branch=DiagramSide.BOTTOM)
-split_t = wiring.tee(id="floating_split", branch=DiagramSide.BOTTOM)
-lower_turn = wiring.elbow(id="floating_minus_turn", sides=(DiagramSide.TOP, DiagramSide.RIGHT))
-wiring.connect(composition.endpoint(feedline_readout, boundary="end"), readout_t.left)
-wiring.connect(readout_t.bottom, composition.endpoint(readout_terminal))
-wiring.connect(readout_t.right, split_t.left)
-wiring.connect(split_t.right, composition.endpoint(readout_floating_plus, boundary="start"))
-wiring.connect(split_t.bottom, lower_turn.top)
-wiring.connect(lower_turn.right, composition.endpoint(readout_floating_minus, boundary="start"))
-diagram = plan.render_schematic(CircuitDiagramSpec(layout=composition))
-```
-
-### SchematicLayout convenience
-
-`SchematicLayout` is immutable and defensively copies five optional mappings.
-Its mappings are converted into the corresponding public composition setting
-operations, then fixed Default completes omitted fields at render.
-The target type shape below
-is contract notation, not executable Python:
-
-```text
-SchematicLayout(
-    *,
-    axes: Mapping[
-        CircuitPlan | SubsystemPlan |
-        SeriesRef | ParallelRef | BranchRef,
-        DiagramAxis,
-    ] = {},
-    order: Mapping[
-        CircuitPlan | SubsystemPlan | ParallelRef,
-        tuple[ComponentInstance | SubsystemPlan | SeriesRef, ...],
-    ] = {},
-    terminal_sides: Mapping[PinRef | TapRef, DiagramSide] = {},
-    port_sides: Mapping[PortRef, DiagramSide] = {},
-    tap_order: Mapping[BusRef, tuple[TapRef, ...]] = {},
-) -> SchematicLayout
-```
-
-`DiagramAxis` accepts only `HORIZONTAL` or `VERTICAL`; `DiagramSide` accepts
-only `LEFT`, `RIGHT`, `TOP`, or `BOTTOM`. Both are strict string Enums and raw
-strings raise `TypeError`.
-
-- `axes` orients the rendered root `CircuitPlan`, an attached live inline
-  `SubsystemPlan`, or a structured group. Rendering belongs only to
-  `CircuitPlan`; a detached `CompositePlan` and private scopes inside a built
-  Composite are not layout keys.
-- For a scope key, `order` is a complete permutation of its direct peer
-  `ComponentInstance` and `SubsystemPlan` handles. This includes a complete
-  Composite occurrence or native multi-terminal body that remains independent.
-  A component body already consumed by a series, parallel, or branch structure
-  is not a peer; neither are buses, taps, Ports, or connector structures. The
-  value must list every eligible peer exactly once—omission is a validation
-  failure, not a partial hint. For a `ParallelRef` key, the value is exactly a
-  complete permutation of its `.branches` `SeriesRef`s. Key-dependent
-  validation rejects every other mixture. Electrical members inside a
-  `SeriesRef` cannot be reordered.
-- `terminal_sides` constrains public boundary pins or declared bus taps owned
-  by the referenced scope.
-- `port_sides` constrains root `PortRef`s.
-- `tap_order` gives the relative geometric order of explicitly named taps on
-  one authored bus. A key is a live root or inline-Subsystem `BusRef` in the
-  rendered Plan, including an electrically private bus in either eligible
-  scope. Layout-key eligibility does not publish electrical or analytical
-  access. Its value is a complete permutation of that exact bus's declared
-  `TapRef`s; an empty tuple is harmless only when the bus has no declared taps.
-  Private buses inside a built Composite remain inaccessible.
-
-`tap_order` binds the exact authored `BusRef` and its owner-region segment, not
-canonical electrical-node identity. Parent and child buses joined by a public
-pin therefore keep separate local order frames. Along the bus owner's effective
-local axis, the listed named taps have strictly increasing projected
-contact-anchor positions: left to right for `HORIZONTAL` and top to bottom for
-`VERTICAL`. Axes on incident `SeriesRef`, `ParallelRef`, or `BranchRef` objects
-do not redefine that frame. Implicit direct-bus contacts are renderer
-bookkeeping, not public refs, and may automatically precede, interleave with,
-or follow the named taps. The complete tuple orders only the named taps
-relative to one another.
-
-The mapping does not define current flow, series order, node order, a new tap,
-or a connection. Default tap placement follows connected structure and other
-eligible layout constraints; `.tap()` call order and words such as `left` or
-`right` do not command geometry. Side constraints and `tap_order` are
-conjoined; neither silently overrides the other. A raw string or any other
-wrong key or value type raises `TypeError`. A well-typed stale, foreign, or
-hidden bus or tap, a missing, duplicate, or other-bus tap, an incomplete
-permutation, or an incompatible or otherwise conflicting hint raises
-`SCNSimValidationError(stage="schematic_layout")`. Both failure classes reject
-the request before a Result, workspace, or partial image exists.
-
-Changing only `tap_order`, another layout mapping, or Theme preserves Plan,
-connectivity, and semantic digests. Adding or removing an authored tap changes
-the structural declaration and need not preserve Plan or semantic identity,
-even when the electrical net is equivalent. A/B correspondence checks visible
-electrical and ownership incidence; separate layout validation checks requested
-geometry where the attachment rays are unambiguous. An ambiguous
-multi-incidence Tap does not provide an independent exact Tap-name-to-picture
-observation. Its authored Tap identity remains verified source evidence, not a
-hidden label that the witness claims to recover from the image.
-
-Foreign, hidden, dead, duplicate, missing, or conflicting handles fail closed.
-The refs bind live authoring ownership captured at render. Editing a mutable
-unsealed Plan and rendering again captures the new declaration; there is no
-pre-render catalog, public ref constructor, stale snapshot ceremony, or raw
-coordinate override.
-
-### Fixed Default layout and ownership regions
-
-Default resolves explicit `series`, `parallel`, `branch`, `bus`, `tap`,
-coupling, and scope facts once. It neither infers intent from names/Port roles
-nor creates a second authoring engine. Default and explicit composition use the
-same Block, attachment, straight/L/T/Cross, native measurement, and validation
-machinery.
-
-Two attachments use a straight or L; three use a T with exactly compatible
-directions where available, otherwise its fixed scope branch (bottom for a
-horizontal scope, right for a vertical one). Four all-distinct directions use
-a Cross; other four-contact groups use connected Ts. Larger groups use a fixed
-T chain along the scope axis. Exact compatible arms are assigned first, then
-remaining contacts and arms in stable source/cardinal order. No alternative
-trees, axes, poses, or cost-ranked recipes are enumerated.
-
-Port sides derive from the already selected wiring arm or intrinsic incident
-direction, then the scope's leading side if undetermined: left for horizontal,
-top for vertical. Horizontal Ports default their load downward; vertical Ports
-default it rightward. An explicit pose is never reselected to avoid obstacles.
-Public boundary sides resolve from explicit settings or parent arms before
-child measurement. Default attachment order is first-incidence order from
-structural declarations and public attachments, with real contact keys
-deduplicated; `.tap()` creation order is not a separate placement instruction.
-Applicable explicit `tap_order` supplies a presentation precedence overlay
-for otherwise-Default arm assignment and constructive contact placement.
-The immutable source attachment inventory keeps its original order;
-manual or fixed wiring is not rewritten.
-All explicit settings conjoin without silently overwriting each other.
-
-The default reading grammar is local and mechanical. Direct scope peers follow
-author declaration order on the scope's horizontal default axis; this does not
-require top-aligned child boxes. A root series defaults horizontal. A single
-series reads start-to-end horizontally. Every parallel group instead defaults
-to a vertical electrical path: its shared start is above its shared end, and
-branches are placed left-to-right in declaration order. A `HORIZONTAL` axis
-hint on that `ParallelRef` rotates the group to horizontal paths stacked
-top-to-bottom. A scope-axis hint changes only the scope's peer arrangement; it
-does not silently rotate a parallel group inside that scope. Members inside a
-parallel branch follow the parallel group's axis. Grounded ends and glyphs
-prefer outward and below their local block, and a branch departs its explicitly
-declared through-bus toward its endpoint block. A hint never reverses
-electrical pins, series members, or ordered terminals. Source order is a
-reading convention, never inferred physical signal, energy, or current flow.
-
-Each Subsystem is recursively expanded into native child structure inside a
-measured ownership region with a visible boundary, header, and ID. Theme owns
-its presentation colors; color alone never establishes ownership. A reusable
-Composite uses the same visible native expansion, because encapsulation limits
-user access rather than evidence.
-
-After directions and attachment identities are resolved, each child owns one
-fully measured native scene with final frame, public anchors, upright labels,
-local grounds, coupling, and reserved exits. Frame and anchors are finalized
-together. The frame reserves only actually needed fixed route lanes per side
-plus measured labels, title,
-ground, border, and escape space; it has no unused full-ring reserve or
-redundant straight-connector spacing. This is measurement, not post-hoc cropping,
-global clearance reduction, search, or a public coordinate control. The parent
-translates that whole payload without relocating measured anchors or rewriting
-private contents.
-Complete Composite orientation retains its local-frame and inverse-frame
-rules. Connected single-pin and genuinely open boundaries remain distinct;
-layout never invents a pin, Port, or load.
-
-The authoring projection is a conventional circuit schematic, not an operator
-debug view. It does not print `S:`, `P:`, `LINK:`, or `REGION:` marks, routing
-guides, or private aliases over the circuit. Its public analysis labels are
-exactly the named root Buses and the analysis Coordinates that a child
-explicitly publishes with `expose_coordinate()`. Anonymous root Buses,
-child-private Buses, anonymous internal identities, Pin/Branch exposures, and
-unpublished Coordinates are not labelled. Publishing a Coordinate does not
-grant a parent access to private built-Composite handles or create a new
-electrical node, Coordinate, attachment arm, wiring permission, or connectivity.
-Source aliases remain distinct authored names even when they share conductive
-ink. Co-located public aliases are combined into one measured multi-line text
-run with each exact name on its own line; a single name containing a literal
-middle dot therefore remains distinct from two aliases. The producer retains
-different owner-local source groups instead of merging them merely because
-compilation gives them one `final_net`.
-
-Analysis labels are measured with the wire Blocks they annotate before final
-child frames, public anchors, route lanes, and parent placement are fixed. They
-remain visible regardless of `show_parameter_values` and `show_provenance`;
-those switches control values and the optional provenance footer, not public
-names. Label leaders are nonconductive and do not participate in witness-A
-connectivity. The audit verifies the exact captured names and owner scope and
-that the leader endpoint is attached to the corresponding conductive-root net,
-without treating the text as electrical evidence. It does not independently
-distinguish a label swap between different owner-local contacts that share both
-scope and electrical net; complete owner-local grouping remains verified source
-evidence and a producer invariant.
-
-Native symbols, conductive wires,
-filled connection marks, hollow logical-Port endpoints, local grounds, physical
-coupling marks, short authored labels, and measured ownership regions carry
-the visible meaning. A `NodeMark` label is optional in the authoring projection;
-compiled markers that require a label retain it. A harmless filled dot may mark
-a connected two-ray bend or contact, while every true three-or-more-ray wire
-junction requires a visible dot. An isolated dot or a mark that falsely joins
-different nets fails correspondence; this rule does not require every dot to
-have three rays. Mutual winding dots are distinct from conductive connection
-marks and retain their orientation evidence. A one-pin child boundary may be
-one continuous unlabelled wire crossing; a multi-pin boundary retains the local
-names needed to distinguish its pins, without a `pin:` type prefix.
-
-Ordinary L and JJ bodies in the normal schematic need neither direction arrows
-nor `+`/`−` reference-polarity signs. Their ordered model endpoints and branch
-reference conventions remain intact; an unmarked symmetric symbol does not
-make that order visible. Mutual couplings retain sufficient visible winding
-dots, endpoint incidence, and coupling information to establish relative
-polarity. Any presentation of a signed branch current, voltage, or phase must
-explain its reference endpoints; this responsibility does not add a signed-result
-API or imply that such quantities are available from diagram rendering.
-
-Layout measures native/operator Blocks and complete child regions first, then
-jointly places whole Blocks, attachment anchors, and local junctions. A
-single-pin readout can hang from a parent tee without adding a second pin or
-changing its authoring declaration. A parent moves each child as one unit,
-never rewrites its private internals, and attaches connector structures only
-at authored endpoints and registered public anchors.
-Independent peers follow declaration order or one complete explicit order.
-Buses and links are conductive routing demands, not component slots or
-pairwise-clique generators. Root Ports stay on their root buses, parent-owned
-shunts stay in the parent region, and scopes containing only native peers remain
-valid without an invented child or global neighbor partition.
-
-Placement preallocates measured Block, junction-subtree, Port/load/text,
-connector, and nonconductive coupling-guide strips. Scope order controls
-projected peer order; branch extents may offset rows and enlarge following
-columns rather than forcing top-aligned boxes and adding late detours. Each
-body is placed once by a stable spanning traversal. The traversal is only a
-placement device: every remaining edge or cycle is retained exactly once in
-reserved closure tracks.
-
-Channels and distinct lanes are allocated in stable group/connection order
-before wire emission. Aligned routes are direct; prescribed bends and
-channel/perimeter routes are constructed arithmetically. No visibility graph,
-Dijkstra, candidate positions, beam/backtracking, routing-order retries, or
-readability score is reachable on the authoring path, including structural
-wires, boundary/label completion, and coupling guides. This is constructive
-geometry, not a search restricted to one candidate. Different-net crossings
-retain the existing jump convention. Separate same-net routes cannot create
-incidental bridges, add/erase T/Cross arms, or drop loop edges. Unsupported
-fixed geometry fails explicitly, with no alternative search or partial result.
-
-The geometry uses the current renderer revision's uniform `U = 2.2` local
-metric, measured text bounds, registered anchors, collision obstacles,
-continuous same-net wires, true T junctions, and jump arcs only for
-different-net crossings. `U = 2.2` is an implementation setting for that
-revision, not a TARGET semantic threshold or a user Gate. Name and value labels
-remain separate and readable at the retained minimum scale. Ownership regions,
-labels, and any necessary physical-coupling guides are visibly nonconductive.
-The light Theme uses a white background, dark conventional ink, and subtle blue
-rounded child regions; the dark Theme uses the corresponding readable palette.
-Neither Theme changes geometry or evidence. The existing
-`show_provenance=True` default shows a compact, separated provenance footer;
-setting it to `False` hides only that optional footer. The main circuit remains
-readable in either case.
-
-For the no-hint Chapter 1 circuit, these rules produce one readable native
-schematic: a hollow Port endpoint reaches a short signal lead and filled T; the
-Port-owned reference-impedance load descends from that T to a local ground. A
-horizontal coupling capacitor leads to the child resonator. Inside its titled
-region, the capacitor and inductor are vertical side-by-side branches between
-continuous common top and bottom wires, with one local ground. The Port ground
-and resonator ground are separate local glyphs for the same canonical
-electrical reference. This public circuit shape is a normative layout case,
-not a name-specific renderer rule or a hand-positioned output. Its literal
-authored local IDs remain `resonator`, `coupling_cap`, `capacitor`, and
-`inductor`; the projection neither title-cases them nor invents aliases such as
-`Cc` or `Cr`.
-
-The target does not promise a universal graph-layout algorithm. A failure names
-the scope or declared constraints that could not be placed. It returns no
-partial or best-effort certified diagram and does not invent retry, drawing-size,
-threshold, or time knobs.
+Old axis/order hints, `SchematicComposition`, automatic `layout=None` completion
+and automatic snapshot roundtrips are replaced, with no compatibility adapter
+or alternate current authoring path. Numerical and compiled projection
+contracts remain unchanged.
 
 ## Independent certification {#independent-certification}
 
@@ -768,17 +404,12 @@ Successful rendering returns one immutable `CircuitDiagramResult`. Its
 facade. The existing `Drawing.save()` remains the static-file API; this target
 adds no second save/export surface.
 
-For authoring diagrams, `diagram.composition` is an immutable detached public
-final recipe. For compiled diagrams it is `None`. Its `show()` remains usable
-after the live Plan changes. It exposes neither the internal
-`CapturedComposition`/snapshot nor live authoring handles or private editable
-contents. `diagram.composition.to_composition(plan=plan)` checks the exact
-captured Plan identity and creates a new editable fixed recipe: all resolved
-Default-completed public choices become fixed, while hidden internals remain
-nonaddressable. Reusing it at another single parameter point remeasures and
-reroutes rather than freezing pixels, and may fail if incompatible. There is
-no reset-to-auto operation; create a fresh partial composition for new settings.
-This adds no request, schema, or digest system.
+For authoring diagrams, `diagram.layout` is the immutable detached full-layout
+projection bound to this exact preparation. For compiled diagrams it is `None`.
+It exposes no live electrical handles and remains readable after a live Plan
+changes. It replaces `composition` and `to_composition()`; no result method
+re-enters automatic completion. Lossless layout JSON may be read with an exact
+matching preparation, then rendered and certified again.
 
 Theme styling, Notebook zoom/pan/copy controls, and static fallback serialize
 the same frozen checked scene. They cannot mutate it, invalidate the
@@ -803,26 +434,22 @@ are not A/B rendering failures.
 
 Rendering returns no `CircuitDiagramResult` when:
 
-- a composition is stale, has an incomplete explicit wiring replacement, or
-  contains duplicate, foreign, dead, or conflicting attachments, arms,
-  settings, or refs;
-- a `SchematicLayout` contains missing, duplicate, foreign, dead, incomplete,
-  or conflicting refs;
-- a replacement group is grounded, disconnected, or does not cover its complete
-  inventory exactly once; or its requested shape/sides disagree with visible
-  geometry, including two Ts substituted for a requested Cross;
-- required structures, labels, anchors, regions, or wires cannot be placed
-  without collision or illegal crossing; or
-- the selected deterministic local strategy produces no valid scene.
+- authoring layout is absent, stale or incomplete, or includes foreign,
+  duplicate, dead or conflicting scope/occurrence/contact refs;
+- declared routes, junction arms, Port/ground poses or boundaries do not cover
+  actual required inventory and contact sets;
+- actual geometry contradicts declared structural order, terminal sides or
+  explicit tee/Cross arms; or
+- bodies, labels, leaders, boundary access or wires collide or cross illegally.
 
 Those failures use `stage="schematic_layout"`. A mismatch between expected and
 independently reconstructed electrical/structural evidence uses
 `stage="schematic_audit"`. Neither creates a solver attempt, workspace,
 receipt, or partial image.
 
-Invalid types, permissions, stale refs, incomplete replacement wiring, and
+Invalid types, permissions, stale refs, incomplete declared wiring, and
 other invalid input fail directly. Unsupported fixed geometry reports the
-actual scope, Block, junction, or constraint without fallback search or partial
+actual scope, occurrence, junction, or constraint without fallback search or partial
 success. It does not label the circuit itself invalid or prove that no other
 layout exists. Programming, protocol, and audit-integrity failures propagate.
 No elapsed-time threshold or public timeout is part of this contract.
@@ -855,7 +482,7 @@ their current destinations without duplicating this contract.
 | Current Engineer Chapter 1 | coupled grounded LC, same-bus public Pin and Coordinate, direct root coupling to the child Pin, terminated Port, and one authoring A/B/C review |
 | Current Engineer Chapters 3–4 | ordered scalar-RLGC feedline/readout and the complete four-Port physical capstone with explicit probe-tee composition |
 | Current Engineer Chapter 5 | reusable Composite with public C/L parameters, equivalent Pins, one Coordinate, and parent-only coupling/Port ownership |
-| Current Engineer Chapter 6 | Default composition, complete Port poses, genuine T/Cross primitives, A/B review, and exact-Plan fixed reuse |
+| Current engineer source examples | ordinary Python, topology-specific full-layout declarations use fresh preparation refs; stored figures and Notebook outputs retain their original execution identities |
 | Current Engineer Chapter 7 | exact N=2 RLGC declaration; its current four-Port authoring request retains a typed fixed-layout failure separately from numerical evidence |
 
 The current course completes the authored model before choosing an analysis
@@ -874,8 +501,7 @@ acceptance.
 
 ## Honest limits and supersession {#honest-limits}
 
-- This document is a `CONVERGING` contract with an integrated implementation
-  baseline, not Human acceptance, stabilization, release, or scientific-result
+- This document is a `CONVERGING` contract for an explicit-layout successor, not Human acceptance, stabilization, release, or scientific-result
   evidence.
 - Durable tests for reopened semantics wait for Human acceptance; current
   evidence limitations are centralized in the Contract map.
@@ -883,7 +509,7 @@ acceptance.
   evidence, not reachable compatibility authorities.
 - This target has no public generic netlist-to-intent inference, no
   `SchematicCatalog`, no Participant/Interface/Attachment refs, no S/P/M
-  relation API, and no raw coordinate override.
+  relation API, and no unbound coordinate override. Complete scope-local geometry is explicit.
 - It does not promise automatic layout for every circuit, infer physical flow,
   or turn diagram success into a product/scientific Gate.
 - It does not certify a consumer Design Target, measurement, solver accuracy,

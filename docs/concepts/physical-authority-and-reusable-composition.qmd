@@ -276,91 +276,36 @@ facts remain separately available in the audit's verified source rows. The
 compiled diagram instead explains deterministic compiler expansion. Neither
 projection is another circuit definition.
 
-Automatic layout gives every parallel group a vertical electrical path by
-default, with its branches left-to-right. A hint on that parallel may rotate it
-to horizontal paths; changing the parent scope axis does not rotate the child
-parallel implicitly. These are reading conventions only and never reverse
-ordered pins or series members.
+### Declare drawing geometry without reauthoring the circuit
 
-### Compose the drawing without reauthoring the circuit
+`plan.prepare_schematic()` returns readonly captured scopes, physical
+occurrences, contacts and cardinal native measurements. A complete
+`SchematicLayout` supplies every occurrence pose and scope-local frame,
+boundary site, Port/ground pose, route, junction, jump and annotation.
+Structural order and terminal identity remain Plan facts; geometry never
+changes the electrical model. Authoring rendering without this layout fails
+rather than completing missing positions or wires.
 
-`SchematicComposition` is a presentation recipe over existing Blocks and their
-attachment boundaries. Blocks are the Plan's scope peers and assembly
-structures, not new physical components. A structure's start/end attachment is
-different from another structure's attachment on the same Bus. Public Pins,
-Ports, and authored Taps select their existing contacts; the Bus itself adds no
-extra arm. These attachments are not electrical nodes or analysis coordinates.
+A child scope is measured from its full explicit local layout. Its immutable
+complete scene and actual exposed contacts become the same fragment placed in
+the parent; parent placement never packs the child's private contents. Readonly
+diagram refs can address captured Composite interiors for drawing but cannot
+mutate or expose electrical handles. A plain Python helper may construct fresh
+layouts from each instance's inventory without another template registry.
 
-`SchematicComposition(plan=plan)`, `automatic(plan=plan, hints=None)`, and
-a missing layout share one fixed Default path. Explicit per-field settings win;
-omitted fields receive stable defaults. The constructor is useful for changing
-just one axis or Port side: it does not require a complete manual configuration.
-`show()` and inventory/wiring reads remain nonmutating.
+Routes bind real contacts and explicit junction arms. Native fixed bodies keep
+intrinsic contacts under whole-body cardinal poses. Labels and analysis leaders
+retain captured content and actual contact attachment. Existing owner-aware
+obstacle, terminal-access and independent actual-ink checks remain responsible
+for collisions, crossings and electrical correspondence.
 
-Wiring replacement is a complete-group operation. Use
-`replace_wiring(at=bus_or_link_or_public_pin)` to specify connected straight,
-L, T, and Cross primitives for that group. Every actual attachment and requested
-arm must be connected once; Default never guesses wires missing from an
-explicit replacement. A Subsystem Pin selects parent-facing wiring; a
-ComponentInstance Pin selects its occurrence-owner group, not child-private
-wiring. Aliases share one authority. An ambiguous Tap requires an explicit
-structure boundary rather than an arbitrary contact choice.
-
-The existing single-pin readout can hang beneath a parent T while another T
-and L connect to the floating network's coupling structures. No second public
-Pin or electrical change is needed. Resolve boundary directions from explicit
-settings or parent arms first; the child then supplies one complete measured
-payload with upright labels, final public anchors, local grounds, and reserved
-exits. The parent translates it whole without rewriting private contents.
-
-Port presentation retains eight root-frame poses:
-`port_orientation(port, boundary_side=..., load_side=...)` atomically sets the
-hollow-marker side and perpendicular T-to-load/ground direction.
-`port_side()` preserves an explicit compatible load side; incompatible changes
-reject without partial update. `ground_side()` is not a Port control.
-Without explicit settings, the selected wiring arm or intrinsic incidence
-determines the marker side, then the scope's leading side if needed. Horizontal
-Ports default loads downward; vertical Ports default them rightward. Outside
-wiring attaches to the complete Port's circuit-facing lead end.
-
-Default keeps horizontal Series, vertical Parallel with branches left-to-right,
-and declared peer order along the scope axis. Applicable explicit tap order
-precedes stable declared contact order. Two contacts use straight/L, three use
-a compatible T or the fixed scope branch, four distinct directions use Cross
-and other four-contact groups use connected Ts, and larger groups use a fixed
-T chain. Compatible arms are assigned first, then remaining contacts and arms
-in stable source/cardinal order. Default uses the same public builders as
-explicit recipes; it does not enumerate or score alternatives.
-
-Placement reserves measured Blocks, junction subtrees, Ports/loads/text,
-connectors, and coupling-guide strips before drawing. Branch extents can offset
-rows and enlarge later columns rather than forcing top-aligned boxes. A stable
-spanning traversal places each body once while all remaining edges and cycles
-retain reserved closure tracks. Channels and lanes follow stable
-group/connection order; direct paths, prescribed bends, and channel/perimeter
-routes are constructed arithmetically.
-
-There is no authoring visibility-graph search, pose candidate selection,
-backtracking, routing-order retry, or readability score. Different-net crossings
-retain jumps; same-net routes cannot acquire incidental bridges or lose
-requested junction arms or loop edges. Unsupported fixed geometry fails with
-its actual scope, Block, junction, or constraint. It neither falls back to
-search nor labels the physical circuit invalid. No universal placement or
-numerical timing threshold is promised.
-
-The existing five-map `SchematicLayout` convenience feeds the same fixed
-Default setters. No entry point exposes coordinates, lengths, sizes, or gaps.
-A changed Plan makes an old composition stale. Rendering captures one exact
-Plan, effective point, and settings without mutating caller state or old results.
-Authoring `diagram.composition` is the detached immutable completed recipe;
-compiled diagrams expose `None`. Its inspection survives live Plan edits.
-`to_composition(plan=plan)` checks exact Plan identity and returns a new fixed
-editable recipe without exposing private editable contents. Reuse at another
-single point remeasures/reroutes, not pixels, and may be incompatible. There is
-no global reset-to-auto; create a fresh partial composition for new settings.
-
-The exact public operations and capstone recipe remain in the
-[composition contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd#schematic-composition).
+`diagram.layout` is the readonly full layout bound to exact Plan, parameters,
+font metrics and presentation source. Lossless JSON requires a matching new
+preparation and rendering/certification. Another point or instance needs fresh
+refs and helper output; there is no automatic composition snapshot adapter.
+Numerical use and compiled projection remain independent of this authoring
+geometry. Exact public operations belong to the single
+[layout contract](../contracts/automatic-semantic-circuit-diagram-layout.qmd#schematic-composition).
 
 ### Keep composition checks separate from circuit review
 

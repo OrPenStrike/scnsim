@@ -13,6 +13,6 @@ Complete [Lesson 1](01-default.qmd), then use the
 
 {{< include _02-port-poses.qmd >}}
 
-[Previous: Lesson 1 — Default](01-default.qmd) ·
+[Previous: Lesson 1 — Explicit layout](01-default.qmd) ·
 [Next: Lesson 3 — T and Cross](03-junctions.qmd) ·
 [Download the complete Chapter Notebook](chapter.ipynb)

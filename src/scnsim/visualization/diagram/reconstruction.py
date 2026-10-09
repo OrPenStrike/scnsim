@@ -1051,7 +1051,12 @@ def _couplings(
                 )
                 for pin, point in body.pin_points:
                     other = next(other for _, other in body.pin_points if other != point)
-                    center, dot = winding_dot(point, other, symbol.symbol_bounds)
+                    center, dot = winding_dot(
+                        point,
+                        other,
+                        symbol.symbol_bounds,
+                        orientation=symbol.orientation,
+                    )
                     if _same_point(terminal, center) and sum(_same_path(dot, actual) for actual in dots) == 1:
                         candidates.append((body, pin))
             if len(candidates) != 1:
@@ -1124,9 +1129,17 @@ def reconstruct_authoring(
         elif not (
             guide.label.role == "analysis-label"
             and guide.kind == "analysis_label"
-            and len(guide.paths) == 1
-            and guide.paths[0].role == "analysis-label"
-            and len(guide.paths[0].points) == 2
+            and len(guide.paths) == 2
+            and all(
+                path.role == "analysis-label"
+                and len(path.points) == 2
+                and (
+                    _same(path.points[0].x, path.points[1].x)
+                    != _same(path.points[0].y, path.points[1].y)
+                )
+                for path in guide.paths
+            )
+            and guide.paths[0].points[1] == guide.paths[1].points[0]
             and guide.terminals == (guide.paths[0].points[0],)
         ):
             raise _fail(
@@ -1153,7 +1166,10 @@ def reconstruct_authoring(
         if guide.kind != "analysis_label":
             continue
         assert guide.label is not None
-        wire_point, free_end = guide.paths[0].points
+        # The ordered cardinal leader joins at its knee; only the first
+        # contact is electrical, and the second stroke's end is the free end.
+        wire_point = guide.paths[0].points[0]
+        free_end = guide.paths[1].points[1]
         if not any(_same_point(wire_point, point) for point in graph.points):
             raise _fail(
                 "public analysis label leader is not attached to visible electrical ink",

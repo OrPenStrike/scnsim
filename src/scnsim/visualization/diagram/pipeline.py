@@ -66,7 +66,7 @@ def _finish(
     scene: NeutralScene,
     *,
     compiled_evidence: Mapping[str, object] | None,
-    composition: object = None,
+    layout: object = None,
 ) -> CircuitDiagramResult:
     """Certify before a scene is exposed through a Drawing or Result facade."""
     audit_data = certify_scene(
@@ -83,24 +83,20 @@ def _finish(
         certificate=_svg_certificate_from_audit(audit),
     )
     return _verified_result(
-        CircuitDiagramResult, drawing=drawing, audit=audit, composition=composition,
+        CircuitDiagramResult, drawing=drawing, audit=audit, layout=layout,
     )
 
 
 def _authoring_result(point: ResolvedPlanPoint, spec: CircuitDiagramSpec, layout: object) -> CircuitDiagramResult:
-    from ..composition import detached_composition
-    from .composition_constraints import verify_composition
-    from .composition_planner import plan_composition
+    from .structured import realize_layout
 
-    planned = plan_composition(point, layout, show_values=spec.show_parameter_values)
-    scene = planned.scene
-    verify_composition(scene, planned.composition, point=point)
+    scene = realize_layout(layout.preparation, layout)
     return _finish(
         point,
         spec,
         _with_provenance(scene, point=point, spec=spec),
         compiled_evidence=None,
-        composition=detached_composition(planned.composition),
+        layout=layout,
     )
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, localcontext
 import json
 import math
@@ -224,21 +224,29 @@ def _visible_bounds(bounds: Iterable[Bounds]) -> Bounds:
 
 
 def _verify_rectangular_frame(path: Path, bounds: Bounds, *, role: str) -> None:
-    wanted = (
+    perimeter = (
         Point(bounds.xmin, bounds.ymin),
         Point(bounds.xmax, bounds.ymin),
         Point(bounds.xmax, bounds.ymax),
         Point(bounds.xmin, bounds.ymax),
-        Point(bounds.xmin, bounds.ymin),
     )
     if (
         path.role != role
         or not path.closed
         or path.codes is not None
-        or len(path.points) != len(wanted)
-        or any(not _same_point(actual, expected) for actual, expected in zip(path.points, wanted, strict=True))
+        or len(path.points) != 5
     ):
         raise _layout_fail("visible rectangular frame disagrees with its occupied bounds", role=role)
+    # Rigid cardinal adoption preserves perimeter direction but can rotate the
+    # starting corner.  Accept only a cyclic shift of the same closed walk.
+    for start in range(len(perimeter)):
+        wanted = (*perimeter[start:], *perimeter[:start], perimeter[start])
+        if all(
+            _same_point(actual, expected)
+            for actual, expected in zip(path.points, wanted, strict=True)
+        ):
+            return
+    raise _layout_fail("visible rectangular frame disagrees with its occupied bounds", role=role)
 
 
 def _deepest_region(bounds: Bounds, regions: Sequence[_Region]) -> _Region:
@@ -338,14 +346,71 @@ def _same_path(left: Path | None, right: Path | None) -> bool:
     )
 
 
+def _same_closed_path_cyclic_start(left: Path, right: Path) -> bool:
+    """Compare a closed path while permitting only a cyclic start change."""
+    if (
+        left.role != right.role
+        or not left.closed
+        or not right.closed
+        or left.codes != right.codes
+        or len(left.points) != len(right.points)
+        or len(left.points) < 2
+        or not _same_point(left.points[0], left.points[-1])
+        or not _same_point(right.points[0], right.points[-1])
+    ):
+        return False
+    left_walk = left.points[:-1]
+    right_walk = right.points[:-1]
+    if len(left_walk) != len(right_walk):
+        return False
+    for start in range(len(right_walk)):
+        candidate = (*right_walk[start:], *right_walk[:start])
+        if all(
+            _same_point(actual, expected)
+            for actual, expected in zip(left_walk, candidate, strict=True)
+        ):
+            return True
+    return False
+
+
 def _verify_text_run(run: object) -> None:
     from .metrics import shape_text
-    from .scene import TextRun
+    from .scene import Bounds, Point, TextRun
 
     if not isinstance(run, TextRun):
         raise _audit_fail("scene text fact is not one immutable TextRun")
     try:
-        reference = shape_text(run.text, at=run.origin, size=run.size, role=run.role)
+        if run.orientation not in (0, 90, 180, 270):
+            raise ValueError("TextRun orientation is not cardinal")
+        inverse = (-run.orientation) % 360
+        source_origin = run.origin.rotated(inverse)
+        source = shape_text(run.text, at=source_origin, size=run.size, role=run.role)
+
+        def orient(point: Point) -> Point:
+            return point.rotated(run.orientation)
+
+        def orient_bounds(bounds):
+            return Bounds.around(
+                orient(Point(x, y))
+                for x in (bounds.xmin, bounds.xmax)
+                for y in (bounds.ymin, bounds.ymax)
+            )
+
+        glyphs = tuple(
+            replace(
+                glyph,
+                vertices=tuple(orient(point) for point in glyph.vertices),
+                bounds=orient_bounds(glyph.bounds),
+            )
+            for glyph in source.glyphs
+        )
+        reference = replace(
+            source,
+            origin=orient(source.origin),
+            glyphs=glyphs,
+            bounds=orient_bounds(source.bounds),
+            orientation=run.orientation,
+        )
     except Exception as error:
         raise _audit_fail("visible text cannot be reconstructed by the trusted font grammar") from error
     if (
@@ -658,6 +723,54 @@ def _verify_global_clearance(scene: NeutralScene) -> None:
                         if stroke_collisions[0] is None
                         else list(stroke_collisions[0])
                     ),
+                )
+
+
+def _verify_authoring_visible_layout(scene: NeutralScene) -> None:
+    """Retain the authoring lowerer's completed-label clearance contract."""
+    from .metrics import DEFAULT_METRICS
+
+    labels = (
+        [
+            ("guide", guide.label)
+            for guide in scene.guides
+            if guide.label is not None
+        ]
+        + [
+            ("boundary", site.visible_label)
+            for site in scene.boundary_sites
+            if site.visible_label is not None
+        ]
+        + [
+            ("region", region.header)
+            for region in scene.regions
+            if region.header is not None
+        ]
+    )
+    physical = [symbol.occupied_bounds for symbol in scene.symbols]
+    physical.extend(box.bounds for box in scene.boxes)
+    physical.extend(port.occupied_bounds for port in scene.ports)
+    physical.extend(label.bounds for port in scene.ports for label in port.labels)
+    clearance = DEFAULT_METRICS.label_clearance - COORDINATE_TOLERANCE
+    for role, label in labels:
+        assert label is not None
+        if any(label.bounds.overlaps(bounds, clearance=clearance) for bounds in physical):
+            raise _layout_fail(
+                "completed scene has a visible label over physical ink",
+                role=role,
+                label=label.text,
+            )
+    for index, (left_role, left) in enumerate(labels):
+        assert left is not None
+        for right_role, right in labels[index + 1 :]:
+            assert right is not None
+            if left.bounds.overlaps(right.bounds, clearance=clearance):
+                raise _layout_fail(
+                    "completed scene has overlapping visible labels",
+                    left_role=left_role,
+                    left=left.text,
+                    right_role=right_role,
+                    right=right.text,
                 )
 
 
@@ -1088,21 +1201,8 @@ def _port_identity(port: PortBlock) -> tuple[str, str, str, bool]:
 
 
 
-def _same_text_placement(left: TextRun | None, right: TextRun | None) -> bool:
-    if left is None or right is None:
-        return left is right
-    return (
-        left.text == right.text
-        and left.role == right.role
-        and _same_point(left.origin, right.origin)
-        and _same(left.size, right.size)
-        and _same_bounds(left.bounds, right.bounds)
-        and _same(left.ascent, right.ascent)
-        and _same(left.descent, right.descent)
-    )
-
 def _verify_port_block_geometry(port: PortBlock) -> None:
-    """Match a Port's actual visible ink to the closed native Port grammar."""
+    """Match actual Port ink while allowing declared caption placement/rotation."""
 
     from .metrics import DEFAULT_METRICS
     from .native import port_block
@@ -1138,7 +1238,7 @@ def _verify_port_block_geometry(port: PortBlock) -> None:
     load = port.reference_load
     wanted_load = reference.reference_load
     if (
-        not _same_path(port.circle, reference.circle)
+        not _same_closed_path_cyclic_start(port.circle, reference.circle)
         or not _same_point(port.circle_center, reference.circle_center)
         or any(
             not _same_point(actual, wanted)
@@ -1174,11 +1274,13 @@ def _verify_port_block_geometry(port: PortBlock) -> None:
         )
         or len(port.labels) != len(reference.labels)
         or any(
-            not _same_text_placement(actual, wanted)
+            actual.text != wanted.text
+            or actual.role != wanted.role
+            or not _same(actual.size, wanted.size)
             for actual, wanted in zip(port.labels, reference.labels, strict=True)
         )
-        or not _same_bounds(port.occupied_bounds, reference.occupied_bounds)
         or load.kind != "R"
+        or load.branch_label is not None
         or len(load.anchors) != len(wanted_load.anchors)
         or any(
             actual_name != wanted_name or not _same_point(actual_point, wanted_point)
@@ -1187,10 +1289,9 @@ def _verify_port_block_geometry(port: PortBlock) -> None:
             )
         )
         or not _same_bounds(load.symbol_bounds, wanted_load.symbol_bounds)
-        or not _same_bounds(load.occupied_bounds, wanted_load.occupied_bounds)
-        or not _same_text_placement(load.visible_name, wanted_load.visible_name)
-        or not _same_text_placement(load.value, wanted_load.value)
-        or not _same_text_placement(load.branch_label, wanted_load.branch_label)
+        or load.visible_name.text != wanted_load.visible_name.text
+        or load.visible_name.role != wanted_load.visible_name.role
+        or not _same(load.visible_name.size, wanted_load.visible_name.size)
     ):
         raise _audit_fail(
             "Port body/load ink does not match its visible native grammar",
@@ -2254,6 +2355,8 @@ def certify_scene(
     _verify_scene_text(scene)
     _verify_internal_clearance(scene)
     _verify_global_clearance(scene)
+    if representation == "authoring":
+        _verify_authoring_visible_layout(scene)
     expected = build_point_expected(
         point,
         representation=representation,

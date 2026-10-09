@@ -148,9 +148,10 @@ from .specs import (
 # documented package names visible to static ``py.typed`` consumers.
 if TYPE_CHECKING:
     from .visualization.diagram.spec import CircuitDiagramSpec
-    from .composition import SchematicComposition, SchematicCompositionSnapshot
     from .results import CircuitDiagramAudit, CircuitDiagramResult
-    from .schematic import DiagramAxis, SchematicLayout
+    from .schematic import (DiagramRef, DiagramPose, DiagramEndpoint, DiagramRoute, DiagramJunction,
+        DiagramJump, DiagramCaption, DiagramLeader, DiagramCoupling, SchematicScopeLayout, SchematicLayout,
+        SchematicPreparation, ScopeInventory, MeasuredFragment, ScopeMeasurement, GeometryRealization)
     from .specs import DiagramSide
 
 
@@ -159,10 +160,22 @@ _LAZY_DIAGRAM_EXPORTS = {
     "CircuitDiagramAudit": (".results", "CircuitDiagramAudit"),
     "CircuitDiagramResult": (".results", "CircuitDiagramResult"),
     "CircuitDiagramSpec": (".specs", "CircuitDiagramSpec"),
-    "DiagramAxis": (".schematic", "DiagramAxis"),
     "DiagramSide": (".specs", "DiagramSide"),
-    "SchematicComposition": (".composition", "SchematicComposition"),
-    "SchematicCompositionSnapshot": (".composition", "SchematicCompositionSnapshot"),
+    "DiagramRef": (".schematic", "DiagramRef"),
+    "DiagramPose": (".schematic", "DiagramPose"),
+    "DiagramEndpoint": (".schematic", "DiagramEndpoint"),
+    "DiagramRoute": (".schematic", "DiagramRoute"),
+    "DiagramJunction": (".schematic", "DiagramJunction"),
+    "DiagramJump": (".schematic", "DiagramJump"),
+    "DiagramCaption": (".schematic", "DiagramCaption"),
+    "DiagramLeader": (".schematic", "DiagramLeader"),
+    "DiagramCoupling": (".schematic", "DiagramCoupling"),
+    "SchematicScopeLayout": (".schematic", "SchematicScopeLayout"),
+    "SchematicPreparation": (".schematic", "SchematicPreparation"),
+    "ScopeInventory": (".schematic", "ScopeInventory"),
+    "MeasuredFragment": (".schematic", "MeasuredFragment"),
+    "ScopeMeasurement": (".schematic", "ScopeMeasurement"),
+    "GeometryRealization": (".schematic", "GeometryRealization"),
     "SchematicLayout": (".schematic", "SchematicLayout"),
 }
 
@@ -289,10 +302,22 @@ __all__ = [
     "SCNSimStateError",
     "SCNSimValidationError",
     "SParameterTrace",
-    "DiagramAxis",
+    "DiagramRef",
+    "DiagramPose",
+    "DiagramEndpoint",
+    "DiagramRoute",
+    "DiagramJunction",
+    "DiagramJump",
+    "DiagramCaption",
+    "DiagramLeader",
+    "DiagramCoupling",
+    "SchematicScopeLayout",
+    "SchematicPreparation",
+    "ScopeInventory",
+    "MeasuredFragment",
+    "ScopeMeasurement",
+    "GeometryRealization",
     "SchematicLayout",
-    "SchematicComposition",
-    "SchematicCompositionSnapshot",
     "SeriesRef",
     "ScaffoldUnavailableError",
     "ScatteringMatrixResult",

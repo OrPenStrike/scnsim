@@ -1,8 +1,10 @@
-## Lesson 1 — Start from Default composition {#lesson-ch6-default}
+## Lesson 1 — Start from an explicit layout {#lesson-ch6-default}
+
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
 
 ### Declare one fixed four-arm Plan
 
-Diagram composition changes presentation, never the circuit. This illustration
+Explicit layout changes presentation, never the circuit. This illustration
 has one central Bus, four real capacitor arms, and four terminated 50 ohm Ports.
 
 ```{python}
@@ -12,11 +14,9 @@ from IPython.display import display
 from scnsim import (
     CircuitDiagramSpec,
     CircuitPlan,
-    DiagramAxis,
     DiagramSide,
     RLGC,
     SCNSimValidationError,
-    SchematicComposition,
     Theme,
     components,
     units as u,
@@ -58,9 +58,14 @@ Bus adds no fifth arm.
 
 ```{python}
 #| id: ch6-render-default-composition
-four_arm_composition = SchematicComposition.automatic(plan=four_arm_plan)
+from examples.engineer.diagram_layouts import engineer_layout
+
+four_arm_preparation = four_arm_plan.prepare_schematic(
+    CircuitDiagramSpec(theme=Theme.AUTO)
+)
+four_arm_layout = engineer_layout(four_arm_preparation, "four_arm")
 four_arm_default = four_arm_plan.render_schematic(
-    CircuitDiagramSpec(layout=four_arm_composition, theme=Theme.AUTO)
+    CircuitDiagramSpec(layout=four_arm_layout, theme=Theme.AUTO)
 )
 four_arm_default.show()
 ```

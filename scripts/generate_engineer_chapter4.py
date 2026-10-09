@@ -214,7 +214,7 @@ def _source_tree() -> dict[str, object]:
 
 
 def _binding() -> dict[str, object]:
-    sources = (CHAPTER / "chapter.qmd", *SOURCES, *WRAPPERS)
+    sources = (CHAPTER / "chapter.qmd", *SOURCES, *WRAPPERS, ROOT / "examples" / "engineer" / "diagram_layouts.py")
     cells = _parse_cells()
     return {
         "generator_sha256": _hash(Path(__file__)),

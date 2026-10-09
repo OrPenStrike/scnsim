@@ -1,24 +1,27 @@
 ## Lesson 3 — Separate authoring and finite-pi views {#lesson-ch7-diagrams}
 
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+
 ### Review the declared body
 
 ```{python}
 #| id: ch7-render-authoring
-authoring = None
-try:
-    authoring = plan.render_schematic(
-        CircuitDiagramSpec(
-            representation="authoring",
-            theme=Theme.AUTO,
-            show_parameter_values=True,
-        )
+from examples.engineer.diagram_layouts import engineer_layout
+
+authoring_preparation = plan.prepare_schematic(
+    CircuitDiagramSpec(
+        representation="authoring", theme=Theme.AUTO,
+        show_parameter_values=True,
     )
-except SCNSimValidationError as error:
-    if error.stage != "schematic_layout":
-        raise
-    display({"authoring layout unavailable": str(error), "stage": error.stage})
-if authoring is not None:
-    display(authoring.show())
+)
+authoring_layout = engineer_layout(authoring_preparation, "ordered_mtl")
+authoring = plan.render_schematic(
+    CircuitDiagramSpec(
+        layout=authoring_layout, representation="authoring", theme=Theme.AUTO,
+        show_parameter_values=True,
+    )
+)
+display(authoring.show())
 ```
 
 ::: {.content-visible when-format="html"}

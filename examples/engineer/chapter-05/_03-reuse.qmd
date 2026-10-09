@@ -1,5 +1,7 @@
 ## Lesson 3 — Reuse the component from its boundary {#lesson-ch5-reuse}
 
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+
 ### Couple the parent directly to the child Pin
 
 The 6 fF coupler and terminated 50 ohm Port belong to the parent. The series
@@ -30,12 +32,19 @@ signal_port = plan.add_port(
 
 ```{python}
 #| id: ch5-render-reused-composite
+from examples.engineer.diagram_layouts import engineer_layout
+
+reused_preparation = plan.prepare_schematic(
+    CircuitDiagramSpec(
+        representation="authoring", theme=Theme.AUTO,
+        show_parameter_values=True, show_provenance=True,
+    )
+)
+reused_layout = engineer_layout(reused_preparation, "reusable_lc")
 reused_diagram = plan.render_schematic(
     CircuitDiagramSpec(
-        representation="authoring",
-        theme=Theme.AUTO,
-        show_parameter_values=True,
-        show_provenance=True,
+        layout=reused_layout, representation="authoring", theme=Theme.AUTO,
+        show_parameter_values=True, show_provenance=True,
     )
 )
 reused_diagram.show()

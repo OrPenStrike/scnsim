@@ -1,5 +1,7 @@
 ## Lesson 3 — Optimize and verify one winner {#lesson-ch2-optimize}
 
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+
 **Prerequisite:** run Lessons 1–2 in the aggregate Chapter Notebook.
 
 ::: {.callout-note title="This request may take several minutes" appearance="simple"}
@@ -83,9 +85,14 @@ authoring evidence at the selected point, not numerical proof of the objective.
 
 ```{python}
 #| id: ch2-render-winner
+from examples.engineer.diagram_layouts import engineer_layout
+
+winner_preparation = plan.prepare_schematic(
+    CircuitDiagramSpec(), parameters=best_parameters,
+)
+winner_layout = engineer_layout(winner_preparation, "coupled_lc")
 winner_diagram = plan.render_schematic(
-    CircuitDiagramSpec(),
-    parameters=best_parameters,
+    CircuitDiagramSpec(layout=winner_layout), parameters=best_parameters,
 )
 ```
 

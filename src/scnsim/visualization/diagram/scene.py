@@ -139,10 +139,13 @@ class TextRun:
     bounds: Bounds
     ascent: float
     descent: float
+    orientation: int = 0
 
     def __post_init__(self) -> None:
         if not self.text or len(self.text) != len(self.glyphs):
             raise ValueError("text runs must retain every literal glyph")
+        if isinstance(self.orientation, bool) or self.orientation not in (0, 90, 180, 270):
+            raise ValueError("text orientation must be cardinal")
 
 
 @dataclass(frozen=True, slots=True)

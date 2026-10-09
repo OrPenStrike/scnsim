@@ -1,15 +1,21 @@
-## Lesson 4 — Reuse the completed recipe {#lesson-ch6-reuse}
+## Lesson 4 — Reuse the full explicit layout {#lesson-ch6-reuse}
 
-### Convert captured choices back to an editable composition
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
 
-The captured composition is detached and immutable. `to_composition()` checks
-the exact Plan identity and returns a new editable recipe; it does not freeze
-pixels.
+### Round-trip the same captured full layout
+
+`CircuitDiagramResult.layout` is a readonly full-layout projection.
+`SchematicLayout.from_json()` reconstructs those exact declarations against
+the same preparation; it does not remap refs to another Plan or parameter point.
 
 ```{python}
 #| id: ch6-reuse-completed-composition
-fixed_four_arm = four_arm_cross.composition.to_composition(plan=four_arm_plan)
-fixed_four_arm.show()
+from scnsim import SchematicLayout
+
+# Lossless geometry is bound to the same immutable captured point/options.
+fixed_four_arm = SchematicLayout.from_json(
+    four_arm_preparation, four_arm_cross.layout.to_json(),
+)
 four_arm_fixed = four_arm_plan.render_schematic(
     CircuitDiagramSpec(layout=fixed_four_arm, theme=Theme.AUTO)
 )
@@ -29,5 +35,5 @@ four_arm_fixed.show()
 four_arm_fixed.audit.show()
 ```
 
-Rendering remeasures current labels and geometry. An incompatible parameter
-point can therefore fail rather than silently search for another layout.
+A different parameter point or presentation options require fresh preparation
+and a newly authored layout. Existing refs are never silently rebound.

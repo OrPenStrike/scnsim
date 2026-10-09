@@ -1,5 +1,7 @@
 ## Lesson 3 — Request actual T and Cross junctions {#lesson-ch6-junctions}
 
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+
 ### Build a three-contact tapped feedline
 
 The T example reuses the established two-section scalar CPW declaration. Its
@@ -53,27 +55,14 @@ feedline.expose_pin(id="output", at=output_bus)
 
 ```{python}
 #| id: ch6-request-and-render-t
-tapped_composition = SchematicComposition.automatic(plan=tapped_plan)
-tap_wiring = tapped_composition.replace_wiring(at=tap_bus)
-tap_t = tap_wiring.tee(id="tap_t", branch=DiagramSide.BOTTOM)
-tap_wiring.connect(
-    tapped_composition.endpoint(left_section, boundary="end"), tap_t.left
+tapped_preparation = tapped_plan.prepare_schematic(
+    CircuitDiagramSpec(theme=Theme.AUTO)
 )
-tap_wiring.connect(
-    tapped_composition.endpoint(right_section, boundary="start"), tap_t.right
+tapped_layout = engineer_layout(tapped_preparation, "tapped_feedline")
+tapped_t_diagram = tapped_plan.render_schematic(
+    CircuitDiagramSpec(layout=tapped_layout, theme=Theme.AUTO)
 )
-tap_wiring.connect(tapped_composition.endpoint(feedline_tap_pin), tap_t.bottom)
-tapped_t_diagram = None
-try:
-    tapped_t_diagram = tapped_plan.render_schematic(
-        CircuitDiagramSpec(layout=tapped_composition, theme=Theme.AUTO)
-    )
-except SCNSimValidationError as error:
-    if error.stage != "schematic_layout":
-        raise
-    display({"T layout unavailable": str(error), "stage": error.stage})
-if tapped_t_diagram is not None:
-    display(tapped_t_diagram.show())
+display(tapped_t_diagram.show())
 ```
 
 ::: {.content-visible when-format="html"}
@@ -85,26 +74,17 @@ if tapped_t_diagram is not None:
 The T is a non-element conductive presentation primitive. It creates no new
 net, Tap, Coordinate, or permission to address private Composite contents.
 
-### Replace the four-contact group with one Cross
+### Inspect the explicitly declared Cross again
+
+The four-arm recipe already declares `central_cross` with all four arms.
+This call renders that same full layout again so its visible attachments and
+independent audit can be inspected; it does not replace the junction geometry.
 
 ```{python}
 #| id: ch6-request-cross
-central_wiring = four_arm_composition.replace_wiring(at=central_bus)
-central_cross = central_wiring.cross(id="central_cross")
-central_wiring.connect(
-    four_arm_composition.endpoint(arms["a"], boundary="start"), central_cross.left
-)
-central_wiring.connect(
-    four_arm_composition.endpoint(arms["b"], boundary="start"), central_cross.right
-)
-central_wiring.connect(
-    four_arm_composition.endpoint(arms["c"], boundary="start"), central_cross.top
-)
-central_wiring.connect(
-    four_arm_composition.endpoint(arms["d"], boundary="start"), central_cross.bottom
-)
+# The recipe already declares all four actual arms of central_cross.
 four_arm_cross = four_arm_plan.render_schematic(
-    CircuitDiagramSpec(layout=four_arm_composition, theme=Theme.AUTO)
+    CircuitDiagramSpec(layout=four_arm_layout, theme=Theme.AUTO)
 )
 four_arm_cross.show()
 ```
@@ -122,5 +102,6 @@ four_arm_cross.show()
 four_arm_cross.audit.show()
 ```
 
-A pair of Ts might preserve electrical connectivity but would not satisfy this
-requested Cross shape. Every attachment and requested arm is used once.
+The existing layout requests one Cross rather than a pair of Ts. Electrical
+connectivity alone does not establish that requested shape; its four actual
+attachments and declared arms are each represented once.

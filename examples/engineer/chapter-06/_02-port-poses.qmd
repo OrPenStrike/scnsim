@@ -1,32 +1,22 @@
 ## Lesson 2 — Set complete Port poses {#lesson-ch6-port-poses}
 
-### Understand the eight valid combinations
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
 
-A Port pose has a marker-facing `boundary_side` and a perpendicular
-`load_side`. The valid pairs are left/top, left/bottom, right/top,
-right/bottom, top/left, top/right, bottom/left, and bottom/right. The complete
-setter updates both directions atomically; it does not change the Port load.
+### Measure the four native cardinal variants
+
+Each terminated Port retains its fixed intrinsic marker, load and return.
+The recipe selects one of 0, 90, 180 or 270 degrees, then translates that
+complete body to its authored position. It does not independently bend the
+load or infer a circuit attachment from a label.
 
 ```{python}
 #| id: ch6-set-axes-and-port-poses
-four_arm_composition.axis(arms["a"], DiagramAxis.HORIZONTAL)
-four_arm_composition.axis(arms["b"], DiagramAxis.HORIZONTAL)
-four_arm_composition.axis(arms["c"], DiagramAxis.VERTICAL)
-four_arm_composition.axis(arms["d"], DiagramAxis.VERTICAL)
-four_arm_composition.port_orientation(
-    ports["a"], boundary_side=DiagramSide.LEFT, load_side=DiagramSide.BOTTOM
-)
-four_arm_composition.port_orientation(
-    ports["b"], boundary_side=DiagramSide.RIGHT, load_side=DiagramSide.BOTTOM
-)
-four_arm_composition.port_orientation(
-    ports["c"], boundary_side=DiagramSide.TOP, load_side=DiagramSide.RIGHT
-)
-four_arm_composition.port_orientation(
-    ports["d"], boundary_side=DiagramSide.BOTTOM, load_side=DiagramSide.RIGHT
-)
-four_arm_composition.show()
+# These are the four explicitly authored native cardinal variants in the
+# course recipe. Inspect their actual measured anchors without changing loads.
+for ref, pose in four_arm_layout.root.ports.items():
+    fragment = four_arm_preparation.native[ref, pose.rotation]
+    display({"port": ref.key, "pose": pose, "contacts": fragment.contacts})
 ```
 
-This lesson uses four of the eight valid poses once. It does not search all
-poses or reinterpret a Port's boundary marker as its circuit attachment.
+This lesson inspects four explicitly chosen poses. No orientation search or
+automatic completion is performed.

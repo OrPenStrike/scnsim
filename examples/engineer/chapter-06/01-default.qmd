@@ -1,5 +1,5 @@
 ---
-title: "Chapter 6 · Lesson 1 — Default composition"
+title: "Chapter 6 · Lesson 1 — Explicit layout"
 subtitle: "Diagram customization engineer course"
 jupyter: python3
 execute:

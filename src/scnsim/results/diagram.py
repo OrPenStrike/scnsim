@@ -12,7 +12,7 @@ from .base import HtmlPresentation, Result, _freeze
 
 if TYPE_CHECKING:
     import schemdraw
-    from ..visualization.composition.api import SchematicCompositionSnapshot
+    from ..schematic import SchematicLayout
 
 @dataclass(frozen=True, slots=True)
 class CircuitDiagramAudit:
@@ -220,7 +220,7 @@ class CircuitDiagramAudit:
 class CircuitDiagramResult(Result):
     drawing: schemdraw.Drawing
     audit: CircuitDiagramAudit
-    composition: SchematicCompositionSnapshot | None = None
+    layout: SchematicLayout | None = None
 
     def __init__(self) -> None:
         unavailable("CircuitDiagramResult construction")

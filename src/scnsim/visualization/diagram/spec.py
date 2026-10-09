@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from ..composition import SchematicComposition
 from ...errors import SCNSimValidationError
 from ..presentation import Theme, _require_theme
 from ..schematic import SchematicLayout
@@ -19,7 +18,7 @@ class CircuitDiagramSpec:
     theme: Theme = Theme.AUTO
     show_parameter_values: bool = True
     show_provenance: bool = True
-    layout: SchematicComposition | SchematicLayout | None = None
+    layout: SchematicLayout | None = None
 
     def __init__(
         self,
@@ -28,15 +27,15 @@ class CircuitDiagramSpec:
         theme: Theme = Theme.AUTO,
         show_parameter_values: bool = True,
         show_provenance: bool = True,
-        layout: SchematicComposition | SchematicLayout | None = None,
+        layout: SchematicLayout | None = None,
     ) -> None:
         object.__setattr__(self, "representation", representation)
         object.__setattr__(self, "theme", _require_theme(theme))
         object.__setattr__(self, "show_parameter_values", show_parameter_values)
         object.__setattr__(self, "show_provenance", show_provenance)
-        if layout is not None and not isinstance(layout, (SchematicComposition, SchematicLayout)):
+        if layout is not None and not isinstance(layout, SchematicLayout):
             raise SCNSimValidationError(
-                "layout must be a SchematicComposition, SchematicLayout, or None",
+                "layout must be a SchematicLayout or None",
                 stage="schematic_layout",
             )
         object.__setattr__(self, "layout", layout)
@@ -47,7 +46,7 @@ class CircuitDiagramSpec:
             raise ValueError("invalid diagram representation")
         if self.representation == "compiled" and self.layout is not None:
             raise SCNSimValidationError(
-                "schematic layout hints apply only to authoring diagrams",
+                "explicit schematic layouts apply only to authoring diagrams",
                 stage="schematic_layout",
             )
         if not isinstance(self.show_parameter_values, bool):

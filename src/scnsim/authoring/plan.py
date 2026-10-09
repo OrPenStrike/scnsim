@@ -37,6 +37,25 @@ class CircuitPlan(_Scope):
         self._capture_net_ids = {self.ground_net: "ground"}
         self.init(id, None, self)
 
+    def prepare_schematic(
+        self, spec: object = None, *, parameters: ParameterSet | None = None
+    ) -> object:
+        """Capture readonly diagram inventory and measurements without layout."""
+        from ..specs import CircuitDiagramSpec
+        from ..schematic import _prepare_schematic
+
+        checked_spec = CircuitDiagramSpec() if spec is None else spec
+        if not isinstance(checked_spec, CircuitDiagramSpec):
+            raise TypeError("prepare_schematic() requires CircuitDiagramSpec")
+        if checked_spec.representation != "authoring" or checked_spec.layout is not None:
+            raise SCNSimValidationError(
+                "prepare_schematic() requires an authoring request without layout",
+                stage="schematic_layout",
+            )
+        if parameters is not None and not isinstance(parameters, ParameterSet):
+            raise TypeError("prepare_schematic() parameters must be a ParameterSet or None")
+        return _prepare_schematic(self, checked_spec, parameters=parameters)
+
     def render_schematic(
         self, spec: object = None, *, parameters: ParameterSet | None = None
     ) -> object:

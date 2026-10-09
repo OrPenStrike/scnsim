@@ -1,5 +1,7 @@
 ## Lesson 2 — Review the authored circuit {#lesson-diagram}
 
+Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+
 **Prerequisite:** run all Lesson 1 cells in the aggregate Chapter Notebook.
 
 The authoring diagram is a projection of the Plan just declared. It does not
@@ -7,12 +9,18 @@ select a numerical View or execute a solver.
 
 ```{python}
 #| id: ch1-render-authoring-diagram
+from examples.engineer.diagram_layouts import engineer_layout
+
+presentation = CircuitDiagramSpec(
+    representation="authoring", theme=Theme.AUTO,
+    show_parameter_values=True, show_provenance=True,
+)
+diagram_preparation = plan.prepare_schematic(presentation)
+diagram_layout = engineer_layout(diagram_preparation, "coupled_lc")
 diagram = plan.render_schematic(
     CircuitDiagramSpec(
-        representation="authoring",
-        theme=Theme.AUTO,
-        show_parameter_values=True,
-        show_provenance=True,
+        layout=diagram_layout, representation="authoring", theme=Theme.AUTO,
+        show_parameter_values=True, show_provenance=True,
     )
 )
 ```

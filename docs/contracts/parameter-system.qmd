@@ -459,6 +459,11 @@ scientific acceptance or a Gate.
 
 ## Parameterized diagrams {#parameterized-diagrams}
 
+Authoring diagrams first capture this same point with
+`plan.prepare_schematic(parameters=...)`, then receive a complete explicit
+layout bound to that preparation. A changed point requires fresh refs and
+layout declarations. Compiled diagrams retain their existing layout-free path.
+
 ```text
 CircuitPlan.render_schematic(
     spec: CircuitDiagramSpec = CircuitDiagramSpec(),

@@ -132,7 +132,7 @@ def _binding() -> dict[str, object]:
         (4, "root"),
         (5, "change-capacitance"),
     ))
-    sources = (aggregate, *SOURCES, *wrappers)
+    sources = (aggregate, *SOURCES, *wrappers, ROOT / "examples" / "engineer" / "diagram_layouts.py")
     return {
         "generator_sha256": _hash(Path(__file__)),
         "sources": {
