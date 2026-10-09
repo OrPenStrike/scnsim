@@ -367,120 +367,13 @@
           "ch2-run-and-show-listed-points"
         ]
       },
-      "cells": {
-        "ch2-render-winner": {
-          "after_sha256": "d5ed0386475e66dc69ffa6fce568984dc87ab4f8331682434f4287d6d1b13efa",
-          "before_sha256": "bccc0dd61088237775c925a004d8d63d8baf43da33dde554c9f3e540ca3bf86e"
-        }
-      },
+      "cells": {},
       "generator": {
         "after_sha256": "8f56ae41d8aa11735f7f78c370151184d1b3de36acad68404e9063fac3e0d344",
-        "before_sha256": "42886ecdc7f2cbea74437bbafdf4e8006a8117d6aba4ceffb6b18c74a40c8cd5"
+        "before_sha256": "8f56ae41d8aa11735f7f78c370151184d1b3de36acad68404e9063fac3e0d344"
       },
-      "source_files": {
-        "src/scnsim/__init__.py": {
-          "after_sha256": "cef62075ce46cbaa35bf282f5be7b6ddd3d2236742ccda30fa2161f924918007",
-          "before_sha256": "a458ae334e43d4095bcf4c00c1911b4eb09a0818860957499ba8b35489ab5700"
-        },
-        "src/scnsim/authoring/plan.py": {
-          "after_sha256": "49ce1b503f14a4bd5375f916cd32aea471c133ea63a49a2655a1021a1bd2f7aa",
-          "before_sha256": "445a8d87ee962c90f9b8b0c6188cb8f7a9b1c037d7b1516d3c4b42964d1cebd3"
-        },
-        "src/scnsim/composition.py": {
-          "after_sha256": "absent",
-          "before_sha256": "27ba42edd9bb2d8f277f3f4c877ef15ba2b41b90fb49eaeb9b3740daeb21cb36"
-        },
-        "src/scnsim/results/diagram.py": {
-          "after_sha256": "528b8eb355ef9bbe4a8038012838a57c21dec03316b11069963231823f21b098",
-          "before_sha256": "ab0a0f81c8cadf3883d35e5c4babe0af363171309617ca35c0d41a8adc286c87"
-        },
-        "src/scnsim/schematic.py": {
-          "after_sha256": "7a40589f6318b0276f8c2023d7c1f7f14046284638e35f62cedd12f0ae7b200e",
-          "before_sha256": "e058758a0608e68c4d11373e35245c7f4f4aad126d8985093f1345cab4e78b5d"
-        },
-        "src/scnsim/visualization/composition/__init__.py": {
-          "after_sha256": "absent",
-          "before_sha256": "c7a66cda34797a22f348d0b074d93edbb4196072e7bdf64c71d148f5f9550f05"
-        },
-        "src/scnsim/visualization/composition/api.py": {
-          "after_sha256": "absent",
-          "before_sha256": "459b5da5f88dd55ec6adb6425878b12c6873ffb3216ee9d22b626dc05e7cff7c"
-        },
-        "src/scnsim/visualization/composition/automatic.py": {
-          "after_sha256": "absent",
-          "before_sha256": "1b9415c392de48e621b0b27503c5fb00145cb8cc765b1aac95069d984d9d816c"
-        },
-        "src/scnsim/visualization/composition/capture.py": {
-          "after_sha256": "absent",
-          "before_sha256": "9d3a79caae563b7cbd1a60a3b9d86589659af44a6c10e677011b79a48401a539"
-        },
-        "src/scnsim/visualization/diagram/audit.py": {
-          "after_sha256": "6c7cbc292e3f3076d181857f00c358c96dbf9b9ad4157aea11f284d94220ffc9",
-          "before_sha256": "1d667777cacf9beadafeb6bddf8c05b8326c139dfec05e4c8a429aae38280fb8"
-        },
-        "src/scnsim/visualization/diagram/composition_constraints.py": {
-          "after_sha256": "absent",
-          "before_sha256": "8c09dcd5c05b3a4a0ec82e282111d35cc745e6ee3fdff9110ea5eeec8dc024eb"
-        },
-        "src/scnsim/visualization/diagram/composition_geometry.py": {
-          "after_sha256": "f3bafb0b0e48ed6a494278951c3e2a0dd6db271e18a90315e108ce63c5b62579",
-          "before_sha256": "cf720d1ab7a4825cee28aa95d2efb883f77c5568e7303dbed6339955fe838793"
-        },
-        "src/scnsim/visualization/diagram/composition_model.py": {
-          "after_sha256": "absent",
-          "before_sha256": "419644e511d306e6862429d87578f5f20e9e4dcfefb1ff4c6284885f181fdcdf"
-        },
-        "src/scnsim/visualization/diagram/composition_obstacles.py": {
-          "after_sha256": "b99518f7e2eac3f3d521de79cb1a6e8d04ca9a9dfc18fc432fe548df44dc07a7",
-          "before_sha256": "absent"
-        },
-        "src/scnsim/visualization/diagram/composition_planner.py": {
-          "after_sha256": "absent",
-          "before_sha256": "109cce1ad27fce2a6b8b8202d183b4e121a999bed1b9504912f6dc9fd5f85337"
-        },
-        "src/scnsim/visualization/diagram/native.py": {
-          "after_sha256": "c0555ebdbfd2eae99eb17e066aa88e7cbee0a16900c52086643dfad87a3ce5ce",
-          "before_sha256": "1c3888539dfe93d3565e8b94a456c0d68a65c3a21838fdcd8debd0ca113d5de1"
-        },
-        "src/scnsim/visualization/diagram/pipeline.py": {
-          "after_sha256": "9a949ae06c9b85e6064981c22485cbef29f1f6bbd131f17dcfaffde3612bcddf",
-          "before_sha256": "f4e7ff94ce65afd1b291ff6e04e9e150f2ffafa3e3db5c09d7a70555758627af"
-        },
-        "src/scnsim/visualization/diagram/preparation.py": {
-          "after_sha256": "40786a5c9e13186db24d58174750e1ebc4a853fcaa4765fac5515f6aa808c906",
-          "before_sha256": "absent"
-        },
-        "src/scnsim/visualization/diagram/reconstruction.py": {
-          "after_sha256": "8b674b5db5ad0d0d4fc7ba8eb7f24411fc0695ebd3045d5065bd745a783e4e11",
-          "before_sha256": "3a39c1a9385d18eb0e4923c0fbc5218b4f9f365ded840506cce39a2b86ae398a"
-        },
-        "src/scnsim/visualization/diagram/scene.py": {
-          "after_sha256": "8e7c9302874e36d79c3d2e5ad4ab68d9e67b81f867cd2cdd7ad74868afdef725",
-          "before_sha256": "8f8f4dfccb7b8c3153325957c4e28d1336e49c4960e2224b9fb3501e14eedcb2"
-        },
-        "src/scnsim/visualization/diagram/spec.py": {
-          "after_sha256": "39d1e3f9e34f8f1ba46de619f99102600198f7da7bf97eb170636002929f4149",
-          "before_sha256": "9d2ad0a4087234319fbcf33c59455e2036104d5a14c80c995105aea4abc51346"
-        },
-        "src/scnsim/visualization/diagram/structured.py": {
-          "after_sha256": "114f7979531b81ae714e6d6c85cd9de306b78b9cb425d8b9984689706a325b8c",
-          "before_sha256": "bedae0b87d11533306860c73f74753a7c27093e4ab1f0ab1d791c665b10d852d"
-        },
-        "src/scnsim/visualization/schematic.py": {
-          "after_sha256": "c77f23bdd776d40ee382fcca3617dce9911aa04eaa875dbd4aa67fe683741106",
-          "before_sha256": "6a16ef8133a7c269ebdcff195dd3dbf6e7d29824601cb6200976561b6656bb4e"
-        }
-      },
-      "teaching_sources": {
-        "examples/engineer/chapter-02/_03-optimize.qmd": {
-          "after_sha256": "a149ef5170a36862844702b5e29da285effe1acba70cb6779f570a494ca256cd",
-          "before_sha256": "49cdcc7d7cb6dc4e576a58d3ef9f98a128b5fe770d2497bcff1a7ca0b65464fc"
-        },
-        "examples/engineer/diagram_layouts.py": {
-          "after_sha256": "b966afebdff386a4712aefcfa77507f2037d5c3d3c98616c76caebd6f93727d6",
-          "before_sha256": "absent"
-        }
-      }
+      "source_files": {},
+      "teaching_sources": {}
     },
     "execution_identity_retained": true,
     "historical_execution": {
@@ -509,7 +402,7 @@
         "02-optional-spaces.csv": "6f1a67d033f9d2cb80e6918148241333cc0b1980b231bc92ef34e67298f17407",
         "02-optional-spaces.md": "d7a80717dc0eb1f79cec754615543500ab400fc71bcb70ca4694a50a991523b5"
       },
-      "prior_publication_binding_sha256": "632ceb2e3c0a88527b7ceed410c0ded7459e8381ec798f7e5d948b97e6c96a85",
+      "prior_publication_binding_sha256": "4ce609583a56eb9f0ed758acf7eeec5e09b24ba8278f0c27a6d3cdcb4cf05f48",
       "prior_redrawn_artifacts": {
         "02-capacitance-sweep.svg": {
           "execution_sha256": "edf39d45803d0c806608c73f021bd7345c593cb44736a9917cf2426d206eded0",
@@ -524,9 +417,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "7e5cd62363e9e8a1306213e31a91e13feb9d506c1378a72fc21e414702f5f841",
-    "prior_publication_binding_sha256": "632ceb2e3c0a88527b7ceed410c0ded7459e8381ec798f7e5d948b97e6c96a85",
-    "prior_publication_rebind_sha256": "5db39b26dc3cfd2f7bfb7882eefcc0e16f59c0d02eddfd920b48282158af1704",
+    "prior_manifest_sha256": "8fc35021f0dbc70b65ffc8989180176972c7898e8473c8712c43b5372998f557",
+    "prior_publication_binding_sha256": "4ce609583a56eb9f0ed758acf7eeec5e09b24ba8278f0c27a6d3cdcb4cf05f48",
+    "prior_publication_rebind_sha256": "44605beb6a9449b790013e270d5f92a6452328df394d783ab8f43b301a22981d",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "02-capacitance-sweep.csv": "65f19c4ec579cfc7a9784a3b7f4f9c115397aa46292dc4c4f74c1dc0ce4f34e7",

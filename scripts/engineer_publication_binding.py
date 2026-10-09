@@ -22,7 +22,7 @@ from typing import Mapping
 
 
 TRANSITION_ID = "scnsim.owner_aware_schematic.20261009"
-PRIOR_PUBLISHED_GIT_COMMIT = "d5b3d097d2be787839d779b4eb312ad3ffcf0307"
+PRIOR_PUBLISHED_GIT_COMMIT = "502bb09df9c20cca847cf069f3da5ff6681a6f35"
 TRANSITION_FILE = Path(__file__).with_name("engineer_publication_transitions_owner_aware_schematic.json")
 _TRANSITION_NAMES = {
     f"chapter-{chapter:02d}-artifacts.json" for chapter in range(1, 9)
