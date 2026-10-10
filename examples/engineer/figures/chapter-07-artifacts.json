@@ -286,32 +286,7 @@
         "after_sha256": "518203dcf3315b02087cd455e65b78dc9d5787955b14a760aca12eee26607dbc",
         "before_sha256": "518203dcf3315b02087cd455e65b78dc9d5787955b14a760aca12eee26607dbc"
       },
-      "source_files": {
-        "src/scnsim/benchmark/operations.py": {
-          "after_sha256": "216ff6967b794e4a6046bc84c48d3e28d46544996acfec2f4d9cb5d812b062d7",
-          "before_sha256": "8edd3c30772bf8252bc513ad0fa59d95556bbb1d6d4ec77acc6758920eecf915"
-        },
-        "src/scnsim/benchmark/optimization.py": {
-          "after_sha256": "388c2085ebed0d036194ce66c93c00f69be9dbf4a23b85475e087d71aa8cc86c",
-          "before_sha256": "2a097ed9e2f863b245b7f0dea82c737b8cc1c8e4896c8d3617aa7d313b84a8c9"
-        },
-        "src/scnsim/benchmark/sqlite_storage.py": {
-          "after_sha256": "e3b2879f2931f89ce09975e47c0e2257a919c50af916d33d2db9b299e9fb9e0d",
-          "before_sha256": "0139acc4e47ebe686a5f1b571443f8a96930c4b2b87c6aa71669c90972dcd4e4"
-        },
-        "src/scnsim/benchmark/storage.py": {
-          "after_sha256": "7de7a8e63b482f981540b545846932fc7651dea103a3e4c131102f5f394113df",
-          "before_sha256": "ff1a85a7b2f5f4c1054ec3b9c84e5f4192bf67602d5cc20a234ab6f8926493d8"
-        },
-        "src/scnsim/execution/jax_operation.py": {
-          "after_sha256": "80eb025c652eb243d13aa30102079fed1611bf047a42e686596bb1c20729fe9b",
-          "before_sha256": "d266826605adda9790396744fcfc2e11990bebdb20044135e96b9bb9ea9f10c6"
-        },
-        "src/scnsim/workspace/operation_store.py": {
-          "after_sha256": "2a2239091a69edeeda542a0a4aaf07f54346f986edc717ebb067bc6f37eddb03",
-          "before_sha256": "2f9530ea749bc1e2c652e066d6c4905b1384423ab736ce11a122afbbdf85191f"
-        }
-      },
+      "source_files": {},
       "teaching_sources": {}
     },
     "execution_identity_retained": true,
@@ -337,7 +312,7 @@
         "07-response-points.csv": "a07586769ef692a7199c747574c8ac0764d2fe39b71cf8907b4770b278d54199",
         "07-response-points.md": "2cb33d9ed6962424ce15321c44d644f2df3a731e0663351cfc2f23a376e44cbe"
       },
-      "prior_publication_binding_sha256": "bfce72479f9a717be7e38bce8dd4e0a67be6fbdfa6e87abe10cb27a9b535293c",
+      "prior_publication_binding_sha256": "8c0a56f8c319440bc27cf76624ce815c399637a853ab79edb7cf01dd540b427e",
       "prior_redrawn_artifacts": {
         "07-baseline-reflection.svg": {
           "execution_sha256": "f004c8bb227601a3ee8288f5736c826d5a465ffdeba4c1a9988fd1b312cc4686",
@@ -356,9 +331,9 @@
     },
     "kind": "reviewed_source_only_transition",
     "numerical_evidence_reused": true,
-    "prior_manifest_sha256": "f5df45c387b818cf559c63c8ca46ff7d697bdaafa0fa2f4bf9f36d2dea2d2d43",
-    "prior_publication_binding_sha256": "bfce72479f9a717be7e38bce8dd4e0a67be6fbdfa6e87abe10cb27a9b535293c",
-    "prior_publication_rebind_sha256": "39818b26140c344d77f7331a2af0015ab57e466d24f290b109f6b94105b52d81",
+    "prior_manifest_sha256": "468904a71e7a5f587a3d1eff7c84f87e28afd24ea580c01632318d42c9e565e7",
+    "prior_publication_binding_sha256": "8c0a56f8c319440bc27cf76624ce815c399637a853ab79edb7cf01dd540b427e",
+    "prior_publication_rebind_sha256": "6827c8d27b4cec3f00387c36ee37d3189143c3bf8c276d2b01e5bec01d49171e",
     "prior_published_artifacts_retained": true,
     "publication_artifacts": {
       "07-baseline-reflection.svg": "76b8d9e54b70fe18654987316afab2ae768e0b8ca99f615a496ed57914ed2018",
@@ -372,7 +347,7 @@
     "publication_binding_sha256": "8c0a56f8c319440bc27cf76624ce815c399637a853ab79edb7cf01dd540b427e",
     "redrawn_artifacts": {},
     "schema": "scnsim.engineer_publication_rebind.v3",
-    "transition_id": "scnsim.workspace_benchmark_storage.20261010"
+    "transition_id": "scnsim.simulation_conventions.20261011"
   },
   "results": {
     "batch": {

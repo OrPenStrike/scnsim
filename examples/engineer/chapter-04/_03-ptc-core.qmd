@@ -2,9 +2,14 @@
 
 ### Compare the original loaded View with its PTC derivation
 
-The raw View includes all four declared loads. PTC removes only the two named
-probe load stamps, and `retain()` selects the two feedline coordinates for the
-requested scattering boundary.
+The original loaded operator includes all four declared Port loads. For the
+public raw four-Port S/Y/Z network, SCNSim de-embeds source admittances at the
+selected scattering boundary; those matrices are not the loaded operator.
+PTC removes only the two named probe load stamps, and `retain()` selects the
+two feedline coordinates for the requested scattering boundary. Retention
+alone does not unload the omitted probes or measurement Ports. See
+[Simulation conventions](../../../docs/concepts/simulation-conventions.qmd#loads-and-selected-views)
+for this distinction and the common View authority for S, Y, and Z.
 
 ```{python}
 #| id: ch4-derive-ptc-view

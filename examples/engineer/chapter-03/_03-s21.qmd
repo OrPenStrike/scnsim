@@ -2,6 +2,9 @@
 
 ### Declare one finite sample grid and one channel
 
+Read [Simulation conventions](../../../docs/concepts/simulation-conventions.qmd#matrix-axes-and-power-waves)
+for the output-row/input-column channel direction and wave reference.
+
 The selected network is `run.original`: the complete main Plan has exactly the
 two terminated feedline Ports needed by this request. `transmission` names the
 output-from-input projection of the complete Direct S matrix; it does not

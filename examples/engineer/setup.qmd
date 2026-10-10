@@ -18,6 +18,10 @@ to SCNSim or its lock. An editor-provided Jupyter frontend may instead open the
 Chapter Notebook after `uv sync --locked`. Select the repository's `.venv`
 Python kernel, restart it, and use **Run All**.
 
+Read the [Simulation conventions](../../docs/concepts/simulation-conventions.qmd)
+before interpreting S/Y/Z, phase, PTC, or loaded roots. The explicit selected
+View governs all three matrix surfaces.
+
 Chapters 1–4 form the mainline course; Chapters 5–8 are optional
 continuations. Chapters 1–7 are separate clean-kernel execution units.
 Chapter 8 instead has

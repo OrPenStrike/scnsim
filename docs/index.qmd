@@ -18,6 +18,10 @@ of course acceptance, release, or every historical cell. The website executes
 no kernels or solvers.
 :::
 
+Before interpreting a complex response, read [Simulation conventions](concepts/simulation-conventions.qmd)
+for phasor signs, current directions, wave references, selected loads, and
+linewidth units.
+
 ## Chapter 1 — Coupled grounded LC
 
 Build a 110 fF / 5.8 nH grounded resonator, connect it through a 6 fF coupler to
@@ -277,6 +281,7 @@ available in Git history rather than as a second current syllabus. The five
 historical fixtures remain implementation-baseline evidence and are not
 imported by the current Chapters.
 
-For rationale, read [Concept](concepts/physical-authority-and-reusable-composition.qmd).
+For response conventions, start with [Concept](concepts/simulation-conventions.qmd).
+For modeling rationale, read [physical authority and composition](concepts/physical-authority-and-reusable-composition.qmd).
 For exact signatures, equations, invariants, identities, and failure behavior,
 use the [Contract map](contracts/index.qmd).

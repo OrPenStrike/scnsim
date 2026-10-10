@@ -11,6 +11,10 @@ separate `CONVERGING` target. Backend rows, equations, capabilities, and
 failures belong to the linked contracts.
 :::
 
+Read [Simulation conventions](simulation-conventions.qmd) for phasor signs,
+Port current direction, matrix axes, wave references, load boundaries, and the
+one-conjugation HB adapter rule.
+
 ## The analysis question comes before the backend
 
 Once a complete Plan and the required `NetworkViewRef` exist, a reader may

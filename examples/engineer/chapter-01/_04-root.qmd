@@ -2,6 +2,10 @@
 
 **Prerequisite:** run Lessons 1–3 in the aggregate Chapter Notebook.
 
+[Simulation conventions](../../../docs/concepts/simulation-conventions.qmd#roots-linewidth-and-plots)
+distinguish passive-pole decay and loaded linewidth from transfer zeros and
+S-parameter features.
+
 The exposed child Coordinate selects the same authored resonator signal bus for
 analysis. Retaining it derives the one-coordinate boundary for this question;
 it does not alter the Plan or diagram. The Spec then selects a diagonal element

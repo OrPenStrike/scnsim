@@ -4,6 +4,10 @@ subtitle: "Accepted execution, units, reduction, Result, and evidence semantics"
 toc-depth: 3
 ---
 
+The reader-facing [Simulation conventions](concepts/simulation-conventions.qmd)
+connect these version-bound rules to the canonical phasor, wave-reference, and
+linewidth definitions without adding a second runtime contract.
+
 ::: {.callout-note}
 ## Stabilized numerical meanings with CONVERGING ownership paths
 

@@ -1,0 +1,270 @@
+---
+title: "Simulation Conventions"
+description: "Read SCNSim complex responses with explicit phasors, current directions, wave references, loads, selected Views, and frequency units."
+---
+
+Before reading a phase, pole, or matrix entry, identify the Plan, selected View,
+ordered axes, and frequency convention. This page connects the physical
+conventions to SCNSim's version-bound Results. It does not change a circuit,
+select a View automatically, or establish numerical accuracy from a plot.
+
+## Quick reference
+
+| Readout | Convention or boundary |
+|---|---|
+| Phasor / derivative | $e^{-i\omega t}$; $d/dt\mapsto-i\omega$; $\omega=2\pi f$ |
+| Voltage / current | Voltage relative to Plan ground; terminal current into the DUT |
+| S/Y/Z axes | Output row, input column; $I=YV$, $V=ZI$, $b=Sa$ |
+| Wave reference | Real-positive or real-SPD reference; principal matrix square root |
+| Loads and PTC | Source de-embedding, omitted unPTC matched loads, and explicit physical resistors are distinct; only named nonloading probes receive PTC |
+| Public network / roots | S/Y/Z share one explicit View; loaded operator/root boundaries are distinct |
+| Pole linewidth | Passive $\operatorname{Im}\Omega<0$; $\kappa=-2\operatorname{Im}\Omega$; a transfer zero is not a linewidth |
+| Phase / dB | Wrapped argument; $20\log_{10}|S|$; positive delay has positive propagation phase |
+| HB boundary | One conjugation, same signed-mode permutation, $\sqrt{|\omega|}$ normalization |
+
+## Phasors, Fourier transforms, and units {#phasors-and-units}
+
+SCNSim uses the real signal represented by
+
+$$
+x(t)=\operatorname{Re}\{X(\omega)e^{-i\omega t}\},\qquad
+\frac{d}{dt}\longmapsto-i\omega.
+$$
+
+The matching Fourier pair is
+
+$$
+X(\omega)=\int_{-\infty}^{\infty}x(t)e^{+i\omega t}\,dt,\qquad
+x(t)=\frac{1}{2\pi}\int_{-\infty}^{\infty}X(\omega)e^{-i\omega t}\,d\omega.
+$$
+
+Ordinary frequency $f$ is in Hz and angular frequency $\omega=2\pi f$ is in
+rad/s. A numerical value in GHz is not an angular frequency in rad/s. Public
+quantities carry units; use the Result's frequency unit instead of inferring it
+from a variable name.
+
+Voltage is relative to the Plan's canonical reference ground. Terminal current
+is positive **into the DUT**. With these choices, the elementary impedances and
+admittances are
+
+| Element | Impedance $Z$ | Admittance $Y$ |
+|---|---|---|
+| Resistor $R$ | $R$ | $1/R$ |
+| Capacitor $C$ | $1/(-i\omega C)$ | $-i\omega C$ |
+| Inductor $L$ | $-i\omega L$ | $1/(-i\omega L)=i/(\omega L)$ |
+
+The signs follow from the phasor, not from which way a symbol faces in a
+schematic. A delayed signal has $X_{\rm out}=e^{+i\omega\tau}X_{\rm in}$ for
+positive delay $\tau$ under this convention.
+
+## Matrix axes and power waves {#matrix-axes-and-power-waves}
+
+For ordered terminal voltage and current vectors,
+
+$$
+I=YV,\qquad V=ZI,\qquad b=Sa.
+$$
+
+Every matrix uses **output row, input column**. Thus $S_{21}$ is outgoing wave
+at terminal 2 due to incident wave at terminal 1, with other incident waves
+zero. A named `SParameterTrace(input_port=..., output_port=...)` binds those
+roles; it does not change the matrix order. Read `.s.view` and the Result's
+Port/channel metadata before interpreting a numeric index. For a four-Port
+matrix, a named left-to-right channel need not occupy row 2, column 1.
+
+For real positive scalar references, let
+$R_0=\operatorname{diag}(Z_{01},\ldots,Z_{0N})$ and $D=R_0^{1/2}$. More
+generally, the supported matrix reference is real symmetric positive definite
+(SPD), with its unique real-SPD **principal matrix square root** $D$:
+
+$$
+a=\tfrac12(D^{-1}V+DI),\qquad
+b=\tfrac12(D^{-1}V-DI).
+$$
+
+This is not an elementwise square root or an arbitrary Cholesky factor. With
+$\widetilde Y=DYD$ and $\widetilde Z=D^{-1}ZD^{-1}$, where the required solves
+exist,
+
+$$
+S=(I+\widetilde Y)^{-1}(I-\widetilde Y)
+ =(\widetilde Z+I)^{-1}(\widetilde Z-I).
+$$
+
+Conversely,
+
+$$
+Y=D^{-1}(I+S)^{-1}(I-S)D^{-1},\qquad
+Z=D(I-S)^{-1}(I+S)D.
+$$
+
+These formulas name linear solves, not a requirement to allocate a full inverse
+in the implementation. Renormalizing the wave reference changes $S$ while
+leaving terminal $Y,Z$ unchanged **when the physical network and boundary stay
+fixed**. A changed omitted matched termination can change the effective retained
+network and its Y/Z. Adding or removing a resistor changes the network instead.
+
+A real invertible voltage-coordinate change $V_m=AV$ has dual current
+$I_m=A^{-T}I$, so
+
+$$
+Y_m=A^{-T}YA^{-1},\qquad Z_m=AZA^T,\qquad R_{0m}=AR_0A^T.
+$$
+
+The transpose is the **ordinary transpose**, not the complex-conjugate
+transpose. The transformed wave coordinates use $D_m=R_{0m}^{1/2}$ and
+$Q=D_m^{-1}AD$, giving $S_m=QSQ^T$. A transformed reference can have
+non-diagonal entries even when the original references were diagonal. This
+mathematical relation does not expand the public `transform_pair()` API to
+arbitrary user matrices.
+
+### Formula-only example: 100 ohm DUT, 50 ohm reference
+
+For one resistor DUT $Z_{\rm DUT}=100\,\Omega$ and wave reference
+$Z_0=50\,\Omega$,
+
+$$
+Y_{\rm DUT}=0.01\,\mathrm S,\qquad
+S_{11}=\frac{100-50}{100+50}=\frac13.
+$$
+
+If a separate $50\,\Omega$ shunt is actually included in a returned **loaded**
+terminal operator, its admittance is instead
+$Y_{\rm loaded}=0.01+0.02=0.03\,\mathrm S$ and its impedance is
+$100/3\,\Omega$. The wave reference alone does not create that shunt. Removing
+it requires its actual stamp and removal authority; subtracting $1/Z_0$ from
+an already de-embedded DUT admittance would be wrong. This is an algebraic
+example, not a simulated fixture or accuracy claim.
+
+## Loads, de-embedding, PTC, and retention {#loads-and-selected-views}
+
+Three operations must remain distinct:
+
+| Boundary | Meaning in SCNSim |
+|---|---|
+| Backend source resistor | A solver boundary stamp. SCNSim de-embeds it when forming the selected public network; it is not a second physical DUT resistor. |
+| Omitted matched Port | A declared, uncompensated Port omitted from the selected scattering boundary retains its matched termination. An explicitly PTC-compensated omitted probe does not retain that removed load. |
+| Explicit physical resistor | Part of the authored physical circuit; it remains. PTC does not remove an explicit physical resistor. |
+
+Selective Port-Termination Compensation (PTC) removes only the proven load
+stamp of each explicitly supplied `PortRef` with role `nonloading_probe`.
+A name such as “probe” does not authorize subtraction. The selected
+`ReductionPipeline().ptc(...)` is the authority; SCNSim does not infer PTC from
+a plot, coordinate name, or the choice of Y rather than S.
+
+`retain()` selects and orders a boundary. It does **not** unload omitted
+measurement Ports, compensate probes, or remove physical resistors. PTC and
+retention therefore answer different questions and their order remains in the
+View lineage.
+
+### Two measurement Ports and two probes
+
+Consider a Plan with measurement Ports `feedline_in`, `feedline_out` and two
+actual `nonloading_probe` PortRefs `probe_plus`, `probe_minus`:
+
+```python
+raw_view = run.original
+selected_view = raw_view.reduce(
+    ReductionPipeline()
+    .ptc(probe_plus, probe_minus)
+    .retain("feedline_in", "feedline_out")
+)
+```
+
+This declaration removes exactly the two probe load stamps and keeps the
+feedline pair as the scattering boundary. Measurement termination effects and
+any explicit physical resistors still follow their declared roles. A pipeline
+with only `retain()` is a different network question. The illustration declares
+no component values, sample grid, or numerical Result.
+
+## Public S/Y/Z versus loaded operators {#network-versus-loaded-operator}
+
+For a Port-realizable View, the public `.s`, `.y`, and `.z` surfaces describe
+**one selected network**, with the same explicit View and ordered boundary.
+Backend source admittances are de-embedded from that public network; omitted
+matched terminations remain where required. PTC, if requested, applies to all
+three surfaces consistently.
+
+Root, pole, coupling, and operator requests ask about their declared selected
+**loaded operator**, not automatically the same source-de-embedded scattering
+network. Non-Port coordinate Y/Z quantities also belong to their declared
+coordinate/operator boundary. Retaining one coordinate can leave external
+loads active. Read the Spec, View lineage, quantity family, and axis bindings
+before comparing it to a Port-network Y/Z entry.
+
+::: {.callout-important title="No automatic reporting-policy PTC"}
+The upstream SCQ Design network-trace procedure uses raw S and
+evidence-authorized PTC Y/Z as its project reporting defaults. Those defaults
+are not an automatic SCNSim View operation. In SCNSim the supplied View governs
+S, Y, and Z together; `run.original` does not silently compensate Y/Z while
+leaving S raw. Label both the selected View and any upstream post-processing.
+:::
+
+See [coordinates and Views](compilation-coordinates-and-network-views.qmd),
+[the selected-network implementation](../implementation/view-lineage-and-selected-networks.qmd),
+and [the Runtime Contract](../v1-runtime-contract.qmd#common-matrix-surface)
+for the version-bound API and failure rules.
+
+## Complex roots, linewidth, and plots {#roots-linewidth-and-plots}
+
+A freely decaying passive mode has
+
+$$
+\Omega=\omega_r-i\kappa/2,\qquad
+ e^{-i\Omega t}=e^{-i\omega_rt}e^{-\kappa t/2}.
+$$
+
+Thus $\operatorname{Im}\Omega<0$ for positive decay,
+$\kappa=-2\operatorname{Im}\Omega$, and the corresponding linewidth in Hz is
+$\kappa/(2\pi)=-2\operatorname{Im}[\Omega/(2\pi)]$. A loaded root's linewidth
+is not automatically intrinsic loss or a specific external-channel linewidth.
+An ideal undamped root may have zero imaginary part. The imaginary part of a
+**transfer zero** does not define a mode linewidth, even when it is zero or
+very small; a zero and a pole solve different equations.
+
+A magnitude plot in dB uses $20\log_{10}|S_{ij}|$ for the dimensionless wave
+amplitude. Wrapped phase is the argument of the complex response, shown modulo
+one turn (usually in degrees). Its branch-cut jump is not a discontinuity of
+the circuit. Neither an S-magnitude dip nor a phase jump alone defines a
+certified complex root, pole, or transfer zero.
+
+## HB adapter boundary {#hb-adapter-boundary}
+
+JosephsonCircuits' HB boundary uses the conjugate phasor convention. SCNSim
+translates complete native S and return-Z once, using the **same signed
+physical-frequency mode permutation** on both. With source convention $+$ and
+SCNSim convention $-$, the normalization is
+
+$$
+M^-_{\rm native,phys}
+ =W_{\rm out}\left[\Pi_{\rm out}M^+_{\rm JC}\Pi_{\rm in}^{T}\right]^*
+ W_{\rm in}^{-1},\qquad
+ W=\operatorname{diag}\sqrt{|\omega|},
+$$
+
+for either native matrix $M$. Conjugation does not transpose Port indices, and
+signed tuples are not reversed a second time. The $\sqrt{|\omega|}$ factors
+translate the backend normalization; they do not imply gain or loss. The
+adapter then performs its declared source de-embedding and selected View
+operations before forming public S/Y/Z. Consumers must not conjugate again.
+Direct and HB grids remain independent; equal-looking curves do not establish
+complex agreement at undeclared or mismatched frequencies. See
+[Direct and HB](direct-and-hb-realizations.qmd) and
+[HB realization](../implementation/hb-realization-and-outcomes.qmd#derive-one-selected-network-per-case).
+
+## Physical definitions and package responsibility {#definition-ownership}
+
+The upstream Knowledge pages own the canonical physical definitions. This
+SCNSim page owns how readers use those conventions with this package's Views,
+Results, and adapter boundaries; it does not change upstream reporting policy.
+
+- [Dynamics, phasors, and Fourier signs](https://scq-design-kit.arfiligol.chatgpt.site/knowledge/quantum-circuits/dynamics-conventions-and-symbol-bridge.html)
+- [Port references, loads, and power waves](https://scq-design-kit.arfiligol.chatgpt.site/knowledge/simulation/port-reference-impedance-semantics.html)
+- [Power-conjugate coordinate transforms](https://scq-design-kit.arfiligol.chatgpt.site/knowledge/network-modeling/admittance-coordinate-transforms.html)
+- [Decay, linewidth, and quality factor](https://scq-design-kit.arfiligol.chatgpt.site/knowledge/network-modeling/resonator-decay-linewidth-and-quality-factor.html)
+- [Network trace reporting and extraction](https://scq-design-kit.arfiligol.chatgpt.site/knowledge/network-modeling/network-trace-views.html)
+
+These are external Knowledge links. Anonymous access to the known routes has
+returned HTTP 403; the links do not claim verified anonymous accessibility.
+The conventions needed to read the course are stated here so external access
+is not required to follow the examples.

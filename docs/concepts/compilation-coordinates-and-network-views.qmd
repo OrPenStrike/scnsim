@@ -13,6 +13,10 @@ the Parameter System Contract. Exact transforms, capabilities, and failures
 belong to the linked Runtime Contract.
 :::
 
+Read [Simulation conventions](simulation-conventions.qmd) for phasor signs,
+Port current direction, matrix axes, wave references, load boundaries, and the
+one-conjugation HB adapter rule.
+
 ## One circuit can support several questions
 
 Consider a floating circuit with physical terminals `floating_plus` and

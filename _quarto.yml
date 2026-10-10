@@ -65,6 +65,7 @@ project:
     - examples/tutorials/14_transform_retain.qmd
     - examples/tutorials/15_prepare_hb.qmd
     - examples/tutorials/16_compare_direct_hb.qmd
+    - docs/concepts/simulation-conventions.qmd
     - docs/concepts/physical-authority-and-reusable-composition.qmd
     - docs/concepts/compilation-coordinates-and-network-views.qmd
     - docs/concepts/requests-execution-and-result-ownership.qmd
@@ -113,7 +114,7 @@ website:
       - text: "Tutorial"
         href: docs/index.qmd
       - text: "Concept"
-        href: docs/concepts/physical-authority-and-reusable-composition.qmd
+        href: docs/concepts/simulation-conventions.qmd
       - text: "Contract"
         href: docs/contracts/index.qmd
   sidebar:
@@ -234,6 +235,8 @@ website:
       style: "floating"
       collapse-level: 1
       contents:
+        - text: "Simulation conventions"
+          href: docs/concepts/simulation-conventions.qmd
         - text: "Physical authority and composition"
           href: docs/concepts/physical-authority-and-reusable-composition.qmd
         - text: "Compilation, coordinates, and views"

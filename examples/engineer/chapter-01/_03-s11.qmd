@@ -24,6 +24,9 @@ baseline_response = run.solve(
 )
 ```
 
+For phasor signs, output-row/input-column order, wrapped phase, and dB units,
+see [Simulation conventions](../../../docs/concepts/simulation-conventions.qmd).
+
 The public presentation shows both magnitude and phase from the returned typed
 Result. For this ideal lossless one-port model, `|S11|` is approximately 0 dB
 across the grid; the phase still carries the readable response feature. A
