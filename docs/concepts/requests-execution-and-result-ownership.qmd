@@ -75,6 +75,29 @@ The broader `Result` role also covers derived explanations, diagrams, and
 reports. Those values preserve their explicit inputs but do not fabricate an
 analysis-operation receipt.
 
+## Bodies, occurrences and completed generations
+
+A current JAX numerical body owns scientific values, intrinsic parameters,
+identity, dependencies and numerical evidence. A task occurrence owns its exact
+ordered position, source/cache/attempt context and reference to that body. The
+store writes the body directly once as canonical bytes; it does not wrap it in
+a task/key record. Read-only Result construction hydrates references in one
+verified snapshot without recalculating quantities.
+
+Optimization evaluates the baseline and seals continuation anchors in memory;
+workers acknowledge those anchors in memory. There is no standalone baseline
+commit, generation-0 checkpoint or initial callback. Complete post-tell
+generations form committed groups; the first group includes the baseline body
+once. Generation checkpoints add the latest completed CMA/RNG and anchor
+restore state, while off omits restore-only state. A required group ACK comes
+before its callback; optional Benchmark timing is separate. Native Julia keeps
+its own baseline publication handshake.
+
+Operation stores are version5. Old operation Workspaces are unsupported: use a
+new Workspace and recompute, without migration or deleting historical data.
+The [Runtime Contract](../v1-runtime-contract.qmd) owns exact failure and
+checkpoint rules; this distinction does not alter mathematical quantities.
+
 ## Resolve exact evidence after restart
 
 The question and each execution attempt have separate identities. Repeating a

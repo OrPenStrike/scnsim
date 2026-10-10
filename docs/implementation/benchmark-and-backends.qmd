@@ -16,7 +16,7 @@ stdlib SQLite database per Plan leaf at `operations/operations.sqlite3`, using
 DELETE journaling and EXTRA synchronization. This is a target contract, not a
 claim that the implementation or observations below have completed. Dev11
 outputs remain historical evidence; the new goal does not rerun that writer or
-its old-flow tests. Current operation stores use SQLite version4. Older databases or file-journal
+its old-flow tests. Current operation stores use SQLite version5. Older databases or file-journal
 stores fail with `UnsupportedEvidenceVersionError`: use a new Workspace and
 recompute. Old data are neither migrated nor automatically deleted.
 
@@ -164,8 +164,13 @@ errors are secondary to the original exception; there is no forced-termination
 promise for a hung native call.
 
 Numerical evidence remains complete and ordered. Commit grouping remains 10
-completed generations by default, with the existing baseline, complete tail and
-acknowledgement-before-callback boundaries. Timing aggregates remain
+complete post-tell generations by default. JAX baseline and sealed anchors stay
+in memory: no separate baseline transaction, generation-0 checkpoint or initial
+callback. The first completed group saves the necessary baseline body once.
+Generation checkpointing saves the latest completed CMA/RNG and anchor restore
+state; checkpoint off omits restore-only state. A complete tail uses the same
+required acknowledgement-before-callback boundary. Optional timing is separate;
+failed or uncertain required batches are not resent. Timing aggregates remain
 `details.generation_performance` on the existing `population_evaluation` span.
 Population average is wall time divided by population count, not individual
 candidate latency. Preparation, permit wait, assembly and ordered collection
@@ -253,6 +258,25 @@ Plan leaf, including SQLite journal state; readonly open performs no recovery.
 Explicit Julia retains its existing native evidence files and verification
 contract; this operation-store replacement does not rewrite native receipts.
 
+## Current Workspace storage (dev22 CONVERGING)
+
+OperationStore version5 retains DELETE/EXTRA and rejects older operation
+Workspaces; use a new Workspace and recompute, without migration or deletion.
+A verified-object cache lasts only one transaction or readonly snapshot and
+includes role/length bindings; reopen/relock revalidates. Manifest plus operation
+start publish atomically. Request/task/attempt/running state and operation
+association register atomically. Canonical numerical bodies omit occurrence
+context; occurrences preserve ordered task/key/source/cache/attempt facts and
+reference that body. Hydration batches references within one verified snapshot.
+No solver reads or background writer are introduced.
+
+Normal solve/evaluate atomically commits result, attempt success and the first
+selected success. One optional timing batch and separate final root follow that
+required boundary; baseline diagnostics are not independently flushed.
+Optimization diagnostics follow actual group ACK independently of callback
+prerequisites. Numerical equations, dtype, candidate ordering, CMA and native
+Julia baseline semantics are unchanged.
+
 ## Built-in read-only Benchmark
 
 `run.benchmark(*, operations=None, method=None, backend=None, precision=None, status=None) -> BenchmarkResult` reads this
@@ -264,7 +288,7 @@ successful operation finalization, and diagnostic failure cannot hide that
 committed numerical state. It does
 not accept a Spec, backend arm, alternate workspace or launch controls. The old
 public comparison executor is superseded. `BenchmarkResult.open(workspace)`
-reads current version4 operation stores; older operation stores fail explicitly
+reads current version5 operation stores; older operation stores fail explicitly
 and require a new Workspace and recomputation.
 
 Every solve/evaluate/optimize operation has one root span beginning at the
@@ -448,9 +472,11 @@ The host owns root continuation, coupling branch dependency order, scalar
 projection and CMA; numerical adapters own local analytic quantity evaluation.
 Typed Result decoding consumes verified numerical records and preserves actual
 precision, units and axes without a Julia receipt. SQLite commits every ten
-completed generations by default, acknowledges baselines separately and
-notifies callbacks only after durable commit; this extension does not change
-checkpoint-off, interruption or exact same-version resume behavior.
+complete post-tell generations by default. The first committed group includes
+the pending baseline body once; there is no standalone baseline commit or
+initial callback. Callbacks follow required group ACK. Generation checkpoints
+start at generation 1 and bind the latest completed state; off excludes
+restore-only state. Native Julia retains its existing baseline protocol.
 
 Coupling consumes two already-certified branch outcomes in declaration order;
 it does not locate or polish those roots again. The shared quantity codec retains

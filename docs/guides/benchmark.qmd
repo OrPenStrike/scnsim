@@ -105,16 +105,24 @@ best = run.optimize(run.original, optimization_spec, checkpoint="generation",
                     commit_every_generations=10)
 ```
 
-A baseline/anchor barrier precedes candidate work. Completed generation evidence
-is ordered; each commit publishes its group atomically with the latest full
-CMA/RNG state. `commit_every_generations=N` accepts a positive integer excluding
+JAX baseline and sealed anchors are prepared in memory before candidate work;
+workers acknowledge installing them without a storage transaction. Completed
+generation evidence is ordered; each group publishes atomically. Generation
+checkpointing additionally publishes its latest full CMA/RNG restore state. `commit_every_generations=N` accepts a positive integer excluding
 booleans; `None` is invalid. Omission selects 10 for JAX and retains 1 for
 explicit Julia. Explicit Julia intervals other than 1 fail before launch.
-Baseline commits separately, then every N completed post-tell
-generations commit together; a normal or handleable-error tail flushes a shorter
-group. Larger N buffers more evidence in memory and can require recomputing
-uncommitted generations after process death. `checkpoint="off"` omits resumable snapshots, without deleting numerical
-observations, anchors or final results. Checkpoint policy and commit interval do not change the
+The baseline is not independently committed. The first completed group stores
+its necessary baseline body once, and every N complete post-tell generations
+commit together. There is no generation-0 checkpoint or initial callback;
+checkpoints bind the latest completed post-tell state at generation 1 or later.
+Required group ACK precedes its one callback; optional timing is separate.
+Native Julia retains its existing baseline protocol. A normal or handleable-error
+JAX tail flushes a shorter complete group. Larger N buffers more evidence in memory and can require recomputing
+uncommitted generations after process death. `checkpoint="off"` omits
+restore-only snapshots/anchor state while preserving the required baseline body,
+complete ordered numerical observations and final result. A failed or uncertain
+required group is not resent; original failure ownership remains unchanged.
+Checkpoint policy and commit interval do not change the
 numerical request hash; a completed result can resolve under either policy.
 A cache-hit operation records requested policy and actual checkpoint availability
 without manufacturing missing snapshots.
@@ -216,13 +224,16 @@ missing results and unaligned native clocks remain explicit.
 ## Historical comparison records
 
 The old public comparison executor and its arm declarations are superseded.
-Existing immutable records remain readable without execution or migration:
+Historical files retain their original wheel/backend/precision/clock identities;
+current readers reject older operation Workspaces. Create a new v5 Workspace and
+recompute for current readback. Historical files are neither migrated nor deleted.
+Read-only opening applies to current v5 operation Workspaces:
 
 ```python
 from scnsim import BenchmarkResult
-historical = BenchmarkResult.open("workspaces/historical-benchmark")
+report = BenchmarkResult.open("workspaces/current-v5-run")
 ```
 
-Their original wheel/backend/precision/clock identities remain historical.
-They are not relabeled as normal dev11 execution. No GPU, automatic mesh choice,
-new CMA algorithm or numerical/performance acceptance condition is introduced.
+Native Julia result files retain their separate native ownership and readback
+contract. No GPU, automatic mesh choice, new CMA algorithm or
+numerical/performance acceptance condition is introduced.

@@ -10,9 +10,9 @@ the newer preparation, multi-View binding, checkpoint/resume,
 and ReportPanel ownership paths remain `CONVERGING`.
 
 The physical formulas and search semantics below remain authoritative. The
-CONVERGING dev13 JAX implementation uses sparse local stamps, JAX numeric
+current CONVERGING JAX implementation uses sparse local stamps, JAX numeric
 assembly and CPU CSC SuperLU under
-`scnsim.jax-sparse-csc-superlu-reuse-analytic-newton32.v1`; explicit Julia keeps
+`scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v8`; explicit Julia keeps
 its existing native path. Dense local conductor, Port, selected Schur and actual
 RHS blocks remain where required, with no dense nodal fallback. Retained roots
 factor the eliminated block and reuse that factor for the analytic Schur
@@ -243,9 +243,31 @@ ledger record exists. Baseline compilation, View realization, quantity
 evaluation, aggregation, and root-anchor preparation retain those phases in
 the terminal failure envelope. They abort the request and never become a
 candidate penalty. Ordinary malformed pre-request or transport failures do not
-fabricate optimization context.
+fabricate optimization context. This logical baseline position does not create
+a generation-0 checkpoint or callback.
 
-After a baseline succeeds, but before CMA-ES requests a population, the
+For current JAX Optimization, baseline evaluation and sealed anchors stay in
+memory, and workers acknowledge installation in memory. Only complete post-tell
+generations count toward commit groups. The first group saves the canonical
+baseline body once, without a task/key wrapper; ordered occurrences retain
+context and body references. Generation checkpoints additionally preserve
+anchor restore state and latest completed CMA/RNG state at generation >=1;
+off omits restore-only state. There is no standalone baseline commit,
+generation-0 checkpoint or initial callback. Required group ACK precedes its
+callback and is independent of optional diagnostics. Readers hydrate scientific
+bodies in one verified version5 snapshot, without a version3 fallback.
+
+A valid budget can contain zero complete populations:
+`complete_generations=(max_evaluations-1)//population_size` may be zero. A
+successful baseline-only optimization then saves the necessary baseline
+numerical evidence atomically with the final result. It saves no checkpoint or
+restore anchors and emits no generation-0 barrier or generation notification;
+the final complete callback remains. Failure before any complete generation
+creates no baseline-only protective flush. This does not add a budget Gate or
+change candidate/CMA ordering.
+
+Native Julia retains the following request-owned baseline publication protocol.
+After a baseline succeeds, but before CMA-ES requests a population, its
 runtime publishes a versioned request-owned baseline checkpoint. Its content is
 the verified baseline candidate plus source-ordered continuation roots named by
 the same complete View-and-Spec dependency keys as the request. Publication

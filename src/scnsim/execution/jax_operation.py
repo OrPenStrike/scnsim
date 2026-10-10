@@ -219,6 +219,8 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
 
     writer = None
     attempt_id = None
+    registration_attempted = False
+    registration_committed = False
     completed = False
     try:
         arm = f"{trace.method}/jax/{precision}/{checkpoint_policy}"
@@ -237,47 +239,55 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         )
         workspace = storage.operation_workspace(binding)
         checkpoint = None
+        resume_selection = None
         if resume_from is not None:
             with trace.span("checkpoint_read"):
                 with binding.reader():
-                    checkpoint = record_document(storage.read_checkpoint(
+                    checkpoint_bytes, resume_selection = storage.read_checkpoint(
                         workspace, resume_from, binding=binding, expected_task_id=task_id,
                         expected_request_sha256=request_sha,
                         expected_arm=arm, expected_sample=0, expected_environment_sha256=environment_sha,
-                    ))
-        with binding.writer():
-            request_ref = storage.store_operation_request(
-                binding, request_sha256=request_sha, request_bytes=prepared_analysis.request_bytes,
-            )
+                        return_selection=True,
+                    )
+                    checkpoint = record_document(checkpoint_bytes)
+        attempt_id = str(uuid4())
+        details = {"cache_hit": False, "checkpoint_policy": checkpoint_policy,
+                   "requested_commit_every_generations": (
+                       commit_every_generations if optimization else None
+                   ),
+                   "commit_every_generations": (
+                       commit_every_generations if optimization else None
+                   )}
         trace.bind(operation=request["operation"], request_sha256=request_sha, task_id=task_id,
-                   environment_sha256=environment_sha, attempt_id=None,
-                   details={"cache_hit": False, "checkpoint_policy": checkpoint_policy,
-                            "requested_commit_every_generations": (
-                                commit_every_generations if optimization else None
-                            ),
-                            "commit_every_generations": (
-                                commit_every_generations if optimization else None
-                            ),
-                            "request": request_ref})
-        with binding.writer():
-            storage.ensure_operation_task(binding, {
-                "task_id": task_id, "request_sha256": request_sha, "arm": arm, "sample": 0,
-                "attempts": [], "events": [], "measurements": [], "environment": environment, "artifacts": [request_ref],
-            }, operation_id=trace.operation_id)
-            attempt_id = str(uuid4())
-            storage.begin_attempt(workspace, binding=binding, operation_id=trace.operation_id,
-                                  task_id=task_id, attempt_id=attempt_id,
-                                  resume_from=resume_from)
+                   environment_sha256=environment_sha, attempt_id=None, details=details)
         trace.set_attempt(attempt_id)
+        registration_attempted = True
         with binding.writer():
+            registration = storage.register_operation_execution(
+                binding,
+                row=trace.root_row(),
+                task={"task_id": task_id, "request_sha256": request_sha, "arm": arm, "sample": 0,
+                      "attempts": [], "events": [], "measurements": [], "environment": environment,
+                      "artifacts": []},
+                request={"request_sha256": request_sha, "request_bytes": prepared_analysis.request_bytes},
+                attempt_id=attempt_id,
+                resume_from=resume_selection,
+            )
+            if registration["ack"].get("committed") is not True:
+                raise storage._integrity(
+                    "Operation execution registration was not durably acknowledged.",
+                    operation_id=trace.operation_id,
+                )
+            registration_committed = True
+            request_ref = registration["request_ref"]
+            details["request"] = request_ref
+            trace.bind(operation=request["operation"], request_sha256=request_sha, task_id=task_id,
+                       environment_sha256=environment_sha, attempt_id=attempt_id, details=details)
             writer = storage.begin_task_writer(workspace, binding=binding, operation_id=trace.operation_id,
                                                task_id=task_id, attempt_id=attempt_id,
                                                diagnostics="boundary", checkpoint_document=checkpoint,
                                                commit_every_generations=commit_every_generations,
                                                phase_scope=lambda kind, details: trace.span(kind, details=details))
-            storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
-                                   task_id=task_id, attempt_id=attempt_id,
-                                   status="running")
         best_cost = float64_from_hex(checkpoint["best"]["cost_f64"]) if checkpoint else None
 
         def emit(kind, payload):
@@ -300,20 +310,23 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                     # Persist only the completed-boundary best value in the
                     # generation ACK; an incomplete later population must not
                     # leak into a callback after an error-tail commit.
-                # Submission includes Plan authority acquisition/revalidation;
-                # the nested commit includes evidence, diagnostics and HEAD work.
-                with trace.span("workspace_submission", details=details):
-                    with binding.writer():
-                        with trace.span("evidence_checkpoint_commit", details=details):
-                            _, ack = storage.commit_barrier(workspace, writer=writer, kind=kind, payload=value)
+                if writer.will_commit_barrier(kind):
+                    # Submission includes Plan authority acquisition/revalidation;
+                    # the nested commit includes evidence, diagnostics and SQL work.
+                    with trace.span("workspace_submission", details=details):
+                        with binding.writer():
+                            with trace.span("evidence_checkpoint_commit", details=details):
+                                _, ack = storage.commit_barrier(workspace, writer=writer,
+                                                               kind=kind, payload=value)
+                else:
+                    # Baselines and incomplete commit groups are memory-only.
+                    # They neither acquire the Plan writer nor claim commit time.
+                    _, ack = storage.commit_barrier(workspace, writer=writer, kind=kind, payload=value)
                 if ack["checkpoint"] is not None:
                     trace.add_numerical_ref(ack["checkpoint"])
                 if optimization:
                     if kind == "baseline_ready":
                         best_cost = float64_from_hex(payload["baseline"]["cost_f64"])
-                        if ack.get("committed") is True:
-                            _notify(on_progress, request, phase="initial", generation=0,
-                                    best_cost=best_cost, trace=trace)
                     else:
                         if ack.get("committed") is True and isinstance(ack.get("latest_generation"), int):
                             trace.complete_generation(ack["latest_generation"])
@@ -335,14 +348,14 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
             trace.add_numerical_ref(resume_from)
             with binding.writer():
                 storage.append_event(workspace, task_id=task_id, kind="resumed", writer=writer, force=True,
-                                     payload={"attempt_id": attempt_id, "checkpoint": dict(resume_from)})
+                                     payload={"attempt_id": attempt_id, "checkpoint": dict(resume_selection)})
             _notify(on_progress, request, phase="resume", generation=checkpoint["generation"], best_cost=best_cost, trace=trace)
         terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
                                     checkpoint=checkpoint, checkpoint_policy=checkpoint_policy,
                                     operation_resources=operation_resource,
                                     worker_backend_factory=worker_backend_factory,
                                     candidate_pool=candidate_pool)
-        if writer is not None:
+        if writer is not None and writer.completed:
             with binding.writer():
                 tail_ack = storage.flush_completed(workspace, writer=writer, reason="terminal")
             if tail_ack.get("checkpoint") is not None:
@@ -361,7 +374,6 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         trace.add_numerical_ref(result_ref)
         if optimization:
             _notify(on_progress, request, phase="complete", generation=terminal["completed_generations"], best_cost=best_cost, trace=trace)
-        trace.publish_diagnostics()
         with trace.span("result_decode"):
             with binding.reader():
                 success = storage.read_operation_success(binding, task_id, attempt_id=attempt_id)
@@ -369,7 +381,48 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
     except BaseException as error:
         if attempt_id is not None and not completed:
             try:
-                if writer is not None:
+                if not registration_committed and registration_attempted:
+                    outcome = getattr(error, "operation_registration_outcome", None)
+                    if outcome is None:
+                        outcome = getattr(error, "operation_transaction_outcome", None)
+                    registration_committed = isinstance(outcome, dict) and outcome.get("status") == "committed"
+                    if (not registration_committed and isinstance(outcome, dict)
+                            and outcome.get("status") == "unknown"):
+                        error.add_note(
+                            "Execution registration outcome is unknown; no task failure update was retried."
+                        )
+                    if not registration_committed:
+                        # A failed or indeterminate registration has no
+                        # durable task/attempt association to expose on the
+                        # operation root.
+                        trace.bind(operation=request["operation"], request_sha256=request_sha,
+                                   task_id=None, environment_sha256=None, attempt_id=None,
+                                   details=details)
+                    else:
+                        committed_registration = getattr(error, "operation_registration_result", None)
+                        if isinstance(committed_registration, dict):
+                            details["request"] = committed_registration["request_ref"]
+                            attempt_binding = committed_registration["attempt_binding"]
+                            trace.bind(operation=request["operation"], request_sha256=request_sha,
+                                       task_id=attempt_binding["task_id"],
+                                       environment_sha256=attempt_binding["environment_sha256"],
+                                       attempt_id=attempt_binding["attempt_id"], details=details)
+                if registration_committed and writer is None:
+                    try:
+                        with binding.writer():
+                            writer = storage.begin_task_writer(
+                                workspace, binding=binding, operation_id=trace.operation_id,
+                                task_id=task_id, attempt_id=attempt_id, diagnostics="boundary",
+                                checkpoint_document=checkpoint,
+                                commit_every_generations=commit_every_generations,
+                                phase_scope=lambda kind, details: trace.span(kind, details=details),
+                            )
+                    except BaseException as writer_setup_error:
+                        error.add_note(
+                            "Task writer initialization also failed after execution registration: "
+                            f"{type(writer_setup_error).__name__}: {writer_setup_error}"
+                        )
+                if registration_committed and writer is not None and writer.completed:
                     with binding.writer():
                         tail_ack = storage.flush_completed(workspace, writer=writer, reason="failure")
                     if tail_ack.get("checkpoint") is not None:
@@ -383,18 +436,31 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                             f"Generation callback during failure flush also failed: "
                             f"{type(callback_error).__name__}: {callback_error}"
                         )
-                failure = storage._error_document(error)
-                interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
-                with binding.writer():
-                    storage.append_event(workspace, task_id=task_id, kind="interrupted" if interrupted else "failed",
-                                         payload={"attempt_id": attempt_id,
-                                                  "interruption" if interrupted else "failure": failure}, writer=writer, force=True)
-                    storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
-                                           task_id=task_id, attempt_id=attempt_id,
-                                           status="interrupted" if interrupted else "failure",
-                                           interruption=failure if interrupted else None,
-                                           failure=None if interrupted else failure)
-                trace.publish_diagnostics(primary_error=error)
+                if registration_committed:
+                    failure = storage._error_document(error)
+                    interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
+                    if writer is not None:
+                        with binding.writer():
+                            storage.append_event(workspace, task_id=task_id,
+                                                 kind="interrupted" if interrupted else "failed",
+                                                 payload={"attempt_id": attempt_id,
+                                                          "interruption" if interrupted else "failure": failure},
+                                                 writer=writer, force=True)
+                            storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
+                                                   task_id=task_id, attempt_id=attempt_id,
+                                                   status="interrupted" if interrupted else "failure",
+                                                   interruption=failure if interrupted else None,
+                                                   failure=None if interrupted else failure)
+                    else:
+                        # A registration ACK is durable even if the TaskWriter
+                        # could not be opened. Preserve the real attempt status
+                        # without inventing a task event or passing writer=None.
+                        with binding.writer():
+                            storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
+                                                   task_id=task_id, attempt_id=attempt_id,
+                                                   status="interrupted" if interrupted else "failure",
+                                                   interruption=failure if interrupted else None,
+                                                   failure=None if interrupted else failure)
             except BaseException as recording_error:
                 error.add_note(f"Operation failure recording also failed: {type(recording_error).__name__}: {recording_error}")
         raise

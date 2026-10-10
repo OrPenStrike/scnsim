@@ -29,7 +29,7 @@ from ..errors import (
 from .storage import _fsync_directory
 
 _DATABASE = "operations.sqlite3"
-_VERSION = 4
+_VERSION = 5
 _SCHEMA = (
     "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE objects (sha256 TEXT PRIMARY KEY, payload BLOB NOT NULL)",
@@ -293,6 +293,7 @@ class OperationStore:
                     transaction.outcome = {"status": "committed", "transaction_id": transaction_id}
             finally:
                 details.update(transaction.counts)
+                transaction._verified_objects.clear()
                 _close(connection)
 
     def _reconcile(self, transaction_id: str) -> dict[str, Any]:
@@ -510,6 +511,10 @@ class StoreTransaction(Snapshot):
 
     def __init__(self, connection: sqlite3.Connection, transaction_id: str):
         super().__init__(connection)
+        # This witness belongs only to the current SQL transaction. Exact role
+        # and length bindings remain part of its key; a new lock/connection must
+        # verify stored bytes again, even for the same content digest.
+        self._reuse_verified = True
         self.counts = {"put_object_calls": 0, "logical_object_bytes": 0,
                        "inserted_objects": 0, "appended_rows": 0}
         self.outcome: dict[str, Any] = {"status": "not_committed", "transaction_id": transaction_id}
@@ -518,13 +523,20 @@ class StoreTransaction(Snapshot):
         digest = hashlib.sha256(payload).hexdigest()
         self.counts["put_object_calls"] += 1
         self.counts["logical_object_bytes"] += len(payload)
+        reference = _reference(digest, role, len(payload))
+        key = self._object_key(reference)
+        if key in self._verified_objects:
+            if self._verified_objects[key] != payload:
+                raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
+            return reference
         cursor = self._connection.execute("INSERT INTO objects VALUES (?,?) ON CONFLICT DO NOTHING", (digest, payload))
         self.counts["inserted_objects"] += cursor.rowcount
         existing = self._connection.execute("SELECT payload FROM objects WHERE sha256=?", (digest,)).fetchone()[0]
         if existing != payload:
             raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
         self._connection.execute("INSERT INTO object_roles VALUES (?,?) ON CONFLICT DO NOTHING", (digest, role))
-        return _reference(digest, role, len(payload))
+        self._verified_objects[key] = payload
+        return reference
 
     def append_with_ref(self, stream: str, kind: str, payload: bytes) -> tuple[int, dict[str, Any]]:
         reference = self.put_object(payload, role=kind)

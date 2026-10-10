@@ -4,7 +4,7 @@ The core owns native transactions and byte objects; this adapter owns task,
 occurrence, checkpoint and selected-result meanings. Completed generation groups
 publish atomically. Only their latest CMA/RNG state is retained; an unfinished
 population can be archived diagnostically but never enters resumable evidence.
-Historical file records are read through storage.py and are never rewritten.
+Older file-journal Workspaces remain untouched and require recomputation.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..errors import EvidenceIntegrityError, UnsupportedEvidenceVersionError
-from ..workspace.operation_store import OperationStore, Snapshot, _reference
+from ..workspace.operation_store import OperationStore, Snapshot, _VERSION as _OPERATION_STORE_VERSION, _reference
 from .identity import checkpoint_seal
 from .models import BenchmarkResult
 from .prepared import record_bytes, record_document
@@ -25,7 +25,8 @@ from .prepared import record_bytes, record_document
 _ACTIVE: ContextVar[tuple[Path, Snapshot] | None] = ContextVar('operation_sql_snapshot', default=None)
 _MARKER = '$scnsim_benchmark_journal'
 _OCCURRENCE = frozenset({'attempt_id','candidate_key','cache_hit','evaluation_ordinal','generation',
-                        'population_column','latent_coordinates','source_index','origin','continuation_t_f64'})
+                        'population_column','latent_coordinates','source_index','origin',
+                        'continuation_t_f64','numerical_source_id'})
 _DIAGNOSTIC = frozenset({'population_observed','evaluation','progress'})
 
 
@@ -110,6 +111,15 @@ def read_document(root, reference, *, schema, role, bind):
     return value
 
 
+def read_value(root, reference):
+    """Read one canonical numerical body; task and occurrence identity live elsewhere."""
+    raw = read_object(root, reference, role='benchmark_value')
+    value = record_document(raw)
+    if not isinstance(value, dict) or record_bytes(value) != raw:
+        raise _error('SQLite numerical body is not a canonical record.', reference=dict(reference))
+    return value
+
+
 def _decode(snapshot, reference):
     raw = snapshot.get_object(reference)
     value = record_document(raw)
@@ -146,21 +156,20 @@ def _pointer(snapshot, name):
     return None if pointer is None else _decode(snapshot, pointer['reference'])
 
 
-def initialize_operation_record(binding, *, clock_binding):
-    store = _bound(binding)
-    store.initialize()
+def _operation_manifest(binding, clock_binding):
     declaration = {'schema':'scnsim.operation_trace','schema_version':1,
                    'plan_sha256':binding.plan_sha256,'workspace_instance_id':binding.workspace_instance_id}
-    manifest = {'schema':'scnsim.benchmark_record','schema_version':4,
+    return {'schema':'scnsim.benchmark_record','schema_version':_OPERATION_STORE_VERSION,
                 'benchmark_sha256':sha256(record_bytes(declaration)).hexdigest(),
                 'declaration':declaration,'plan_sha256':binding.plan_sha256,
                 'workspace_instance_id':binding.workspace_instance_id,'clock':dict(clock_binding)}
-    raw = record_bytes(manifest)
-    with store.reader() as snapshot:
-        present = snapshot.read_pointer('manifest')
-    if present is None:
-        with store.transaction(str(uuid4()), expected_revisions={}) as tx:
-            tx.select_first('manifest', tx.put_object(raw, role='operation_manifest'))
+
+
+def initialize_operation_record(binding, *, clock_binding):
+    """Create the SQLite schema before the atomic initial manifest/root write."""
+    del clock_binding
+    store = _bound(binding)
+    store.initialize()
     return store.root
 
 
@@ -205,8 +214,140 @@ def _publish_operation(binding, row):
     return {'committed':True, 'transaction_id':txid}
 
 
-def start_operation(binding, row):
-    return _publish_operation(binding, row)
+def start_operation(binding, row, *, clock_binding=None):
+    """Publish a fresh manifest and its initial operation root together."""
+    store = _bound(binding)
+    store.initialize()
+    row = dict(row)
+    clock = row.get('clock', {}) if clock_binding is None else clock_binding
+    manifest_raw = record_bytes(_operation_manifest(binding, clock))
+    operation_raw = record_bytes(row)
+    transaction_id = str(uuid4())
+    with store.transaction(transaction_id, expected_revisions={}) as tx:
+        existing = tx.read_pointer('manifest')
+        if existing is None:
+            tx.select_first('manifest', tx.put_object(manifest_raw, role='operation_manifest'))
+        else:
+            manifest = _decode(tx, existing['reference'])
+            if (manifest.get('schema') != 'scnsim.benchmark_record'
+                    or manifest.get('schema_version') != _OPERATION_STORE_VERSION
+                    or manifest.get('plan_sha256') != binding.plan_sha256
+                    or manifest.get('workspace_instance_id') != binding.workspace_instance_id):
+                raise _error('Operation manifest differs from its bound Plan leaf.')
+        reference = tx.put_object(operation_raw, role='operation')
+        _index_operation(tx, row, reference)
+    return {'committed': True, 'transaction_id': transaction_id}
+
+
+@contextmanager
+def _registration_transaction(store, transaction_id):
+    transaction = None
+    try:
+        with store.transaction(transaction_id, expected_revisions={}) as current:
+            transaction = current
+            yield current
+    except BaseException as error:
+        outcome = getattr(error, 'operation_transaction_outcome', None)
+        if outcome is None and transaction is not None:
+            outcome = transaction.outcome
+        if outcome is not None:
+            error.operation_registration_outcome = dict(outcome)
+            registration = getattr(transaction, 'operation_registration_result', None)
+            if outcome.get('status') == 'committed' and registration is not None:
+                error.operation_registration_result = dict(registration)
+        raise
+
+
+def register_operation_execution(binding, *, row, task, request, attempt_id, resume_from=None):
+    """Atomically register the request, task, running attempt, and operation binding.
+
+    The caller holds the bound Plan writer lock. Request bytes and the exact
+    in-memory operation/task identities are committed in one OperationStore
+    transaction, so a task cannot exist without its owning operation attempt.
+    """
+    request_sha256 = request['request_sha256']
+    request_bytes = request['request_bytes']
+    if sha256(request_bytes).hexdigest() != request_sha256:
+        raise _error('Prepared operation request does not match its identity.')
+    operation_row = dict(row)
+    operation_id = operation_row['operation_id']
+    task_row = dict(task)
+    if task_row.get('request_sha256') != request_sha256:
+        raise _error('Operation task request differs from its prepared request.', task_id=task_row.get('task_id'))
+    store = _bound(binding)
+    task_id = task_row['task_id']
+    transaction_id = str(uuid4())
+    task_change = {
+        'kind': 'attempt_begin',
+        'attempt': {
+            'attempt_id': attempt_id,
+            'status': 'running',
+            'resume_from': resume_from,
+            'artifacts': [],
+            'failure': None,
+            'interruption': None,
+        },
+    }
+    with _registration_transaction(store, transaction_id) as tx:
+        operation = next((item for item in tx.query_operations(operation_ids=(operation_id,))), None)
+        if operation is None or operation['reference'].get('role') != 'operation':
+            raise _error('Operation root must be committed before execution registration.',
+                         operation_id=operation_id)
+        request_ref = tx.put_object(request_bytes, role='operation_request')
+        task_row['artifacts'] = [request_ref]
+        descriptor = _legacy()._new_task_descriptor(task_row)
+        if descriptor['task_id'] != task_id or descriptor['request_sha256'] != request_sha256:
+            raise _error('Prepared task descriptor differs from its operation request.', task_id=task_id)
+        existing_descriptor = _pointer(tx, 'task/' + task_id)
+        if existing_descriptor is None:
+            descriptor_raw = record_bytes(descriptor)
+            descriptor_ref = tx.put_object(descriptor_raw, role='task_descriptor')
+            tx.set_pointer('task/' + task_id, descriptor_ref)
+            tx.append('tasks', 'task_descriptor', descriptor_raw)
+        else:
+            existing_fields = ('task_id', 'request_sha256', 'arm', 'sample')
+            if (any(existing_descriptor.get(key) != descriptor.get(key) for key in existing_fields)
+                    or existing_descriptor.get('environment', {}).get('environment_sha256')
+                    != descriptor.get('environment', {}).get('environment_sha256')
+                    or request_ref not in existing_descriptor.get('artifacts', ())):
+                raise _error('Benchmark task identity was rebound.', task_id=task_id)
+        if tx.read_pointer('attempt/' + task_id + '/' + attempt_id) is not None:
+            raise _error('Attempt identifier is already recorded.', attempt_id=attempt_id)
+        attempt = task_change['attempt']
+        attempt_ref = tx.put_object(record_bytes(attempt), role='attempt')
+        tx.set_pointer('attempt/' + task_id + '/' + attempt_id, attempt_ref)
+        tx.set_pointer('current_attempt/' + task_id, attempt_ref)
+        _, change_ref = tx.append_with_ref(_stream(task_id), 'task_change', record_bytes(task_change))
+        tx.set_pointer(_attempt_state_pointer(task_id, attempt_id), change_ref)
+        association = _operation_association(operation_id, task_id, attempt_id=attempt_id)
+        tx.set_pointer(_association_pointer(operation_id),
+                        tx.put_object(record_bytes(association), role='operation_task_association'))
+        details = dict(operation_row.get('details', {}))
+        details['request'] = request_ref
+        operation_row['details'] = details
+        operation_ref = tx.put_object(record_bytes(operation_row), role='operation')
+        _index_operation(tx, operation_row, operation_ref)
+        tx.operation_registration_result = {
+            'request_ref': request_ref,
+            'attempt_binding': {
+                'operation_id': operation_id,
+                'task_id': task_id,
+                'attempt_id': attempt_id,
+                'request_sha256': request_sha256,
+                'environment_sha256': descriptor['environment']['environment_sha256'],
+            },
+        }
+    return {
+        'ack': {'committed': True, 'transaction_id': transaction_id},
+        'request_ref': request_ref,
+        'attempt_binding': {
+            'operation_id': operation_id,
+            'task_id': task_id,
+            'attempt_id': attempt_id,
+            'request_sha256': request_sha256,
+            'environment_sha256': descriptor['environment']['environment_sha256'],
+        },
+    }
 
 
 def bind_operation(binding, *, row):
@@ -573,6 +714,9 @@ class TaskWriter:
         self.diagnostics=diagnostics; self.phase_scope=phase_scope
         self.commit_every_generations=commit_every_generations
         self.pending=[]; self.completed=[]; self.generation_rows=[]
+        # The baseline is held in memory until it can join a complete
+        # post-tell generation transaction. It is never a checkpoint by itself.
+        self.baseline_pending=None
         self.latest_state=None; self.publication_uncertain=None; self.last_ack=self._empty_ack()
         links=checkpoint_document.get('_journal_links',{}) if checkpoint_document else {}
         self.baseline_block=links.get('baseline_evidence'); self.generation_block=links.get('generation_evidence')
@@ -622,22 +766,41 @@ class TaskWriter:
         self._ensure_publishable(); self.last_ack=self._empty_ack()
         value=dict(payload)
         state=value.pop('resume_state',None)
-        self.latest_state=state
         segment={'kind':kind,'payload':value,'events':list(self.pending),'rows':list(self.generation_rows)}
         self.pending.clear(); self.generation_rows.clear()
-        self.completed.append(segment)
         event={'task_id':self.task_id,'sequence':self.sequence_hint,'kind':kind,'payload':value}
         self.sequence_hint+=1
-        if kind=='baseline_ready' or len(self.completed)>=self.commit_every_generations:
-            self._publish(self.completed)
+        if kind=='baseline_ready':
+            if self.baseline_block is not None or self.baseline_pending is not None:
+                raise _error('Task baseline was already staged for this attempt.',
+                             task_id=self.task_id, attempt_id=self.attempt_id)
+            self.baseline_pending=segment
+            self.last_ack={'committed':False,'state':'baseline_sealed','checkpoint':None,
+                           'latest_generation':None}
+            return event,self.last_ack
+
+        self.latest_state=state
+        self.completed.append(segment)
+        if len(self.completed)>=self.commit_every_generations:
+            segments=([self.baseline_pending] if self.baseline_pending is not None else [])+self.completed
+            self._publish(segments)
             self.completed.clear(); self.latest_state=None
+            self.baseline_pending=None
         return event,self.last_ack
+
+    def will_commit_barrier(self, kind):
+        """Whether this barrier completes a durable group, without staging it."""
+        if kind == 'baseline_ready':
+            return False
+        return len(self.completed) + 1 >= self.commit_every_generations
 
     def flush_completed(self,reason):
         self._ensure_publishable(); self.last_ack=self._empty_ack()
         if self.completed:
-            self._publish(self.completed)
+            segments=([self.baseline_pending] if self.baseline_pending is not None else [])+self.completed
+            self._publish(segments)
             self.completed.clear(); self.latest_state=None
+            self.baseline_pending=None
         return self.last_ack
 
     def flush(self):
@@ -654,18 +817,9 @@ class TaskWriter:
             reference=refs[key]
             if key in self.value_refs:
                 with _snapshot(self.store):
-                    inherited=read_document(self.root,reference,schema='scnsim.benchmark_value',
-                                            role='benchmark_value',bind={'task_id':self.task_id})
-                if inherited.get('key_kind')!='candidate_key' or inherited.get('key')!=key:
-                    raise _error('Inherited optimizer value does not bind its cache key.',task_id=self.task_id)
+                    read_value(self.root, reference)
         else:
-            key_kind='candidate_key' if isinstance(key,str) else 'numerical_source_id'
-            value_key=key if isinstance(key,str) else value.get('numerical_source_id')
-            if value_key is None:
-                key_kind='event'
-                value_key=str(value.get('evaluation_ordinal',value.get('source_index','baseline')))
-            reference=objects.put({'schema':'scnsim.benchmark_value','schema_version':3,
-                'task_id':self.task_id,'key_kind':key_kind,'key':value_key,'value':body},'benchmark_value')
+            reference=objects.put(body,'benchmark_value')
             if isinstance(key,str): refs[key]=reference
         return {'reference':reference,'occurrence':occurrence}
 
@@ -702,7 +856,12 @@ class TaskWriter:
                 if 'cost_f64' in payload['baseline']:
                     costs[payload['baseline'].get('evaluation_ordinal',0)]=payload['baseline']['cost_f64']
                 anchors=None
-                if isinstance(payload.get('anchors'),Mapping):
+                zero_generation_optimization = (
+                    terminal is not None
+                    and terminal.get('type') == 'optimization'
+                    and terminal.get('completed_generations') == 0
+                )
+                if isinstance(payload.get('anchors'),Mapping) and not zero_generation_optimization:
                     anchors=objects.put({'schema':'scnsim.benchmark_anchor_values','schema_version':3,
                         'task_id':self.task_id,'anchors':payload['anchors']},'benchmark_anchor_values')
                 attributes={k:v for k,v in payload.items() if k not in {'attempt_id','baseline','anchors'}}
@@ -799,7 +958,7 @@ class TaskWriter:
             raise
         self.revision=revision+len(changes); self.value_refs=refs; self.known_costs=costs
         self.baseline_block=baseline; self.generation_block=generation
-        self.sequence_hint=sequence+len(self.pending)
+        self.sequence_hint=sequence+max(0,len(self.pending)-len(extra_events))
         self.last_ack={'committed':True,'checkpoint':checkpoint,'evidence':generation or baseline,
                       'latest_generation':None if latest is None else latest['generation'],
                       'latest_generation_payload':latest,
@@ -834,8 +993,13 @@ def complete_operation(binding,*,writer,terminal_bytes):
     terminal=record_document(terminal_bytes)
     if record_bytes(terminal)!=terminal_bytes:
         raise _error('Operation terminal bytes are not canonical.')
-    result,ack=writer._publish([],extra_events=list(writer.pending),terminal=terminal)
+    # A valid zero-generation optimization has a baseline and terminal result,
+    # but no population checkpoint. Commit those together rather than creating
+    # a baseline-only recovery boundary.
+    segments=([writer.baseline_pending] if writer.baseline_pending is not None else [])
+    result,ack=writer._publish(segments,extra_events=list(writer.pending),terminal=terminal)
     writer.pending.clear(); writer.generation_rows.clear()
+    writer.baseline_pending=None
     return result,ack
 
 
@@ -872,8 +1036,22 @@ def find_operation_success(binding,request_sha256):
     return None
 
 
-def read_checkpoint(workspace,reference,*,binding,expected_task_id,expected_request_sha256,expected_arm,expected_sample,expected_environment_sha256):
-    if reference.get('checkpoint',{}).get('storage')!='sqlite':
+def read_checkpoint(workspace,reference,*,binding,expected_task_id,expected_request_sha256,expected_arm,expected_sample,expected_environment_sha256,return_selection=False):
+    selection_reference = None
+    if reference.get('role') == 'checkpoint_selection':
+        if (reference.get('storage') != 'sqlite'
+                or reference.get('schema_version') != _OPERATION_STORE_VERSION):
+            raise UnsupportedEvidenceVersionError(
+                'Checkpoint evidence uses an older storage format; use a new Workspace and recompute.',
+                stage='checkpoint_read',
+                evidence={'reference_storage':reference.get('storage'),
+                          'action':'use a new Workspace and recompute'},
+            )
+        selection_reference = dict(reference)
+        selection = None
+    elif reference.get('checkpoint',{}).get('storage') == 'sqlite':
+        selection = dict(reference)
+    else:
         raise UnsupportedEvidenceVersionError(
             'Checkpoint evidence uses an older storage format; use a new Workspace and recompute.',
             stage='checkpoint_read',
@@ -883,16 +1061,29 @@ def read_checkpoint(workspace,reference,*,binding,expected_task_id,expected_requ
     root=_root(workspace)
     expected={'task_id':expected_task_id,'request_sha256':expected_request_sha256,'arm':expected_arm,
               'sample':expected_sample,'environment_sha256':expected_environment_sha256}
-    if any(reference.get(k)!=v for k,v in expected.items()):
+    if selection is not None and any(selection.get(k)!=v for k,v in expected.items()):
         raise _error('Checkpoint binding differs from requested task.')
     with _snapshot(_writer_store(root,binding)) as snapshot:
+        if selection_reference is not None:
+            selection = _decode(snapshot, selection_reference)
+            if not isinstance(selection, dict):
+                raise _error('Checkpoint selection object is malformed.')
+            if any(selection.get(k)!=v for k,v in expected.items()):
+                raise _error('Checkpoint binding differs from requested task.')
         descriptor=_descriptor(snapshot,expected_task_id)
         if any(descriptor.get(k)!=v for k,v in expected.items() if k!='environment_sha256') or descriptor['environment']['environment_sha256']!=expected_environment_sha256:
             raise _error('Checkpoint task/environment identity changed.')
-        selections=snapshot.read_stream('checkpoints/'+expected_task_id+'/'+reference['attempt_id'])
-        if not any(_decode(snapshot,row['reference'])==dict(reference) for row in selections['entries']):
+        selections=snapshot.read_stream('checkpoints/'+expected_task_id+'/'+selection['attempt_id'])
+        if selection_reference is not None:
+            selected = any(row['reference'] == selection_reference for row in selections['entries'])
+        else:
+            selected = any(_decode(snapshot,row['reference']) == selection for row in selections['entries'])
+        if not selected:
             raise _error('Checkpoint is not the selected committed state for its attempt.')
-        cp,_=_legacy()._verify_checkpoint_file(root,reference,task_binding=descriptor)
-        if any(cp.get(k)!=v for k,v in expected.items()) or cp.get('attempt_id')!=reference['attempt_id']:
+        cp,_=_legacy()._verify_checkpoint_file(root,selection,task_binding=descriptor)
+        if any(cp.get(k)!=v for k,v in expected.items()) or cp.get('attempt_id')!=selection['attempt_id']:
             raise _error('Checkpoint content differs from sealed identity.')
-        return record_bytes(_legacy()._hydrate_cma_checkpoint(root,expected_task_id,cp))
+        hydrated = record_bytes(_legacy()._hydrate_cma_checkpoint(root,expected_task_id,cp))
+        if return_selection:
+            return hydrated, dict(selection)
+        return hydrated

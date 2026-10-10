@@ -229,11 +229,10 @@ class OperationRecorder:
         if self._entered:
             raise RuntimeError("operation recorder cannot be entered twice")
         self._entered = True
-        from .storage import initialize_operation_record, start_operation
+        from .storage import start_operation
 
         with self.binding.writer():  # type: ignore[attr-defined]
-            initialize_operation_record(self.binding, clock_binding=self.clock)
-            start_operation(self.binding, self.root_row())
+            start_operation(self.binding, self.root_row(), clock_binding=self.clock)
         return self
 
     def __exit__(self, error_type: object, error: BaseException | None, traceback: object) -> bool:
@@ -312,23 +311,19 @@ class OperationRecorder:
         self._environment_sha256 = environment_sha256
         self._attempt_id = attempt_id
         self._details = dict(details or {})
-        from .storage import bind_operation
+        if self._details.get("cache_hit") is True:
+            # A reused result still creates a real operation-to-task
+            # association. Publish that association atomically at the cache
+            # boundary; ordinary execution fields remain staged until the
+            # task/request/attempt registration transaction.
+            from .storage import bind_operation
 
-        with self.binding.writer():  # type: ignore[attr-defined]
-            bind_operation(self.binding, row=self.root_row())
+            with self.binding.writer():  # type: ignore[attr-defined]
+                bind_operation(self.binding, row=self.root_row())
 
     def set_attempt(self, attempt_id: str | None) -> None:
-        """Record the actual attempt allocated after a request cache lookup."""
+        """Stage the actual attempt allocated for atomic task registration."""
         self._attempt_id = attempt_id
-        if attempt_id is None or self._task_id is None:
-            return
-        from .storage import bind_operation_attempt
-
-        with self.binding.writer():  # type: ignore[attr-defined]
-            bind_operation_attempt(
-                self.binding,
-                row=self.root_row(),
-            )
 
     def add_numerical_ref(self, reference: Mapping[str, object]) -> None:
         self._numerical_refs.append(dict(reference))

@@ -2186,7 +2186,32 @@ objectives, expanded normalization, algorithm, controls, seed, runtime, and
 completed-generation ledger. An interrupted generation is discarded and
 replayed deterministically rather than published as complete evidence.
 
-The mandatory successful optimization baseline is durably checkpointed before
+For current JAX Optimization, the mandatory successful baseline and sealed
+anchors remain pending in memory. There is no standalone baseline commit,
+generation-0 checkpoint or initial progress callback. Only complete post-tell
+generations count toward `commit_every_generations` (default 10). The first
+completed generation batch includes the necessary baseline body once; generation
+checkpointing additionally saves anchor restore state and the latest completed
+post-tell CMA/RNG state, with generation at least 1. Checkpoint off omits
+restore-only state. Workers install sealed anchors through an in-memory ACK,
+without a storage transaction. Required group ACK precedes its one progress
+callback; optional timing publication is separate and is not that prerequisite.
+Error/interruption handling saves only the actual complete generation tail and
+state. No failed or uncertain required batch is resent; the original error stays
+primary. Baseline failure remains terminal and creates no checkpoint. Result
+readback still includes the baseline and complete ordered numerical ledger.
+
+A valid budget can contain zero complete populations:
+`complete_generations=(max_evaluations-1)//population_size` may be zero. A
+successful baseline-only optimization then saves the necessary baseline
+numerical evidence atomically with the final result. It saves no checkpoint or
+restore anchors and emits no generation-0 barrier or generation notification;
+the final complete callback remains. Failure before any complete generation
+creates no baseline-only protective flush. This does not add a budget Gate or
+change candidate/CMA ordering.
+
+Native Julia retains its existing baseline/checkpoint protocol below. The
+mandatory successful optimization baseline is durably checkpointed before
 the first generation. The request-owned checkpoint preserves the exact
 baseline candidate and continuation roots; a separate immutable publisher seal
 binds its original launched attempt. Reuse avoids repeating baseline work but
@@ -2297,7 +2322,7 @@ Objective targets and weights remain consumer/Human declarations. The product
 rule above deterministically expands an omitted residual scale; unit conversion
 cannot alter that scale, the target, the weight, a tolerance, or a Gate.
 
-### Numerical arithmetic and diagnostic storage (dev21 CONVERGING)
+### Numerical arithmetic and diagnostic storage (dev22 CONVERGING)
 
 Requested dtype, effective arithmetic and forward accuracy are distinct.
 Compiler/View SI lowering remains binary64; selected JAX arithmetic uses
@@ -2341,7 +2366,16 @@ read-derived. Incomplete intervals have no zero duration. Inclusive/nested
 sums are not API wall time. Aggregates cannot reconstruct a detailed Timeline;
 detailed mode stores actual diagnostic intervals only.
 
-Operation SQLite evidence is version4. Older operation databases or file-journal
+Operation SQLite evidence is version5, with DELETE journal mode and EXTRA
+synchronization. Verified object reuse is scoped to one transaction or readonly
+snapshot, including hash/role/length bindings; a reopen or relock revalidates.
+Manifest and operation start publish atomically; task/request/attempt/running
+state and operation association register in one required transaction. Numerical
+bodies are stored without occurrence context; ordered occurrences retain their
+context and reference the shared body. Readers hydrate references in one
+snapshot without executing a solver. Normal solve/evaluate commits result,
+attempt success and first-success selection atomically, then publishes optional
+timing and a separate final operation root. Older operation databases or file-journal
 stores raise `UnsupportedEvidenceVersionError` with “use new Workspace and
 recompute”; there is no legacy reader, migration, coexistence merge or automatic
 delete. Current Julia result-file contracts remain unchanged. Numerical commits,

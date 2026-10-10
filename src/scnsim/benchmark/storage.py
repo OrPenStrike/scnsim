@@ -239,17 +239,10 @@ def _global_chain(root: Path, manifest: Mapping[str, object], head: Mapping[str,
 
 
 def _read_value(root: Path, task_id: str, reference: Mapping[str, object]) -> dict[str, Any]:
-    document = _read_domain_document(
-        root,
-        reference,
-        schema="scnsim.benchmark_value",
-        role="benchmark_value",
-        bind={"task_id": task_id},
-    )
-    value = document.get("value")
-    if not isinstance(value, dict):
-        raise _integrity("Benchmark numerical value block is malformed.", path=reference.get("path"))
-    return dict(value)
+    del task_id  # Task binding is carried by the occurrence/evidence reference.
+    from .sqlite_storage import read_value
+
+    return dict(read_value(root, reference))
 
 
 def _materialize_value_marker(root: Path, task_id: str, value: Mapping[str, object]) -> dict[str, object]:
@@ -1265,12 +1258,24 @@ def _hydrate_cma_checkpoint(
     cache: dict[str, object] = {}
     value_refs: dict[str, Mapping[str, object]] = {}
     records_by_generation: list[list[dict[str, object]]] = []
+    bodies_by_reference: dict[tuple[tuple[str, object], ...], dict[str, object]] = {}
+
+    def value_body(reference: Mapping[str, object]) -> dict[str, object]:
+        key = tuple(sorted(reference.items()))
+        if key not in bodies_by_reference:
+            bodies_by_reference[key] = _read_value(root, task_id, reference)
+        return bodies_by_reference[key]
+
+    def materialize_value(reference: Mapping[str, object], occurrence: Mapping[str, object]) -> dict[str, object]:
+        value = dict(value_body(reference))
+        value.update(occurrence)
+        return value
+
     best_ordinal = checkpoint.get("best_ordinal")
     best: dict[str, object] | None = None
     baseline_key = baseline.get("candidate_key")
     if isinstance(baseline_key, str):
-        baseline_doc = _read_value(root, task_id, baseline_block["baseline"])
-        cache[baseline_key] = baseline_doc
+        cache[baseline_key] = value_body(baseline_block["baseline"])
         value_refs[baseline_key] = dict(baseline_block["baseline"])
     if baseline.get("evaluation_ordinal") == best_ordinal:
         best = baseline
@@ -1282,13 +1287,10 @@ def _hydrate_cma_checkpoint(
         for row in raw_rows:
             if not isinstance(row, Mapping) or not isinstance(row.get("value"), Mapping):
                 raise _integrity("CMA generation evidence row is malformed.", task_id=task_id)
-            record = _materialize_value_marker(root, task_id, {
-                "reference": row["value"],
-                "occurrence": row.get("occurrence", {}),
-            })
+            record = materialize_value(row["value"], row.get("occurrence", {}))
             key = record.get("candidate_key")
             if isinstance(key, str):
-                cache[key] = _read_value(root, task_id, row["value"])
+                cache[key] = value_body(row["value"])
                 value_refs.setdefault(key, dict(row["value"]))
             if record.get("evaluation_ordinal") == best_ordinal:
                 best = record
@@ -1417,13 +1419,11 @@ def open_legacy_operation_record(binding):
     return None
 
 
-# Current public operation APIs below use only the v4 SQLite reader/writer.
+# Current public operation APIs below use only the v5 SQLite reader/writer.
 from .sqlite_storage import (
-    TaskWriter, append_event, begin_attempt, begin_task_writer, bind_operation,
-    bind_operation_attempt, commit_barrier, complete_operation, ensure_operation_task,
-    ensure_task, find_operation_success, finish_operation, flush_completed,
-    initialize_operation_record, open_record, operation_task_record, query_operation_rows,
-    publish_timing_batch, read_checkpoint, read_operation_success,
-    recover_operation_workspace, start_operation, store_operation_request, task_record,
-    update_attempt, write_artifact,
+    TaskWriter, append_event, begin_task_writer, bind_operation,
+    commit_barrier, complete_operation, find_operation_success, finish_operation, flush_completed,
+    open_record, operation_task_record, query_operation_rows,
+    publish_timing_batch, read_checkpoint, read_operation_success, register_operation_execution,
+    recover_operation_workspace, start_operation, task_record, update_attempt,
 )

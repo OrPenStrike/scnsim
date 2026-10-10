@@ -20,14 +20,17 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current development candidate is `1.0.0.dev18`, requiring Python 3.12. Normal
+The current development candidate is `1.0.0.dev22`, requiring Python 3.12. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
 the current Plan leaf without executing another calculation. Generation
 checkpoints and boundary diagnostics preserve recovery and numerical evidence.
 JAX Optimization defaults to `commit_every_generations=10`; explicit positive
-integers select a different group size in the Plan leaf’s SQLite store. Omitted
+integers select a different group size in the Plan leaf’s SQLite store. Only
+complete post-tell generations count. The JAX baseline remains in memory until
+the first completed group saves its body once; there is no standalone baseline
+commit, generation-0 checkpoint or initial callback. Omitted
 intervals with explicit Julia keep its existing native value of 1. See the
 guide for recovery, durability and recomputation limits.
 For same-generation JAX Optimization, `configure_runtime(cpu_threads=N)`
@@ -53,7 +56,7 @@ inclusive sum/min/max and maximum context; they cannot reconstruct a detailed
 timeline. Timing is separate from numerical evidence and does not force cache
 recomputation. Optional diagnostic write failure warns without hiding an already
 committed numerical result; required storage/integrity/callback failures retain
-their failure contract. Current operation evidence uses SQLite version4.
+their failure contract. Current operation evidence uses SQLite version5.
 
 Scalar root, pole, zero, response and coupling Results offer themed HTML through
 `result.show(detailed=False)` and detached Figure tables through

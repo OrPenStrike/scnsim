@@ -159,7 +159,30 @@ request semantic identity. Thus `92 * u.fF` and `0.092 * u.pF` may reuse one
 verified computation. Reuse does not append a second provenance event merely
 to log the later caller's equivalent spelling.
 
+## Current operation-store bodies and occurrences
+
+Version5 SQLite operation evidence uses exact canonical object bytes and
+role/hash/byte-length references. A `benchmark_value` payload is the scientific
+body directly, `record_bytes(body)`, without a task/key wrapper. Intrinsic
+parameters, identity, dependencies and numerical evidence remain in the body;
+task/key/source-index/cache/attempt/numerical-source occurrence context stays
+on the ordered occurrence referencing it. Context is not copied into the shared
+body. Readers hydrate those references in one verified snapshot. There is no
+version3 wrapper fallback or older-operation-Workspace reader; unsupported
+stores require a new Workspace and recomputation.
+
+JAX baseline anchors receive a memory ACK before candidate work, not the native
+`checkpoint-ready`/`checkpoint-committed` exchange. The baseline remains pending
+until the first complete post-tell generation group stores its body once.
+Generation checkpoints start at 1 and save only the latest completed state;
+checkpoint off excludes restore-only state. Numerical request/CMA/quantity
+identity and native Julia protocol semantics are unchanged.
+
 ## Give each file one job
+
+The following request/attempt file and handshake inventory describes the
+current native Julia protocol. It does not define JAX SQLite task storage or a
+legacy-reader path.
 
 | File | Required identity content | Mutability |
 |---|---|---|

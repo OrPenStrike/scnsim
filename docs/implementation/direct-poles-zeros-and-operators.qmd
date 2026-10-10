@@ -51,7 +51,12 @@ vectors, residues and certificates. Each read recursively detaches nested Pint
 wrappers over immutable array backing, mappings and tuples.
 
 Candidate ledger terms identify canonical numerical bodies by `body_id` in the
-candidate's `dependencies` map. Coupling branch references join that same map;
+candidate's `dependencies` map. Version5 `benchmark_value` stores each canonical
+scientific body directly as `record_bytes(body)`, without a task/key wrapper.
+Intrinsic parameters, identity, dependencies and evidence remain in that body;
+ordered occurrences retain task-local context and reference it. Readers batch
+reference hydration within one verified snapshot, with no version3 fallback.
+Coupling branch references join that same map;
 they are not child Result identities or duplicated numerical artifacts. The
 verified decoder projects these supplied bodies without storage access or
 recalculation.
@@ -771,8 +776,10 @@ layout, or branch policy requires a new runtime algorithm identity.
 One quantity implementation supplies standalone evaluation, parameter sweeps
 and scalar Optimization dependencies. The host binds each exact View and
 effective ParameterSet, owns dependency declaration order and scalar projection,
-and continues each nonbaseline root independently from its acknowledged sealed
-baseline. Coupling branches retain separate baseline locators/vectors; midpoint
+and continues each nonbaseline root independently from its sealed baseline.
+For JAX Optimization, worker anchor installation has a memory ACK, not a native
+Julia checkpoint handshake or standalone baseline storage commit. Coupling
+branches retain separate baseline locators/vectors; midpoint
 mode uses the actual candidate roots. A baseline is not a CMA-resumable
 checkpoint. Candidate caches do not turn a preceding candidate into an anchor.
 
@@ -786,8 +793,13 @@ relabeling earlier requests or checkpoints. No new public Spec or selector is
 introduced.
 
 SQLite retains the default commit interval of ten completed post-tell
-generations, separate baseline acknowledgement, optional checkpoint off,
-commit-before-callback, and same-version exact resume. Quantity work does not
+generations. Baseline and anchors remain pending memory; the first completed
+group saves the required baseline body once. There is no generation-0 checkpoint
+or initial callback. Generation checkpoints add anchor restore state and the
+latest completed post-tell CMA/RNG state (generation >=1); off excludes
+restore-only state. Required group ACK precedes its callback; optional timing is
+separate. Native Julia's baseline handshake remains unchanged. Exact same-version
+resume consumes committed completed-generation state. Quantity work does not
 change CMA/RNG, winner order, transaction uncertainty, interrupt or failure
 ownership. Only the existing legitimate candidate numerical failures become
 Optimization penalties; baseline, compiler, storage, callback, cancellation,

@@ -122,7 +122,7 @@ class Evaluator:
         return {key: quantity_body_id(result)[0] for key, result in self.anchors.items()}
 
     def install_anchor_records(self, references: dict[str, str], bodies: dict[str, dict]) -> None:
-        """Install only the parent's already-committed baseline anchor bodies."""
+        """Install the parent's baseline anchor bodies before the first wave."""
         self.anchors = {key: result_from_record(bodies[body_id])
                         for key, body_id in references.items()}
         if self.candidate_pool is not None:
@@ -668,18 +668,27 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         best, next_ordinal = baseline, 1
 
     def resume_state() -> dict | None:
-        # Anchors have one durable owner: the acknowledged baseline block.
+        # Checkpoints carry only post-tell states. Generation zero is not a
+        # resumable boundary; the baseline waits for the first complete group.
         return {"cma": cma_snapshot(optimizer)} if checkpoint_policy == "generation" else None
 
     if checkpoint is None:
         baseline_ack = emit("baseline_ready", {
             "baseline": baseline,
-            "anchors": evaluator.anchor_references(),
-            "resume_state": resume_state(),
+            # Only generation-checkpointed attempts persist restoration
+            # anchors. The live actors still receive the same in-memory
+            # anchors below for the current operation.
+            "anchors": (evaluator.anchor_references()
+                        if checkpoint_policy == "generation"
+                        and controls["complete_generations"] > 0 else None),
+            "resume_state": None,
         })
+        if (not isinstance(baseline_ack, dict)
+                or baseline_ack.get("state") != "baseline_sealed"
+                or baseline_ack.get("committed") is not False
+                or baseline_ack.get("checkpoint") is not None):
+            raise CompilerInvariantError("baseline was not sealed in memory", stage="candidate_protocol")
         if evaluator.candidate_pool is not None:
-            if not isinstance(baseline_ack, dict) or baseline_ack.get("committed") is not True:
-                raise CompilerInvariantError("candidate actors require an acknowledged baseline", stage="candidate_protocol")
             evaluator.install_anchor_records(evaluator.anchor_references(), baseline["dependencies"])
             evaluator.candidate_pool.release_generation(0)
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):
