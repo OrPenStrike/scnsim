@@ -20,6 +20,7 @@ from numpy.typing import NDArray
 FloatArray = NDArray[np.float64]
 ComplexArray = NDArray[np.complex128]
 Arm = Literal["original_julia", "python_julia_reuse", "python_julia_lu", "python_jax"]
+TimingMode = Literal["aggregate", "detailed"]
 
 
 def immutable_array(value: object, *, complex_: bool = False) -> FloatArray | ComplexArray:

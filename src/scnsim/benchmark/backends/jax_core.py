@@ -241,3 +241,14 @@ def assemble(data, omega, *, loaded, derivative, compensated=False):
     if compensated:
         return _assemble_compensated(data, omega, loaded=loaded, derivative=derivative)
     return _assemble_standard(data, omega, loaded=loaded, derivative=derivative)
+
+
+def csr_pair_product(payload):
+    """Compiled ordered CSR pair product over selected-dtype runtime operands.
+
+    The adapter owns device/precision/resource/cache handling. Rounded pair
+    intermediates use the same barriers as compensated stamp assembly.
+    """
+    from . import compensated as cp
+    return cp.csr_pair_product(payload, xp=jnp, lax=jax.lax,
+                               barrier=jax.lax.optimization_barrier)

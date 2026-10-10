@@ -7,7 +7,6 @@ pure result projection. It never creates a Julia request, process or receipt.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from uuid import uuid4
 from contextlib import nullcontext
 import sys
@@ -63,15 +62,6 @@ def _candidate_actor_declaration(*, operation_id, plan_document, request, reques
         "algorithm_id": request["runtime_semantic"]["algorithm_id"],
         "population_size": request["spec"]["optimizer"]["resolved_population_size"],
     })
-
-
-def _acknowledge_spans(trace, ack) -> None:
-    """Advance the trace cursor only for rows the storage commit confirms."""
-    if not isinstance(ack, Mapping) or ack.get("committed") is not True:
-        return
-    rows = ack.get("committed_spans", ())
-    if rows:
-        trace.mark_spans_persisted(tuple(rows))
 
 
 def resolve_jax_operation(*, binding, prepared_analysis, decoder, bound_spec):
@@ -145,11 +135,6 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             trace.add_numerical_ref(success["result_ref"])
             # Cache-hit trace rows are global operation facts; no fictitious
             # numerical attempt is allocated to store these observations.
-            with binding.writer():
-                ack = storage.record_operation_event(binding, {"event": "cache_hit", "operation_id": trace.operation_id,
-                    "checkpoint_policy": checkpoint_policy, "checkpoint_available": success["checkpoint_available"],
-                    "result": success["result_ref"], "spans": list(trace.pending_spans())})
-            _acknowledge_spans(trace, ack)
             if optimization:
                 projection = success["projection"]
                 best = next(row for row in (projection["baseline"], *projection["evaluations"])
@@ -278,23 +263,33 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
             storage.ensure_operation_task(binding, {
                 "task_id": task_id, "request_sha256": request_sha, "arm": arm, "sample": 0,
                 "attempts": [], "events": [], "measurements": [], "environment": environment, "artifacts": [request_ref],
-            })
+            }, operation_id=trace.operation_id)
             attempt_id = str(uuid4())
-            storage.begin_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+            storage.begin_attempt(workspace, binding=binding, operation_id=trace.operation_id,
+                                  task_id=task_id, attempt_id=attempt_id,
                                   resume_from=resume_from)
         trace.set_attempt(attempt_id)
         with binding.writer():
-            writer = storage.begin_task_writer(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+            writer = storage.begin_task_writer(workspace, binding=binding, operation_id=trace.operation_id,
+                                               task_id=task_id, attempt_id=attempt_id,
                                                diagnostics="boundary", checkpoint_document=checkpoint,
                                                commit_every_generations=commit_every_generations,
                                                phase_scope=lambda kind, details: trace.span(kind, details=details))
-            storage.update_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+            storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
+                                   task_id=task_id, attempt_id=attempt_id,
                                    status="running")
         best_cost = float64_from_hex(checkpoint["best"]["cost_f64"]) if checkpoint else None
 
         def emit(kind, payload):
             nonlocal best_cost
             value = {**payload, "attempt_id": attempt_id}
+            if kind == "timing":
+                trace.measure(
+                    payload["stage"], start_tick_ns=payload["start_tick_ns"],
+                    end_tick_ns=payload["end_tick_ns"],
+                    details={"stage":payload["stage"], "counts":payload.get("counts", {})},
+                )
+                return None
             if kind in {"baseline_ready", "generation_ready"}:
                 details = {"barrier": kind, "checkpoint_policy": checkpoint_policy,
                            "commit_every_generations": (
@@ -305,17 +300,12 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                     # Persist only the completed-boundary best value in the
                     # generation ACK; an incomplete later population must not
                     # leak into a callback after an error-tail commit.
-                # This span closes after handing off the existing rows, so its
-                # own row remains pending until a later boundary/finalization.
-                with trace.span("diagnostic_archive", details=details):
-                    trace.publish_pending_spans(writer)
                 # Submission includes Plan authority acquisition/revalidation;
                 # the nested commit includes evidence, diagnostics and HEAD work.
                 with trace.span("workspace_submission", details=details):
                     with binding.writer():
                         with trace.span("evidence_checkpoint_commit", details=details):
                             _, ack = storage.commit_barrier(workspace, writer=writer, kind=kind, payload=value)
-                _acknowledge_spans(trace, ack)
                 if ack["checkpoint"] is not None:
                     trace.add_numerical_ref(ack["checkpoint"])
                 if optimization:
@@ -325,20 +315,20 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                             _notify(on_progress, request, phase="initial", generation=0,
                                     best_cost=best_cost, trace=trace)
                     else:
+                        if ack.get("committed") is True and isinstance(ack.get("latest_generation"), int):
+                            trace.complete_generation(ack["latest_generation"])
                         notify_committed_generation(ack)
+                if ack.get("committed") is True:
+                    trace.publish_diagnostics()
                 return ack
-            trace.publish_pending_spans(writer)
             if optimization and kind == "evaluation":
                 cost = _candidate_cost_from_hex(payload["cost_f64"])
                 if best_cost is None or cost < best_cost:
                     best_cost = cost
             if kind in storage._DIAGNOSTIC_EVENTS:
-                event = storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
-                _acknowledge_spans(trace, getattr(writer, "last_ack", None))
-                return event
+                return storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
             with binding.writer():
                 event = storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
-            _acknowledge_spans(trace, getattr(writer, "last_ack", None))
             return event
 
         if checkpoint is not None:
@@ -353,23 +343,25 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                                     worker_backend_factory=worker_backend_factory,
                                     candidate_pool=candidate_pool)
         if writer is not None:
-            trace.publish_pending_spans(writer)
             with binding.writer():
                 tail_ack = storage.flush_completed(workspace, writer=writer, reason="terminal")
-            _acknowledge_spans(trace, tail_ack)
             if tail_ack.get("checkpoint") is not None:
                 trace.add_numerical_ref(tail_ack["checkpoint"])
+            if tail_ack.get("committed") is True and isinstance(tail_ack.get("latest_generation"), int):
+                trace.complete_generation(tail_ack["latest_generation"])
+            if tail_ack.get("committed") is True:
+                trace.publish_diagnostics()
             notify_committed_generation(tail_ack)
         with trace.span("result_publish"):
             with binding.writer():
                 result_ref, result_ack = storage.complete_operation(
                     binding, writer=writer, terminal_bytes=record_bytes(terminal),
                 )
-                _acknowledge_spans(trace, result_ack)
                 completed = True
         trace.add_numerical_ref(result_ref)
         if optimization:
             _notify(on_progress, request, phase="complete", generation=terminal["completed_generations"], best_cost=best_cost, trace=trace)
+        trace.publish_diagnostics()
         with trace.span("result_decode"):
             with binding.reader():
                 success = storage.read_operation_success(binding, task_id, attempt_id=attempt_id)
@@ -378,12 +370,12 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         if attempt_id is not None and not completed:
             try:
                 if writer is not None:
-                    trace.publish_pending_spans(writer)
                     with binding.writer():
                         tail_ack = storage.flush_completed(workspace, writer=writer, reason="failure")
-                    _acknowledge_spans(trace, tail_ack)
                     if tail_ack.get("checkpoint") is not None:
                         trace.add_numerical_ref(tail_ack["checkpoint"])
+                    if tail_ack.get("committed") is True and isinstance(tail_ack.get("latest_generation"), int):
+                        trace.complete_generation(tail_ack["latest_generation"])
                     try:
                         notify_committed_generation(tail_ack)
                     except BaseException as callback_error:
@@ -391,19 +383,18 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                             f"Generation callback during failure flush also failed: "
                             f"{type(callback_error).__name__}: {callback_error}"
                         )
-                    trace.publish_pending_spans(writer)
                 failure = storage._error_document(error)
                 interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
                 with binding.writer():
                     storage.append_event(workspace, task_id=task_id, kind="interrupted" if interrupted else "failed",
                                          payload={"attempt_id": attempt_id,
                                                   "interruption" if interrupted else "failure": failure}, writer=writer, force=True)
-                    storage.update_attempt(workspace, binding=binding, task_id=task_id, attempt_id=attempt_id,
+                    storage.update_attempt(workspace, binding=binding, operation_id=trace.operation_id,
+                                           task_id=task_id, attempt_id=attempt_id,
                                            status="interrupted" if interrupted else "failure",
                                            interruption=failure if interrupted else None,
                                            failure=None if interrupted else failure)
-                if writer is not None:
-                    _acknowledge_spans(trace, getattr(writer, "last_ack", None))
+                trace.publish_diagnostics(primary_error=error)
             except BaseException as recording_error:
                 error.add_note(f"Operation failure recording also failed: {type(recording_error).__name__}: {recording_error}")
         raise

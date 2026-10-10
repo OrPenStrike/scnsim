@@ -10,11 +10,10 @@ The coupling reciprocity certificate explains residual-induced Schur skew while
 retaining input-origin asymmetry and the raw physical selected matrix.
 """
 from __future__ import annotations
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from types import MappingProxyType
 import json
 from hashlib import sha256
-from time import perf_counter_ns
 import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 from scipy.sparse import coo_matrix
@@ -24,38 +23,24 @@ from scipy.sparse.linalg import splu
 class Measurements:
     """Optional presentation intervals; disabled collection never reads a clock."""
     def __init__(self, trace=None, parent=None, *, enabled=True, resource=None):
-        self.trace, self.parent, self.rows = trace, parent, []
+        self.trace, self.parent = trace, parent
         self.enabled = enabled
         self.resource = resource
 
     @contextmanager
     def phase(self, kind, **details):
-        scope = nullcontext() if self.resource is None else self.resource.phase(kind)
-        with scope, self._phase(kind, **details):
+        with self._phase(kind, **details):
             yield
 
     @contextmanager
     def _phase(self, kind, **details):
-        if not self.enabled:
+        if not self.enabled or self.trace is None:
             yield
             return
-        start = perf_counter_ns()
-        def record(status):
-            end = perf_counter_ns()
-            self.rows.append(dict(kind=kind, start_tick_ns=start, end_tick_ns=end, details=details, status=status))
-            if self.trace is not None:
-                self.trace.measure(kind, start_tick_ns=start, end_tick_ns=end,
-                                   parent_span_id=self.parent, details=details, status=status)
-        try:
+        # Recorder owns clock, status and current logical/detailed parent.
+        # Callback kernel phases therefore nest beneath the numerical phase.
+        with self.trace.span(kind, details=details):
             yield
-        except BaseException as original:
-            try:
-                record('interrupted' if isinstance(original, (KeyboardInterrupt, SystemExit)) else 'failure')
-            except BaseException as secondary:
-                original.add_note(f'Numerical timing publication also failed: {secondary!r}')
-            raise
-        else:
-            record('success')
 
 
 def first(status, bad, code):
@@ -119,7 +104,7 @@ class SparseFactor:
         system.factor_facts.append(dict(nodes=matrix.shape[0], nnz=matrix.nnz,
                                         L_nnz=self.factor.L.nnz, U_nnz=self.factor.U.nnz))
 
-    def seed_solve(self, rhs, code=None):
+    def seed_solve(self, rhs, code=None, *, phase='sparse_rhs_solve'):
         """Native seed/correction solve; represented-pair caller certifies later.
 
         High-only backward error is not the compensated equation certificate.
@@ -131,7 +116,7 @@ class SparseFactor:
         if not np.all(np.isfinite(rhs)):
             self.status = first(self.status, True, code)
             return np.zeros(rhs.shape, dtype=self.system.complex_dtype), self.status
-        with self.measurements.phase('sparse_rhs_solve', stage=code, columns=rhs.shape[1]):
+        with self.measurements.phase(phase, stage=code, columns=rhs.shape[1]):
             x = self.factor.solve(np.asarray(rhs, dtype=self.system.complex_dtype))
         self.status = first(self.status, not np.all(np.isfinite(x)), code)
         return x, self.status
@@ -171,8 +156,9 @@ def _rhs(matrix, dtype):
 
 class System:
     """One candidate/View's runtime sparse operands and index preparation."""
-    def __init__(self, view, real_dtype, complex_dtype, *, template_cache=None, resource=None):
+    def __init__(self, view, real_dtype, complex_dtype, *, template_cache=None, resource=None, pair_product=None):
         self.view = view
+        self.pair_product = pair_product
         self.real_dtype, self.complex_dtype = real_dtype, complex_dtype
         self.n = len(view.model.node_ids)
         self.factor_facts = []
@@ -351,6 +337,9 @@ def _selected_compensated_state(system, assembled, measurements):
     if status:
         return None, status
     rd, cd = system.real_dtype, system.complex_dtype
+    execute = system.pair_product
+    if execute is None:
+        raise RuntimeError('scoped compensated arithmetic requires the compiled pair_product adapter')
     Q, Qp = system.csc(q, measurements), system.csc(qp, measurements)
     Qlo, Qplo = system.csc(qlo, measurements), system.csc(qplo, measurements)
     selected, eliminated = system.selected, system.eliminated
@@ -399,44 +388,56 @@ def _selected_compensated_state(system, assembled, measurements):
         status = first(status, not np.all(np.isfinite(eelo.data)), 3)
         factor = SparseFactor(ee,3,status,system,measurements,permc_spec='MMD_AT_PLUS_A')
         def corrected_solve(rhs, code):
-            x, code_status = factor.seed_solve(cp.project(rhs, **kw), code)
+            prefix = 'compensation_primal' if code == 3 else 'compensation_derivative'
+            x, code_status = factor.seed_solve(cp.project(rhs, **kw), code,
+                                              phase=prefix+'_seed_solve')
             if code_status:
                 return x, code_status, rd(np.inf), None
-            with measurements.phase('sparse_residual_check',stage=code,columns=rhs[0].shape[1]):
-                residual_pair = cp.negate(cp.residual(ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs))
-            delta, code_status = factor.seed_solve(cp.project(residual_pair, **kw),code)
+            with measurements.phase(prefix+'_correction_residual',stage=code,columns=rhs[0].shape[1]):
+                residual_pair = cp.negate(cp.residual(
+                    ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs,execute=execute))
+            delta, code_status = factor.seed_solve(cp.project(residual_pair, **kw),code,
+                                                  phase=prefix+'_correction_solve')
             if code_status:
                 return x, code_status, rd(np.inf), None
-            x = np.asarray(cp.project(cp.add(cp.from_value(x,xp=np),cp.from_value(delta,xp=np),**kw),**kw),dtype=cd)
-            with measurements.phase('sparse_residual_check',stage=code,columns=rhs[0].shape[1]):
+            with measurements.phase(prefix+'_update',stage=code,columns=rhs[0].shape[1]):
+                x = np.asarray(cp.project(cp.add(cp.from_value(x,xp=np),cp.from_value(delta,xp=np),**kw),**kw),dtype=cd)
+            with measurements.phase(prefix+'_postverification',stage=code,columns=rhs[0].shape[1]):
                 eta, numerator, denominator = cp.solve_certificate(
-                    ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs,real_dtype=rd)
-            bad = not (np.all(np.isfinite(rhs[0])) and np.all(np.isfinite(rhs[1]))
-                       and np.all(np.isfinite(x)) and np.isfinite(eta)
-                       and eta <= tau(len(eliminated),rd))
-            code_status = first(code_status,bad,code)
+                    ee_csr,eelo_csr,cp.from_value(x,xp=np),rhs,real_dtype=rd,execute=execute)
+                bad = not (np.all(np.isfinite(rhs[0])) and np.all(np.isfinite(rhs[1]))
+                           and np.all(np.isfinite(x)) and np.isfinite(eta)
+                           and eta <= tau(len(eliminated),rd))
+                code_status = first(code_status,bad,code)
             return x,code_status,eta,dict(numerator=numerator,denominator=denominator,residual=eta)
         X,status,ex,primal_facts = corrected_solve(er,3)
         evidence['primal_certificate'] = primal_facts
         system.compensation_evidence = evidence
         if status:
             return None,status
-        prime_rhs = cp.add(erp,cp.negate(cp.sparse_matmul(eep,eeplo,cp.from_value(X,xp=np))),**kw)
+        with measurements.phase('compensation_derivative_rhs',columns=X.shape[1]):
+            prime_rhs = cp.add(erp,cp.negate(cp.sparse_matmul(
+                eep,eeplo,cp.from_value(X,xp=np),execute=execute)),**kw)
         Xp,status,exp,prime_facts = corrected_solve(prime_rhs,4)
         evidence['derivative_certificate'] = prime_facts
         if status:
             return None,status
-        Fpair = cp.add(rr,cp.negate(cp.sparse_matmul(re,relo,cp.from_value(X,xp=np))),**kw)
-        Fppair = cp.add(cp.add(rrp,cp.negate(cp.sparse_matmul(rep,replo,cp.from_value(X,xp=np))),**kw),
-                       cp.negate(cp.sparse_matmul(re,relo,cp.from_value(Xp,xp=np))),**kw)
+        with measurements.phase('compensation_schur_formation',columns=X.shape[1]):
+            Fpair = cp.add(rr,cp.negate(cp.sparse_matmul(
+                re,relo,cp.from_value(X,xp=np),execute=execute)),**kw)
+            Fppair = cp.add(cp.add(rrp,cp.negate(cp.sparse_matmul(
+                rep,replo,cp.from_value(X,xp=np),execute=execute)),**kw),
+                cp.negate(cp.sparse_matmul(re,relo,cp.from_value(Xp,xp=np),execute=execute)),**kw)
+            F,Fp = (np.asarray(cp.project(value,**kw),dtype=cd) for value in (Fpair,Fppair))
         eta_e = rd(np.maximum(ex,exp))
     else:
-        Fpair,Fppair,eta_e = rr,rrp,rd(0)
+        with measurements.phase('compensation_schur_formation',columns=len(selected)):
+            F,Fp = (np.asarray(cp.project(value,**kw),dtype=cd) for value in (rr,rrp))
+        eta_e = rd(0)
         X = np.empty((0,len(selected)),dtype=cd)
         Xp = np.empty_like(X)
         evidence['correction_policy'] = 'no_eliminated_block_no_factor_or_correction'
         system.compensation_evidence = evidence
-    F,Fp = (np.asarray(cp.project(value,**kw),dtype=cd) for value in (Fpair,Fppair))
     return (F,Fp,Q,Qp,system.csc(bound,measurements),X,Xp,eta_e,Qlo,Qplo),status
 
 

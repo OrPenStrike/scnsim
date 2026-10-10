@@ -361,6 +361,7 @@ class CircuitRun:
     __slots__ = (
         "_backend",
         "_precision",
+        "_timing",
         "_plan",
         "_snapshot",
         "_baseline_point",
@@ -385,12 +386,14 @@ class CircuitRun:
         versioned: bool = False,
         backend: str = "jax",
         precision: str = "float64",
+        timing: str = "aggregate",
     ) -> None:
         if not isinstance(plan, CircuitPlan):
             raise TypeError("plan must be a CircuitPlan")
         if not isinstance(versioned, bool):
             raise TypeError("versioned must be bool")
         self._backend, self._precision = self._backend_options(backend, precision)
+        self._timing = self._timing_options(timing)
         with plan._run_seal_preparation() as seal_token:
             self._prepare_run(
                 plan=plan,
@@ -641,6 +644,15 @@ class CircuitRun:
         )
 
     @staticmethod
+    def _timing_options(timing: str) -> str:
+        if timing not in ("aggregate", "detailed"):
+            raise ValueError("timing must be aggregate or detailed")
+        return timing
+
+    def _selected_timing(self, timing: str | None) -> str:
+        return self._timing_options(self._timing if timing is None else timing)
+
+    @staticmethod
     def _require_backend_spec(backend, precision, spec) -> None:
         if backend == "julia":
             if precision != "float64":
@@ -661,11 +673,12 @@ class CircuitRun:
                     "and manually provided Julia 1.12.6; JAX has no fallback.", stage="runtime_prepare")
 
     @contextmanager
-    def _operation_scope(self, method, backend, precision, start_tick_ns):
+    def _operation_scope(self, method, backend, precision, start_tick_ns, timing=None):
         from .benchmark.operations import OperationRecorder
         backend, precision = self._selected_backend(backend, precision)
         with OperationRecorder(self._binding, kind=method, backend=backend,
-                               precision=precision, start_tick_ns=start_tick_ns) as trace:
+                               precision=precision, start_tick_ns=start_tick_ns,
+                               timing=self._selected_timing(timing)) as trace:
             yield backend, precision, trace
 
     @overload
@@ -677,6 +690,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> DirectSolveResult: ...
 
     @overload
@@ -688,6 +702,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> HBBatchResult: ...
 
     @overload
@@ -699,6 +714,7 @@ class CircuitRun:
         parameters: ParameterSpace,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> ParameterSweepResult: ...
 
     def solve(
@@ -709,11 +725,12 @@ class CircuitRun:
         parameters: ParameterSet | ParameterSpace | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> DirectSolveResult | HBBatchResult | ParameterSweepResult:
         """Execute the selected Direct response or one shared-basis HB batch."""
 
         started_ns = perf_counter_ns()
-        with self._operation_scope("solve", backend, precision, started_ns) as (backend, precision, trace):
+        with self._operation_scope("solve", backend, precision, started_ns, timing) as (backend, precision, trace):
             self._require_ref(ref)
             self._require_backend_spec(backend, precision, spec)
             operation = "solve_hb" if isinstance(spec, HBSolveSpec) else "solve_direct"
@@ -731,6 +748,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> DiagonalRootResult: ...
 
     @overload
@@ -742,6 +760,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> OperatorElementRootResult: ...
 
     @overload
@@ -753,6 +772,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> OperatorResult: ...
 
     @overload
@@ -764,6 +784,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> DirectQuantityResult: ...
 
     @overload
@@ -775,6 +796,7 @@ class CircuitRun:
         parameters: ParameterSpace,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> ParameterSweepResult: ...
 
     def evaluate(
@@ -791,6 +813,7 @@ class CircuitRun:
         parameters: ParameterSet | ParameterSpace | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
     ) -> (
         DiagonalRootResult
         | OperatorElementRootResult
@@ -801,7 +824,7 @@ class CircuitRun:
         """Evaluate one typed Direct quantity without an unrelated sweep."""
 
         started_ns = perf_counter_ns()
-        with self._operation_scope("evaluate", backend, precision, started_ns) as (backend, precision, trace):
+        with self._operation_scope("evaluate", backend, precision, started_ns, timing) as (backend, precision, trace):
             self._require_ref(ref)
             self._require_backend_spec(backend, precision, spec)
             with trace.span("preparation"):
@@ -833,6 +856,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
@@ -848,6 +872,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
@@ -862,6 +887,7 @@ class CircuitRun:
         parameters: ParameterSet | None = None,
         backend: str | None = None,
         precision: str | None = None,
+        timing: str | None = None,
         on_progress: Callable[[OptimizationProgress], object] | None = None,
         checkpoint: str = "generation",
         resume_from: Mapping[str, object] | None = None,
@@ -870,7 +896,7 @@ class CircuitRun:
         """Run one pinned Direct CMA-ES request and return its exact winner."""
 
         started_ns = perf_counter_ns()
-        with self._operation_scope("optimize", backend, precision, started_ns) as (backend, precision, trace):
+        with self._operation_scope("optimize", backend, precision, started_ns, timing) as (backend, precision, trace):
             if commit_every_generations is _OMITTED_COMMIT_EVERY_GENERATIONS:
                 commit_every_generations = 10 if backend == "jax" else 1
             if isinstance(commit_every_generations, bool) or not isinstance(commit_every_generations, int):

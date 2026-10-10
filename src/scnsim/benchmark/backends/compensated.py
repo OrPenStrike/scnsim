@@ -1,7 +1,7 @@
 """Selected-dtype compensated arithmetic for sparse solve certificates.
 
 The JAX numerical owner supplies ``xp`` and, when needed, an optimization
-barrier. Sparse multiplication and certificate reduction are host operations;
+barrier. Sparse multiplication is compiled by the numerical adapter; certificate reduction remains on the host;
 this module does not import JAX or choose numerical failure policy.
 """
 from __future__ import annotations
@@ -199,45 +199,70 @@ def project(a: Pair, *, xp: Any,
     return _rounded(a[0] + a[1], barrier)
 
 
-def _row_product(matrix: Any, vector: Pair, *, row: int,
-                 xp: Any, barrier: Any | None) -> Pair:
-    shape = vector[0].shape[1:]
-    dtype = vector[0].dtype
-    total: Pair = (xp.zeros(shape, dtype=dtype), xp.zeros(shape, dtype=dtype))
-    zero = xp.asarray(0, dtype=matrix.data.dtype)
-    start, stop = matrix.indptr[row], matrix.indptr[row + 1]
-    for offset in range(start, stop):
-        column = matrix.indices[offset]
-        coefficient = xp.asarray(matrix.data[offset], dtype=dtype)
-        term = multiply((coefficient, zero),
-                        (vector[0][column], vector[1][column]),
-                        xp=xp, barrier=barrier)
-        total = add(total, term, xp=xp, barrier=barrier)
-    return total
+def _csr_component(data: Any, indices: Any, indptr: Any, X: Pair, *,
+                   xp: Any, lax: Any, barrier: Any) -> Pair:
+    """Independent CSR rows, each consuming its stored entries in order.
 
-
-def sparse_matmul(A_hi: Any, A_lo: Any, X: Pair) -> Pair:
-    """Multiply caller-supplied high/low CSR matrices by a compensated RHS.
-
-    The sparse entries are consumed directly in their stored row order; no
-    dense matrix or dense sparse-operator conversion is formed. The numerical
-    owner supplies CSR inputs here; factorization may retain its own CSC form.
+    Ragged rows advance in lockstep. Inactive lanes use safe operands and
+    retain their accumulator bits; no padded matrix/stencil is constructed.
+    Compilation exposes row/RHS array work, not a multicore guarantee.
     """
-    import numpy as np
-
-    rows = A_hi.shape[0]
-    output_shape = (rows,) + X[0].shape[1:]
-    high = np.zeros(output_shape, dtype=X[0].dtype)
-    low = np.zeros(output_shape, dtype=X[0].dtype)
-    for row in range(rows):
-        hi_total = _row_product(A_hi, X, row=row, xp=np, barrier=None)
-        lo_total = _row_product(A_lo, X, row=row, xp=np, barrier=None)
-        combined = add(hi_total, lo_total, xp=np)
-        high[row], low[row] = combined
+    rows = indptr.shape[0] - 1
+    shape = (rows,) + X[0].shape[1:]
+    initial = (xp.zeros(shape, dtype=X[0].dtype),
+               xp.zeros(shape, dtype=X[0].dtype), indptr[:-1])
+    if data.shape[0] == 0:
+        return initial[:2]
+    ends = indptr[1:]
+    lane_shape = (rows,) + (1,) * (X[0].ndim - 1)
+    zero = xp.asarray(0, dtype=X[0].dtype)
+    def pending(state):
+        return xp.any(state[2] < ends)
+    def advance(state):
+        hi, lo, cursor = state
+        active = cursor < ends
+        # Inactive cursors may equal nnz. Never gather that out-of-range index.
+        offset = xp.where(active, cursor, xp.asarray(0, dtype=cursor.dtype))
+        column = indices[offset]
+        mask = active.reshape(lane_shape)
+        coefficient = xp.asarray(data[offset], dtype=X[0].dtype).reshape(lane_shape)
+        coefficient = xp.where(mask, coefficient, zero)
+        vector = (xp.where(mask, X[0][column], zero),
+                  xp.where(mask, X[1][column], zero))
+        term = multiply((coefficient, xp.zeros_like(coefficient)), vector,
+                        xp=xp, barrier=barrier)
+        updated = add((hi, lo), term, xp=xp, barrier=barrier)
+        return (xp.where(mask, updated[0], hi),
+                xp.where(mask, updated[1], lo),
+                cursor + active.astype(cursor.dtype))
+    high, low, _ = lax.while_loop(pending, advance, initial)
     return high, low
 
 
-def residual(A_hi: Any, A_lo: Any, X: Pair, B: Pair) -> Pair:
+def csr_pair_product(payload: tuple[Any, ...], *, xp: Any, lax: Any,
+                     barrier: Any) -> Pair:
+    """Pure runtime-array kernel: high traversal, low traversal, then combine."""
+    hi_data, hi_indices, hi_indptr, lo_data, lo_indices, lo_indptr, xhi, xlo = payload
+    X = (xhi, xlo)
+    high = _csr_component(hi_data, hi_indices, hi_indptr, X,
+                          xp=xp, lax=lax, barrier=barrier)
+    low = _csr_component(lo_data, lo_indices, lo_indptr, X,
+                         xp=xp, lax=lax, barrier=barrier)
+    return add(high, low, xp=xp, barrier=barrier)
+
+
+def sparse_matmul(A_hi: Any, A_lo: Any, X: Pair, *, execute: Any) -> Pair:
+    """Use the required adapter's compiled CSR kernel; no host-loop fallback.
+
+    Caller supplies CSR operands. The adapter owns dtype context, device,
+    synchronization, executable reuse and the operation resource lease.
+    """
+    payload = (A_hi.data, A_hi.indices, A_hi.indptr,
+               A_lo.data, A_lo.indices, A_lo.indptr, X[0], X[1])
+    return execute(payload)
+
+
+def residual(A_hi: Any, A_lo: Any, X: Pair, B: Pair, *, execute: Any) -> Pair:
     """Return the compensated sparse residual ``(A_hi+A_lo)X-B``.
 
     ``A_hi`` and ``A_lo`` are the caller-supplied CSR matrices; this helper
@@ -245,12 +270,12 @@ def residual(A_hi: Any, A_lo: Any, X: Pair, B: Pair) -> Pair:
     """
     import numpy as np
 
-    product = sparse_matmul(A_hi, A_lo, X)
+    product = sparse_matmul(A_hi, A_lo, X, execute=execute)
     return add(product, negate(B), xp=np)
 
 
 def solve_certificate(A_hi: Any, A_lo: Any, X: Pair, B: Pair, *,
-                      real_dtype: Any) -> tuple[Any, Any, Any]:
+                      real_dtype: Any, execute: Any) -> tuple[Any, Any, Any]:
     """Return the existing componentwise residual certificate and operands.
 
     Matrix inputs are the caller-supplied CSR operands. This helper does not
@@ -258,7 +283,7 @@ def solve_certificate(A_hi: Any, A_lo: Any, X: Pair, B: Pair, *,
     """
     import numpy as np
 
-    remainder = residual(A_hi, A_lo, X, B)
+    remainder = residual(A_hi, A_lo, X, B, execute=execute)
     numerator = real_dtype(np.max(np.abs(project(remainder, xp=np))))
 
     # Addition is sparse and coalesces the represented coefficient before abs;

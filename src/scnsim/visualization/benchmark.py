@@ -1556,12 +1556,18 @@ _GENERATION_PERFORMANCE_KEYS = (
 
 def _generation_performance_section(
     operations: Sequence[_TimelineOperation],
-    spans: Sequence[_TimelineSpan],
+    generation_records: Sequence[tuple[str, Mapping[str, object]]],
 ) -> str | None:
-    """Present recorded complete-population summaries, without candidate timing inference."""
+    """Present only generation summaries released after the numerical commit ACK."""
 
-    population_spans = [span for span in spans if span.kind == "population_evaluation"]
-    if not population_spans:
+    if not generation_records:
+        if any(operation.operation == "optimize_direct" for operation in operations):
+            return (
+                "<h2>Generation population performance</h2>"
+                "<p>No acknowledged complete-generation summary was recorded. "
+                "Partial or uncommitted population timing remains unreported; "
+                "no missing generation is filled with zero.</p>"
+            )
         return None
 
     operation_by_id = {operation.operation_id: operation for operation in operations}
@@ -1569,168 +1575,125 @@ def _generation_performance_section(
         operation.operation_id: index
         for index, operation in enumerate(operations, 1)
     }
-    summaries_by_operation: dict[
-        str,
-        list[tuple[_TimelineSpan, Mapping[str, object], dict[str, int | None]]],
-    ] = {}
-    unreported_by_status: dict[str, int] = {}
-    for span in population_spans:
-        details = span.details if isinstance(span.details, Mapping) else None
-        summary_value = None if details is None else details.get("generation_performance")
-        if summary_value is None:
-            unreported_by_status[span.status] = unreported_by_status.get(span.status, 0) + 1
-            continue
-        summary = _required_mapping(
-            summary_value,
-            f"population_evaluation {span.span_id}.generation_performance",
-        )
-        parsed_summary: dict[str, int | None] = {}
-        for key in _GENERATION_PERFORMANCE_KEYS:
-            if key not in summary:
-                raise KeyError(
-                    f"population generation summary is missing required field {key!r}"
-                )
-            parsed_summary[key] = _timeline_integer(
-                summary[key], f"population generation summary {key}"
-            )
-        summaries_by_operation.setdefault(span.operation_id, []).append(
-            (span, summary, parsed_summary)
-        )
-
-    if not summaries_by_operation:
-        statuses = ", ".join(
-            f"{status}: {count}" for status, count in sorted(unreported_by_status.items())
-        ) or "not recorded"
-        return (
-            "<h2>Generation population performance</h2>"
-            "<p>No completed population summary was recorded. Population-evaluation "
-            f"spans without a summary are retained as unreported ({escape(statuses)}); "
-            "no missing generation is filled with zero.</p>"
-        )
+    summaries_by_operation: dict[str, list[Mapping[str, object]]] = {}
+    for operation_id, summary in generation_records:
+        if operation_id not in operation_by_id:
+            raise ValueError("generation timing summary references an unknown operation")
+        summaries_by_operation.setdefault(operation_id, []).append(summary)
 
     table_rows: list[tuple[object, ...]] = []
     weighted_rows: list[tuple[object, ...]] = []
     plot_traces: list[tuple[str, list[int], list[float], list[str], bool]] = []
-    run_labels: dict[str, str] = {}
+    all_summaries: list[dict[str, object]] = []
+
     for operation_id, summaries in summaries_by_operation.items():
-        operation = operation_by_id[operation_id]
-        run_number = operation_order[operation_id]
-        run_label = f"Run {run_number}"
-        run_labels[operation_id] = run_label
-        ordered = sorted(
-            summaries,
-            key=lambda item: (
-                item[2]["generation"] is None,
-                item[2]["generation"] or 0,
-            ),
-        )
-        run_segments: list[tuple[list[int], list[float], list[str]]] = []
-        x_generation: list[int] = []
-        y_average_ms: list[float] = []
-        hover: list[str] = []
-        previous_generation: int | None = None
-
-        def finish_segment() -> None:
-            nonlocal x_generation, y_average_ms, hover
-            if x_generation:
-                run_segments.append((x_generation, y_average_ms, hover))
-            x_generation, y_average_ms, hover = [], [], []
-
-        total_wall_ns = 0
-        total_population = 0
-        aggregate_generation_count = 0
-        for span, summary, parsed_summary in ordered:
-            generation = parsed_summary["generation"]
-            population_size = parsed_summary["population_size"]
-            population_wall_ns = parsed_summary["population_evaluation_wall_ns"]
-            average_wall_ns = parsed_summary["average_candidate_wall_ns"]
-            new_unique = summary["new_unique_candidates"]
-            cache_hits = summary["cache_hit_occurrences"]
-            same_generation_duplicates = summary["same_generation_duplicate_occurrences"]
-            numerical_failures = summary["numerical_failure_occurrences"]
-            worker_capacity = summary["worker_capacity"]
-            active_callbacks = summary["active_worker_count"]
-            extra_counters = {
-                str(key): value
-                for key, value in summary.items()
+        run_label = f"Run {operation_order[operation_id]}"
+        ordered: list[tuple[int | None, int | None, int | None, Mapping[str, object]]] = []
+        for summary in summaries:
+            for key in _GENERATION_PERFORMANCE_KEYS:
+                if key not in summary:
+                    raise KeyError(f"generation summary is missing required field {key!r}")
+            generation = _timeline_integer(summary["generation"], "generation summary generation")
+            population = _timeline_integer(summary["population_size"], "generation summary population_size")
+            wall = _timeline_integer(
+                summary["population_evaluation_wall_ns"],
+                "generation summary population_evaluation_wall_ns",
+            )
+            average = _timeline_integer(
+                summary["average_candidate_wall_ns"],
+                "generation summary average_candidate_wall_ns",
+            )
+            extras = {
+                str(key): value for key, value in summary.items()
                 if key not in _GENERATION_PERFORMANCE_KEYS
             }
-            recorded_average = (
-                f"{average_wall_ns} ns ({average_wall_ns / 1e6:.9g} ms)"
-                if average_wall_ns is not None else "not recorded"
-            )
-            population_wall = (
-                f"{population_wall_ns} ns ({population_wall_ns / 1e6:.9g} ms)"
-                if population_wall_ns is not None else "not recorded"
-            )
             table_rows.append((
                 run_label,
                 _recorded(generation),
-                span.status,
-                _recorded(population_size),
-                population_wall,
-                recorded_average,
-                _recorded(new_unique),
-                _recorded(cache_hits),
-                _recorded(same_generation_duplicates),
-                _recorded(numerical_failures),
-                _recorded(worker_capacity),
-                _recorded(active_callbacks),
-                _native_compact(extra_counters) if extra_counters else "not recorded",
+                _recorded(population),
+                f"{wall} ns ({wall / 1e6:.9g} ms)" if wall is not None else "not recorded",
+                f"{average} ns ({average / 1e6:.9g} ms)" if average is not None else "not recorded",
+                _recorded(summary["new_unique_candidates"]),
+                _recorded(summary["cache_hit_occurrences"]),
+                _recorded(summary["same_generation_duplicate_occurrences"]),
+                _recorded(summary["numerical_failure_occurrences"]),
+                _recorded(summary["worker_capacity"]),
+                _recorded(summary["active_worker_count"]),
+                _native_compact(extras) if extras else "not recorded",
             ))
-            if generation is None or average_wall_ns is None:
+            ordered.append((generation, population, wall, summary))
+            all_summaries.append({
+                "operation_id": operation_id,
+                "run": run_label,
+                "summary": dict(summary),
+            })
+
+        ordered.sort(key=lambda item: (item[0] is None, item[0] or 0))
+        total_wall_ns = 0
+        total_population = 0
+        complete_denominator_count = 0
+        x_values: list[int] = []
+        y_values: list[float] = []
+        hover: list[str] = []
+        segments: list[tuple[list[int], list[float], list[str]]] = []
+        previous_generation: int | None = None
+
+        def finish_segment() -> None:
+            nonlocal x_values, y_values, hover
+            if x_values:
+                segments.append((x_values, y_values, hover))
+            x_values, y_values, hover = [], [], []
+
+        for generation, population, wall, summary in ordered:
+            average = summary["average_candidate_wall_ns"]
+            if generation is None or not isinstance(average, int) or isinstance(average, bool):
                 finish_segment()
                 previous_generation = None
             else:
                 if previous_generation is not None and generation != previous_generation + 1:
                     finish_segment()
-                x_generation.append(generation)
-                y_average_ms.append(average_wall_ns / 1e6)
+                x_values.append(generation)
+                y_values.append(average / 1e6)
+                hover.append("<br>".join((
+                    f"{escape(run_label)} · generation {generation}",
+                    f"population size: {escape(str(_recorded(population)))}",
+                    f"population evaluation wall: {escape(str(_recorded(wall)))} ns",
+                    f"recorded wall per population slot: {average} ns",
+                    f"new unique candidates: {escape(str(summary['new_unique_candidates']))}",
+                    f"cache-hit occurrences: {escape(str(summary['cache_hit_occurrences']))}",
+                    f"same-generation duplicates: {escape(str(summary['same_generation_duplicate_occurrences']))}",
+                    f"numerical-failure occurrences: {escape(str(summary['numerical_failure_occurrences']))}",
+                    f"worker capacity: {escape(str(summary['worker_capacity']))}",
+                    f"peak active callbacks (not CPU cores): {escape(str(summary['active_worker_count']))}",
+                )))
                 previous_generation = generation
-            point_hover = "<br>".join((
-                f"{escape(run_label)} · generation {_recorded(generation)}",
-                f"population size: {escape(str(_recorded(population_size)))}",
-                f"population evaluation wall: {escape(population_wall)}",
-                f"recorded wall per population slot: {escape(recorded_average)}",
-                f"new unique candidates: {escape(str(new_unique))}",
-                f"cache-hit occurrences: {escape(str(cache_hits))}",
-                f"same-generation duplicates: {escape(str(same_generation_duplicates))}",
-                f"numerical-failure occurrences: {escape(str(numerical_failures))}",
-                f"worker capacity: {escape(str(worker_capacity))}",
-                f"peak active candidate callbacks: {escape(str(active_callbacks))}",
-                f"operation method/backend/precision: {escape(str(_recorded(operation.method)))}/"
-                f"{escape(str(_recorded(operation.backend)))}/{escape(str(_recorded(operation.precision)))}",
-                f"span status: {escape(span.status)}",
-            ))
-            if generation is not None and average_wall_ns is not None:
-                hover.append(point_hover)
-            if population_wall_ns is not None and population_size is not None:
-                total_wall_ns += population_wall_ns
-                total_population += population_size
-                aggregate_generation_count += 1
+            if wall is not None and population is not None:
+                total_wall_ns += wall
+                total_population += population
+                complete_denominator_count += 1
 
-        if aggregate_generation_count and total_population:
-            weighted_ns = total_wall_ns / total_population
+        if complete_denominator_count and total_population:
             weighted_value = (
                 f"{total_wall_ns}/{total_population} ns/slot "
-                f"({weighted_ns / 1e6:.9g} ms/slot)"
+                f"({total_wall_ns / total_population / 1e6:.9g} ms/slot)"
             )
+            wall_text = f"{total_wall_ns} ns ({total_wall_ns / 1e9:.9g} s)"
+            population_text: object = total_population
         else:
             weighted_value = "unavailable; no recorded population wall/slot denominator"
+            wall_text = "not recorded"
+            population_text = "not recorded"
         weighted_rows.append((
             run_label,
             len(ordered),
-            total_population if aggregate_generation_count else "not recorded",
-            (
-                f"{total_wall_ns} ns ({total_wall_ns / 1e9:.9g} s)"
-                if aggregate_generation_count else "not recorded"
-            ),
+            population_text,
+            wall_text,
             weighted_value,
         ))
         finish_segment()
         plot_traces.extend(
-            (run_label, segment_x, segment_y, segment_hover, index == 0)
-            for index, (segment_x, segment_y, segment_hover) in enumerate(run_segments)
+            (run_label, xs, ys, labels, index == 0)
+            for index, (xs, ys, labels) in enumerate(segments)
         )
 
     go, pio, _ = _plotly()
@@ -1747,28 +1710,27 @@ def _generation_performance_section(
             text=hover,
             hovertemplate="%{text}<extra></extra>",
         ))
-    figure.update_xaxes(title_text="Recorded generation", rangemode="tozero")
-    figure.update_yaxes(title_text="Recorded population-evaluation wall / population size (ms)")
+    figure.update_xaxes(title_text="Recorded committed generation", rangemode="tozero")
+    figure.update_yaxes(title_text="Recorded population wall / population size (ms)")
     _style(figure, Theme.AUTO, title="Generation population evaluation")
     figure.update_layout(hovermode="closest")
 
     body = [
         "<h2>Generation population performance</h2>",
-        "<p>Each point is one recorded complete population evaluation. The per-slot "
-        "value is the recorded population-evaluation wall divided by population size; "
-        "it is a generation-level aggregate, not an individual candidate duration. "
-        "It can include dispatch, waits, and parallel overlap. Callback concurrency "
-        "is reported as callbacks in flight, not as CPU-core use or proof of native "
-        "overlap. Missing partial-generation summaries remain unfilled.</p>",
+        "<p>These summaries are included only through generations whose required "
+        "numerical commit was acknowledged. Each row describes one complete "
+        "population evaluation. Wall divided by population size is a generation "
+        "aggregate, not an individual candidate duration; it may include dispatch, "
+        "waits, and parallel overlap.</p>",
         "<h3>Weighted population wall per population slot</h3>",
         _table(
-            ("run", "summarized generations", "population slots", "summed population wall", "weighted wall per slot"),
+            ("run", "recorded generations", "population slots", "summed population wall", "weighted wall per slot"),
             weighted_rows,
         ),
         "<h3>Recorded generation summaries</h3>",
         _table(
             (
-                "run", "generation", "span status", "population size",
+                "run", "generation", "population size",
                 "population-evaluation wall", "recorded wall per slot",
                 "new unique candidates", "cache-hit occurrences",
                 "same-generation duplicate occurrences", "numerical-failure occurrences",
@@ -1777,42 +1739,23 @@ def _generation_performance_section(
             ),
             table_rows,
         ),
-        "<p>Worker capacity is the configured candidate-worker capacity. Peak active "
+        "<p>Worker capacity is configured candidate-worker capacity. Peak active "
         "candidate callbacks may include jobs waiting for assembly; it does not "
-        "establish simultaneous native execution. JAX PJRT pool settings are a "
-        "separate recorded runtime fact.</p>",
+        "establish simultaneous native execution. PJRT pool settings are a separate "
+        "runtime fact.</p>",
     ]
-    if unreported_by_status:
-        statuses = ", ".join(
-            f"{status}: {count}" for status, count in sorted(unreported_by_status.items())
-        )
-        body.append(
-            "<p>Population-evaluation spans without a generation summary were not "
-            f"averaged ({escape(statuses)}).</p>"
-        )
     if plot_traces:
-        figure_id = "scnsim-generation-performance"
-        body.append(
-            pio.to_html(
-                figure,
-                include_plotlyjs=True,
-                full_html=False,
-                auto_play=False,
-                div_id=figure_id,
-                config={"responsive": True, "scrollZoom": True},
-            )
-        )
+        body.append(pio.to_html(
+            figure,
+            include_plotlyjs=True,
+            full_html=False,
+            auto_play=False,
+            div_id="scnsim-generation-performance",
+            config={"responsive": True, "scrollZoom": True},
+        ))
     else:
         body.append("<p>No generation curve points have complete recorded timing values.</p>")
-    body.append(_details("Recorded generation_performance summaries", [
-        {
-            "run": run_labels[operation_id],
-            "generation": summary.get("generation"),
-            "summary": summary,
-        }
-        for operation_id, summaries in summaries_by_operation.items()
-        for _, summary, _ in summaries
-    ]))
+    body.append(_details("Recorded generation performance summaries", all_summaries))
     return "".join(body)
 
 
@@ -2009,21 +1952,163 @@ def _timeline_controls_script(div_id: str) -> str:
     )
 
 
-def _timeline_section(document: Mapping[str, object]) -> str:
-    """Render the verified operation projection without loading its workspace."""
+def _aggregate_timing_section(
+    operations: Sequence[_TimelineOperation],
+    batches: Sequence[Mapping[str, object]],
+) -> str | None:
+    """Combine acknowledged aggregate deltas without inventing intervals."""
 
-    operations, spans = _timeline_operations(document)
+    operation_ids = {operation.operation_id for operation in operations}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for batch_index, batch in enumerate(batches):
+        operation_id = batch.get("operation_id")
+        if not isinstance(operation_id, str) or operation_id not in operation_ids:
+            raise ValueError(f"timing_batches[{batch_index}] references an unknown operation")
+        raw_groups = _required_sequence(batch.get("aggregates", []), f"timing_batches[{batch_index}].aggregates")
+        for group_index, raw_value in enumerate(raw_groups):
+            raw = _required_mapping(raw_value, f"timing_batches[{batch_index}].aggregates[{group_index}]")
+            key_value = raw.get("group_key_sha256")
+            kind = raw.get("kind")
+            logical_parent = raw.get("logical_parent")
+            if not isinstance(key_value, str) or not isinstance(kind, str) or not isinstance(logical_parent, str):
+                raise TypeError("aggregate timing identity fields must be strings")
+            key = (operation_id, key_value)
+            count = _timeline_integer(raw.get("count"), "aggregate count")
+            elapsed_sum = _timeline_integer(raw.get("elapsed_ns_sum"), "aggregate elapsed_ns_sum")
+            elapsed_min = _timeline_integer(raw.get("elapsed_ns_min"), "aggregate elapsed_ns_min")
+            elapsed_max = _timeline_integer(raw.get("elapsed_ns_max"), "aggregate elapsed_ns_max")
+            if count is None or elapsed_sum is None or elapsed_min is None or elapsed_max is None:
+                raise TypeError("aggregate timing counts and elapsed values must be integers")
+            status_counts = _required_mapping(raw.get("status_counts"), "aggregate status_counts")
+            context = _required_mapping(raw.get("context"), "aggregate context")
+            max_context_value = raw.get("max_context")
+            max_context = (
+                _required_mapping(max_context_value, "aggregate max_context")
+                if max_context_value is not None else None
+            )
+            occurrence = _timeline_integer(raw.get("max_occurrence"), "aggregate max_occurrence")
+            current = groups.get(key)
+            if current is None:
+                groups[key] = {
+                    "operation_id": operation_id,
+                    "group_key_sha256": key_value,
+                    "kind": kind,
+                    "logical_parent": logical_parent,
+                    "context": dict(context),
+                    "count": count,
+                    "status_counts": {str(name): _timeline_integer(value, "aggregate status count") for name, value in status_counts.items()},
+                    "elapsed_ns_sum": elapsed_sum,
+                    "elapsed_ns_min": elapsed_min,
+                    "elapsed_ns_max": elapsed_max,
+                    "max_context": None if max_context is None else dict(max_context),
+                    "max_occurrence": occurrence,
+                }
+                continue
+            current["count"] = int(current["count"]) + count
+            current["elapsed_ns_sum"] = int(current["elapsed_ns_sum"]) + elapsed_sum
+            current["elapsed_ns_min"] = min(int(current["elapsed_ns_min"]), elapsed_min)
+            previous_max = int(current["elapsed_ns_max"])
+            previous_occurrence = current["max_occurrence"]
+            if (
+                elapsed_max > previous_max
+                or (
+                    elapsed_max == previous_max
+                    and occurrence is not None
+                    and isinstance(previous_occurrence, int)
+                    and occurrence < previous_occurrence
+                )
+            ):
+                current["elapsed_ns_max"] = elapsed_max
+                current["max_context"] = None if max_context is None else dict(max_context)
+                current["max_occurrence"] = occurrence
+            merged_status = current["status_counts"]
+            assert isinstance(merged_status, dict)
+            for name, value in status_counts.items():
+                parsed_count = _timeline_integer(value, "aggregate status count")
+                if parsed_count is None:
+                    raise TypeError("aggregate status count must be an integer")
+                merged_status[str(name)] = int(merged_status.get(str(name), 0)) + parsed_count
+
+    if not groups:
+        return None
+    operation_order = {operation.operation_id: index for index, operation in enumerate(operations, 1)}
+    rows: list[tuple[object, ...]] = []
+    details: list[dict[str, object]] = []
+    for key in sorted(groups, key=lambda item: (operation_order[item[0]], item[1])):
+        group = groups[key]
+        count = int(group["count"])
+        elapsed_sum = int(group["elapsed_ns_sum"])
+        mean = elapsed_sum / count
+        details.append(group)
+        rows.append((
+            f"Run {operation_order[key[0]]}",
+            group["kind"],
+            group["logical_parent"],
+            count,
+            _native_compact(group["status_counts"]),
+            f"{elapsed_sum} ns ({elapsed_sum / 1e9:.9g} s)",
+            f"{mean:.9g} ns",
+            f"{group['elapsed_ns_min']} ns",
+            f"{group['elapsed_ns_max']} ns",
+            _native_compact(group["max_context"]) if group["max_context"] is not None else "not recorded",
+        ))
+    return (
+        "<h2>Aggregate phase timing</h2>"
+        "<p>Rows combine committed aggregate deltas by operation, phase, logical parent, "
+        "and stable execution context. No per-invocation intervals are reconstructed. "
+        "Mean is derived from recorded elapsed sum and count.</p>"
+        + _table(
+            ("run", "phase", "logical parent", "count", "status counts",
+             "elapsed sum", "mean", "minimum", "maximum", "maximum context"),
+            rows,
+        )
+        + _details("Aggregate timing records", details)
+    )
+
+
+def _timeline_section(document: Mapping[str, object]) -> str:
+    """Render one verified operation projection without loading its workspace."""
+
+    raw_batches = _required_sequence(document.get("timing_batches", []), "timing_batches")
+    batches = [
+        _required_mapping(value, f"timing_batches[{index}]")
+        for index, value in enumerate(raw_batches)
+    ]
+    derived_spans: list[dict[str, object]] = []
+    generation_records: list[tuple[str, Mapping[str, object]]] = []
+    for batch_index, batch in enumerate(batches):
+        operation_id = batch.get("operation_id")
+        if not isinstance(operation_id, str):
+            raise TypeError(f"timing_batches[{batch_index}].operation_id must be a string")
+        for span_index, raw_span in enumerate(_required_sequence(
+            batch.get("spans", []), f"timing_batches[{batch_index}].spans"
+        )):
+            span = dict(_required_mapping(raw_span, f"timing_batches[{batch_index}].spans[{span_index}]"))
+            if span.get("operation_id", operation_id) != operation_id:
+                raise ValueError("detailed timing span operation identity differs from its batch")
+            span["operation_id"] = operation_id
+            span.setdefault("clock", batch.get("clock"))
+            span.setdefault("numerical_refs", [])
+            derived_spans.append(span)
+        for summary_index, raw_summary in enumerate(_required_sequence(
+            batch.get("generations", []), f"timing_batches[{batch_index}].generations"
+        )):
+            generation_records.append((
+                operation_id,
+                _required_mapping(raw_summary, f"timing_batches[{batch_index}].generations[{summary_index}]"),
+            ))
+
+    timeline_document = dict(document)
+    timeline_document["spans"] = derived_spans
+    operations, spans = _timeline_operations(timeline_document)
     figure, visible_spans = _timeline_figure(operations, spans)
     body: list[str] = [
-        "<h1>SCNSim operation timeline</h1>",
-        "<p>Each operation root is shown below its nested spans. Bars use only "
-        "recorded start/end offsets from the same clock domain. Separate clock "
-        "domains have separate axes; missing endpoints remain unknown. Root "
-        "rows sit below their nested details. Parent spans are inclusive and are "
-        "never added to child spans. Cumulative duration sums closed public-call "
-        "root intervals only; a per-clock wall envelope runs from the earliest "
-        "root start to the latest root end and can include idle or overlapping "
-        "time. No wall span is formed across different clocks.</p>",
+        "<h1>SCNSim operation timing</h1>",
+        "<p>Operation roots use their recorded start/end offsets. Nested timeline bars "
+        "are shown only for detailed-mode intervals actually stored in timing batches. "
+        "Aggregate-mode measurements remain summary tables and cannot reconstruct an "
+        "interval timeline. Separate clock domains have separate axes; missing endpoints "
+        "remain unknown. Parent spans are inclusive and are never added to child spans.</p>",
         _timeline_filters(operations),
     ]
     cumulative_label, wall_rows = _timeline_root_summaries(operations)
@@ -2035,16 +2120,19 @@ def _timeline_section(document: Mapping[str, object]) -> str:
         ("clock domain", "root operations", "wall envelope", "clock binding"),
         wall_rows,
     ))
-    generation_section = _generation_performance_section(operations, spans)
+    generation_section = _generation_performance_section(operations, generation_records)
     if generation_section is not None:
         body.append(generation_section)
+    aggregate_section = _aggregate_timing_section(operations, batches)
+    if aggregate_section is not None:
+        body.append(aggregate_section)
     if figure is None:
-        body.append("<h2>Timeline</h2><p>No clock-aligned span intervals were recorded.</p>")
+        body.append("<h2>Detailed timeline</h2><p>No clock-aligned root or detailed intervals were recorded.</p>")
     else:
         div_id = "scnsim-operation-timeline"
         _, pio, _ = _plotly()
         body.append(
-            "<h2>Timeline</h2>"
+            "<h2>Root and detailed timing intervals</h2>"
             + pio.to_html(
                 figure,
                 include_plotlyjs=True,
@@ -2060,8 +2148,8 @@ def _timeline_section(document: Mapping[str, object]) -> str:
             for span in spans
         )
         body.append(
-            f"<p>{visible_spans} recorded spans have same-clock start offsets; "
-            f"{unaligned} rows with a missing start or clock id remain unaligned in the details.</p>"
+            f"<p>{visible_spans} root/detailed rows have same-clock start offsets; "
+            f"{unaligned} rows with missing start or clock id remain unaligned.</p>"
         )
 
     operation_rows = []
@@ -2098,44 +2186,66 @@ def _timeline_section(document: Mapping[str, object]) -> str:
         ("record", "schema version", "Plan SHA-256", "workspace instance"),
         (identity,),
     ))
-    span_counts: dict[str, int] = {}
     operation_status_counts: dict[str, int] = {}
-    historical_counts: dict[str, int] = {}
+    span_counts: dict[str, int] = {}
+    batch_modes: dict[str, int] = {}
     for operation in operations:
         operation_status_counts[operation.status] = operation_status_counts.get(operation.status, 0) + 1
     for span in spans:
-        span_counts[span.kind] = span_counts.get(span.kind, 0) + 1
-    historical_records = _required_sequence(document["historical_records"], "historical_records")
-    for index, raw_record in enumerate(historical_records):
-        record = _required_mapping(raw_record, f"historical_records[{index}]")
-        kind = record.get("kind")
-        key = kind if isinstance(kind, str) else "not recorded"
-        historical_counts[key] = historical_counts.get(key, 0) + 1
+        if not span.root:
+            span_counts[span.kind] = span_counts.get(span.kind, 0) + 1
+    for batch in batches:
+        mode = batch.get("timing_mode")
+        if isinstance(mode, str):
+            batch_modes[mode] = batch_modes.get(mode, 0) + 1
     count_rows = (
         [("operation status", key, value) for key, value in sorted(operation_status_counts.items())]
-        + [("span kind", key, value) for key, value in sorted(span_counts.items())]
-        + [("historical record kind", key, value) for key, value in sorted(historical_counts.items())]
+        + [("detailed span kind", key, value) for key, value in sorted(span_counts.items())]
+        + [("timing mode", key, value) for key, value in sorted(batch_modes.items())]
     )
     body.append("<h2>Recorded row counts</h2>" + _table(
         ("category", "key", "recorded rows"),
         count_rows,
     ))
-    body.append(_details("Clock domains recorded on rows", [
+    task_states_value = document.get("task_states", {})
+    task_states = _required_mapping(task_states_value, "task_states")
+    task_state_rows = []
+    for operation_id in sorted(task_states):
+        state = _required_mapping(task_states[operation_id], f"task_states[{operation_id}]")
+        association = state.get("association")
+        task_status = state.get("task_status")
+        task_state_rows.append((
+            operation_id,
+            _native_compact(association) if association is not None else "not associated",
+            _recorded(task_status),
+            _native_compact(state.get("latest_state_reference")),
+            _native_compact(state.get("checkpoint_reference")),
+        ))
+    if task_state_rows:
+        body.append("<h2>Independent task state and checkpoint references</h2>" + _table(
+            ("operation id", "association", "task status", "latest state reference", "checkpoint reference"),
+            task_state_rows,
+        ))
+    body.append(_details("Timing batch records", batches))
+    body.append(_details("Task state references", [
         {
-            "operation_id": operation.operation_id,
-            "clock": operation.clock,
+            "operation_id": operation_id,
+            "association": state.get("association"),
+            "task_status": state.get("task_status"),
+            "latest_state_reference": state.get("latest_state_reference"),
+            "checkpoint_reference": state.get("checkpoint_reference"),
         }
+        for operation_id, raw_state in sorted(task_states.items())
+        for state in [_required_mapping(raw_state, f"task_states[{operation_id}]")]
+    ]))
+    body.append(_details("Clock domains recorded on roots and detailed intervals", [
+        {"operation_id": operation.operation_id, "clock": operation.clock}
         for operation in operations
     ] + [
-        {
-            "operation_id": span.operation_id,
-            "span_id": span.span_id,
-            "clock": span.clock,
-        }
+        {"operation_id": span.operation_id, "span_id": span.span_id, "clock": span.clock}
         for span in spans if not span.root
     ]))
-    body.append(_details("Historical records", document["historical_records"]))
-    body.append("<h2>Operation and span details</h2>")
+    body.append("<h2>Operation and detailed interval details</h2>")
     for operation in operations:
         related = [span for span in spans if span.operation_id == operation.operation_id]
         body.append(_details(
@@ -2174,7 +2284,6 @@ def _timeline_section(document: Mapping[str, object]) -> str:
         ))
     return "".join(body)
 
-
 def render_benchmark(result: BenchmarkResult) -> str:
     """Render one exact manifest as standalone HTML without running or mutating it."""
 
@@ -2184,7 +2293,7 @@ def render_benchmark(result: BenchmarkResult) -> str:
     schema = document.get("schema")
     version = document.get("schema_version")
     if schema == "scnsim.operation_benchmark":
-        if version != 1:
+        if version != 2:
             raise ValueError("unsupported operation benchmark record version")
         return _report_html(_timeline_section(document), Theme.AUTO)
     if schema != "scnsim.benchmark_record":

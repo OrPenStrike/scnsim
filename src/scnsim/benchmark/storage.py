@@ -1,8 +1,9 @@
-"""Operation storage facade and historical readonly file projections.
+"""Operation storage facade for the current SQLite Workspace format.
 
-Current writes belong to sqlite_storage.py. File-journal helpers below exist
-only to read immutable historical records; they never migrate or publish them.
-Domain expansion is shared so reference storage does not change numerical meaning.
+Current public reads and writes use sqlite_storage.py. Old file-journal helpers
+are not a fallback route for current Workspaces; old operation references fail
+with UnsupportedEvidenceVersionError. Domain expansion stays shared so storage
+changes do not alter numerical meaning.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from typing import Any, Iterator, cast
 if sys.platform in {"linux", "darwin"}:
     import fcntl
 
-from ..errors import EvidenceIntegrityError
+from ..errors import EvidenceIntegrityError, UnsupportedEvidenceVersionError
 from ..workspace.primitives import _inside
+from ..workspace.operation_store import _VERSION as _OPERATION_STORE_VERSION
 from ..workspace.storage import _load_canonical
 from ..workspace.store import _require_platform
 from . import journal
@@ -41,7 +43,7 @@ _OCCURRENCE_FIELDS = frozenset({
     "continuation_t_f64",
 })
 _DIAGNOSTIC_EVENTS = frozenset({
-    "timing", "population_observed", "evaluation", "progress", "operation_span",
+    "population_observed", "evaluation", "progress",
 })
 
 
@@ -850,13 +852,11 @@ def _legacy_open_record(workspace: str | os.PathLike[str]) -> BenchmarkResult:
         document = _materialize_document(root, document)
         declaration = document.get("declaration")
         if isinstance(declaration, Mapping) and declaration.get("schema") == "scnsim.operation_trace":
-            from .operations import project_operation_record
-
-            return project_operation_record(
-                document,
-                workspace=root,
-                plan_sha256=declaration.get("plan_sha256"),
-                workspace_instance_id=declaration.get("workspace_instance_id"),
+            raise UnsupportedEvidenceVersionError(
+                "This Workspace uses an older benchmark evidence format; use a new Workspace and recompute.",
+                stage="benchmark_record",
+                evidence={"path": str(root / _RECORD_NAME),
+                          "action": "use a new Workspace and recompute"},
             )
     return BenchmarkResult.from_document(root, document)
 
@@ -1377,53 +1377,53 @@ def _legacy_read_checkpoint(
 
 
 # Discriminated domain reads share the existing schema/normalization authority.
+def _require_sqlite_reference(reference):
+    if not isinstance(reference, Mapping):
+        raise _integrity("Benchmark object reference is malformed.")
+    if (reference.get("storage") != "sqlite"
+            or reference.get("schema_version") != _OPERATION_STORE_VERSION):
+        raise UnsupportedEvidenceVersionError(
+            "This Workspace uses an older benchmark evidence format; use a new Workspace and recompute.",
+            stage="benchmark_reference",
+            evidence={"storage": reference.get("storage"),
+                      "schema_version": reference.get("schema_version"),
+                      "action": "use a new Workspace and recompute"},
+        )
+
+
 def _read_immutable(root, reference, *, role):
-    if reference.get("storage") == "sqlite":
-        from .sqlite_storage import read_object
-        return read_object(root, reference, role=role)
-    return journal.read_immutable(root, reference, role=role)
+    _require_sqlite_reference(reference)
+    from .sqlite_storage import read_object
+    return read_object(root, reference, role=role)
 
 
 def _read_domain_document(root, reference, *, schema, role, bind):
-    if reference.get("storage") == "sqlite":
-        from .sqlite_storage import read_document
-        return read_document(root, reference, schema=schema, role=role, bind=bind)
-    return journal.read_document(root, reference, schema=schema, role=role, bind=bind)
+    _require_sqlite_reference(reference)
+    from .sqlite_storage import read_document
+    return read_document(root, reference, schema=schema, role=role, bind=bind)
 
 
 def open_legacy_operation_record(binding):
-    return _legacy_open_operation_record(binding)
+    root = operation_workspace(binding)
+    path = root / _RECORD_NAME
+    if path.exists():
+        raise UnsupportedEvidenceVersionError(
+            "This Workspace uses an older benchmark evidence format; use a new Workspace and recompute.",
+            stage="benchmark_record",
+            evidence={"path": str(path), "action": "use a new Workspace and recompute"},
+        )
+    from ..workspace.operation_store import OperationStore
+    OperationStore.open_readonly(root)
+    return None
 
 
-def _merge_sqlite_legacy(root, current):
-    from .operations import _count
-    previous = _legacy_open_record(root).document()
-    document = current.document()
-    if previous.get("schema") != "scnsim.operation_benchmark":
-        raise _integrity("Historical operation record has an incompatible projection.")
-    for field, identity in (("operations", "operation_id"), ("spans", "span_id")):
-        rows = [*previous[field], *document[field]]
-        if len({row[identity] for row in rows}) != len(rows):
-            raise _integrity("Operation identity is duplicated across storage authorities.", field=field)
-        document[field] = rows
-    document["historical_records"] = previous.get("historical_records", [])
-    document["numerical_refs"] = [*previous.get("numerical_refs", []), *document.get("numerical_refs", [])]
-    clocks = {clock["id"]: clock for clock in [*previous.get("clock_domains", []), *document.get("clock_domains", [])]}
-    document["clock_domains"] = list(clocks.values())
-    document["counts"] = {"operations":len(document["operations"]),"spans":len(document["spans"]),
-        "operation_status":_count(document["operations"],"status"),
-        "span_kind":_count(document["spans"],"kind"),
-        "historical_kind":previous.get("counts", {}).get("historical_kind", {})}
-    return BenchmarkResult.from_document(root, document)
-
-
-# One current writer; historical format handlers above are explicitly readonly.
+# Current public operation APIs below use only the v4 SQLite reader/writer.
 from .sqlite_storage import (
     TaskWriter, append_event, begin_attempt, begin_task_writer, bind_operation,
     bind_operation_attempt, commit_barrier, complete_operation, ensure_operation_task,
     ensure_task, find_operation_success, finish_operation, flush_completed,
     initialize_operation_record, open_record, operation_task_record, query_operation_rows,
-    read_checkpoint, read_operation_success, record_operation_event,
+    publish_timing_batch, read_checkpoint, read_operation_success,
     recover_operation_workspace, start_operation, store_operation_request, task_record,
     update_attempt, write_artifact,
 )

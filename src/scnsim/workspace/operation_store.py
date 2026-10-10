@@ -21,11 +21,15 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
-from ..errors import EvidenceIntegrityError, WorkspaceRecoveryRequiredError
+from ..errors import (
+    EvidenceIntegrityError,
+    UnsupportedEvidenceVersionError,
+    WorkspaceRecoveryRequiredError,
+)
 from .storage import _fsync_directory
 
 _DATABASE = "operations.sqlite3"
-_VERSION = 3
+_VERSION = 4
 _SCHEMA = (
     "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE objects (sha256 TEXT PRIMARY KEY, payload BLOB NOT NULL)",
@@ -44,16 +48,20 @@ _SCHEMA = (
     "start_ns INTEGER, end_ns INTEGER, clock_id TEXT, "
     "FOREIGN KEY(sha256,role) REFERENCES object_roles(sha256,role))",
     "CREATE INDEX operation_filters ON operations(method,backend,precision,status)",
-    "CREATE TABLE spans (span_id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, role TEXT NOT NULL, "
-    "operation_id TEXT NOT NULL, parent_span_id TEXT, kind TEXT, start_ns INTEGER, "
-    "end_ns INTEGER, clock_id TEXT, "
-    "FOREIGN KEY(sha256,role) REFERENCES object_roles(sha256,role))",
-    "CREATE INDEX span_operations ON spans(operation_id,start_ns,span_id)",
 )
 
 
 def _integrity(message: str, **evidence: object) -> EvidenceIntegrityError:
     return EvidenceIntegrityError(message, stage="operation_store", evidence=evidence)
+
+
+def _unsupported_version(found: str) -> UnsupportedEvidenceVersionError:
+    return UnsupportedEvidenceVersionError(
+        "Operation evidence uses an unsupported version; use a new Workspace and recompute.",
+        stage="operation_store",
+        evidence={"found_schema_version": found, "supported_schema_version": _VERSION,
+                  "action": "use a new Workspace and recompute"},
+    )
 
 
 def _reference(digest: str, role: str, length: int) -> dict[str, Any]:
@@ -144,8 +152,10 @@ class OperationStore:
                 connection = store._connect(mode="ro")
                 connection.execute("BEGIN")
                 metadata = dict(connection.execute("SELECT key,value FROM metadata"))
-                if set(metadata) != {"schema_version", "plan_sha256", "workspace_instance_id"} or metadata["schema_version"] != str(_VERSION):
+                if set(metadata) != {"schema_version", "plan_sha256", "workspace_instance_id"}:
                     raise _integrity("Operation database binding metadata is malformed.")
+                if metadata["schema_version"] != str(_VERSION):
+                    raise _unsupported_version(metadata["schema_version"])
                 return cls(root, plan_sha256=metadata["plan_sha256"],
                            workspace_instance_id=metadata["workspace_instance_id"])
             except sqlite3.Error as error:
@@ -192,6 +202,8 @@ class OperationStore:
 
     def _verify_binding(self, connection: sqlite3.Connection) -> None:
         actual = dict(connection.execute("SELECT key,value FROM metadata"))
+        if actual.get("schema_version") is not None and actual["schema_version"] != str(_VERSION):
+            raise _unsupported_version(actual["schema_version"])
         if actual != self._metadata:
             raise _integrity("Operation database does not belong to this bound Plan leaf.",
                              expected=self._metadata, actual=actual)
@@ -471,7 +483,7 @@ class Snapshot:
     def _query(self, table: str, clauses: list[str], values: list[Any]) -> list[dict[str, Any]]:
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = self._connection.execute(
-            f"SELECT sha256,role FROM {table}{where} ORDER BY start_ns,{ 'operation_id' if table == 'operations' else 'span_id'}", values)
+            f"SELECT sha256,role FROM {table}{where} ORDER BY start_ns,operation_id", values)
         result = []
         for digest, role in rows:
             reference = self._ref(digest, role)
@@ -492,12 +504,6 @@ class Snapshot:
                 clauses.append(key + "=?")
                 values.append(value)
         return self._query("operations", clauses, values)
-
-    def query_spans(self, operation_ids: Sequence[str]) -> list[dict[str, Any]]:
-        if not operation_ids:
-            return []
-        return self._query("spans", ["operation_id IN (" + ",".join("?" for _ in operation_ids) + ")"], list(operation_ids))
-
 
 class StoreTransaction(Snapshot):
     """Mutation mechanics inside one store-owned SQL transaction."""
@@ -520,7 +526,7 @@ class StoreTransaction(Snapshot):
         self._connection.execute("INSERT INTO object_roles VALUES (?,?) ON CONFLICT DO NOTHING", (digest, role))
         return _reference(digest, role, len(payload))
 
-    def append(self, stream: str, kind: str, payload: bytes) -> int:
+    def append_with_ref(self, stream: str, kind: str, payload: bytes) -> tuple[int, dict[str, Any]]:
         reference = self.put_object(payload, role=kind)
         self._connection.execute("INSERT INTO streams VALUES (?,0) ON CONFLICT DO NOTHING", (stream,))
         self._connection.execute("UPDATE streams SET revision=revision+1 WHERE name=?", (stream,))
@@ -528,7 +534,10 @@ class StoreTransaction(Snapshot):
         self._connection.execute("INSERT INTO entries VALUES (?,?,?,?,?)",
                                  (stream, sequence, kind, reference["sha256"], reference["role"]))
         self.counts["appended_rows"] += 1
-        return sequence
+        return sequence, reference
+
+    def append(self, stream: str, kind: str, payload: bytes) -> int:
+        return self.append_with_ref(stream, kind, payload)[0]
 
     def set_pointer(self, name: str, object_ref: Mapping[str, Any]) -> None:
         self.get_object(object_ref)
@@ -556,14 +565,3 @@ class StoreTransaction(Snapshot):
             (operation_id, object_ref["sha256"], object_ref["role"], method, backend, precision,
              status, start_ns, end_ns, clock_id))
 
-    def index_span(self, span_id: str, object_ref: Mapping[str, Any], *, operation_id: str,
-                   parent_span_id: str | None, kind: str | None, start_ns: int | None,
-                   end_ns: int | None, clock_id: str | None) -> None:
-        self.get_object(object_ref)
-        self._connection.execute(
-            "INSERT INTO spans VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(span_id) DO UPDATE SET "
-            "sha256=excluded.sha256,role=excluded.role,operation_id=excluded.operation_id,"
-            "parent_span_id=excluded.parent_span_id,kind=excluded.kind,start_ns=excluded.start_ns,"
-            "end_ns=excluded.end_ns,clock_id=excluded.clock_id",
-            (span_id, object_ref["sha256"], object_ref["role"], operation_id, parent_span_id,
-             kind, start_ns, end_ns, clock_id))

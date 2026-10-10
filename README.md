@@ -46,6 +46,15 @@ outputs. These additions remain `CONVERGING` pending source-bound functional
 observations; no performance or numerical acceptance is implied. Published
 Alpha snapshots and historical outputs retain their original identities.
 
+Run diagnostics default to `CircuitRun(..., timing="aggregate")`; per-call
+`solve/evaluate/optimize(..., timing=None)` inherits this setting, or explicit
+`"detailed"` records actual low-level intervals. Aggregates record phase counts,
+inclusive sum/min/max and maximum context; they cannot reconstruct a detailed
+timeline. Timing is separate from numerical evidence and does not force cache
+recomputation. Optional diagnostic write failure warns without hiding an already
+committed numerical result; required storage/integrity/callback failures retain
+their failure contract. Current operation evidence uses SQLite version4.
+
 Scalar root, pole, zero, response and coupling Results offer themed HTML through
 `result.show(detailed=False)` and detached Figure tables through
 `result.plot(detailed=False)`. Set `detailed=True` to include provenance and
@@ -70,8 +79,8 @@ buffered evidence and possible recomputation after interruption.
 Current JAX operation evidence uses a Plan-leaf SQLite store. Same-version exact
 checkpoint references resume only committed full CMA/RNG state; checkpoint off
 creates no resumable state. Readonly access never repairs a hot journal: recovery
-is explicit on the bound Run. Historical workspaces remain readonly without
-migration. Public interfaces and saved workspace compatibility may change before
+is explicit on the bound Run. Older operation Workspaces are unsupported: use a new Workspace and recompute;
+there is no legacy reader or migration, and old data are not automatically deleted. Public interfaces and saved workspace compatibility may change before
 a stable release; pin exact versions and preserve their environments.
 
 ## A first Direct S11 result

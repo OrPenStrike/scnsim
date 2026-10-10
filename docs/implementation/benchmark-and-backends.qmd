@@ -16,8 +16,9 @@ stdlib SQLite database per Plan leaf at `operations/operations.sqlite3`, using
 DELETE journaling and EXTRA synchronization. This is a target contract, not a
 claim that the implementation or observations below have completed. Dev11
 outputs remain historical evidence; the new goal does not rerun that writer or
-its old-flow tests. Historical workspace readers remain read-only, with no
-migration or fallback writer.
+its old-flow tests. Current operation stores use SQLite version4. Older databases or file-journal
+stores fail with `UnsupportedEvidenceVersionError`: use a new Workspace and
+recompute. Old data are neither migrated nor automatically deleted.
 
 JAX Optimization defaults to `commit_every_generations=10`, a positive integer
 excluding booleans. Explicit `None` remains invalid. Omission resolves after
@@ -256,19 +257,34 @@ contract; this operation-store replacement does not rewrite native receipts.
 
 `run.benchmark(*, operations=None, method=None, backend=None, precision=None, status=None) -> BenchmarkResult` reads this
 Run's current Plan leaf. Optional operation-ID and method/backend/precision/status filters select recorded
-operations; omitted filters select all recorded operations in that leaf. It does
+operations; omitted filters select all recorded operations in that leaf. A status
+filter matches the independently recorded operation status **or** `task_status`.
+The report preserves both facts: committed task success does not synthesize a
+successful operation finalization, and diagnostic failure cannot hide that
+committed numerical state. It does
 not accept a Spec, backend arm, alternate workspace or launch controls. The old
-public comparison executor is superseded; historical comparison documents remain
-readable through `BenchmarkResult.open(workspace)` without execution or migration.
+public comparison executor is superseded. `BenchmarkResult.open(workspace)`
+reads current version4 operation stores; older operation stores fail explicitly
+and require a new Workspace and recomputation.
 
 Every solve/evaluate/optimize operation has one root span beginning at the
-method's first clock read. Before its endpoint, `operation_finalization` measures
-Plan ownership acquisition and pending-span archival; its end coincides with the
-root endpoint. Only the final root append and return tail remain outside that
-endpoint. Large evidence, checkpoint and span-archive work stays inside the root;
-no child interval extends past its root. Resolve and Benchmark remain fully
+method's first clock read. The root interval includes final Plan-writer
+acquisition, Plan revalidation and pending diagnostic publication before its
+endpoint; these finalization costs have no separate named phase row. Only the
+final root append and return tail remain outside that endpoint. Large evidence,
+checkpoint and diagnostic archival work stays inside the root; no child interval
+extends past its root. Resolve and Benchmark remain fully
 read-only and persist no spans.
-Actual nested spans describe preparation, cache lookup, lowering/View, transfer,
+`CircuitRun(..., timing="aggregate")` defaults to online grouped timing;
+`solve/evaluate/optimize(..., timing=None)` inherits that setting, while explicit
+`"aggregate"` or `"detailed"` overrides it. Diagnostic mode is absent from
+numerical request/cache/checkpoint math identity. Detailed cache hits do not
+recompute. Aggregates show count/status, inclusive sum/min/max and actual max
+context; mean is derived on read. They cannot reconstruct a detailed Timeline.
+Only detailed mode retains low-level actual intervals; known root/top-level
+intervals remain truthful. Optimization keeps generation-only timing.
+
+Actual nested intervals describe preparation, cache lookup, lowering/View, transfer,
 executable preparation, synchronized numerical batches, sweep points and CMA
 ask/tell/generations/checkpoint publication. Every span binds `operation_id`,
 `span_id`, nullable `parent_span_id`, kind, clock, actual start/end and status.
@@ -282,12 +298,17 @@ outcomes and candidate occurrences carry references to their original evidence.
 Trace buffering at generation/end follows the evidence barriers; callback
 notification preserves durability-before-notify. Interrupted submissions and
 terminated processes retain partial evidence; missing tails stay unknown.
-After durable acknowledgement, the recorder releases the acknowledged spans
-from its pending buffer instead of retaining and resubmitting the full history.
+Optional timing batches are stored once in independent operation timing streams,
+never copied into numerical task events or measurement bodies. After their own
+durable acknowledgement, the recorder releases acknowledged increments instead
+of retaining and resubmitting the full history.
 It retains the identity and active parent/clock state needed by subsequent
 spans. Unacknowledged spans and the available failure tail remain pending under
 the existing commit/reconciliation contract; an uncertain publication is not
-treated as acknowledged. Archival does not discard persisted diagnostic data.
+treated as acknowledged. Archival does not discard persisted diagnostic data. Timing write failure stops
+diagnostics for that operation, including optional root finalization writes,
+independently of required numerical ACK and callback. An otherwise committed success returns with RuntimeWarning; required
+commit/integrity/callback failures and real interruptions keep their ownership.
 For a recorded failure/interruption, the public root's `details.failure` exposes
 the exact saved failure record, including available type, kind, stage, message
 and evidence. The reader does not infer a failure or result that was not saved.
@@ -371,7 +392,12 @@ conditions, add a tolerance or certify a previously failed candidate.
 For retained, non-port-realizable Z transfer-zero only, the dev20 CONVERGING
 candidate uses two-component expansions in the selected base dtype
 (Float32/Complex64 or Float64/Complex128) through assembly and selected Schur
-formation. The high-part factorization is performed once and reused for one
+formation. The high/low sparse action uses one compiled JAX CSR row-batched core with
+runtime coefficients, indices and RHS, ordered high/low traversal and masked
+inactive rows. It preserves sparse structure without a dense operator or padded
+stencil and replaces the former per-row Python dispatch. Transfer, compilation,
+synchronized compute and download have separate diagnostic phases.
+The high-part factorization is performed once and reused for one
 fixed low-aware correction. Corrected-equation certification retains the pair
 representation as its numerical authority. Consistently formed F/Fp are then
 projected to declared-dtype Y/Yp for the current Z cofactor and denominator
@@ -396,7 +422,10 @@ The current JAX algorithm is
 `scnsim.jax-sparse-csc-superlu-reuse-analytic-newton32.v1`. Canonical requests
 bind it, and actual execution environment records bind SciPy and the selected
 backend. This prevents an old dense request/checkpoint from becoming a new sparse
-execution by relabeling. Historical results remain readable without migration.
+execution by relabeling. Historical files retain their original execution
+identities, but current readers reject older operation Workspaces: use a new
+Workspace and recompute, without migration or deletion. Current native Julia
+result-file contracts remain unchanged.
 Sparse assembly uses at most eight systems per chunk with an exact tail; each
 system has a call-local CPU SuperLU factor reused for its actual RHS solves.
 Retained roots factor only the eliminated block and form the selected Schur
@@ -436,7 +465,7 @@ JAX quantity and transitive Optimization identities distinguish this candidate.
 The current request layer records per-family
 `scnsim.jax.sparse_superlu.*` algorithm identities and the transitive
 `direct_cmaes.cmaes_0_13_1.v2` identity. The numerical adapter separately records
-its aggregate `scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v7`
+its aggregate `scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v8`
 identity, including the retained non-port-realizable Z transfer-zero
 compensation scope described above; these layer identities need not be identical.
 Other Quantity scopes retain their current arithmetic. The shared

@@ -1541,7 +1541,7 @@ A failed Schur complement, source-boundary solve, Y-to-Z solve, or Y-to-S solve
 fails the whole request as `DirectResponseFormationError` with the exact stage.
 It publishes no partial grid, pseudoinverse, infinity, or stale family. For
 every required $AX=B$, including multiple right-hand
-sides, SCNSim computes the normalized backward residual
+sides, native Julia computes the normalized backward residual
 
 $$
 \eta(A,X,B)=
@@ -1561,9 +1561,12 @@ $$
 
 Here $n$ is the order of the square $A$ being checked. An empty complement that
 requires no solve is a no-op rather than a zero-dimensional factorization.
-The residual is a mandatory execution-time Gate but its raw value is not a
-public Result or receipt field. Condition number is neither a Gate nor a
-required computation.
+The residual is a mandatory execution-time Gate. Native Julia does not expose
+its raw value as a public Result or receipt field. Current JAX uses the
+backend-scoped maxabs normalizer and selected real-dtype epsilon described in
+Numerical arithmetic and diagnostic storage below; recorded quantity
+certificates remain numerical evidence. Condition number is neither a Gate nor
+a required computation.
 The exact-open one-Port identity $Y=0,\ S=+1$ remains an internal algebra probe;
 because finite Z does not exist, it cannot become a successful complete public
 `DirectSolveResult`.
@@ -2294,6 +2297,65 @@ Objective targets and weights remain consumer/Human declarations. The product
 rule above deterministically expands an omitted residual scale; unit conversion
 cannot alter that scale, the target, the weight, a tolerance, or a Gate.
 
+### Numerical arithmetic and diagnostic storage (dev21 CONVERGING)
+
+Requested dtype, effective arithmetic and forward accuracy are distinct.
+Compiler/View SI lowering remains binary64; selected JAX arithmetic uses
+Float32/Complex64 or Float64/Complex128. A two-component expansion retains
+low parts in that same base dtype and does not claim 128-bit accuracy or a
+forward-error bound. Ordinary transpose, physical quantities, accepted
+normalizers, tau and the 0.01 Hz complex Newton correction condition remain
+unchanged; that correction condition is not a root-location error bound.
+
+| Boundary | Rounding issue | Selected treatment and scope | Performance/evidence limit |
+|---|---|---|---|
+| SI lowering and dtype conversion | Information can round before execution | Binary64 physical lowering and selected-dtype conversion remain explicit | Compensation does not recover discarded input information |
+| Indexed assembly/coalescing | Contributions can cancel | Existing narrow retained non-Port-realizable Z TransferZero high/low assembly | No universal speed or accuracy claim |
+| Sparse high/low action and residual | Products/sums can lose low parts | One compiled JAX CSR row-batched core; ordered high traversal, low traversal, then combination; runtime indices/coefficients/RHS | No dense operator, padded stencil or per-row Python dispatch; compile/transfer/compute/download are separate phases |
+| Corrected Schur value/derivative | Subtraction can magnify rounding | One high factor and fixed primal/derivative correction; pair-aware residual and formation, then declared-dtype F/Fp→Y/Yp projection | Current cofactor/denominator consumes the projection, not an expanded output |
+| Determinant and scale products | Intermediate overflow/underflow | Existing mantissa/exponent representation and family-specific normalization | Not a cancellation cure or confidence interval |
+| Newton and certification | A derivative, correction and residual establish different facts | Existing analytic derivative, stops and typed failure ownership | No mean estimate, changed tolerance or automatic precision fallback |
+
+The current JAX solve denominator uses maxabs of
+`abs(A_hi+A_lo) @ abs(project(X)) + abs(project(B))` for the compensated
+boundary. Backend-scoped norm definitions are preserved; maxabs is not a
+matrix infinity row-sum norm. Native Julia retains its existing numerical
+contract. Local physical inductor-block inverse preparation is distinct from
+materializing a global network inverse. Numerical certificates and bindings
+that a current quantity body records remain durable evidence; optional timing
+is not copied into that numerical body.
+
+`CircuitRun(..., timing="aggregate")` owns the diagnostic default.
+Keyword-only `timing=None` on `solve`, `evaluate` and `optimize` inherits it;
+explicit `"aggregate"` or `"detailed"` overrides it. Timing does not enter the
+numerical request/cache/checkpoint mathematical identity and cannot force a
+cache-hit recomputation. Optimization keeps generation-only clocks.
+
+Aggregate mode keeps constant-sized phase accumulators within one operation,
+attempt and clock, grouped by logical parent/dependency, backend/algorithm,
+dtype/device and relevant shape/resource/cache condition. Frequency, point and
+iteration remain context, not unique group keys. Each closed invocation is
+counted once by status, with elapsed sum/min/max and deterministic max context;
+a batch is one observation, never fabricated per-frequency durations. Mean is
+read-derived. Incomplete intervals have no zero duration. Inclusive/nested
+sums are not API wall time. Aggregates cannot reconstruct a detailed Timeline;
+detailed mode stores actual diagnostic intervals only.
+
+Operation SQLite evidence is version4. Older operation databases or file-journal
+stores raise `UnsupportedEvidenceVersionError` with “use new Workspace and
+recompute”; there is no legacy reader, migration, coexistence merge or automatic
+delete. Current Julia result-file contracts remain unchanged. Numerical commits,
+checkpoint state, selection and callbacks retain required atomic ownership.
+Timing batches publish separately with their own transaction identity/ACK,
+reconcile uncertain outcomes without blind retry, and stop for that operation
+on diagnostic write failure, including optional root finalization. Benchmark
+status filters match recorded operation status or committed `task_status` and
+preserve both independently; they never synthesize successful finalization
+from task success. An otherwise committed numerical success returns
+its result with `RuntimeWarning`; notification failure cannot mask the result
+or primary error. KeyboardInterrupt/SystemExit remain interruptions. Required
+commit/integrity/worker/callback failures remain fatal as before.
+
 ### Linear algebra is not unit display
 
 The small magnitude of an fF or nH value does not by itself prove that an
@@ -2304,20 +2366,20 @@ SCNSim therefore does not expose a `ScalingSpec`, ScalingOptimizer, mutable
 scale state, or automatic coordinate equilibration in Full V1.
 Direct and Schur implementations must:
 
-- use factorization/linear solves rather than an explicit inverse;
+- use factorization/linear solves rather than a global network inverse; local
+  physical inductor-block inverse preparation retains its declared algebra;
 - compute and enforce every operation-specific normalized residual and
   machine-resolution certificate before publishing success; and
 - keep those execution checks distinct from a Human-selected design-quality
   threshold.
 
-Raw residuals, condition estimates, and complete numerical certificates are
-not durable Result or receipt fields. A verified success states that the exact
-operation algorithm ID and semantic runtime source digest completed every
-required internal Gate. The Result stores the materialized answer and identity;
-the receipt stores provenance and the hash chain. `resolve()` validates that
-durable chain without recomputing the numerical checks. Re-evaluating the
-numerical decision requires executing the same request again rather than
-inferring it from omitted diagnostics.
+Certificate durability is backend- and quantity-specific. Native Julia retains
+its existing Result and receipt contract; current JAX quantity bodies preserve
+the explicitly recorded certificates and supplemental bindings. Optional timing
+and unrecorded condition estimates are not numerical authorities. A verified
+success binds the exact algorithm and semantic runtime source. `resolve()`
+validates the durable chain without repeating numerical checks; a recorded
+certificate is evidence of that execution, not a new forward-accuracy claim.
 
 If later public fixtures demonstrate a real raw-SI conditioning problem, the
 shared solve boundary may add a deterministic, reversible equilibration. Its
@@ -2346,9 +2408,11 @@ are preserved. Successful readback requires the selected success's explicit
 terminal event. Missing locators fail directly, with no old-layout fallback or
 migration. Historical files are preserved, without promising old-layout
 numerical readback in this flow. Read-only Benchmark and checkpoint readers
-retain their distinct responsibilities. Diagnostic spans leave the
-pending recorder buffer only after durable acknowledgement, preserving span
-IDs, parent/clock relationships and the available unacknowledged failure tail.
+retain their distinct responsibilities. Diagnostic batches advance their
+published prefix only after a separate confirmed diagnostic acknowledgement.
+Detailed mode preserves actual span/parent/clock facts; aggregate mode preserves
+only the declared summaries. Diagnostic failure stops publication without
+turning an unacknowledged tail into saved evidence.
 These ownership changes do not alter numerical, ledger-order or winner meaning.
 
 `ExplanationResult`, `CircuitDiagramResult`, and `ReportResult` are derived

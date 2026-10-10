@@ -20,7 +20,7 @@ from .base import evidence_bytes
 
 # Cache lifetime is the Python process; closing a call-local handle never drops
 # reusable kernels. Lock only lookup/compile; executions use independent arguments.
-_ALGORITHM_ID = "scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v7"
+_ALGORITHM_ID = "scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v8"
 _EXECUTABLES = {}
 _EXECUTABLE_LOCK = RLock()
 
@@ -83,7 +83,8 @@ class JaxBackend:
             "compensated_arithmetic": {
                 "scope": "transfer_zero.Z.non_port_realizable",
                 "representation": "two_components_in_requested_base_dtype",
-                "coverage": "indexed_assembly_residual_selected_formation",
+                "coverage": "indexed_assembly_compiled_csr_residual_selected_formation",
+                "pair_product_kernel": "jax-runtime-csr-row-batched-high-then-low.v1",
                 "correction": "one_primal_and_one_derivative_same_high_factor",
                 "projection": "F_Fp_then_Y_Yp_declared_complex_dtype",
             },
@@ -113,28 +114,39 @@ class JaxBackend:
         exclusive = nullcontext() if self.operation_resources is None else self.operation_resources.exclusive_assembly()
         with exclusive:
             groups = system.payload[3]
-            args = self.jax.device_put((groups,), self.device)
+            trace = self.trace if self.diagnostics else None
+            context = dict(kernel='inductive_coefficients', algorithm_id=_ALGORITHM_ID,
+                           arithmetic_precision=self.precision, device=str(self.device),
+                           requested_cpu_threads=self.cpu_threads)
+            with _span(trace, 'transfer_to_device', **context):
+                args = self.jax.device_put((groups,), self.device)
+                self.jax.block_until_ready(args)
             leaves, tree = self.jax.tree.flatten(args)
             signature = (self.device.platform, self.device.id, self.cpu_threads,
-                         self.precision, 'pure_inductive_coefficients', tree,
+                         self.precision, _ALGORITHM_ID, 'pure_inductive_coefficients', tree,
                          tuple((tuple(a.shape), str(a.dtype)) for a in leaves))
+            context['argument_shapes'] = [[list(a.shape), str(a.dtype)] for a in leaves]
             with _EXECUTABLE_LOCK:
                 executable = _EXECUTABLES.get(signature)
                 new_shape = executable is None
                 if new_shape:
-                    executable = self.jax.jit(self.core.inductive_coefficients).lower(*args).compile()
-                    _EXECUTABLES[signature] = executable
+                    with _span(trace, 'shape_compilation', **context):
+                        executable = self.jax.jit(self.core.inductive_coefficients).lower(*args).compile()
+                        _EXECUTABLES[signature] = executable
             if self.operation_resources is not None:
                 self.operation_resources.record_assembly(new_shape=new_shape)
-            output = executable(*args)
-            self.jax.block_until_ready(output)
-            coefficients = self.jax.tree.map(np.asarray, output)
+            context['executable_cache_hit'] = not new_shape
+            with _span(trace, 'synchronized_compute', **context):
+                output = executable(*args)
+                self.jax.block_until_ready(output)
+            with _span(trace, 'transfer_to_host', **context):
+                coefficients = self.jax.tree.map(np.asarray, output)
             prepared = tuple(group[:7] + (inverse, codes)
                              for group, (inverse, codes) in zip(groups, coefficients))
             system.payload = system.payload[:3] + (prepared,)
             system.inductive_coefficients_ready = True
 
-    def _assembly(self, system, omegas, *, loaded, derivative, measurements, batches, compensated=False):
+    def _assembly(self, system, omegas, *, loaded, derivative, measurements, compensated=False):
         self._prepare_inductive_coefficients(system)
         if self.operation_resources is not None and self.operation_resources.assembly_batching:
             omega_array = np.asarray(omegas, dtype=self.complex_dtype)
@@ -146,7 +158,7 @@ class JaxBackend:
                            omegas=omega_array, loaded=loaded, derivative=derivative, compensated=compensated)
             return self.operation_resources.assemble(request, self._assemble_candidates_exclusive)
         return self._assembly_single(system, omegas, loaded=loaded, derivative=derivative,
-                                     measurements=measurements, batches=batches, compensated=compensated)
+                                     measurements=measurements, compensated=compensated)
 
     def _assemble_candidates_exclusive(self, requests):
         # Broker owns its own dtype context. All operands, including stamp maps,
@@ -162,7 +174,7 @@ class JaxBackend:
                 loaded, derivative = requests[0]['loaded'], requests[0]['derivative']
                 compensated = requests[0]['compensated']
                 signature = (self.device.platform, self.device.id, self.cpu_threads,
-                             self.precision, 'candidate_sparse_assembly', loaded, derivative, compensated,
+                             self.precision, _ALGORITHM_ID, 'candidate_sparse_assembly', loaded, derivative, compensated,
                              tree, tuple((tuple(a.shape),str(a.dtype)) for a in leaves))
                 with _EXECUTABLE_LOCK:
                     executable = _EXECUTABLES.get(signature)
@@ -181,67 +193,80 @@ class JaxBackend:
                 output = self.jax.tree.map(np.asarray,output)
                 return [tuple(part[index] for part in output) for index in range(len(requests))]
 
-    def _assembly_single(self, system, omegas, *, loaded, derivative, measurements, batches, compensated=False):
+    def _assembly_single(self, system, omegas, *, loaded, derivative, measurements, compensated=False):
         """Exclusive transfer/JIT/compute/download before acquiring cache lock."""
         exclusive = nullcontext() if self.operation_resources is None else self.operation_resources.exclusive_assembly()
         with exclusive:
             return self._assemble_exclusive(system, omegas, loaded=loaded, derivative=derivative,
-                                            measurements=measurements, batches=batches, compensated=compensated)
+                                            measurements=measurements, compensated=compensated)
 
-    def _assemble_exclusive(self, system, omegas, *, loaded, derivative, measurements, batches, compensated=False):
-        transfer_start = perf_counter_ns() if self.diagnostics else None
-        args = self.jax.device_put((system.payload, np.asarray(omegas, dtype=self.complex_dtype)), self.device)
-        self.jax.block_until_ready(args)
-        transfer_ns = perf_counter_ns() - transfer_start if self.diagnostics else None
+    def _assemble_exclusive(self, system, omegas, *, loaded, derivative, measurements, compensated=False):
+        trace = self.trace if self.diagnostics else None
+        context = dict(batch_size=len(omegas), arithmetic_precision=self.precision,
+                       operation='sparse_assembly', algorithm_id=_ALGORITHM_ID,
+                       device=str(self.device), requested_cpu_threads=self.cpu_threads,
+                       static_pattern_sha256=system.pattern_sha256)
+        with _span(trace, 'transfer_to_device', **context):
+            args = self.jax.device_put((system.payload, np.asarray(omegas, dtype=self.complex_dtype)), self.device)
+            self.jax.block_until_ready(args)
         leaves, tree = self.jax.tree.flatten(args)
         shapes = tuple((tuple(a.shape), str(a.dtype)) for a in leaves)
+        context['argument_shapes'] = [[list(shape), dtype] for shape, dtype in shapes]
         signature = (self.device.platform, self.device.id, self.cpu_threads, self.precision,
-                     'sparse_assembly', loaded, derivative, compensated, tree, shapes)
-        compile_start, compilation_ns = None, None
+                     _ALGORITHM_ID, 'sparse_assembly', loaded, derivative, compensated, tree, shapes)
         with _EXECUTABLE_LOCK:
             executable = _EXECUTABLES.get(signature)
             new_shape = executable is None
             if new_shape:
-                compile_start = perf_counter_ns() if self.diagnostics else None
-                # Only operation controls are constants; coefficients and maps
-                # remain runtime inputs to the process-wide executable cache.
-                core = self.core
-                function = self.jax.vmap(lambda data, omega: core.assemble(data, omega, loaded=loaded, derivative=derivative, compensated=compensated), in_axes=(None, 0))
-                executable = self.jax.jit(function).lower(*args).compile()
-                compilation_ns = perf_counter_ns() - compile_start if self.diagnostics else None
-                _EXECUTABLES[signature] = executable
+                # Coefficients and maps remain runtime inputs; only controls are static.
+                with _span(trace, 'shape_compilation', **context):
+                    core = self.core
+                    function = self.jax.vmap(lambda data, omega: core.assemble(data, omega, loaded=loaded, derivative=derivative, compensated=compensated), in_axes=(None, 0))
+                    executable = self.jax.jit(function).lower(*args).compile()
+                    _EXECUTABLES[signature] = executable
         if self.operation_resources is not None:
             self.operation_resources.record_assembly(new_shape=new_shape)
-        compute_start = perf_counter_ns() if self.diagnostics else None
-        output = executable(*args)
-        self.jax.block_until_ready(output)
-        compute_ns = perf_counter_ns() - compute_start if self.diagnostics else None
-        download_start = perf_counter_ns() if self.diagnostics else None
-        output = self.jax.tree.map(np.asarray, output)
-        if self.diagnostics:
-            download_ns = perf_counter_ns() - download_start
-            row = dict(batch_size=len(omegas), measurement_start_tick_ns=transfer_start,
-                       measurement_end_tick_ns=perf_counter_ns(),
-                       transfer_to_device_ns=transfer_ns, shape_compilation_ns=compilation_ns,
-                       synchronized_compute_ns=compute_ns, transfer_to_host_ns=download_ns,
-                       new_shape=new_shape, executable_cache_hit=not new_shape,
-                       argument_shapes=[[list(shape), dtype] for shape, dtype in shapes],
-                       input_bytes=sum(a.size*a.dtype.itemsize for a in leaves),
-                       output_bytes=sum(a.nbytes for a in self.jax.tree.leaves(output)),
-                       static_pattern_sha256=system.pattern_sha256, static_pattern_cache_hit=False)
-            batches.append(row)
-            for kind, start, duration in (
-                ('transfer_to_device', transfer_start, transfer_ns),
-                ('shape_compilation', compile_start, compilation_ns),
-                ('synchronized_compute', compute_start, compute_ns),
-                ('transfer_to_host', download_start, download_ns),
-            ):
-                if start is not None and self.trace is not None:
-                    self.trace.measure(kind, start_tick_ns=start, end_tick_ns=start+duration,
-                                       parent_span_id=measurements.parent,
-                                       details={'batch_size': len(omegas), 'arithmetic_precision': self.precision,
-                                                'operation': 'sparse_assembly'})
+        context['executable_cache_hit'] = not new_shape
+        with _span(trace, 'synchronized_compute', **context):
+            output = executable(*args)
+            self.jax.block_until_ready(output)
+        with _span(trace, 'transfer_to_host', **context):
+            output = self.jax.tree.map(np.asarray, output)
         return output
+
+    def _pair_product(self, payload, measurements):
+        """Execute runtime CSR pair operands under the existing assembly permit.
+
+        Cache entries retain executables, never CSR values or candidate RHSs.
+        Numerical owners consume the returned components without projection.
+        """
+        exclusive = nullcontext() if self.operation_resources is None else self.operation_resources.exclusive_assembly()
+        with exclusive, self.jax.enable_x64(self.precision == 'float64'):
+            with measurements.phase('compiled_csr_pair_product', algorithm_id=_ALGORITHM_ID,
+                                    arithmetic_precision=self.precision, device=str(self.device),
+                                    requested_cpu_threads=self.cpu_threads):
+                with measurements.phase('kernel_transfer_to_device', kernel='csr_pair_product'):
+                    args = self.jax.device_put((payload,), self.device)
+                    self.jax.block_until_ready(args)
+                leaves, tree = self.jax.tree.flatten(args)
+                shapes = tuple((tuple(value.shape), str(value.dtype)) for value in leaves)
+                signature = (self.device.platform, self.device.id, self.cpu_threads,
+                             self.precision, _ALGORITHM_ID, 'csr_pair_product', tree, shapes)
+                with _EXECUTABLE_LOCK:
+                    executable = _EXECUTABLES.get(signature)
+                    new_shape = executable is None
+                    if new_shape:
+                        with measurements.phase('kernel_shape_compilation', kernel='csr_pair_product',
+                                                argument_shapes=[[list(shape), dtype] for shape, dtype in shapes]):
+                            executable = self.jax.jit(self.core.csr_pair_product).lower(*args).compile()
+                            _EXECUTABLES[signature] = executable
+                with measurements.phase('kernel_synchronized_compute', kernel='csr_pair_product',
+                                        executable_cache_hit=not new_shape,
+                                        argument_shapes=[[list(shape), dtype] for shape, dtype in shapes]):
+                    output = executable(*args)
+                    self.jax.block_until_ready(output)
+                with measurements.phase('kernel_transfer_to_host', kernel='csr_pair_product'):
+                    return self.jax.tree.map(np.asarray, output)
 
     def _evaluate_batch(self, jobs: tuple[EvaluationJob, ...]) -> tuple[EvaluationResult, ...]:
         from .sparse_direct import Measurements, System, network, retained_response
@@ -258,16 +283,15 @@ class JaxBackend:
                 results.append(EvaluationResult(job.id, failure=NumericalFailure(
                     'port_realizability', 'selected_network', 'wave response requires a Port-realizable View')))
                 continue
-            started = perf_counter_ns() if self.diagnostics else None
             with _span(self.trace if self.diagnostics else None, 'numerical_batch', operation=job.kind,
                        batch_size=1, arithmetic_precision=self.precision) as parent:
                 measurements = Measurements(self.trace, parent, enabled=self.diagnostics, resource=self.operation_resources)
                 with measurements.phase('sparse_pattern_prepare'):
-                    system = System(job.view, self.real_dtype, self.complex_dtype, template_cache=self._template_cache, resource=self.operation_resources)
-                batches = []
+                    system = System(job.view, self.real_dtype, self.complex_dtype, template_cache=self._template_cache, resource=self.operation_resources,
+                                    pair_product=lambda payload: self._pair_product(payload, measurements))
                 def assemble(omega, *, loaded, derivative, compensated=False):
                     arrays = self._assembly(system, [omega], loaded=loaded, derivative=derivative,
-                                            measurements=measurements, batches=batches, compensated=compensated)
+                                            measurements=measurements, compensated=compensated)
                     return tuple(a[0] for a in arrays)
                 if job.kind == 'transfer_zero' and job.family == 'Z' and not job.view.port_realizable:
                     system.compensation_evidence = dict(
@@ -293,7 +317,7 @@ class JaxBackend:
                         operators = []
                         for offset in range(0, len(omegas), 8):
                             arrays = self._assembly(system, omegas[offset:offset+8], loaded=True, derivative=True,
-                                                    measurements=measurements, batches=batches)
+                                                    measurements=measurements)
                             from .sparse_direct import selected_state
                             for index in range(len(omegas[offset:offset+8])):
                                 state, code = selected_state(system, tuple(a[index] for a in arrays), measurements)
@@ -316,7 +340,7 @@ class JaxBackend:
                             assembled = self._assembly(system, omegas[offset:offset+8],
                                                        loaded=not job.view.port_realizable,
                                                        derivative=not job.view.port_realizable,
-                                                       measurements=measurements, batches=batches)
+                                                       measurements=measurements)
                             for index, omega_at in enumerate(omegas[offset:offset+8]):
                                 state = tuple(a[index] for a in assembled)
                                 if job.view.port_realizable:
@@ -347,18 +371,6 @@ class JaxBackend:
                                 'static_pattern_sha256': system.pattern_sha256, **extra}
                 if job.kind == 'transfer_zero' and job.family == 'Z' and not job.view.port_realizable:
                     observations['arithmetic'] = dict(system.compensation_evidence)
-                if self.diagnostics:
-                    ended = perf_counter_ns()
-                    compile_times = [row['shape_compilation_ns'] for row in batches if row['shape_compilation_ns'] is not None]
-                    # Job intervals contain assembly intervals; they are not additive.
-                    timing = dict(batch_size=1, measurement_start_tick_ns=started, measurement_end_tick_ns=ended,
-                                  numerical_inclusive_ns=ended-started, assembly_batches=batches,
-                                  shape_compilation_ns=sum(compile_times) if compile_times else None,
-                                  new_shape=bool(compile_times), executable_cache_hit=all(row['executable_cache_hit'] for row in batches),
-                                  transfer_to_device_ns=sum(row['transfer_to_device_ns'] for row in batches),
-                                  synchronized_compute_ns=sum(row['synchronized_compute_ns'] for row in batches),
-                                  transfer_to_host_ns=sum(row['transfer_to_host_ns'] for row in batches))
-                    observations.update(batch=timing, batch_index=0, batch_span_id=parent, sparse_phases=measurements.rows)
                 observations['axes'] = dict(original_node_ids=list(job.view.original_node_ids),
                     model_node_ids=list(job.view.model.node_ids), terminal_ids=list(job.view.terminal_ids),
                     port_ids=list(job.view.model.port_ids), selected_indices=list(job.view.selected_indices),
