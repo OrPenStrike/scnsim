@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from hashlib import sha256
-from html import escape
+from html import escape, unescape
+import textwrap
 from typing import Any, Literal
 
 import numpy as np
@@ -28,110 +28,104 @@ def _complex_quantity_text(value: object) -> str:
     return f"{real_value:.12g} {imag_value:+.12g}j {escape(unit)}"
 
 
-def _ledger_rows(result: Any) -> tuple[list[int], list[float | None], list[str], list[str]]:
-    from ...canonical import float64_from_hex
-
-    ordinals: list[int] = []
-    costs: list[float | None] = []
-    statuses: list[str] = []
-    evidence: list[str] = []
-    for ledger in result.ledger:
-        candidates = ledger.get("candidates") if isinstance(ledger, Mapping) else None
-        if not isinstance(candidates, Sequence):
-            raise ValueError("Optimization ledger candidates are malformed")
-        for candidate in candidates:
-            if not isinstance(candidate, Mapping) or not isinstance(candidate.get("outcome"), Mapping):
-                raise ValueError("Optimization candidate evidence is malformed")
-            outcome = candidate["outcome"]
-            status = str(outcome.get("status"))
-            ordinal = candidate.get("evaluation_ordinal")
-            if not isinstance(ordinal, int):
-                raise ValueError("Optimization candidate ordinal is malformed")
-            cost_hex = outcome.get("cost_f64")
-            cost = float64_from_hex(cost_hex) if isinstance(cost_hex, str) else None
-            components = outcome.get("objective_components")
-            if not isinstance(components, Sequence):
-                raise ValueError("Optimization objective evidence is malformed")
-            summary = "; ".join(
-                escape(
-                    f"{component.get('objective_id')}: {component.get('status')} "
-                    f"({len(component.get('terms', ())) if isinstance(component, Mapping) else 0} terms)"
-                )
-                for component in components
-                if isinstance(component, Mapping)
-            )
-            ordinals.append(ordinal)
-            costs.append(cost)
-            statuses.append(status)
-            evidence.append(summary)
-    return ordinals, costs, statuses, evidence
-
-
 def _optimization_term_rows(result: Any) -> tuple[list[object], ...]:
     from ...canonical import float64_from_hex
 
-    columns: tuple[list[object], ...] = tuple([] for _ in range(13))
-    for ledger in result.ledger:
-        candidates = ledger.get("candidates") if isinstance(ledger, Mapping) else None
-        if not isinstance(candidates, Sequence):
-            raise ValueError("Optimization ledger candidates are malformed")
-        for candidate in candidates:
-            if not isinstance(candidate, Mapping) or not isinstance(candidate.get("outcome"), Mapping):
-                raise ValueError("Optimization candidate evidence is malformed")
-            outcome = candidate["outcome"]
-            ordinal = candidate.get("evaluation_ordinal")
-            components = outcome.get("objective_components")
-            if not isinstance(ordinal, int) or not isinstance(components, Sequence):
-                raise ValueError("Optimization candidate evidence is malformed")
-            candidate_cost = outcome.get("cost_f64")
-            cost = f"{float64_from_hex(candidate_cost):.12g}" if isinstance(candidate_cost, str) else "—"
-            for component in components:
-                if not isinstance(component, Mapping) or not isinstance(component.get("terms"), Sequence):
-                    raise ValueError("Optimization objective evidence is malformed")
-                objective = escape(str(component.get("objective_id", "")))
-                component_status = escape(str(component.get("status", "")))
-                normalized = component.get("normalized_residual_f64")
-                residual = (
-                    f"{float64_from_hex(normalized):.12g}"
-                    if isinstance(normalized, str) else "—"
-                )
-                weighted = component.get("weighted_cost_f64")
-                weighted_cost = (
-                    f"{float64_from_hex(weighted):.12g}"
-                    if isinstance(weighted, str) else "—"
-                )
-                for term in component["terms"]:
-                    if not isinstance(term, Mapping):
-                        raise ValueError("Optimization term evidence is malformed")
-                    lineage = term.get("ref_lineage")
-                    lineage_id = (
-                        lineage.get("lineage_sha256") if isinstance(lineage, Mapping) else None
-                    )
-                    failure = term.get("failure")
-                    failure_text = "—"
-                    if isinstance(failure, Mapping):
-                        failure_text = escape(
-                            f"{failure.get('kind', '')} / {failure.get('stage', '')}: "
-                            f"{failure.get('message', '')}"
-                        )
-                    row = (
-                        ordinal,
-                        escape(str(outcome.get("status", ""))),
-                        cost,
-                        objective,
-                        component_status,
-                        _quantity_text(component.get("value")),
-                        residual,
-                        weighted_cost,
-                        term.get("term_ordinal", ""),
-                        escape(str(term.get("status", ""))),
-                        _quantity_text(term.get("value")),
-                        escape(str(lineage_id)) if lineage_id is not None else "—",
-                        failure_text,
-                    )
-                    for column, value in zip(columns, row, strict=True):
-                        column.append(value)
-    return columns
+    objectives = result._presentation["objectives"]
+    objective_units = {
+        objective["id"]: objective["target"]["si_unit"]
+        for objective in objectives
+    }
+    rows = []
+    for candidate in result._fixed_reader.project("table"):
+        cost = candidate.get("cost_f64")
+        cost_text = f"{float64_from_hex(cost):.12g}" if isinstance(cost, str) else "—"
+        parameters = "; ".join(
+            f"{binding['parameter']['definitions_id']}.{binding['parameter']['parameter_id']} = "
+            f"{_quantity_text(binding['value'])}"
+            for binding in candidate["parameters"]["bindings"]
+        )
+        components = "; ".join(
+            f"{component['objective_id']}: "
+            + (f"{float64_from_hex(component['value_f64']):.12g} {escape(objective_units[component['objective_id']])}"
+               if isinstance(component.get("value_f64"), str) else str(component["status"]))
+            for component in candidate["components"]
+        )
+        rows.append((
+            candidate["evaluation_ordinal"], candidate["generation"],
+            escape(str(candidate["status"])), cost_text, parameters, components,
+        ))
+    return tuple(list(column) for column in zip(*rows, strict=True)) if rows else tuple([] for _ in range(6))
+
+
+def _comparison_table_rows(
+    rows: Sequence[Sequence[object]],
+    *,
+    column_widths: Sequence[int],
+) -> tuple[list[list[str]], int]:
+    """Wrap actual table content and estimate a uniform Plotly row height."""
+
+    if not rows:
+        return [[] for _ in column_widths], 80
+    total_width = sum(column_widths)
+    # Plotly figures commonly render at notebook-column widths. Budget a
+    # conservative character count instead of assuming a full desktop canvas.
+    available_chars = max(48, total_width * 0.96)
+    char_widths = [max(12, round(available_chars * width / total_width)) for width in column_widths]
+    wrapped_rows: list[list[str]] = []
+    largest_lines = 1
+    for row in rows:
+        if len(row) != len(column_widths):
+            raise ValueError("Optimization comparison table row has the wrong number of cells")
+        wrapped: list[str] = []
+        for value, width in zip(row, char_widths, strict=True):
+            # The shared dataset is also used by HTML reports and contains a
+            # mixture of plain and HTML-escaped text. Normalize it before
+            # wrapping, then escape exactly once for Plotly's line-break markup.
+            raw = unescape(str(value))
+            lines = [
+                segment
+                for paragraph in raw.splitlines() or [""]
+                for segment in (textwrap.wrap(
+                    paragraph,
+                    width=width,
+                    break_long_words=True,
+                    break_on_hyphens=False,
+                ) or [""])
+            ]
+            largest_lines = max(largest_lines, len(lines))
+            wrapped.append("<br>".join(escape(line) for line in lines))
+        wrapped_rows.append(wrapped)
+    # Plotly Table accepts one scalar row height. Size every row to the most
+    # wrapped row so long physical values remain visible instead of clipping.
+    return [list(column) for column in zip(*wrapped_rows, strict=True)], max(32, 19 * largest_lines + 10)
+
+
+def _comparison_table(
+    go: Any,
+    *,
+    header: Sequence[str],
+    rows: Sequence[Sequence[object]],
+    column_widths: Sequence[int],
+    section: str,
+    source: Mapping[str, object],
+) -> tuple[Any, int]:
+    columns, cell_height = _comparison_table_rows(rows, column_widths=column_widths)
+    row_count = max(1, len(rows))
+    header_height = 40
+    table_height = header_height + cell_height * row_count
+    trace = go.Table(
+        header={
+            "values": [escape(value) for value in header],
+            "align": "left",
+            "height": header_height,
+            "font": {"size": 13},
+        },
+        cells={"values": columns, "align": "left", "height": cell_height, "font": {"size": 12}},
+        columnwidth=list(column_widths),
+        meta={"scnsim": {"source": source, "section": section}},
+    )
+    return trace, table_height
 
 
 def optimization_plot(
@@ -143,10 +137,10 @@ def optimization_plot(
     theme: Theme = Theme.AUTO,
 ) -> Any:
     go, _, _ = _plotly()
-    all_ordinals, _, _, evidence = _ledger_rows(result)
+    candidate_count = len(result.candidate_discretization)
     saved = f"saved best cost {result.best.cost:.12g}"
     if kind in {"history", "objective", "residual", "parameter"}:
-        ordinals, values, statuses, label, unit = _optimization_series(
+        ordinals, values, statuses, label, unit, details = _optimization_series(
             result, kind=kind, objective=objective, parameter=parameter
         )
         figure = go.Figure(data=[go.Scatter(
@@ -154,7 +148,10 @@ def optimization_plot(
             y=values,
             mode="lines+markers",
             name=escape(label),
-            customdata=np.asarray([[status, detail] for status, detail in zip(statuses, evidence, strict=True)], dtype=object),
+            customdata=np.asarray([
+                [status, escape(detail)]
+                for status, detail in zip(statuses, details, strict=True)
+            ], dtype=object),
             connectgaps=False,
             meta=_trace_meta(
                 x_axis={"quantity": "evaluation_ordinal", "unit": "ordinal"},
@@ -178,39 +175,58 @@ def optimization_plot(
         if objective is not None or parameter is not None:
             raise ValueError("objective and parameter are invalid for the ledger table")
         columns = _optimization_term_rows(result)
-        figure = go.Figure(data=[go.Table(
-            header={"values": [
-                "evaluation", "candidate status", "cost", "objective", "objective status",
-                "objective value", "normalized residual", "weighted cost", "term",
-                "term status", "term value", "View lineage", "failure",
-            ]},
-            cells={"values": columns},
-            meta={"scnsim": {"source": _presentation_source(result)}},
-        )])
+        rows = list(zip(*columns, strict=True)) if columns and columns[0] else []
+        table, table_height = _comparison_table(
+            go,
+            header=("evaluation", "generation", "status", "cost", "parameters", "objectives"),
+            rows=rows,
+            column_widths=(10, 10, 12, 14, 32, 22),
+            section="candidates",
+            source=_presentation_source(result),
+        )
+        figure = go.Figure(data=[table])
     elif kind == "comparison":
         if objective is not None or parameter is not None:
             raise ValueError("objective and parameter are invalid for the comparison")
         settings, comparison = optimization_comparison_dataset(result)
+        source = _presentation_source(result)
+        settings_trace, settings_height = _comparison_table(
+            go,
+            header=("setting", "value"),
+            rows=settings,
+            column_widths=(34, 66),
+            section="settings",
+            source=source,
+        )
+        comparison_trace, comparison_height = _comparison_table(
+            go,
+            header=("field", "initial", "best found"),
+            rows=comparison,
+            column_widths=(34, 33, 33),
+            section="comparison",
+            source=source,
+        )
+        section_height = 28
+        gap_height = 14
+        plot_height = 2 * section_height + gap_height + settings_height + comparison_height
+        settings_top = section_height / plot_height
+        settings_bottom = (section_height + settings_height) / plot_height
+        comparison_top = (section_height + settings_height + gap_height + section_height) / plot_height
+        comparison_bottom = 1.0
+        settings_trace.update(domain={"y": [1.0 - settings_bottom, 1.0 - settings_top]})
+        comparison_trace.update(domain={"y": [1.0 - comparison_bottom, 1.0 - comparison_top]})
         figure = go.Figure(data=[
-            go.Table(
-                domain={"y": [0.71, 1.0]},
-                header={"values": ["setting", "value"]},
-                cells={"values": list(zip(*settings, strict=True))},
-                meta={"scnsim": {"source": _presentation_source(result), "section": "settings"}},
-            ),
-            go.Table(
-                domain={"y": [0.0, 0.65]},
-                header={"values": ["field", "initial", "best found"]},
-                cells={"values": list(zip(*comparison, strict=True))},
-                meta={"scnsim": {"source": _presentation_source(result), "section": "comparison"}},
-            ),
+            settings_trace,
+            comparison_trace,
         ])
         figure.add_annotation(
-            text="Settings", x=0, y=1.04, xref="paper", yref="paper",
+            text="Settings", x=0, y=1.0 - settings_top / 2,
+            xref="paper", yref="paper",
             xanchor="left", showarrow=False,
         )
         figure.add_annotation(
-            text="Initial / best-found comparison", x=0, y=0.69,
+            text="Initial / best-found comparison",
+            x=0, y=1.0 - (section_height + settings_height + gap_height + section_height / 2) / plot_height,
             xref="paper", yref="paper", xanchor="left", showarrow=False,
         )
     else:
@@ -221,20 +237,39 @@ def optimization_plot(
     }
     figure.update_layout(meta={"scnsim": {
         "kind": "optimization",
-        "candidate_count": len(all_ordinals),
+        "candidate_count": candidate_count,
         "winner_cost": result.best.cost,
         "winner_parameters": winner_parameters,
     }})
-    best_bindings = "; ".join(
-        f"{escape(parameter.definitions_id)}.{escape(parameter.id)} = {escape(str(value))}"
-        for parameter, value in result.best.parameters.values.items()
-    )
-    figure.add_annotation(
-        text=f"{saved}; {best_bindings}", x=0, y=1.12,
-        xref="paper", yref="paper", xanchor="left", showarrow=False,
-    )
+    if kind != "comparison":
+        best_bindings = "; ".join(
+            f"{escape(parameter.definitions_id)}.{escape(parameter.id)} = {escape(str(value))}"
+            for parameter, value in result.best.parameters.values.items()
+        )
+        figure.add_annotation(
+            text=f"{saved}; {best_bindings}", x=0, y=1.12,
+            xref="paper", yref="paper", xanchor="left", showarrow=False,
+        )
     styled = _style(figure, theme, title=f"Completed optimization {kind}")
-    styled.update_layout(margin={"t": 112})
+    if kind == "comparison":
+        margins = styled.layout.margin
+        top_margin = int(margins.t or 0)
+        bottom_margin = int(margins.b or 0)
+        top_margin = max(top_margin, 88)
+        styled.update_layout(
+            height=max(420, top_margin + bottom_margin + plot_height),
+            margin={"t": top_margin, "b": bottom_margin},
+        )
+    elif kind == "table":
+        margins = styled.layout.margin
+        top_margin = max(int(margins.t or 0), 88)
+        bottom_margin = int(margins.b or 0)
+        styled.update_layout(
+            height=max(420, top_margin + bottom_margin + table_height),
+            margin={"t": top_margin, "b": bottom_margin},
+        )
+    else:
+        styled.update_layout(margin={"t": 112})
     return styled
 
 
@@ -403,34 +438,18 @@ def optimization_comparison_dataset(
 
     presentation = result._presentation
     initial = presentation.get("initial_candidate")
+    best = presentation.get("best_candidate")
     ordinal = presentation.get("best_evaluation_ordinal")
     objectives = presentation.get("objectives")
     variables = presentation.get("variables")
     if (
         not isinstance(initial, Mapping)
+        or not isinstance(best, Mapping)
         or not isinstance(ordinal, int)
         or not isinstance(objectives, Sequence)
         or not isinstance(variables, Sequence)
     ):
         raise ValueError("Optimization comparison presentation is incomplete")
-    best = initial if ordinal == 0 else None
-    if best is None:
-        for ledger in result.ledger:
-            candidates = ledger.get("candidates") if isinstance(ledger, Mapping) else None
-            if isinstance(candidates, Sequence):
-                best = next(
-                    (
-                        candidate
-                        for candidate in candidates
-                        if isinstance(candidate, Mapping)
-                        and candidate.get("evaluation_ordinal") == ordinal
-                    ),
-                    None,
-                )
-            if best is not None:
-                break
-    if not isinstance(best, Mapping):
-        raise ValueError("Saved best evaluation ordinal is absent from verified evidence")
     initial_outcome, best_outcome = initial.get("outcome"), best.get("outcome")
     if not isinstance(initial_outcome, Mapping) or not isinstance(best_outcome, Mapping):
         raise ValueError("Optimization comparison candidates have no outcome")

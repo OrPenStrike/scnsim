@@ -11,7 +11,7 @@ checkpoint/resume ownership paths remain `CONVERGING`.
 ## Current JAX operation evidence
 
 Current operation evidence uses the Plan leaf's `operations/operations.sqlite3`,
-OperationStore version5, with DELETE/EXTRA. Older operation stores are rejected:
+OperationStore version6, with DELETE/EXTRA. Older operation stores are rejected:
 use a new Workspace and recompute; no old reader, migration or deletion is
 provided. The native Julia request/attempt/result-file protocol below remains
 its distinct current backend contract, not a JAX compatibility path.
@@ -22,7 +22,7 @@ state and operation association register in one required transaction. The
 `record_bytes(body)`, with no task/key wrapper or occurrence fields. Its
 intrinsic parameters, identity, dependencies and numerical evidence remain in
 that body. Each ordered occurrence retains its exact task-local context and
-body reference. Readers hydrate referenced bodies in one verified snapshot;
+body reference. Fixed readers hydrate only selected referenced bodies in a short snapshot;
 role, length and hash checks are cached only for that transaction/snapshot and
 repeated after reopen/relock.
 
@@ -41,6 +41,26 @@ success selection atomically, followed by optional timing and the separate
 operation root. Result reads never execute a solver. The detailed current
 ownership belongs to the [Runtime Contract](../v1-runtime-contract.qmd).
 
+The SQLite v6 completion seal binds request/attempt/instance, result and baseline refs,
+selected generation ancestry, counts, exact best locator and sealed index root.
+Generation/candidate locators and summary projections publish within the existing
+required generation or terminal transaction; they do not add a COMMIT or become
+another scientific-body authority. Indexed rows must agree with the sealed root
+and selected ancestry. Creating a Run performs bounded transaction recovery and
+lease-aware operation scratch cleanup, while readonly access does neither.
+Full body/database auditing is explicit maintenance. The single
+[lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle) specifies stable
+OS leases, supervisor handoff and reader ownership.
+
+`terminal_attempt_ref` names the completed canonical attempt document; the public
+attempt digest retains that terminal-document meaning. It is not the initial
+running allocation digest. Native Optimization separately publishes a sealed
+`scnsim.native_result_index` v1 before immutable success selection, with compact
+generation summaries and qualified native artifact/body locators. Its reader
+fixes root metadata and loads summary chunks or selected bodies only. Missing
+index data is not rebuilt during readonly access. This Workspace index does not
+change the Julia numerical body or native artifact schemas below.
+
 ## Bind one leaf workspace to one Plan
 
 A V1 replaceable workspace is a relocatable stable root pointing to one leaf
@@ -54,9 +74,10 @@ workspace.json                 # replaceable root and active-leaf pointer
 leaves/<leaf-instance-id>/
   workspace.json               # immutable Plan binding
   plan.json
+  .scnsim-workspace-staging/<operation-uuidv4>/<request-sha256>/
+    .staging-000001-<lowercase-canonical-uuidv4>/
   requests/<request-sha256>/
     request.json
-    attempts/.staging-000001-<lowercase-canonical-uuidv4>/
     attempts/000001/
       attempt.json
       logs/
@@ -85,10 +106,17 @@ shared lock. The file is never deleted or replaced; normal exit, crash, or
 process termination releases the kernel-held lock. Windows fails before any
 workspace mutation.
 
-For native Julia, the writer lock spans Plan binding or replacement, attempt-ordinal allocation,
-child execution, staged-artifact promotion, outcome verification, and receipt
-sealing. `resolve()` takes the same lock only long enough to read one stable
-hash chain; it never holds an execution slot.
+For native Julia, short writer-lock scopes cover Plan binding or replacement,
+attempt-ordinal allocation, and verified artifact/receipt publication. The
+separate operation lease retains activity ownership through child execution,
+callbacks, decoding and cleanup; child work and callbacks do not run under a
+storage lock. `resolve()` takes a short read lock for its fixed selected evidence
+and never holds an execution slot.
+
+A private same-request execution lease for JAX and native work preserves existing cache reuse
+and single-success selection across those short storage scopes. Its descriptor
+is additionally retained by the native operation supervisor through actual child drain;
+it is separate from root/operation activity leases and is not a SQL transaction.
 
 ## Iterate topology in one workspace {#iterate-topology-in-one-workspace}
 
@@ -232,10 +260,11 @@ generation is discarded and deterministically replayed.
 
 ## Promote one attempt atomically
 
-Attempt staging is always a sibling of the final ordinal directory. For
+Attempt staging is allocated under the leaf's centralized operation-owned
+scratch, separately from the final attempt directory. For
 positive numeric ordinal `k`, its path text is `str(k).zfill(6)`: `1` becomes
 `000001`, while `1000000` remains `1000000`. The two names are therefore
-`requests/<request-sha256>/attempts/.staging-<ordinal-text>-<uuidv4>/` and
+`.scnsim-workspace-staging/<operation-uuidv4>/<request-sha256>/.staging-<ordinal-text>-<uuidv4>/` and
 `requests/<request-sha256>/attempts/<ordinal-text>/`. The staging suffix must
 match lowercase canonical UUIDv4 form; a short ordinal, uppercase UUID, wrong
 version/variant nibble, or mismatch with `attempt.json.ordinal` is invalid

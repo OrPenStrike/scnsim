@@ -26,6 +26,35 @@ from .common import (
     _verify_quantity_role,
 )
 
+_NATIVE_OPTIMIZATION_ALGORITHM_ID = (
+    "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
+)
+_RUNTIME_SEMANTIC_FIELDS = frozenset({
+    "algorithm_id",
+    "python_source_sha256",
+    "julia_source_sha256",
+    "julia_version",
+    "project_sha256",
+    "manifest_sha256",
+})
+
+
+def _is_current_native_optimization_request(
+    request: Mapping[str, object],
+) -> bool:
+    """Recognize the exact current Julia Optimization request identity."""
+    spec = request.get("spec")
+    runtime = request.get("runtime_semantic")
+    return (
+        request.get("operation") == "optimize_direct"
+        and isinstance(spec, Mapping)
+        and spec.get("type") == "optimization"
+        and isinstance(runtime, Mapping)
+        and set(runtime) == _RUNTIME_SEMANTIC_FIELDS
+        and runtime.get("algorithm_id") == _NATIVE_OPTIMIZATION_ALGORITHM_ID
+    )
+
+
 def _verify_request_document(
     request: Mapping[str, object],
     plan_sha256: str,
@@ -46,7 +75,7 @@ def _verify_request_document(
             "response_element": "scnsim.response_element.v1",
             "operator": "scnsim.direct_operator.v1",
         },
-        "optimize_direct": {"optimization": "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"},
+        "optimize_direct": {"optimization": _NATIVE_OPTIMIZATION_ALGORITHM_ID},
     }
     expected_algorithm = algorithms.get(operation, {}).get(spec.get("type") if isinstance(spec, dict) else None)
     if (
@@ -58,11 +87,7 @@ def _verify_request_document(
         or any(not isinstance(request.get(field), dict) for field in ("view", "spec", "parameter_source", "runtime_semantic"))
     ):
         raise _integrity("Stored request envelope is open or inconsistent.")
-    runtime_fields = {
-        "algorithm_id", "python_source_sha256", "julia_source_sha256",
-        "julia_version", "project_sha256", "manifest_sha256",
-    }
-    if set(runtime) != runtime_fields or not isinstance(runtime.get("julia_version"), str) or not runtime["julia_version"]:
+    if set(runtime) != _RUNTIME_SEMANTIC_FIELDS or not isinstance(runtime.get("julia_version"), str) or not runtime["julia_version"]:
         raise _integrity("Stored runtime semantic identity is open or malformed.")
     for field in ("python_source_sha256", "julia_source_sha256", "project_sha256", "manifest_sha256"):
         _valid_sha(runtime.get(field))

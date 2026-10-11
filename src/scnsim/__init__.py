@@ -2,7 +2,8 @@
 
 Numerical execution remains separately accepted where documented.  Structured
 authoring, parameter closure, and semantic diagram capture are an actively
-converging V1 candidate.
+converging V1 candidate. The dev24 Run lifecycle and fixed lazy Result boundary
+remain CONVERGING; public facades reexport one responsibility-owned implementation.
 
 Start with :class:`CircuitPlan` if you develop reusable circuit models.  Start
 with :class:`CircuitRun` plus a model package supplied by your team if you only

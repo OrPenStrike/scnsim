@@ -7,6 +7,7 @@ and the actual numerical evaluation of an ordered selector wave.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -22,10 +23,11 @@ from .quantities import (
     quantity_record,
     result_from_record,
 )
-from ..benchmark.compiler import compile_model, parameter_key, parameter_values
-from ..benchmark.models import EvaluationResult, NumericalBackend
-from ..benchmark.prepared import mesh_from_record, record_bytes, record_document
-from ..benchmark.views import realize_view
+from ..compilation.compiler import compile_model, parameter_key, parameter_values
+from ..numerics.models import EvaluationResult, NumericalBackend
+from ..compilation.mesh import mesh_from_record
+from ..numeric_encoding import record_bytes, record_document
+from ..compilation.views import realize_view
 
 
 DECLARATION_SCHEMA = "scnsim.candidate-actor-declaration.v1"
@@ -170,11 +172,13 @@ class CandidateActor:
                 "allow_extrapolation", baseline_set.get("allow_extrapolation", [])
             )
         }
-        self.quantity_evaluator = QuantityEvaluator(backend, emit=None)
+        self.quantity_evaluator = QuantityEvaluator(
+            backend, emit=None, continuation_step_scope=self._continuation_step_scope
+        )
         self.anchors: dict[str, EvaluationResult] = {}
         self._candidates: dict[tuple[str, int, int, str], _CandidateState] = {}
         self._template_cache: dict = {}
-        self._preparation_cache: dict = {}
+        self._continuation_caches = None
         self._closed = False
 
     def _state_from_record(self, document: dict[str, object]) -> _CandidateState:
@@ -188,9 +192,12 @@ class CandidateActor:
                 stage="candidate_protocol",
             )
         values = parameter_values(parameters)
+        # Material preparation belongs to this candidate and its continuation,
+        # rather than retaining every material encountered by the actor.
+        preparation_cache: dict = {}
         raw = compile_model(
             self.plan, values, mesh=self.mesh, authorized=self.authorized,
-            preparation_cache=self._preparation_cache, template_cache=self._template_cache,
+            preparation_cache=preparation_cache, template_cache=self._template_cache,
         )
         views = {}
         for objective in self.spec["objectives"]:
@@ -212,7 +219,7 @@ class CandidateActor:
             baseline=bool(document.get("baseline", False)),
             discretization=json.loads(raw.evidence_bytes)["discretization"],
             views=views,
-            preparation_cache=dict(self._preparation_cache),
+            preparation_cache=preparation_cache,
         )
 
     def _route(self, document: dict[str, object]) -> tuple[str, int, int, str]:
@@ -287,12 +294,30 @@ class CandidateActor:
         )
         return record_bytes(response)
 
+    @contextmanager
+    def _continuation_step_scope(self):
+        """Keep one intermediate geometry alive only through its numerical call."""
+        previous = self._continuation_caches
+        caches = ({}, {})  # Material preparation and compiler/View templates.
+        self._continuation_caches = caches
+        try:
+            with self.backend.continuation_step_scope():
+                yield
+        finally:
+            self._continuation_caches = previous
+            for cache in caches:
+                cache.clear()
+
     def _candidate_view(self, state: _CandidateState, values: dict, declaration: dict):
+        preparation, templates = (
+            (state.preparation_cache, self._template_cache)
+            if self._continuation_caches is None else self._continuation_caches
+        )
         raw = compile_model(
             self.plan, values, mesh=self.mesh, authorized=self.authorized,
-            preparation_cache=state.preparation_cache, template_cache=self._template_cache,
+            preparation_cache=preparation, template_cache=templates,
         )
-        return realize_view(raw, declaration, template_cache=self._template_cache)
+        return realize_view(raw, declaration, template_cache=templates)
 
     def _anchor_references(self) -> dict[str, str]:
         return {key: quantity_body_id(result)[0] for key, result in self.anchors.items()}
@@ -396,11 +421,32 @@ class CandidateActor:
         if self._closed:
             return
         self._closed = True
-        self.backend.close()
+        try:
+            self.backend.close()
+        finally:
+            # Drained actors cannot retain a numerical ledger or lowering
+            # operands through their pool/Future references after the operation.
+            self._candidates.clear()
+            self.anchors.clear()
+            self._template_cache.clear()
+            self.baseline_values.clear()
+            self.declaration = self.plan = self.analysis = self.spec = None
+            self.source_units = ()
+            self.quantity_evaluator = None
+            self.emit = None
 
 
 def create_actor(declaration_bytes: bytes, *, backend_factory, emit=None) -> CandidateActor:
     """Build actual backend and candidate state inside the pool-owned actor."""
     _read_record(declaration_bytes, expected_schema=DECLARATION_SCHEMA)
     backend = backend_factory()
-    return CandidateActor(declaration_bytes, backend=backend, emit=emit)
+    # Ownership transfers only after the actor is fully constructed. Until then
+    # this factory must release the backend if declaration/identity setup fails.
+    try:
+        return CandidateActor(declaration_bytes, backend=backend, emit=emit)
+    except BaseException as original:
+        try:
+            backend.close()
+        except BaseException as cleanup:
+            original.add_note(f'Candidate backend construction cleanup: {cleanup!r}')
+        raise

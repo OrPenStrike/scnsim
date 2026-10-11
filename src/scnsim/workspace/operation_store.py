@@ -21,6 +21,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
+from ..canonical import canonical_json_bytes
 from ..errors import (
     EvidenceIntegrityError,
     UnsupportedEvidenceVersionError,
@@ -29,7 +30,7 @@ from ..errors import (
 from .storage import _fsync_directory
 
 _DATABASE = "operations.sqlite3"
-_VERSION = 5
+_VERSION = 6
 _SCHEMA = (
     "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE objects (sha256 TEXT PRIMARY KEY, payload BLOB NOT NULL)",
@@ -48,6 +49,13 @@ _SCHEMA = (
     "start_ns INTEGER, end_ns INTEGER, clock_id TEXT, "
     "FOREIGN KEY(sha256,role) REFERENCES object_roles(sha256,role))",
     "CREATE INDEX operation_filters ON operations(method,backend,precision,status)",
+    "CREATE TABLE completion_generations (completion_sha TEXT NOT NULL, generation INTEGER NOT NULL, "
+    "block_ref TEXT NOT NULL, first_ordinal INTEGER NOT NULL, row_count INTEGER NOT NULL, "
+    "summary_json TEXT NOT NULL, PRIMARY KEY(completion_sha,generation))",
+    "CREATE TABLE completion_candidates (completion_sha TEXT NOT NULL, ordinal INTEGER NOT NULL, "
+    "generation INTEGER NOT NULL, row_offset INTEGER NOT NULL, block_ref TEXT NOT NULL, "
+    "value_ref TEXT NOT NULL, summary_json TEXT NOT NULL, PRIMARY KEY(completion_sha,ordinal))",
+    "CREATE INDEX completion_candidate_order ON completion_candidates(completion_sha,generation,ordinal)",
 )
 
 
@@ -309,11 +317,39 @@ class OperationStore:
                     "reconciliation_error": str(error)}
 
     def recover(self) -> None:
+        """Perform native rollback and confirm this leaf's committed binding.
+
+        This bounded reopen does not audit historical payloads. SQLite owns
+        journal recovery; transaction-marker reconciliation remains the separate
+        exact-txid path used for an unconfirmed commit, with no blind replay.
+        """
         with self._lock(exclusive=True):
             connection = self._connect(mode="rw")
             try:
                 # The first native read performs any required rollback. Never
                 # inspect or edit SQLite's rollback journal ourselves.
+                self._verify_binding(connection)
+            finally:
+                _close(connection)
+            # A fresh native read transaction confirms the committed binding,
+            # rather than treating the recovery connection as readback evidence.
+            connection = self._connect(mode="ro")
+            try:
+                connection.execute("BEGIN")
+                self._verify_binding(connection)
+            finally:
+                _close(connection)
+
+    def audit(self) -> None:
+        """Explicit complete structural/reference/byte audit of committed data.
+
+        This readonly inspection never performs recovery. A hot journal retains
+        the same explicit recovery-required failure as other readonly readers.
+        """
+        with self._lock(exclusive=False):
+            connection = self._connect(mode="ro")
+            try:
+                connection.execute("BEGIN")
                 self._verify_binding(connection)
                 if connection.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                     raise _integrity("SQLite reported damaged operation evidence.")
@@ -324,13 +360,9 @@ class OperationStore:
                     "SELECT r.sha256,r.role,length(o.payload) FROM object_roles r JOIN objects o USING(sha256)"
                 ):
                     snapshot.get_object(_reference(digest, role, length))
-            finally:
-                _close(connection)
-            # Reopen after native recovery to verify the selected committed DB,
-            # rather than presenting a still-open recovery connection as evidence.
-            connection = self._connect(mode="ro")
-            try:
-                self._verify_binding(connection)
+            except sqlite3.Error as error:
+                _recovery_error(error)
+                raise
             finally:
                 _close(connection)
 
@@ -506,15 +538,91 @@ class Snapshot:
                 values.append(value)
         return self._query("operations", clauses, values)
 
+    @staticmethod
+    def _json_reference(value: Mapping[str, Any]) -> str:
+        return json.dumps(dict(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    @staticmethod
+    def _decoded_reference(value: str) -> dict[str, Any]:
+        result = json.loads(value)
+        if not isinstance(result, dict):
+            raise _integrity("Completion index contains a malformed object reference.")
+        return result
+
+    def read_generation_index(self, completion_sha: str, generation: int) -> dict[str, Any] | None:
+        row = self._connection.execute(
+            "SELECT block_ref,first_ordinal,row_count,summary_json FROM completion_generations "
+            "WHERE completion_sha=? AND generation=?", (completion_sha, generation)
+        ).fetchone()
+        if row is None:
+            return None
+        summary = json.loads(row[3])
+        if not isinstance(summary, dict):
+            raise _integrity("Generation index summary is malformed.", generation=generation)
+        return {"generation": generation, "block_ref": self._decoded_reference(row[0]),
+                "first_ordinal": row[1], "row_count": row[2], "summary_json": summary}
+
+    def completion_generation_count(self, completion_sha: str) -> int:
+        return self._connection.execute(
+            "SELECT count(*) FROM completion_generations WHERE completion_sha=?", (completion_sha,)
+        ).fetchone()[0]
+
+    def completion_candidate_count(self, completion_sha: str) -> int:
+        return self._connection.execute(
+            "SELECT count(*) FROM completion_candidates WHERE completion_sha=?", (completion_sha,)
+        ).fetchone()[0]
+
+    def read_candidate_index(self, completion_sha: str, ordinal: int) -> dict[str, Any] | None:
+        row = self._connection.execute(
+            "SELECT generation,row_offset,block_ref,value_ref,summary_json FROM completion_candidates "
+            "WHERE completion_sha=? AND ordinal=?", (completion_sha, ordinal)
+        ).fetchone()
+        if row is None:
+            return None
+        summary = json.loads(row[4])
+        if not isinstance(summary, dict):
+            raise _integrity("Candidate index summary is malformed.", ordinal=ordinal)
+        return {"ordinal": ordinal, "generation": row[0], "row_offset": row[1],
+                "block_ref": self._decoded_reference(row[2]),
+                "value_ref": self._decoded_reference(row[3]), "summary_json": summary}
+
+    def read_candidate_summaries(self, completion_sha: str) -> list[dict[str, Any]]:
+        rows = []
+        cursor = self._connection.execute(
+            "SELECT ordinal,generation,row_offset,summary_json FROM completion_candidates "
+            "WHERE completion_sha=? ORDER BY ordinal", (completion_sha,)
+        )
+        for ordinal, generation, row_offset, raw in cursor:
+            summary = json.loads(raw)
+            if not isinstance(summary, dict):
+                raise _integrity("Candidate index summary is malformed.", ordinal=ordinal)
+            rows.append(summary)
+        return rows
+
+    def read_candidate_indexes(self, completion_sha: str) -> list[dict[str, Any]]:
+        rows = []
+        cursor = self._connection.execute(
+            "SELECT ordinal,generation,row_offset,block_ref,value_ref,summary_json "
+            "FROM completion_candidates WHERE completion_sha=? ORDER BY ordinal", (completion_sha,)
+        )
+        for ordinal, generation, row_offset, block_ref, value_ref, raw in cursor:
+            summary = json.loads(raw)
+            if not isinstance(summary, dict):
+                raise _integrity("Candidate index summary is malformed.", ordinal=ordinal)
+            rows.append({"ordinal": ordinal, "generation": generation, "row_offset": row_offset,
+                         "block_ref": self._decoded_reference(block_ref),
+                         "value_ref": self._decoded_reference(value_ref), "summary_json": summary})
+        return rows
+
 class StoreTransaction(Snapshot):
     """Mutation mechanics inside one store-owned SQL transaction."""
 
     def __init__(self, connection: sqlite3.Connection, transaction_id: str):
         super().__init__(connection)
-        # This witness belongs only to the current SQL transaction. Exact role
-        # and length bindings remain part of its key; a new lock/connection must
-        # verify stored bytes again, even for the same content digest.
-        self._reuse_verified = True
+        # Transaction writes compare each body at insertion and do not retain
+        # verified payload bytes for the lifetime of a generation publication.
+        # Pointer writes perform their ordinary single-object read/verification.
+        self._reuse_verified = False
         self.counts = {"put_object_calls": 0, "logical_object_bytes": 0,
                        "inserted_objects": 0, "appended_rows": 0}
         self.outcome: dict[str, Any] = {"status": "not_committed", "transaction_id": transaction_id}
@@ -524,18 +632,15 @@ class StoreTransaction(Snapshot):
         self.counts["put_object_calls"] += 1
         self.counts["logical_object_bytes"] += len(payload)
         reference = _reference(digest, role, len(payload))
-        key = self._object_key(reference)
-        if key in self._verified_objects:
-            if self._verified_objects[key] != payload:
-                raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
-            return reference
         cursor = self._connection.execute("INSERT INTO objects VALUES (?,?) ON CONFLICT DO NOTHING", (digest, payload))
         self.counts["inserted_objects"] += cursor.rowcount
-        existing = self._connection.execute("SELECT payload FROM objects WHERE sha256=?", (digest,)).fetchone()[0]
-        if existing != payload:
-            raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
+        if cursor.rowcount == 0:
+            existing = self._connection.execute(
+                "SELECT payload FROM objects WHERE sha256=?", (digest,)
+            ).fetchone()[0]
+            if existing != payload:
+                raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
         self._connection.execute("INSERT INTO object_roles VALUES (?,?) ON CONFLICT DO NOTHING", (digest, role))
-        self._verified_objects[key] = payload
         return reference
 
     def append_with_ref(self, stream: str, kind: str, payload: bytes) -> tuple[int, dict[str, Any]]:
@@ -576,4 +681,22 @@ class StoreTransaction(Snapshot):
             "end_ns=excluded.end_ns,clock_id=excluded.clock_id",
             (operation_id, object_ref["sha256"], object_ref["role"], method, backend, precision,
              status, start_ns, end_ns, clock_id))
+
+    def index_completion(self, completion_sha: str, generations: Sequence[Mapping[str, Any]],
+                         candidates: Sequence[Mapping[str, Any]]) -> None:
+        """Publish query locators atomically with their sealed completion objects."""
+        for row in generations:
+            summary = canonical_json_bytes(row["summary_json"]).decode("utf-8")
+            self._connection.execute(
+                "INSERT INTO completion_generations VALUES (?,?,?,?,?,?)",
+                (completion_sha, row["generation"], self._json_reference(row["block_ref"]),
+                 row["first_ordinal"], row["row_count"], summary),
+            )
+        for row in candidates:
+            summary = canonical_json_bytes(row["summary_json"]).decode("utf-8")
+            self._connection.execute(
+                "INSERT INTO completion_candidates VALUES (?,?,?,?,?,?,?)",
+                (completion_sha, row["ordinal"], row["generation"], row["row_offset"],
+                 self._json_reference(row["block_ref"]), self._json_reference(row["value_ref"]), summary),
+            )
 

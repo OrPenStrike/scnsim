@@ -7,12 +7,10 @@ from the committed baseline; no backend owns the optimizer or durable state.
 from __future__ import annotations
 
 from dataclasses import asdict
-from copy import deepcopy
 from contextlib import nullcontext
 from hashlib import sha256
 import json
 import math
-import struct
 from importlib.metadata import version
 from threading import Lock
 from typing import Callable
@@ -23,18 +21,29 @@ import numpy as np
 from ..canonical import canonical_json_bytes, float64_from_hex
 from .. import errors
 from ..errors import CompilerInvariantError, RuntimePreparationError, SCNSimError, SCNSimValidationError, InvalidCandidatePhysicalParameter
-from .compiler import compile_model, parameter_key, parameter_values
-from .mesh import quantity
-from .models import EvaluationJob, EvaluationResult, MeshSpec, NumericalBackend, NumericalFailure
-from .prepared import array_from_record, array_record, record_bytes, record_document
-from ..execution.quantities import (
+from ..compilation.compiler import compile_model, parameter_key, parameter_values
+from ..compilation.mesh import quantity
+from ..compilation.models import MeshSpec
+from ..numerics.models import EvaluationJob, EvaluationResult, NumericalBackend, NumericalFailure
+from ..numeric_encoding import (
+    array_from_record,
+    array_record,
+    bits,
+    complex_record,
+    complex_value,
+    record_bytes,
+    record_document,
+    unbits,
+)
+from ..numerics.evidence import numerical_error
+from .quantities import (
     EvaluationFailure,
     QuantityEvaluator,
     expression_leaves as leaves,
     expression_value,
     result_from_record,
 )
-from .views import realize_view
+from ..compilation.views import realize_view
 
 CANDIDATE_FAILURES = frozenset(("invalid_candidate_physical_parameter", "eliminated_block_solve_failure",
                                 "root_slope_unresolved", "numerical_resolution_unresolved"))
@@ -46,33 +55,6 @@ def _candidate_actor_error(record: dict):
     if not isinstance(cls, type) or not issubclass(cls, SCNSimError):
         raise CompilerInvariantError("candidate actor returned an unknown error type", stage="candidate_protocol")
     return cls(record["detail"], stage=record["stage"], evidence=record.get("evidence", {}))
-
-
-def bits(value: float) -> str:
-    """Numeric evidence may include infinity; unlike parameter identity encoding."""
-    return struct.pack(">d", float(value)).hex()
-
-
-def unbits(value: str) -> float:
-    return struct.unpack(">d", bytes.fromhex(value))[0]
-
-
-def complex_record(value: complex) -> dict:
-    return {"real_f64": bits(value.real), "imag_f64": bits(value.imag)}
-
-
-def complex_value(record: dict) -> complex:
-    return complex(float64_from_hex(record["real_f64"]), float64_from_hex(record["imag_f64"]))
-
-
-def numerical_error(failure: NumericalFailure):
-    """Restore the existing public failure type from a numerical handoff."""
-    classes = (errors.DirectResponseFormationError, errors.PortRealizabilityError,
-               errors.EliminatedBlockSolveFailure, errors.RootSlopeUnresolved,
-               errors.NumericalResolutionUnresolved, errors.InvalidCandidatePhysicalParameter,
-               errors.CompilerInvariantError, errors.UnsupportedSingularCapacitanceForDiagonalRootV1)
-    error_type = {cls.kind: cls for cls in classes}[failure.kind]
-    return error_type(failure.detail, stage=failure.stage, evidence=record_document(failure.evidence_bytes))
 
 
 def checked_results(backend: NumericalBackend, jobs: tuple[EvaluationJob, ...]) -> tuple[EvaluationResult, ...]:
@@ -96,6 +78,8 @@ class Evaluator:
         self.worker_backend_factory = worker_backend_factory
         self.worker_capacity = worker_capacity
         self.candidate_pool = candidate_pool
+        from ..execution.operation_spool import current_operation_spool
+        self.operation_spool = current_operation_spool()
         self.preparation_cache = {}
         source = analysis["parameter_source"]
         point = source["parameters"] if source["kind"] == "point" else source["baseline_parameters"] if source["kind"] == "points" else source["base_parameters"]
@@ -503,6 +487,7 @@ class Evaluator:
                 state["cost_f64"] = bits(cost)
                 state["objectives"].append({"id": objective["id"], "status": "success", "value_f64": bits(value),
                                             "cost_f64": bits(contribution), "normalized_residual_f64": bits(residual), "terms": term_records[index]})
+        new_records = {}
         for key, index in representatives.items():
             state = states[index]
             if not state["failure"] and not math.isfinite(unbits(state["cost_f64"])):
@@ -518,12 +503,32 @@ class Evaluator:
                     anchor_key: result_from_record(state["dependencies"][body_id])
                     for anchor_key, body_id in references.items()
                 }
-            self.cache[key] = {k: v for k, v in state.items()
-                               if k not in ("values", "views", "result_cache", "preparation_cache")}
+            record = {k: v for k, v in state.items()
+                      if k not in ("values", "views", "result_cache", "preparation_cache")}
+            new_records[key] = record
+            if self.operation_spool is None:
+                # Keep the cache's outer record separate from the mutable
+                # occurrence returned to the optimizer; nested immutable
+                # evidence bodies remain shared.
+                self.cache[key] = dict(record)
+            else:
+                self.cache[key] = self.operation_spool.put_record(record)
         result, seen = [], set()
         for key in keys:
-            result.append(dict(deepcopy(self.cache[key]), candidate_key=key,
-                               cache_hit=key not in representatives or key in seen))
+            is_new = key in representatives and key not in seen
+            if is_new:
+                record = new_records[key]
+            elif key in new_records:
+                record = dict(new_records[key])
+            else:
+                cached = self.cache[key]
+                if self.operation_spool is not None:
+                    record = self.operation_spool.get_record(cached)
+                else:
+                    record = dict(cached)
+            record["candidate_key"] = key
+            record["cache_hit"] = not is_new
+            result.append(record)
             seen.add(key)
         self.last_batch_stats = {
             "new_unique_candidates": len(representatives),
@@ -655,9 +660,15 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
         }
         if evaluator.candidate_pool is not None:
             evaluator.install_anchor_records(checkpoint["anchors"], baseline_dependencies)
-        evaluator.cache = checkpoint["cache"]
-        baseline, best = checkpoint["baseline"], checkpoint["best"]
+        evaluator.cache = checkpoint.pop("cache")
+        best = checkpoint["best"]
         next_ordinal = checkpoint["next_ordinal"]
+        # The verified SQLite task history remains the complete ledger. Once
+        # CMA, decoded anchors and reference-backed cache keys are installed,
+        # the resumed coordinator has no further use for hydrated rows/bodies.
+        checkpoint.clear()
+        baseline_dependencies = None
+        baseline = None
     else:
         baseline_context = (evaluator.operation_resources.candidate_compute()
                             if evaluator.operation_resources is not None and evaluator.candidate_pool is None
@@ -693,6 +704,7 @@ def optimize(evaluator: Evaluator, emit: Callable, checkpoint: dict | None = Non
             evaluator.candidate_pool.release_generation(0)
     for generation in range(optimizer.generation + 1, controls["complete_generations"] + 1):
         with (nullcontext() if trace is None else trace.span("generation", details={"generation": generation})):
+            emit("population_evaluation_start", {"generation": generation})
             start = perf_counter_ns()
             raw = [optimizer.ask() for _ in range(optimizer.population_size)]
             emit("timing", {"stage": "cma_ask", "start_tick_ns": start, "end_tick_ns": perf_counter_ns(),

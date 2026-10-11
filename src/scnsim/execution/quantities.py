@@ -8,6 +8,7 @@ inside the selected backend; public result construction remains in the decoder.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import replace
 from hashlib import sha256
 import math
@@ -16,14 +17,14 @@ from time import perf_counter_ns
 import numpy as np
 
 from ..canonical import canonical_json_bytes, float64_from_hex
-from ..benchmark.models import (
+from ..numerics.models import (
     EvaluationJob,
     EvaluationResult,
     NumericalBackend,
     NumericalFailure,
     RootBranch,
 )
-from ..benchmark.prepared import array_from_record, array_record, record_bytes, record_document
+from ..numeric_encoding import array_from_record, array_record, record_bytes, record_document
 
 
 _ARRAY_FIELDS = ("S", "Y", "Z", "operator_values", "null_vector", "branch_roots_rad_s")
@@ -188,12 +189,17 @@ class EvaluationFailure(Exception):
 
 def continue_root(*, baseline: dict, values: dict, baseline_root: complex,
                   endpoint_view, initial_result: EvaluationResult,
-                  candidate_view, make_job, evaluate, identity: str, observe=None):
+                  candidate_view, make_job, evaluate, identity: str, observe=None,
+                  continuation_step_scope=None):
     """The existing baseline-anchored dyadic continuation for every root kind."""
-    def advance(left_t, left_root, right_t, depth, result=None):
-        if right_t == 1.0:
-            point, view = values, endpoint_view
-        else:
+    def evaluate_intermediate_step(left_root, right_t):
+        # A candidate actor may need to bind its current mutable state around
+        # continuation preparation, evaluation and evidence observation. The
+        # typed result is immutable, so it can safely leave that scope before
+        # recursion.
+        scope = (nullcontext() if continuation_step_scope is None
+                 else continuation_step_scope())
+        with scope:
             point = {}
             for parameter, base in baseline.items():
                 candidate = values[parameter]
@@ -205,10 +211,20 @@ def continue_root(*, baseline: dict, values: dict, baseline_root: complex,
                 else:
                     point[parameter] = base + right_t * (candidate - base)
             view = candidate_view(point)
-        if result is None:
             result = evaluate((make_job(f"continuation:{identity}:{right_t.hex()}", view, left_root),))[0]
-        if observe is not None:
-            observe(point, view, result, right_t)
+            if observe is not None:
+                observe(point, view, result, right_t)
+            return result
+
+    def advance(left_t, left_root, right_t, depth, result=None):
+        if right_t == 1.0:
+            point, view = values, endpoint_view
+            if result is None:
+                result = evaluate((make_job(f"continuation:{identity}:{right_t.hex()}", view, left_root),))[0]
+            if observe is not None:
+                observe(point, view, result, right_t)
+        else:
+            result = evaluate_intermediate_step(left_root, right_t)
         if result.failure is None:
             return result
         if result.failure.kind != "numerical_resolution_unresolved" or depth >= 32:
@@ -223,9 +239,10 @@ def continue_root(*, baseline: dict, values: dict, baseline_root: complex,
 class QuantityEvaluator:
     """Resolve typed quantity dependencies against one operation's anchors."""
 
-    def __init__(self, backend: NumericalBackend, *, emit=None):
+    def __init__(self, backend: NumericalBackend, *, emit=None, continuation_step_scope=None):
         self.backend = backend
         self.emit = emit
+        self.continuation_step_scope = continuation_step_scope
 
     @staticmethod
     def dependency_key(spec: Mapping[str, object], view: Mapping[str, object]) -> str:
@@ -329,6 +346,7 @@ class QuantityEvaluator:
                     make_job=lambda continuation_id, candidate, omega: self._root_job(
                         continuation_id, spec, candidate, omega),
                     evaluate=self.evaluate_jobs, identity=identity, observe=observe,
+                    continuation_step_scope=self.continuation_step_scope,
                 )
             except EvaluationFailure as error:
                 if (not candidate_failure_conversion

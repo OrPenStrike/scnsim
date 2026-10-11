@@ -14,7 +14,7 @@ from ..canonical import canonical_json_bytes
 from ..errors import CompilerInvariantError, DirectResponseFormationError, PortRealizabilityError
 from .compiler import backward_residual
 from .models import CompiledModel, RealizedView, SeriesRL
-from .prepared import record_bytes, record_document
+from ..numeric_encoding import record_bytes, record_document
 
 
 def _view_template_key(model: CompiledModel, declaration: dict, template_cache: dict | None):

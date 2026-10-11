@@ -7,7 +7,7 @@ import numpy as np
 
 from ..canonical import canonical_json_bytes, float64_from_hex
 from ..errors import CompilerInvariantError, InvalidCandidatePhysicalParameter
-from .models import MeshSpec, immutable_array
+from .models import MeshGroup, MeshSpec, immutable_array
 
 
 def quantity(record: dict) -> float:
@@ -101,3 +101,15 @@ def realize_line(leaf: dict, length: float, rlgc: dict, values: dict, mesh: Mesh
         raise InvalidCandidatePhysicalParameter("RLGC section physical matrix validation failed", stage="physical_validation") from error
     record.update(n_sections=sections, dx_m=dx)
     return record
+
+
+def mesh_from_record(record: dict) -> MeshSpec:
+    sections = lambda items: tuple((tuple(path), count) for path, count in items)
+    return MeshSpec(
+        kind=record["kind"], sections=sections(record["sections"]),
+        parameter_key=tuple(record["parameter_key"]) if record["parameter_key"] is not None else None,
+        groups=tuple(MeshGroup(float64_from_hex(g["lower_f64"]), float64_from_hex(g["upper_f64"]), g["lower_inclusive"], g["upper_inclusive"], sections(g["sections"]))
+                     for g in record["groups"]),
+        derivation_bytes=canonical_json_bytes(record["derivation"]),
+    )
+

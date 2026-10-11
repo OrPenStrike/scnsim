@@ -1,8 +1,10 @@
-"""Workspace/process coordination for one immutable prepared request.
+"""Coordinate one request under its caller-held operation lease.
 
-The reader or writer ownership interval encloses verified-success yield and
-immediate decode. Launch and checkpoint acknowledgements remain in this one
-publication state machine."""
+Workspace reader and writer scopes protect short evidence reads and
+publications. Native execution, user callbacks, and the verified-success yield
+remain outside those scopes; launch and checkpoint acknowledgements stay in
+this publication state machine.
+"""
 
 from __future__ import annotations
 
@@ -33,18 +35,62 @@ from .staging import (
     _validate_terminal_staging_layout,
     _write_logs,
 )
+from ..workspace.operation_lease import request_execution_lease
+from ..workspace.storage import _load_canonical
+from ..workspace.validation.requests import _is_current_native_optimization_request
+
+
+def _bound_plan_document(binding: WorkspaceBinding) -> Mapping[str, object]:
+    """Read the exact canonical Plan bound to this Workspace leaf."""
+
+    with binding.reader():
+        # reader() verifies the current root/leaf instance and the Plan digest
+        # before this detached canonical document is loaded.
+        return _load_canonical(binding.leaf / "plan.json")
 
 
 @contextmanager
 def execute_prepared(
     *,
     binding: WorkspaceBinding,
-    plan_document: Mapping[str, object],
     prepared_analysis: PreparedAnalysis,
+    operation_id: str,
+    operation_lease,
+    native_supervisor,
     on_progress: Callable[[OptimizationProgress], object] | None = None,
     _timing_observer: Callable[[str, int, int, Mapping[str, object]], object] | None = None,
 ) -> Iterator[VerifiedSuccess]:
-    """Yield verified success while its workspace ownership lock remains held."""
+    """Serialize an exact request while keeping Workspace writes short."""
+
+    if native_supervisor is None:
+        raise RuntimeError("execute_prepared requires its registered operation's native supervisor")
+    with request_execution_lease(binding, prepared_analysis.request_sha256) as request_lease:
+        with _execute_prepared(
+            binding=binding,
+            prepared_analysis=prepared_analysis,
+            operation_id=operation_id,
+            operation_lease=operation_lease,
+            request_lease=request_lease,
+            native_supervisor=native_supervisor,
+            on_progress=on_progress,
+            _timing_observer=_timing_observer,
+        ) as success:
+            yield success
+
+
+@contextmanager
+def _execute_prepared(
+    *,
+    binding: WorkspaceBinding,
+    prepared_analysis: PreparedAnalysis,
+    operation_id: str,
+    operation_lease,
+    request_lease,
+    native_supervisor,
+    on_progress: Callable[[OptimizationProgress], object] | None = None,
+    _timing_observer: Callable[[str, int, int, Mapping[str, object]], object] | None = None,
+) -> Iterator[VerifiedSuccess]:
+    """Execute under the caller's operation lease and short Workspace writes."""
 
     request_bytes = prepared_analysis.request_bytes
     request = prepared_analysis.request()
@@ -82,28 +128,41 @@ def execute_prepared(
 
     with binding.reader():
         success = binding.find_success(request_sha)
-        if success is not None:
-            report_reuse(success)
-            yield success
-            return
-    prepared_runtime = prepare_runtime(feature=str(request["operation"]))
+    if success is not None:
+        report_reuse(success)
+        yield success
+        return
+    native_supervisor.retain_lease(request_lease.descriptor)
+    prepared_runtime = prepare_runtime(
+        feature=str(request["operation"]),
+        native_supervisor=native_supervisor,
+    )
     executable_sha = sha256(prepared_runtime.executable.read_bytes()).hexdigest()
     started = _utc_now()
     with binding.writer():
         success = binding.find_success(request_sha)
-        if success is not None:
-            report_reuse(success)
-            yield success
-            return
-        request_directory = binding.ensure_request(request_sha, request_bytes)
-        checkpoint = binding.baseline_checkpoint(request_sha)
-        point_checkpoints = (binding.point_checkpoints(request_sha)
-            if request["parameter_source"]["kind"] in {"grid", "points"} else ())
-        resume_ledger_sha = binding.resume_ledger_sha256(request_sha)
-        allocation = binding.allocate_attempt(request_sha)
-        attempt_sha: str | None = None
+        if success is None:
+            request_directory = binding.ensure_request(request_sha, request_bytes)
+            checkpoint = binding.baseline_checkpoint(request_sha)
+            point_checkpoints = (binding.point_checkpoints(request_sha)
+                if request["parameter_source"]["kind"] in {"grid", "points"} else ())
+            resume_ledger_sha = binding.resume_ledger_sha256(request_sha)
+            allocation = binding.allocate_attempt(
+                request_sha, operation_id=operation_id, operation_lease=operation_lease,
+            )
+    if success is not None:
+        report_reuse(success)
+        yield success
+        return
+    attempt_sha: str | None = None
 
-        def promote(receipt: Mapping[str, object]) -> None:
+    def promote(receipt: Mapping[str, object]) -> None:
+        with binding.writer(cleanup_staging=False):
+            if (
+                receipt.get("outcome") == "success"
+                and _is_current_native_optimization_request(request)
+            ):
+                binding.seal_native_result_index(allocation, receipt)
             if request["parameter_source"]["kind"] in {"grid", "points"}:
                 receipt = canonical_receipt_document({**receipt,
                     "point_checkpoint_count": len(binding.point_checkpoints(request_sha))})
@@ -113,14 +172,15 @@ def execute_prepared(
             finally:
                 signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
-        def seal_protocol_failure(
-            error: BackendProtocolError | OptimizationProgressCallbackError,
-            *,
-            stdout: Sequence[str] = (),
-            stderr: Sequence[str] = (),
-        ) -> None:
-            nonlocal attempt_sha
-            if attempt_sha is None:
+    def seal_protocol_failure(
+        error: BackendProtocolError | OptimizationProgressCallbackError,
+        *,
+        stdout: Sequence[str] = (),
+        stderr: Sequence[str] = (),
+    ) -> None:
+        nonlocal attempt_sha
+        if attempt_sha is None:
+            with binding.writer(cleanup_staging=False):
                 attempt_sha = binding.seal_attempt(
                     allocation,
                     _attempt_document(
@@ -133,28 +193,29 @@ def execute_prepared(
                         checkpoint=checkpoint,
                     ),
                 )
-            _write_logs(allocation.staging_directory, stdout, (*stderr, str(error)))
-            _discard_untrusted_outputs(allocation.staging_directory)
-            promote(
-                _receipt(
-                    request=request,
-                    plan_document=plan_document,
-                    request_sha=request_sha,
-                    attempt_sha=attempt_sha,
-                    outcome="failure",
-                    artifacts=[],
-                    source_units=source_units,
-                    failure=_failure_record(
-                        error, request["operation"], request_sha, attempt_sha
-                    ),
-                )
+        _write_logs(allocation.staging_directory, stdout, (*stderr, str(error)))
+        _discard_untrusted_outputs(allocation.staging_directory)
+        promote(
+            _receipt(
+                request=request,
+                plan_document=_bound_plan_document(binding),
+                request_sha=request_sha,
+                attempt_sha=attempt_sha,
+                outcome="failure",
+                artifacts=[],
+                source_units=source_units,
+                failure=_failure_record(
+                    error, request["operation"], request_sha, attempt_sha
+                ),
             )
+        )
 
-        def seal_interruption(error: KeyboardInterrupt) -> None:
-            nonlocal attempt_sha
-            if allocation.final_directory.exists():
-                return
-            if attempt_sha is None:
+    def seal_interruption(error: KeyboardInterrupt) -> None:
+        nonlocal attempt_sha
+        if allocation.final_directory.exists():
+            return
+        if attempt_sha is None:
+            with binding.writer(cleanup_staging=False):
                 attempt_sha = binding.seal_attempt(
                     allocation,
                     _attempt_document(
@@ -167,33 +228,44 @@ def execute_prepared(
                         checkpoint=checkpoint,
                     ),
                 )
-            _write_logs(allocation.staging_directory, (), ())
-            artifacts = verified_generation_links(
-                allocation.staging_directory,
-                request_sha256=request_sha,
-                attempt_sha256=attempt_sha,
-                allow_other_artifacts=True,
+        _write_logs(allocation.staging_directory, (), ())
+        artifacts = verified_generation_links(
+            allocation.staging_directory,
+            request_path=request_directory / "request.json",
+            request_sha256=request_sha,
+            attempt_sha256=attempt_sha,
+            allow_other_artifacts=True,
+        )
+        _discard_untrusted_outputs(allocation.staging_directory, keep_ledgers=True)
+        promote(
+            _receipt(
+                request=request,
+                plan_document=_bound_plan_document(binding),
+                request_sha=request_sha,
+                attempt_sha=attempt_sha,
+                outcome="interrupted",
+                artifacts=artifacts,
+                source_units=source_units,
+                interruption={
+                    "kind": "keyboard_interrupt",
+                    "termination": getattr(error, "termination", "terminated"),
+                    "interrupted_at_utc": _utc_now(),
+                },
             )
-            _discard_untrusted_outputs(allocation.staging_directory, keep_ledgers=True)
-            promote(
-                _receipt(
-                    request=request,
-                    plan_document=plan_document,
-                    request_sha=request_sha,
-                    attempt_sha=attempt_sha,
-                    outcome="interrupted",
-                    artifacts=artifacts,
-                    source_units=source_units,
-                    interruption={
-                        "kind": "keyboard_interrupt",
-                        "termination": getattr(error, "termination", "terminated"),
-                        "interrupted_at_utc": _utc_now(),
-                    },
-                )
+        )
+
+    def seal_without_replacing_primary(primary: BaseException, action, label: str) -> None:
+        try:
+            action()
+        except BaseException as secondary:
+            primary.add_note(
+                f"{label} while recording the primary failure also failed: "
+                f"{type(secondary).__name__}: {secondary}"
             )
 
-        def authorize(ready: BootstrapReady) -> str:
-            nonlocal attempt_sha
+    def authorize(ready: BootstrapReady) -> str:
+        nonlocal attempt_sha
+        with binding.writer(cleanup_staging=False):
             attempt_sha = binding.seal_attempt(
                 allocation,
                 _attempt_document(
@@ -207,11 +279,12 @@ def execute_prepared(
                     checkpoint=checkpoint,
                 ),
             )
-            return attempt_sha
+        return attempt_sha
 
-        def publish_checkpoint(ready: Mapping[str, object]) -> Mapping[str, object]:
-            nonlocal checkpoint
-            assert attempt_sha is not None
+    def publish_checkpoint(ready: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal checkpoint
+        assert attempt_sha is not None
+        with binding.writer(cleanup_staging=False):
             published = binding.publish_baseline_checkpoint(
                 request_sha,
                 attempt_sha,
@@ -219,194 +292,219 @@ def execute_prepared(
                 expected_sha256=str(ready["checkpoint_sha256"]),
                 expected_byte_length=int(ready["byte_length"]),
             )
-            checkpoint = published
-            return {
-                "checkpoint_sha256": published.checkpoint_sha256,
-                "seal_sha256": published.seal_sha256,
-            }
+        checkpoint = published
+        return {
+            "checkpoint_sha256": published.checkpoint_sha256,
+            "seal_sha256": published.seal_sha256,
+        }
 
-        def publish_point(ready: Mapping[str, object]) -> Mapping[str, object]:
-            assert attempt_sha is not None
-            try:
-                published = binding.publish_point_checkpoint(request_sha, attempt_sha,
-                    allocation.staging_directory, ready)
-            except (EvidenceIntegrityError, OSError) as error:
-                raise BackendProtocolError("child point checkpoint failed independent validation",
-                    stage="point_checkpoint") from error
-            return {"record_sha256": ready["record_sha256"],
-                    "seal_sha256": published.seal_sha256}
-
-        try:
-            checkpoint_control, publisher_control = _optimization_checkpoint_controls(
-                request.get("operation"), checkpoint, publish_checkpoint
-            )
-            terminal = run_terminal(
-                prepared_runtime,
-                _timing_observer=_timing_observer,
-                request_path=(request_directory / "request.json").resolve(),
-                staging_directory=allocation.staging_directory.resolve(),
-                request_sha256=request_sha,
-                attempt_ordinal=allocation.ordinal,
-                authorize=authorize,
-                checkpoint=checkpoint_control,
-                publish_checkpoint=publisher_control,
-                on_progress=deliver if on_progress is not None else None,
-                point_recovery=tuple({"ordinal": index, "seal_sha256": item.seal_sha256}
-                    for index, item in enumerate(point_checkpoints)) if request["parameter_source"]["kind"] in {"grid", "points"} else None,
-                publish_point=publish_point if request["parameter_source"]["kind"] in {"grid", "points"} else None,
-            )
-        except KeyboardInterrupt as error:
-            seal_interruption(error)
-            raise
-        except _IncomingCheckpointEvidenceError as error:
-            protocol = BackendProtocolError(
-                "child baseline checkpoint failed independent validation",
-                stage="optimization_checkpoint",
-            )
-            seal_protocol_failure(protocol)
-            raise protocol from error
-        except BackendProtocolError as error:
-            seal_protocol_failure(error)
-            raise
-        except OptimizationProgressCallbackError as error:
-            seal_protocol_failure(error)
-            raise
-
+    def publish_point(ready: Mapping[str, object]) -> Mapping[str, object]:
         assert attempt_sha is not None
         try:
-            _write_logs(
-                allocation.staging_directory,
-                terminal.stdout_log,
-                terminal.stderr_log,
+            with binding.writer(cleanup_staging=False):
+                published = binding.publish_point_checkpoint(request_sha, attempt_sha,
+                    allocation.staging_directory, ready)
+        except (EvidenceIntegrityError, OSError) as error:
+            raise BackendProtocolError("child point checkpoint failed independent validation",
+                stage="point_checkpoint") from error
+        return {"record_sha256": ready["record_sha256"],
+                "seal_sha256": published.seal_sha256}
+
+    try:
+        checkpoint_control, publisher_control = _optimization_checkpoint_controls(
+            request.get("operation"), checkpoint, publish_checkpoint
+        )
+        terminal = run_terminal(
+            prepared_runtime,
+            native_supervisor=native_supervisor,
+            _timing_observer=_timing_observer,
+            request_path=(request_directory / "request.json").resolve(),
+            staging_directory=allocation.staging_directory.resolve(),
+            request_sha256=request_sha,
+            attempt_ordinal=allocation.ordinal,
+            authorize=authorize,
+            checkpoint=checkpoint_control,
+            publish_checkpoint=publisher_control,
+            on_progress=deliver if on_progress is not None else None,
+            point_recovery=tuple({"ordinal": index, "seal_sha256": item.seal_sha256}
+                for index, item in enumerate(point_checkpoints)) if request["parameter_source"]["kind"] in {"grid", "points"} else None,
+            publish_point=publish_point if request["parameter_source"]["kind"] in {"grid", "points"} else None,
+        )
+    except KeyboardInterrupt as error:
+        seal_without_replacing_primary(
+            error, lambda: seal_interruption(error), "Interruption evidence finalization"
+        )
+        raise
+    except _IncomingCheckpointEvidenceError as error:
+        protocol = BackendProtocolError(
+            "child baseline checkpoint failed independent validation",
+            stage="optimization_checkpoint",
+        )
+        seal_without_replacing_primary(
+            protocol, lambda: seal_protocol_failure(protocol), "Checkpoint failure finalization"
+        )
+        raise protocol from error
+    except BackendProtocolError as error:
+        seal_without_replacing_primary(
+            error, lambda: seal_protocol_failure(error), "Protocol failure finalization"
+        )
+        raise
+    except OptimizationProgressCallbackError as error:
+        seal_without_replacing_primary(
+            error, lambda: seal_protocol_failure(error), "Progress callback failure finalization"
+        )
+        raise
+
+    assert attempt_sha is not None
+    try:
+        _write_logs(
+            allocation.staging_directory,
+            terminal.stdout_log,
+            terminal.stderr_log,
+        )
+        outcome_path = allocation.staging_directory / "outcome.json"
+        if (
+            allocation.staging_directory.is_symlink()
+            or not allocation.staging_directory.is_dir()
+            or outcome_path.is_symlink()
+            or not outcome_path.is_file()
+        ):
+            raise BackendProtocolError(
+                "outcome.json is not a regular file", stage="outcome"
             )
-            outcome_path = allocation.staging_directory / "outcome.json"
-            if (
-                allocation.staging_directory.is_symlink()
-                or not allocation.staging_directory.is_dir()
-                or outcome_path.is_symlink()
-                or not outcome_path.is_file()
-            ):
+        outcome_raw = outcome_path.read_bytes()
+        outcome = terminal.outcome
+        if canonical_json_bytes(outcome) != outcome_raw:
+            raise BackendProtocolError(
+                "outcome.json is not canonical", stage="outcome"
+            )
+        if (
+            outcome.get("runtime_semantic") != request.get("runtime_semantic")
+            or outcome.get("request_sha256") != request_sha
+            or outcome.get("attempt_sha256") != attempt_sha
+            or outcome.get("status") not in {"success", "failure"}
+            or not isinstance(outcome.get("artifacts"), list)
+        ):
+            raise BackendProtocolError(
+                "outcome envelope does not bind this execution",
+                stage="outcome",
+            )
+        expected_fields = {
+            "schema",
+            "schema_version",
+            "request_sha256",
+            "attempt_sha256",
+            "runtime_semantic",
+            "status",
+            "artifacts",
+            "result_sha256" if outcome["status"] == "success" else "failure",
+        }
+        if set(outcome) != expected_fields:
+            raise BackendProtocolError(
+                "outcome envelope has unsupported fields", stage="outcome"
+            )
+        _validate_terminal_staging_layout(
+            allocation.staging_directory,
+            success=outcome["status"] == "success",
+        )
+        artifacts = list(outcome["artifacts"])
+        outcome_sha = sha256_hex(outcome_raw)
+        bound_plan_document = _bound_plan_document(binding)
+        if outcome["status"] == "success":
+            _validate_success_staging(
+                allocation.staging_directory,
+                outcome,
+                request,
+                bound_plan_document,
+                request_path=request_directory / "request.json",
+                optimization_checkpoint=checkpoint,
+            )
+            receipt = _receipt(
+                request=request,
+                plan_document=bound_plan_document,
+                request_sha=request_sha,
+                attempt_sha=attempt_sha,
+                outcome="success",
+                artifacts=artifacts,
+                source_units=source_units,
+                outcome_sha=outcome_sha,
+                result_sha=outcome["result_sha256"],
+            )
+            failure = None
+        else:
+            result_path = allocation.staging_directory / "result.json"
+            if result_path.exists() or result_path.is_symlink():
                 raise BackendProtocolError(
-                    "outcome.json is not a regular file", stage="outcome"
-                )
-            outcome_raw = outcome_path.read_bytes()
-            outcome = terminal.outcome
-            if canonical_json_bytes(outcome) != outcome_raw:
-                raise BackendProtocolError(
-                    "outcome.json is not canonical", stage="outcome"
-                )
-            if (
-                outcome.get("runtime_semantic") != request.get("runtime_semantic")
-                or outcome.get("request_sha256") != request_sha
-                or outcome.get("attempt_sha256") != attempt_sha
-                or outcome.get("status") not in {"success", "failure"}
-                or not isinstance(outcome.get("artifacts"), list)
-            ):
-                raise BackendProtocolError(
-                    "outcome envelope does not bind this execution",
+                    "failure outcome must not publish result.json",
                     stage="outcome",
                 )
-            expected_fields = {
-                "schema",
-                "schema_version",
-                "request_sha256",
-                "attempt_sha256",
-                "runtime_semantic",
-                "status",
-                "artifacts",
-                "result_sha256" if outcome["status"] == "success" else "failure",
-            }
-            if set(outcome) != expected_fields:
-                raise BackendProtocolError(
-                    "outcome envelope has unsupported fields", stage="outcome"
-                )
-            _validate_terminal_staging_layout(
+            verified_links = verified_generation_links(
                 allocation.staging_directory,
-                success=outcome["status"] == "success",
+                request_path=request_directory / "request.json",
+                request_sha256=request_sha,
+                attempt_sha256=attempt_sha,
             )
-            artifacts = list(outcome["artifacts"])
-            outcome_sha = sha256_hex(outcome_raw)
-            if outcome["status"] == "success":
-                _validate_success_staging(
-                    allocation.staging_directory,
-                    outcome,
-                    request,
-                    plan_document,
-                    optimization_checkpoint=checkpoint,
+            if artifacts != verified_links:
+                raise BackendProtocolError(
+                    "failure outcome does not exactly bind completed generation ledgers",
+                    stage="outcome",
                 )
-                receipt = _receipt(
-                    request=request,
-                    plan_document=plan_document,
-                    request_sha=request_sha,
-                    attempt_sha=attempt_sha,
-                    outcome="success",
-                    artifacts=artifacts,
-                    source_units=source_units,
-                    outcome_sha=outcome_sha,
-                    result_sha=outcome["result_sha256"],
-                )
-                failure = None
-            else:
-                result_path = allocation.staging_directory / "result.json"
-                if result_path.exists() or result_path.is_symlink():
-                    raise BackendProtocolError(
-                        "failure outcome must not publish result.json",
-                        stage="outcome",
-                    )
-                verified_links = verified_generation_links(
-                    allocation.staging_directory,
-                    request_sha256=request_sha,
-                    attempt_sha256=attempt_sha,
-                )
-                if artifacts != verified_links:
-                    raise BackendProtocolError(
-                        "failure outcome does not exactly bind completed generation ledgers",
-                        stage="outcome",
-                    )
-                failure = _validated_failure_record(
-                    outcome.get("failure"), request["operation"],
-                    request=request, plan=plan_document,
-                    require_optimization_context=True,
-                    completed_generations=len(verified_links),
-                )
-                receipt = _receipt(
-                    request=request,
-                    plan_document=plan_document,
-                    request_sha=request_sha,
-                    attempt_sha=attempt_sha,
-                    outcome="failure",
-                    artifacts=artifacts,
-                    source_units=source_units,
-                    outcome_sha=outcome_sha,
-                    failure=failure,
-                )
-        except BackendProtocolError as error:
-            seal_protocol_failure(
+            failure = _validated_failure_record(
+                outcome.get("failure"), request["operation"],
+                request=request, plan=bound_plan_document,
+                require_optimization_context=True,
+                completed_generations=len(verified_links),
+            )
+            receipt = _receipt(
+                request=request,
+                plan_document=bound_plan_document,
+                request_sha=request_sha,
+                attempt_sha=attempt_sha,
+                outcome="failure",
+                artifacts=artifacts,
+                source_units=source_units,
+                outcome_sha=outcome_sha,
+                failure=failure,
+            )
+    except BackendProtocolError as error:
+        seal_without_replacing_primary(
+            error,
+            lambda: seal_protocol_failure(
                 error,
                 stdout=terminal.stdout_log,
                 stderr=terminal.stderr_log,
-            )
-            raise
-        except KeyboardInterrupt as error:
-            seal_interruption(error)
-            raise
-        except Exception as error:
-            protocol = BackendProtocolError(
-                "Julia terminal evidence failed closed validation",
-                stage="outcome",
-                evidence={"error": str(error)},
-            )
-            seal_protocol_failure(
+            ),
+            "Protocol failure finalization",
+        )
+        raise
+    except KeyboardInterrupt as error:
+        seal_without_replacing_primary(
+            error, lambda: seal_interruption(error), "Interruption evidence finalization"
+        )
+        raise
+    except Exception as error:
+        protocol = BackendProtocolError(
+            "Julia terminal evidence failed closed validation",
+            stage="outcome",
+            evidence={"error": str(error)},
+        )
+        seal_without_replacing_primary(
+            protocol,
+            lambda: seal_protocol_failure(
                 protocol,
                 stdout=terminal.stdout_log,
                 stderr=terminal.stderr_log,
-            )
-            raise protocol from error
-        promote(receipt)
-        if failure is None:
-            yield binding.resolve_success(request_sha)
-            return
-        raise _error_from_record(failure)
+            ),
+            "Terminal evidence failure finalization",
+        )
+        raise protocol from error
+    promote(receipt)
+    if failure is None:
+        with binding.reader():
+            success = binding.resolve_success(request_sha)
+        yield success
+        return
+    raise _error_from_record(failure)
 
 
 def _optimization_checkpoint_controls(

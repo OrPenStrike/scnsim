@@ -33,6 +33,18 @@ still-referenced facts; they are not an alternative target schema.
 
 ## Encode one canonical byte stream
 
+The dev24 [lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle)
+adds SQLite operation evidence v6 completion/index ownership; it does not change
+the version of every scientific or native envelope. The completion's
+`terminal_attempt_ref` binds the canonical completed attempt document whose
+digest remains `ResultIdentity.attempt_sha256`, rather than the running
+allocation's digest. The Workspace-owned `scnsim.native_result_index` v1 seals
+compact native generation summaries and exact selected-artifact locators before
+success publication. It leaves Julia result bodies and native artifact formats
+unchanged. Both readers fix root metadata first and verify only the selected
+index/body on each short read; they do not infer identity from an SQL locator or
+an unverified summary.
+
 `canonical.py` owns shared canonical bytes, hashes, binary64, quantities, and
 safe relative paths. Domain builders live with their owners:
 `authoring/identity.py` closes normalized Plan and parameter records,
@@ -161,14 +173,16 @@ to log the later caller's equivalent spelling.
 
 ## Current operation-store bodies and occurrences
 
-Version5 SQLite operation evidence uses exact canonical object bytes and
+Version6 SQLite operation evidence uses exact canonical object bytes and
 role/hash/byte-length references. A `benchmark_value` payload is the scientific
 body directly, `record_bytes(body)`, without a task/key wrapper. Intrinsic
 parameters, identity, dependencies and numerical evidence remain in the body;
 task/key/source-index/cache/attempt/numerical-source occurrence context stays
 on the ordered occurrence referencing it. Context is not copied into the shared
-body. Readers hydrate those references in one verified snapshot. There is no
-version3 wrapper fallback or older-operation-Workspace reader; unsupported
+body. Readers hydrate only selected references in short verified snapshots.
+This version applies to SQLite operation evidence, not the independently
+versioned Julia result body or native artifact schemas. There is no
+old wrapper fallback or older-operation-Workspace reader; unsupported
 stores require a new Workspace and recomputation.
 
 JAX baseline anchors receive a memory ACK before candidate work, not the native
@@ -242,7 +256,8 @@ then verifies the complete chain before reuse or `resolve()`:
   attachment in either case;
 - a positive attempt ordinal uses `str(ordinal).zfill(6)`: both final
   `attempts/<ordinal-text>/` and staging
-  `attempts/.staging-<ordinal-text>-<uuid>/` therefore have at least six
+  `.scnsim-workspace-staging/<operation-uuidv4>/<request-sha256>/.staging-<ordinal-text>-<uuid>/`
+  therefore have at least six
   decimal digits without truncating larger ordinals;
 - the staging suffix is lowercase canonical UUIDv4 text matching
   `[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}`;

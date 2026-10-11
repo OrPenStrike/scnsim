@@ -167,13 +167,17 @@ def _verify_artifact_inventory(
     result: Mapping[str, object],
     receipt: Mapping[str, object],
     *,
+    request_path: Path,
     include_sweep_records: bool = False,
+    workspace_native_index: bool = False,
+    defer_native_optimization_ledgers: bool = False,
 ) -> list[dict[str, object]] | None:
     if result.get("result_kind") == "parameter_sweep":
         return _verify_parameter_sweep_artifacts(
             directory,
             result,
             receipt,
+            request_path=request_path,
             include_records=include_sweep_records,
         )
     if result.get("result_kind") == "hb_batch":
@@ -250,7 +254,7 @@ def _verify_artifact_inventory(
         file_path = _inside(directory, path)
         if not file_path.is_file() or file_path.is_symlink() or file_path.stat().st_size != length:
             raise _integrity("Optimization ledger artifact path is missing or unsafe.", artifact_id=identifier)
-        if _sha256(file_path.read_bytes()) != _valid_sha(digest):
+        if not defer_native_optimization_ledgers and _sha256(file_path.read_bytes()) != _valid_sha(digest):
             raise _integrity("Optimization ledger hash disagrees with its result catalog.", artifact_id=identifier)
         resolved.add((identifier, digest))
     if declared != resolved:
@@ -262,6 +266,8 @@ def _verify_artifact_inventory(
         "/".join(path.split("/")[:2])
         for path in resolved_paths
     }
+    if workspace_native_index:
+        expected_top.add("artifacts/native-index")
     if artifact_root.exists():
         if not artifact_root.is_dir():
             raise _integrity("Result artifact directory is unsafe.")

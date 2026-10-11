@@ -20,7 +20,14 @@ semantics and this documentation remain `CONVERGING`; Alpha is neither a
 stable release nor a new scientific-validation claim. Public API and saved
 workspace compatibility may change before a stable release.
 
-The current development candidate is `1.0.0.dev22`, requiring Python 3.12. Normal
+The development candidate is `1.0.0.dev24`; architecture/lifecycle changes
+and SQLite operation evidence v6 remain `CONVERGING` and are being implemented.
+The [lifecycle contract](docs/v1-runtime-contract.qmd#package-lifecycle) defines
+optional Run close, automatic operation cleanup, fixed lazy Results, bounded
+recovery and managed Julia startup. Old operation Workspaces require recomputation;
+there is no migration or compatibility reader. Historical observations keep their
+original identities. Inherited dev23 observations remain candidate input, not dev24
+execution or delivery evidence. Python 3.12 remains required. Normal
 `CircuitRun.solve`, `evaluate` and `optimize` default to same-process JAX CPU
 Float64/Complex128; Float32/Complex64 and explicit Julia are selectable.
 [Operation Benchmark](docs/guides/benchmark.qmd) reads recorded operations from
@@ -40,6 +47,15 @@ population size. Compatible ready JAX assembly requests share a finite batch,
 while native sparse work shares the budget. `None` retains serial execution with
 the existing environment; 1 is serial. The coordinator alone owns CMA order,
 cache admission, winner selection, SQLite commits and durable callbacks.
+`run.warmup(view, spec, parameters=None)` prepares JAX topology, Views and
+executable signatures without solving or saving a successful result. Exact
+signatures reuse Run-owned warm entries; future shapes remain lazy.
+Optimization display defaults to `progress=True` and reports completed versus
+committed work independently of durable `on_progress` notifications. Disable
+it with `progress=False`. Display errors warn and disable display; durable
+callback failures retain their normal error contract. Uncommitted generation
+bodies may use private operation-local scratch, which is not a checkpoint or
+per-candidate SQLite commit.
 Population wall time divided by population size is an average, not candidate
 latency. There is one scheduler and no public executor selector or fallback.
 The dev14 candidate extends JAX evaluation to operator-element roots, hybridized
@@ -56,7 +72,7 @@ inclusive sum/min/max and maximum context; they cannot reconstruct a detailed
 timeline. Timing is separate from numerical evidence and does not force cache
 recomputation. Optional diagnostic write failure warns without hiding an already
 committed numerical result; required storage/integrity/callback failures retain
-their failure contract. Current operation evidence uses SQLite version5.
+their failure contract. Current operation evidence uses SQLite version6.
 
 Scalar root, pole, zero, response and coupling Results offer themed HTML through
 `result.show(detailed=False)` and detached Figure tables through

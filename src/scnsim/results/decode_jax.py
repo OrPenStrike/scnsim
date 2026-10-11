@@ -13,9 +13,9 @@ import numpy as np
 
 from .. import units
 from ..authoring.identity import canonical_parameters_sha256
-from ..benchmark.optimization import complex_value, numerical_error
-from ..benchmark.models import NumericalFailure
-from ..benchmark.prepared import array_from_record, decode_record, record_bytes
+from ..numeric_encoding import array_from_record, complex_value, decode_record, record_bytes
+from ..numerics.evidence import numerical_error
+from ..numerics.models import NumericalFailure
 from ..canonical import (
     canonical_json_bytes,
     complex_quantity_envelope,
@@ -28,6 +28,7 @@ from ..specs import QuantitySelector
 from .base import LineDiscretization, MatrixFamilyResult, MatrixView, ParameterPointIdentity, ResultIdentity
 from .derived import TraceResult
 from .factory import _verified_result
+from .lazy_optimization import LazyCandidateDiscretizationSequence, LazyGenerationSequence
 from .matrix import (
     DiagonalRootResult,
     DirectQuantityResult,
@@ -363,25 +364,43 @@ def _candidate(record, spec):
     return dict(record, dependencies=dependencies, outcome=outcome)
 
 
-def _optimization(decoder, identity, projection, request):
-    baseline = projection["baseline"]
-    records = projection["evaluations"]
-    best_ordinal = projection["terminal"]["best_ordinal"]
-    best = baseline if baseline["evaluation_ordinal"] == best_ordinal else next(
-        row for row in records if row["evaluation_ordinal"] == best_ordinal)
-    generations = {}
-    for row in records:
-        generations.setdefault(row["generation"], []).append(_candidate(row, request["spec"]))
-    ledger = tuple({"generation": generation, "candidates": candidates}
-                   for generation, candidates in generations.items())
+def _optimization(decoder, identity, request, fixed_reader):
+    if fixed_reader is None:
+        raise EvidenceIntegrityError(
+            "JAX Optimization decoding requires its fixed result reader",
+            stage="result_decode",
+        )
+    selected = fixed_reader.selection
+    comparison = fixed_reader.project("comparison")
+    baseline_record = dict(comparison["baseline"])
+    baseline_record.setdefault("evaluation_ordinal", 0)
+    baseline_record.setdefault("generation", 0)
+    initial_candidate = _candidate(baseline_record, request["spec"])
+    best_ordinal = selected.best_locator["ordinal"]
+    best_record = baseline_record if best_ordinal == 0 else dict(comparison["best"])
+    best_candidate = initial_candidate if best_ordinal == 0 else _candidate(best_record, request["spec"])
+    generation_count = selected.generation_count
+    candidate_count = selected.candidate_count
+    ledger = LazyGenerationSequence(
+        fixed_reader,
+        generation_count,
+        lambda record: _candidate(record, request["spec"]),
+    )
+    candidate_discretization = LazyCandidateDiscretizationSequence(
+        fixed_reader,
+        candidate_count,
+        lambda record: _discretization(record),
+    )
     return _verified_result(
-        OptimizationResult, identity=identity, discretization=_discretization(best.get("discretization")),
-        best=_verified_result(OptimizationBest, parameters=decoder._decode_parameter_set(best["parameters"]),
-                              cost=float64_from_hex(best["cost_f64"]),
-                              discretization=_discretization(best.get("discretization"))),
-        ledger=ledger, candidate_discretization=tuple(_discretization(row.get("discretization")) for row in records),
-        _presentation={"initial_parameters": decoder._decode_parameter_set(baseline["parameters"]),
-                       "initial_candidate": _candidate(baseline, request["spec"]),
+        OptimizationResult, identity=identity, discretization=_discretization(best_candidate.get("discretization")),
+        best=_verified_result(OptimizationBest, parameters=decoder._decode_parameter_set(best_candidate["parameters"]),
+                              cost=float64_from_hex(best_candidate["cost_f64"]),
+                              discretization=_discretization(best_candidate.get("discretization"))),
+        _fixed_reader=fixed_reader,
+        ledger=ledger, candidate_discretization=candidate_discretization,
+        _presentation={"initial_parameters": decoder._decode_parameter_set(baseline_record["parameters"]),
+                       "initial_candidate": initial_candidate,
+                       "best_candidate": best_candidate,
                        "objectives": tuple(request["spec"]["objectives"]),
                        "variables": tuple(request["spec"]["variables"]),
                        "best_evaluation_ordinal": best_ordinal},
@@ -439,13 +458,13 @@ def _sweep(decoder, identity, records, request):
 
 
 def decode_jax_operation(decoder, *, projection, request, plan_sha256, request_sha256,
-                         attempt_sha256, result_sha256, bound_spec):
+                         attempt_sha256, result_sha256, bound_spec, fixed_reader=None):
     """Decode verified immutable references without a synthetic native receipt."""
     del bound_spec  # Exact encoded request owns selector and output identities.
     identity = _verified_result(ResultIdentity, plan_sha256=plan_sha256, request_sha256=request_sha256,
                                 attempt_sha256=attempt_sha256, result_sha256=result_sha256)
     if request["operation"] == "optimize_direct":
-        return _optimization(decoder, identity, projection, request)
+        return _optimization(decoder, identity, request, fixed_reader)
     records = projection["evaluations"]
     if request["spec"]["type"] in {
         "diagonal_root",

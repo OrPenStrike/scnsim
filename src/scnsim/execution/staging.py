@@ -191,6 +191,7 @@ def _validate_success_staging(
     request: Mapping[str, object],
     plan: Mapping[str, object],
     *,
+    request_path: Path,
     optimization_checkpoint: BaselineCheckpoint | None = None,
     expected_julia_threads: int = 1,
     expected_blas_threads: int = 1,
@@ -383,7 +384,9 @@ def _validate_success_staging(
                 "HB outcome artifact inventory does not match result.json",
                 stage="outcome",
             )
-        _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
+        _verify_artifact_inventory(
+            staging, result, {"artifacts": expected_links}, request_path=request_path
+        )
     elif expected_kind != "optimization":
         catalogs.extend(result["array_catalog"].values())
     else:
@@ -398,6 +401,7 @@ def _validate_success_staging(
             staging,
             result,
             {"artifacts": expected_links},
+            request_path=request_path,
             include_sweep_records=collect_sweep_observations,
         )
         if verified_sweep_records is not None:
@@ -413,12 +417,15 @@ def _validate_success_staging(
             raise BackendProtocolError(
                 "outcome artifact inventory does not match result.json", stage="outcome"
             )
-        _verify_artifact_inventory(staging, result, {"artifacts": expected_links})
+        _verify_artifact_inventory(
+            staging, result, {"artifacts": expected_links}, request_path=request_path
+        )
     generation_records: list[tuple[int, str, Mapping[str, object]]] = []
     if expected_kind == "optimization":
         generation_records = cast(list[tuple[int, str, Mapping[str, object]]], _verify_generation_artifacts(
             staging,
             expected_links,
+            request_path=request_path,
             request_sha256=str(outcome["request_sha256"]),
             attempt_sha256=str(outcome["attempt_sha256"]),
             expected_julia_threads=expected_julia_threads,

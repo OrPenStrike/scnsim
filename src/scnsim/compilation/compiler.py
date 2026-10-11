@@ -15,7 +15,7 @@ from ..canonical import canonical_json_bytes, float64_hex, sha256_hex
 from ..errors import CompilerInvariantError, InvalidCandidatePhysicalParameter
 from .mesh import prepare_rlgc, quantity, realize_line
 from .models import CompiledModel, MeshSpec, SeriesRL, SparseMatrix
-from .prepared import record_bytes
+from ..numeric_encoding import record_bytes
 
 
 def backward_residual(A: np.ndarray, X: np.ndarray, B: np.ndarray) -> float:

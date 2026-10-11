@@ -1,4 +1,9 @@
-"""Stable identities from actual operation inputs."""
+"""Stable operation and checkpoint identities from exact runtime inputs.
+
+This module is deliberately independent of Workspace, execution coordinators,
+and result models. It owns canonical identity construction shared by the
+operation recorder and numerical execution adapters.
+"""
 
 from __future__ import annotations
 
@@ -42,7 +47,7 @@ def environment_snapshot(
     executable_sha256 = sha256(executable.read_bytes()).hexdigest() if executable.is_file() else None
     affinity = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None
     resource_cap = os.environ.get("SCNSIM_BENCHMARK_CPU_AFFINITY")
-    snapshot = {
+    return {
         "arm": arm,
         "python": {
             "executable": str(executable),
@@ -72,12 +77,6 @@ def environment_snapshot(
         },
         "backend": dict(backend or {}),
     }
-    return snapshot
-
-
-def environment_identity(snapshot: Mapping[str, object]) -> str:
-    """Hash stable environment facts, excluding timing observations."""
-    return sha256_hex(_stable_identity(dict(snapshot)))
 
 
 def _stable_identity(value: object) -> object:
@@ -91,6 +90,11 @@ def _stable_identity(value: object) -> object:
     if isinstance(value, (list, tuple)):
         return [_stable_identity(item) for item in value]
     return value
+
+
+def environment_identity(snapshot: Mapping[str, object]) -> str:
+    """Hash stable environment facts, excluding timing observations."""
+    return sha256_hex(_stable_identity(dict(snapshot)))
 
 
 def operation_task_identifier(
@@ -134,7 +138,7 @@ def checkpoint_seal(
     checkpoint_sha256: str,
     byte_length: int,
 ) -> dict[str, object]:
-    """Bind an immutable numeric checkpoint to its exact task and attempt."""
+    """Bind immutable numeric checkpoint bytes to the exact task and attempt."""
     body = {
         "schema": "scnsim.benchmark_checkpoint_seal",
         "schema_version": 1,
@@ -148,3 +152,11 @@ def checkpoint_seal(
         "byte_length": byte_length,
     }
     return {**body, "seal_sha256": sha256_hex(body)}
+
+
+__all__ = [
+    "checkpoint_seal",
+    "environment_identity",
+    "environment_snapshot",
+    "operation_task_identifier",
+]

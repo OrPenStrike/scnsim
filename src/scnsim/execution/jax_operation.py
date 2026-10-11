@@ -11,13 +11,18 @@ from uuid import uuid4
 from contextlib import nullcontext
 import sys
 
-from ..benchmark import storage
-from ..benchmark.identity import environment_identity, environment_snapshot, operation_task_identifier
-from ..benchmark.prepared import record_bytes, record_document
+from ..workspace import evidence as storage
+from ..workspace.operation_lease import request_execution_lease
+from ..numeric_encoding import record_bytes, record_document
 from ..canonical import float64_from_hex
-from ..errors import OptimizationProgressCallbackError, ResultUnavailableError, RuntimePreparationError
+from ..errors import EvidenceIntegrityError, OptimizationProgressCallbackError, ResultUnavailableError, RuntimePreparationError
 from ..results.decode_jax import decode_jax_operation
 from ..specs import OptimizationProgress
+from ..diagnostics.identity import (
+    environment_identity,
+    environment_snapshot,
+    operation_task_identifier,
+)
 from .config import get_runtime_configuration, runtime_resource_identity
 
 
@@ -37,12 +42,16 @@ def _candidate_cost_from_hex(value: str) -> float:
 
 
 def _decode(success, *, decoder, prepared_analysis, bound_spec):
+    request = prepared_analysis.request()
+    fixed_reader = None
+    if request["operation"] == "optimize_direct":
+        fixed_reader = success["fixed_reader"]
     return decode_jax_operation(
-        decoder, projection=success["projection"], request=prepared_analysis.request(),
-        plan_sha256=prepared_analysis.request()["plan_sha256"],
+        decoder, projection=success["projection"], request=request,
+        plan_sha256=request["plan_sha256"],
         request_sha256=prepared_analysis.request_sha256,
         attempt_sha256=success["attempt_sha256"], result_sha256=success["result_sha256"],
-        bound_spec=bound_spec,
+        bound_spec=bound_spec, fixed_reader=fixed_reader,
     )
 
 
@@ -67,11 +76,16 @@ def _candidate_actor_declaration(*, operation_id, plan_document, request, reques
 def resolve_jax_operation(*, binding, prepared_analysis, decoder, bound_spec):
     """Read an exact completed numerical request without initializing JAX."""
     with binding.reader():
-        success = storage.find_operation_success(binding, prepared_analysis.request_sha256)
-    if success is None:
+        result = storage.find_operation_success(
+            binding, prepared_analysis.request_sha256,
+            projection_consumer=lambda success: _decode(
+                success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec,
+            ),
+        )
+    if result is None:
         raise ResultUnavailableError("No verified JAX result exists for this exact request", stage="resolve",
                                      evidence={"request_sha256": prepared_analysis.request_sha256})
-    return _decode(success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec)
+    return result
 
 
 def _notify(on_progress, request, *, phase, generation, best_cost, reused=False, trace=None):
@@ -97,9 +111,31 @@ def _notify(on_progress, request, *, phase, generation, best_cost, reused=False,
 
 
 def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
-                          on_progress=None, checkpoint_policy="generation", resume_from=None,
+                          on_progress=None, progress_observer=None,
+                          checkpoint_policy="generation", resume_from=None,
                           commit_every_generations=1, trace):
-    """Execute or reuse one ordinary request, with callbacks outside storage locks."""
+    """Execute or reuse one request while serializing its exact result authority."""
+    with request_execution_lease(binding, prepared_analysis.request_sha256):
+        return _execute_jax_operation(
+            binding=binding,
+            plan_document=plan_document,
+            prepared_analysis=prepared_analysis,
+            decoder=decoder,
+            bound_spec=bound_spec,
+            on_progress=on_progress,
+            progress_observer=progress_observer,
+            checkpoint_policy=checkpoint_policy,
+            resume_from=resume_from,
+            commit_every_generations=commit_every_generations,
+            trace=trace,
+        )
+
+
+def _execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
+                           on_progress=None, progress_observer=None,
+                           checkpoint_policy="generation", resume_from=None,
+                           commit_every_generations=1, trace):
+    """Execute or reuse one request with callbacks outside Workspace locks."""
     request = prepared_analysis.request()
     request_sha = prepared_analysis.request_sha256
     optimization = request["operation"] == "optimize_direct"
@@ -122,7 +158,19 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
     if resume_from is None:
         with trace.span("result_lookup"):
             with binding.reader():
-                success = storage.find_operation_success(binding, request_sha)
+                def decode_selected(success):
+                    with trace.span("result_decode"):
+                        result = _decode(success, decoder=decoder, prepared_analysis=prepared_analysis,
+                                         bound_spec=bound_spec)
+                    return success, result
+
+                selected = storage.find_operation_success(
+                    binding, request_sha, projection_consumer=decode_selected,
+                )
+        if selected is None:
+            success = None
+        else:
+            success, result = selected
         if success is not None:
             trace.bind(operation=request["operation"], request_sha256=request_sha,
                        task_id=success["task_id"], environment_sha256=success["environment_sha256"],
@@ -136,16 +184,36 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
             # Cache-hit trace rows are global operation facts; no fictitious
             # numerical attempt is allocated to store these observations.
             if optimization:
-                projection = success["projection"]
-                best = next(row for row in (projection["baseline"], *projection["evaluations"])
-                            if row["evaluation_ordinal"] == projection["terminal"]["best_ordinal"])
+                terminal = success["projection"]["terminal"]
+                best_cost = result.best.cost
+                if progress_observer is not None:
+                    progress_observer.update(
+                        phase="result_reuse",
+                        completed_generations=terminal["completed_generations"],
+                        total_generations=request["spec"]["optimizer"]["complete_generations"],
+                        evaluated_count=1 + terminal["completed_generations"] *
+                        request["spec"]["optimizer"]["resolved_population_size"],
+                        best_cost=best_cost,
+                        committed_generations=terminal["completed_generations"],
+                        reused=True,
+                    )
                 _notify(on_progress, request, phase="result_reuse", reused=True,
-                        generation=projection["terminal"]["completed_generations"],
-                        best_cost=float64_from_hex(best["cost_f64"]), trace=trace)
-            with trace.span("result_decode"):
-                return _decode(success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec)
+                        generation=terminal["completed_generations"],
+                        best_cost=best_cost, trace=trace)
+            if optimization and progress_observer is not None:
+                progress_observer.update(
+                    phase="complete",
+                    completed_generations=terminal["completed_generations"],
+                    total_generations=request["spec"]["optimizer"]["complete_generations"],
+                    evaluated_count=1 + terminal["completed_generations"] *
+                    request["spec"]["optimizer"]["resolved_population_size"],
+                    best_cost=best_cost,
+                    committed_generations=terminal["completed_generations"],
+                    reused=True,
+                )
+            return result
 
-    from ..benchmark.backends.jax_backend import get_jax_backend
+    from .jax_backend import get_jax_backend
     from .resources import operation_resources
 
     resources = request["runtime_semantic"]["resources"]
@@ -170,6 +238,7 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
                 return _execute_with_backend(
                     binding=binding, plan_document=plan_document, prepared_analysis=prepared_analysis,
                     decoder=decoder, bound_spec=bound_spec, on_progress=on_progress,
+                    progress_observer=progress_observer,
                     checkpoint_policy=checkpoint_policy, resume_from=resume_from,
                     commit_every_generations=commit_every_generations, trace=trace,
                     request=request, request_sha=request_sha, optimization=optimization, precision=precision,
@@ -200,6 +269,7 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
         return _execute_with_backend(
             binding=binding, plan_document=plan_document, prepared_analysis=prepared_analysis,
             decoder=decoder, bound_spec=bound_spec, on_progress=on_progress,
+            progress_observer=progress_observer,
             checkpoint_policy=checkpoint_policy, resume_from=resume_from,
             commit_every_generations=commit_every_generations, trace=trace,
             request=request, request_sha=request_sha, optimization=optimization, precision=precision,
@@ -211,7 +281,7 @@ def execute_jax_operation(*, binding, plan_document, prepared_analysis, decoder,
 
 
 def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder, bound_spec,
-                          on_progress, checkpoint_policy, resume_from, commit_every_generations,
+                          on_progress, progress_observer, checkpoint_policy, resume_from, commit_every_generations,
                           trace, request, request_sha, optimization, precision, resources, backend,
                           backend_identity, operation_resource, worker_backend_factory, candidate_pool,
                           notify_committed_generation):
@@ -222,6 +292,27 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
     registration_attempted = False
     registration_committed = False
     completed = False
+    spool = None
+    total_generations = request["spec"]["optimizer"]["complete_generations"] if optimization else 0
+    population_size = request["spec"]["optimizer"]["resolved_population_size"] if optimization else 0
+    completed_generations = 0
+    committed_generations = 0
+    evaluated_count = 0
+    best_progress_cost = None
+
+    def update_progress(phase, *, generation=None, evaluated=None, best_cost=None,
+                        committed=None, reused=False):
+        if not optimization or progress_observer is None:
+            return
+        progress_observer.update(
+            phase=phase,
+            completed_generations=completed_generations if generation is None else generation,
+            total_generations=total_generations,
+            evaluated_count=evaluated_count if evaluated is None else evaluated,
+            best_cost=best_progress_cost if best_cost is None else best_cost,
+            committed_generations=committed_generations if committed is None else committed,
+            reused=reused,
+        )
     try:
         arm = f"{trace.method}/jax/{precision}/{checkpoint_policy}"
         environment = environment_snapshot(arm=arm, device="cpu", cpu_threads=resources["cpu_threads"],
@@ -238,18 +329,27 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
             commit_every_generations=commit_every_generations,
         )
         workspace = storage.operation_workspace(binding)
+        if optimization:
+            from .operation_spool import OperationSpool
+            spool = OperationSpool(workspace, trace.operation_id, lease_root=binding.root)
         checkpoint = None
         resume_selection = None
         if resume_from is not None:
             with trace.span("checkpoint_read"):
                 with binding.reader():
-                    checkpoint_bytes, resume_selection = storage.read_checkpoint(
+                    checkpoint_value, resume_selection = storage.read_checkpoint(
                         workspace, resume_from, binding=binding, expected_task_id=task_id,
                         expected_request_sha256=request_sha,
                         expected_arm=arm, expected_sample=0, expected_environment_sha256=environment_sha,
-                        return_selection=True,
+                        return_selection=True, spool=spool,
                     )
-                    checkpoint = record_document(checkpoint_bytes)
+                    checkpoint = checkpoint_value
+                    if not isinstance(checkpoint, dict):
+                        checkpoint = record_document(checkpoint)
+                    completed_generations = checkpoint["generation"]
+                    committed_generations = checkpoint["generation"]
+                    evaluated_count = checkpoint["next_ordinal"]
+                    best_progress_cost = float64_from_hex(checkpoint["best"]["cost_f64"])
         attempt_id = str(uuid4())
         details = {"cache_hit": False, "checkpoint_policy": checkpoint_policy,
                    "requested_commit_every_generations": (
@@ -274,9 +374,10 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 resume_from=resume_selection,
             )
             if registration["ack"].get("committed") is not True:
-                raise storage._integrity(
+                raise EvidenceIntegrityError(
                     "Operation execution registration was not durably acknowledged.",
-                    operation_id=trace.operation_id,
+                    stage="operation_store",
+                    evidence={"operation_id": trace.operation_id},
                 )
             registration_committed = True
             request_ref = registration["request_ref"]
@@ -287,11 +388,22 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                                                task_id=task_id, attempt_id=attempt_id,
                                                diagnostics="boundary", checkpoint_document=checkpoint,
                                                commit_every_generations=commit_every_generations,
+                                               spool=spool,
                                                phase_scope=lambda kind, details: trace.span(kind, details=details))
         best_cost = float64_from_hex(checkpoint["best"]["cost_f64"]) if checkpoint else None
+        if checkpoint is None:
+            update_progress("preparing", generation=0, evaluated=0, committed=0)
 
         def emit(kind, payload):
-            nonlocal best_cost
+            nonlocal best_cost, completed_generations, evaluated_count
+            nonlocal best_progress_cost, committed_generations
+            if kind == "population_evaluation_start":
+                update_progress(
+                    "population_evaluating", generation=completed_generations,
+                    evaluated=evaluated_count, best_cost=best_progress_cost,
+                    committed=committed_generations,
+                )
+                return None
             value = {**payload, "attempt_id": attempt_id}
             if kind == "timing":
                 trace.measure(
@@ -311,6 +423,11 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                     # generation ACK; an incomplete later population must not
                     # leak into a callback after an error-tail commit.
                 if writer.will_commit_barrier(kind):
+                    if optimization and kind == "generation_ready":
+                        update_progress(
+                            "saving", generation=payload["generation"],
+                            evaluated=payload["next_ordinal"], committed=committed_generations,
+                        )
                     # Submission includes Plan authority acquisition/revalidation;
                     # the nested commit includes evidence, diagnostics and SQL work.
                     with trace.span("workspace_submission", details=details):
@@ -327,9 +444,21 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 if optimization:
                     if kind == "baseline_ready":
                         best_cost = float64_from_hex(payload["baseline"]["cost_f64"])
+                        best_progress_cost = best_cost
+                        evaluated_count = 1
+                        update_progress("baseline", generation=0, evaluated=1, committed=0)
                     else:
+                        completed_generations = payload["generation"]
+                        evaluated_count = payload["next_ordinal"]
+                        if best_cost is not None:
+                            best_progress_cost = best_cost
                         if ack.get("committed") is True and isinstance(ack.get("latest_generation"), int):
                             trace.complete_generation(ack["latest_generation"])
+                            committed_generations = ack["latest_generation"]
+                        update_progress(
+                            "running", generation=completed_generations, evaluated=evaluated_count,
+                            committed=committed_generations,
+                        )
                         notify_committed_generation(ack)
                 if ack.get("committed") is True:
                     trace.publish_diagnostics()
@@ -338,7 +467,7 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 cost = _candidate_cost_from_hex(payload["cost_f64"])
                 if best_cost is None or cost < best_cost:
                     best_cost = cost
-            if kind in storage._DIAGNOSTIC_EVENTS:
+            if storage.is_diagnostic_event(kind):
                 return storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
             with binding.writer():
                 event = storage.append_event(workspace, task_id=task_id, kind=kind, payload=value, writer=writer)
@@ -350,11 +479,16 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 storage.append_event(workspace, task_id=task_id, kind="resumed", writer=writer, force=True,
                                      payload={"attempt_id": attempt_id, "checkpoint": dict(resume_selection)})
             _notify(on_progress, request, phase="resume", generation=checkpoint["generation"], best_cost=best_cost, trace=trace)
-        terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
-                                    checkpoint=checkpoint, checkpoint_policy=checkpoint_policy,
-                                    operation_resources=operation_resource,
-                                    worker_backend_factory=worker_backend_factory,
-                                    candidate_pool=candidate_pool)
+            update_progress("resume", generation=checkpoint["generation"],
+                            evaluated=checkpoint["next_ordinal"], best_cost=best_cost,
+                            committed=checkpoint["generation"])
+        with (spool.activate() if spool is not None else nullcontext()):
+            terminal = execute_analysis(plan_document, prepared_analysis, backend=backend, emit=emit, trace=trace,
+                                        checkpoint=checkpoint, checkpoint_policy=checkpoint_policy,
+                                        operation_resources=operation_resource,
+                                        worker_backend_factory=worker_backend_factory,
+                                        candidate_pool=candidate_pool)
+        checkpoint = None
         if writer is not None and writer.completed:
             with binding.writer():
                 tail_ack = storage.flush_completed(workspace, writer=writer, reason="terminal")
@@ -362,9 +496,14 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 trace.add_numerical_ref(tail_ack["checkpoint"])
             if tail_ack.get("committed") is True and isinstance(tail_ack.get("latest_generation"), int):
                 trace.complete_generation(tail_ack["latest_generation"])
+                committed_generations = tail_ack["latest_generation"]
             if tail_ack.get("committed") is True:
                 trace.publish_diagnostics()
             notify_committed_generation(tail_ack)
+            update_progress("running", generation=completed_generations,
+                            evaluated=evaluated_count, committed=committed_generations)
+        update_progress("saving", generation=terminal.get("completed_generations", completed_generations),
+                        evaluated=evaluated_count, committed=committed_generations)
         with trace.span("result_publish"):
             with binding.writer():
                 result_ref, result_ack = storage.complete_operation(
@@ -374,11 +513,39 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         trace.add_numerical_ref(result_ref)
         if optimization:
             _notify(on_progress, request, phase="complete", generation=terminal["completed_generations"], best_cost=best_cost, trace=trace)
+            update_progress("decoding", generation=terminal["completed_generations"],
+                            evaluated=1 + terminal["completed_generations"] * population_size,
+                            best_cost=best_cost, committed=terminal["completed_generations"])
         with trace.span("result_decode"):
             with binding.reader():
-                success = storage.read_operation_success(binding, task_id, attempt_id=attempt_id)
-            return _decode(success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec)
+                result = storage.read_operation_success(
+                    binding, task_id, attempt_id=attempt_id,
+                    projection_consumer=lambda success: _decode(
+                        success, decoder=decoder, prepared_analysis=prepared_analysis, bound_spec=bound_spec,
+                    ),
+                )
+        if optimization:
+            completed_generations = terminal["completed_generations"]
+            committed_generations = terminal["completed_generations"]
+            evaluated_count = 1 + completed_generations * population_size
+            update_progress("complete", best_cost=best_cost, committed=committed_generations)
+        return result
     except BaseException as error:
+        failure_phase = "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else "failed"
+
+        def update_failure_display():
+            if not optimization or progress_observer is None:
+                return
+            try:
+                update_progress(failure_phase)
+            except BaseException as observer_error:
+                error.add_note(
+                    f"Progress observer during failure finalization also failed: "
+                    f"{type(observer_error).__name__}: {observer_error}"
+                )
+
+        if optimization and progress_observer is not None:
+            update_failure_display()
         if attempt_id is not None and not completed:
             try:
                 if not registration_committed and registration_attempted:
@@ -415,6 +582,7 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                                 task_id=task_id, attempt_id=attempt_id, diagnostics="boundary",
                                 checkpoint_document=checkpoint,
                                 commit_every_generations=commit_every_generations,
+                                spool=spool,
                                 phase_scope=lambda kind, details: trace.span(kind, details=details),
                             )
                     except BaseException as writer_setup_error:
@@ -425,10 +593,19 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                 if registration_committed and writer is not None and writer.completed:
                     with binding.writer():
                         tail_ack = storage.flush_completed(workspace, writer=writer, reason="failure")
+                    committed_tail_generation = tail_ack.get("latest_generation")
+                    tail_was_committed = (
+                        tail_ack.get("committed") is True
+                        and isinstance(committed_tail_generation, int)
+                        and not isinstance(committed_tail_generation, bool)
+                    )
+                    if tail_was_committed:
+                        committed_generations = committed_tail_generation
+                        update_failure_display()
                     if tail_ack.get("checkpoint") is not None:
                         trace.add_numerical_ref(tail_ack["checkpoint"])
-                    if tail_ack.get("committed") is True and isinstance(tail_ack.get("latest_generation"), int):
-                        trace.complete_generation(tail_ack["latest_generation"])
+                    if tail_was_committed:
+                        trace.complete_generation(committed_tail_generation)
                     try:
                         notify_committed_generation(tail_ack)
                     except BaseException as callback_error:
@@ -437,7 +614,7 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
                             f"{type(callback_error).__name__}: {callback_error}"
                         )
                 if registration_committed:
-                    failure = storage._error_document(error)
+                    failure = storage.error_document(error)
                     interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
                     if writer is not None:
                         with binding.writer():
@@ -466,10 +643,31 @@ def _execute_with_backend(*, binding, plan_document, prepared_analysis, decoder,
         raise
     finally:
         primary = sys.exception()
+        cleanup_error = None
         try:
             if backend is not None:
                 backend.close()
-        except BaseException as finalization_error:
+        except BaseException as backend_error:
             if primary is None:
-                raise
-            primary.add_note(f"Operation finalization also failed: {type(finalization_error).__name__}: {finalization_error}")
+                cleanup_error = backend_error
+            else:
+                primary.add_note(
+                    f"Operation finalization also failed: {type(backend_error).__name__}: {backend_error}"
+                )
+        try:
+            if spool is not None:
+                spool.close()
+        except BaseException as scratch_error:
+            if primary is None:
+                if cleanup_error is None:
+                    cleanup_error = scratch_error
+                else:
+                    cleanup_error.add_note(
+                        f"Operation scratch cleanup also failed: {type(scratch_error).__name__}: {scratch_error}"
+                    )
+            else:
+                primary.add_note(
+                    f"Operation scratch cleanup also failed: {type(scratch_error).__name__}: {scratch_error}"
+                )
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error

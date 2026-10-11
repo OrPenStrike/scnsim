@@ -97,6 +97,20 @@ Optimization presentations retain their existing interfaces.
 
 ## Optimization and recovery
 
+Before repeated JAX requests, `run.warmup(view, spec, parameters=None)` can
+prepare the baseline topology/View and executable signatures without solving or
+saving a successful result. Exact signatures can be reused; unknown future
+shapes still prepare lazily. The immutable summary describes preparation only.
+
+Optimization display defaults to `progress=True`; set `progress=False` for a
+quiet call. The transient display reports completed versus committed
+generations independently of `on_progress`. JAX can show each completed tell
+before a commit; explicit Julia uses its existing native notification boundaries.
+The `population_evaluating` display phase starts before ask; it does not announce
+a completed generation or invoke the durable callback.
+Display errors warn and disable the
+display; durable callback errors retain their normal failure behavior.
+
 Normal `run.optimize(...)` uses generation checkpoints and boundary diagnostics.
 JAX Optimization commits every 10 completed generations by default:
 
@@ -117,7 +131,8 @@ commit together. There is no generation-0 checkpoint or initial callback;
 checkpoints bind the latest completed post-tell state at generation 1 or later.
 Required group ACK precedes its one callback; optional timing is separate.
 Native Julia retains its existing baseline protocol. A normal or handleable-error
-JAX tail flushes a shorter complete group. Larger N buffers more evidence in memory and can require recomputing
+JAX tail flushes a shorter complete group. Larger N leaves more evidence uncommitted in Workspace-bound operation-local
+scratch (mode `0700`) and can require recomputing
 uncommitted generations after process death. `checkpoint="off"` omits
 restore-only snapshots/anchor state while preserving the required baseline body,
 complete ordered numerical observations and final result. A failed or uncertain
@@ -126,6 +141,10 @@ Checkpoint policy and commit interval do not change the
 numerical request hash; a completed result can resolve under either policy.
 A cache-hit operation records requested policy and actual checkpoint availability
 without manufacturing missing snapshots.
+The cache and staged writer hold light body references; each committed group is
+streamed atomically one body at a time. Verified resume hydration also consumes
+one block at a time. Scratch is not a checkpoint, and the full ordered typed
+public result ledger remains available after return.
 
 `resume_from` accepts an exact stored checkpoint reference from the same
 operation/task identity, generation policy and commit interval. An off-policy interrupted request
@@ -178,7 +197,10 @@ verification contract.
 ## Read operation evidence
 
 ```python
+from scnsim import BenchmarkResult
+
 record = run.benchmark()
+reopened = BenchmarkResult.open(record.workspace)
 optimization_record = run.benchmark(method="optimize", backend="jax")
 html = record.to_html()
 record.write_html("operation-history.html")
@@ -187,6 +209,12 @@ record.write_html("operation-history.html")
 `run.benchmark(*, operations=None, method=None, backend=None, precision=None,
 status=None)` reads the current Plan leaf. It does not accept a Spec, launch
 another calculation, initialize JAX, choose a comparison arm or mutate records.
+`BenchmarkResult.workspace` is the exact operation-store directory containing
+`operations.sqlite3` (`<Plan leaf>/operations`), not the enclosing Workspace root.
+`BenchmarkResult.open(record.workspace)` reopens that same store read-only; it
+does not discover a leaf, scan the enclosing root or perform recovery. Reopening
+reads that store's recorded operations; filters on the original `run.benchmark()`
+call are not persisted as a new store.
 `run.resolve(...)` is likewise read-only and selects the exact verified numerical
 request using the Run defaults or explicit backend/precision overrides.
 
@@ -204,9 +232,9 @@ work before closing. Parent intervals are inclusive and overlapping, so nested
 durations must not be summed. Cumulative operation duration differs from wall
 span. Unaligned historical clocks and unknown timings remain explicit.
 
-The root begins at the method's first clock read. Its final
-`operation_finalization` child includes Plan-lock acquisition and pending-span
-archival, ending at the same tick as the root. Only the final root append and
+The root begins at the method's first clock read. Its interval includes final
+Plan-lock acquisition, Plan revalidation and pending-span archival through the
+root endpoint; these costs have no separate named phase row. Only the final root append and
 return tail remain outside that endpoint. Read-only resolve and Benchmark do not
 persist operation roots or recursive self-spans. Partial records retain actual
 failure/interruption state and numerical references; `operation["details"]["failure"]`
@@ -225,13 +253,14 @@ missing results and unaligned native clocks remain explicit.
 
 The old public comparison executor and its arm declarations are superseded.
 Historical files retain their original wheel/backend/precision/clock identities;
-current readers reject older operation Workspaces. Create a new v5 Workspace and
+current readers reject older operation Workspaces. Create a new v6 Workspace and
 recompute for current readback. Historical files are neither migrated nor deleted.
-Read-only opening applies to current v5 operation Workspaces:
+Read-only opening applies to the explicit current v6 operation-store locator:
 
 ```python
 from scnsim import BenchmarkResult
-report = BenchmarkResult.open("workspaces/current-v5-run")
+benchmark = run.benchmark()
+report = BenchmarkResult.open(benchmark.workspace)
 ```
 
 Native Julia result files retain their separate native ownership and readback

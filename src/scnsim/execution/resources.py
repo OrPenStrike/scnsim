@@ -324,7 +324,19 @@ class OperationResources:
         self._futures.clear()
         self._closed = True
         for states in self._worker_states:
-            states.clear()
+            try:
+                for state in states.values():
+                    close = getattr(state, 'close', None)
+                    if close is not None:
+                        try:
+                            close()
+                        except BaseException as error:
+                            if first_error is None:
+                                first_error = error
+                            else:
+                                _secondary(first_error, 'Worker state cleanup also failed', error)
+            finally:
+                states.clear()
         self._worker_states.clear()
         if first_error is not None:
             raise first_error
@@ -474,6 +486,11 @@ class AssemblyBroker:
                 with self.condition:
                     self.active_snapshot = ()
                 snapshot = []
+                # Replies own their returned values. The idle broker must not
+                # retain the previous batch's requests, owners or output arrays.
+                completed = []
+                groups = {}
+                items = outputs = item = future = output = error = None
         except BaseException as error:
             # Infrastructure failure is broker-wide. Preserve already owned
             # group outcomes after exclusive unwind before failing other work.

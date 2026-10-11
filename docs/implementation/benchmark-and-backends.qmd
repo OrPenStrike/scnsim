@@ -3,7 +3,7 @@ title: "Execution Backends and Operation Benchmark"
 subtitle: "Same-process JAX, verified results and read-only hierarchical observations"
 ---
 
-**Status:** CONVERGING, 1.0.0.dev17 development candidate contract. The following interfaces are
+**Status:** CONVERGING, 1.0.0.dev24 development candidate contract. The following interfaces are
 implementation targets, not completed execution, performance or acceptance
 claims. Historical dev10 comparison records remain bound to their original
 source, wheel, numerical outputs and publication identities. No durable tests
@@ -16,14 +16,14 @@ stdlib SQLite database per Plan leaf at `operations/operations.sqlite3`, using
 DELETE journaling and EXTRA synchronization. This is a target contract, not a
 claim that the implementation or observations below have completed. Dev11
 outputs remain historical evidence; the new goal does not rerun that writer or
-its old-flow tests. Current operation stores use SQLite version5. Older databases or file-journal
+its old-flow tests. Current operation stores use SQLite version6. Older databases or file-journal
 stores fail with `UnsupportedEvidenceVersionError`: use a new Workspace and
 recompute. Old data are neither migrated nor automatically deleted.
 
 JAX Optimization defaults to `commit_every_generations=10`, a positive integer
 excluding booleans. Explicit `None` remains invalid. Omission resolves after
 backend selection: JAX uses 10, while explicit Julia retains its native value 1. Baseline
-evidence commits separately. After N completed post-tell generations, one
+evidence stays in memory until the first complete group publishes it once. After N completed post-tell generations, one
 transaction publishes their ordered numerical records and the latest full
 CMA/RNG state. A short final group commits at the normal tail or a handleable
 error; incomplete generation work is never presented as a resumable generation.
@@ -37,8 +37,8 @@ factorization mechanism under a distinct numerical algorithm identity.
 
 A generation callback is delivered once per committed group, for its latest
 committed generation, after commit acknowledgement and outside storage locks.
-Intermediate generations do not receive deferred callbacks. Baseline and separate
-terminal notifications retain their existing roles. Original callback, numerical and
+Intermediate generations do not receive deferred callbacks. There is no initial
+baseline notification; the separate final completion callback remains. Original callback, numerical and
 interruption errors remain primary if recording also fails. A transaction has a
 unique identity: an uncertain commit is reconciled from that identity, never
 blindly replayed. Canonical byte objects have content hashes; references identify
@@ -55,11 +55,72 @@ indexes support timeline reads without replaying all numerical candidates.
 Existing clocks, result units/axes, partial provenance and rendering semantics
 remain; no UI redesign or physical power-loss promise is introduced.
 
-The bounded new performance observations are 14 CPU1 current-disk tasks and four
-SSD tasks over the existing LC and M80-fixed models. Separate authorized
-fault/state/function/render observations use the integrated candidate. Prior
-numbers remain classified historical; no speed or numerical acceptance
-threshold is added.
+The earlier SQLite-workspace performance campaign's scope was 14 CPU1
+current-disk tasks and four SSD tasks over LC and M80-fixed models. That matrix
+and its version-bound observations are historical; they are not dev24 execution
+or delivery obligations. The current architecture/lifecycle candidate uses only
+its assigned stage-specific installed-wheel observations. No speed or numerical
+acceptance threshold is added.
+
+## Warm preparation, progress and evidence residency (dev24)
+
+`run.warmup(view, spec, parameters=None)` prepares the exact current JAX
+Plan/parameter/View topology and executable signatures for an existing Direct,
+quantity or Optimization declaration. Omitted parameters use the Plan baseline.
+It returns an immutable preparation summary; it does not solve a network, run
+Newton, choose an Optimization winner, create a checkpoint or claim a stored
+successful result. Repeating an exact signature reuses its prepared entry;
+future parameter-dependent shapes remain lazy. Warm entries belong to the Run;
+operation-local candidate state is released at operation end. Shared executable
+references do not authorize clearing another Run's cache. Reachable objects and
+Python/native allocators may retain RSS after references are released; RSS need
+not immediately drop. Run-owned warmed executables remain available to that Run,
+while candidate worker state and operation-local scratch have operation scope.
+
+Within a continuation, each intermediate step owns its compiler, material,
+realized View, sparse pattern and executable references only through preparation,
+evaluation and observation of the synchronized result. That transient scope ends
+before continuation recursion begins. Endpoint and generation state retain their
+existing ownership; this release does not clear Run-owned warm holders. A shared
+weak executable index does not extend the lifetime of an entry. Releasing these
+references does not promise immediate allocator or RSS return.
+
+`run.optimize(..., progress=True)` enables a transient display observer,
+independently of the durable `on_progress` callback. After each complete JAX tell,
+the display distinguishes completed generations from committed generations.
+The built-in `population_evaluating` phase is set before ask, so pending
+population work is visible without implying a completed or committed generation.
+A memory-only baseline display update is not an initial durable callback.
+Explicit Julia displays its existing native notification boundaries as staged
+progress, with an unknown durable generation count until verified terminal
+success publication. Only then does the display report saved generations; no
+new native observer is introduced.
+Display errors warn and disable that observer; original durable callback errors
+remain fatal. `progress=False` disables display without changing the numerical
+request, candidate order, commits or callback cadence.
+
+Uncommitted complete-generation evidence uses Workspace-bound, operation-local
+scratch with mode `0700`. The candidate cache retains light body references and
+the TaskWriter stages body references, rather than duplicate full candidate
+histories. This scratch is not a checkpoint, SQLite commit or recoverable result.
+Atomic publication streams one scientific body at a time for a group of complete
+post-tell generations and retains one complete latest CMA/RNG state. The write
+transaction verifies each body and releases its full payload after checking.
+Resume hydration follows verified references one block at a time; it does not
+retain duplicate raw and hydrated history containers. The full ordered typed
+public ledger remains available as a fixed lazy generation Sequence, with its
+original candidate/winner semantics. Explicit iteration materializes requested values.
+Normal and handled-error cleanup removes only the operation's own scratch;
+unexpected process death can leave it behind. An explicit cadence such as
+`commit_every_generations=100` keeps the same persistence semantics; the default
+remains 10. Workspace schema remains version6, and older Workspaces are rejected
+rather than adapted.
+
+Numerical plots size rows and wrapped text from their displayed content;
+parameters appear as rows rather than long annotations. Plotting consumes saved
+results and performs no numerical solve. Benchmark rendering remains a separate
+operation/timing presentation, and schematic work remains deferred. These are
+CONVERGING implementation contracts, not memory, speed or completed-case claims.
 
 ## Public operations and runtime configuration
 
@@ -105,8 +166,10 @@ and both precision choices can share the declared pool. This observer isolation
 does not create a product numerical subprocess. The base installation requires Python
 3.12 and the pinned CPU JAX/jaxlib and CMA dependencies; Julia remains optional.
 
-Optimization retains generation checkpoints and boundary diagnostics. A public
-callback sees its event only after the corresponding evidence is durable;
+Optimization retains generation checkpoints and boundary diagnostics. A JAX public
+callback sees its event only after the corresponding group evidence is durable.
+Native callbacks remain staged progress telemetry after the baseline checkpoint
+ACK and do not promise per-generation durable publication;
 callback exceptions and KeyboardInterrupt retain their original ownership.
 Optimization accepts explicit checkpoint policy and exact checkpoint resume
 references. Resume verifies the same request/backend/precision/resource/source
@@ -210,19 +273,16 @@ ownership and plotting meaning. Reports and trace records reference numerical
 authority rather than embedding another candidate history. `resolve` is read-only:
 no runtime initialization, numerical launch, retry, cleanup or migration.
 
-Numerical-result readback projects verified numerical evidence separately from
-diagnostic history. Returning, resolving or reusing a completed JAX
-`OptimizationResult` materializes the full ordered numerical ledger and winner
-eagerly as detached immutable values; inspecting that Result performs no later
-workspace reads. The projection traverses the required ordered evidence once,
-without replaying the complete operation/span history. Snapshot ownership,
-Plan/task bindings, committed selection and reference role, byte length and hash
-verification remain in force. Successful numerical readback requires the
-selected success's explicit `numerical_evidence` locator for the baseline,
-ordered generation evidence and terminal event. A missing locator fails
-directly; this flow does not reconstruct it from an older layout, replay
-diagnostic history as a fallback or migrate records. Historical files are
-preserved, without an old-layout numerical-read guarantee for this flow.
+Numerical-result readback fixes a completion seal, exact attempt, reference root
+and generation ancestry independently of diagnostic history. Construction verifies
+necessary completion metadata, not all candidate bodies. The readonly ledger
+Sequence and flat candidate discretization read selected indexed evidence in
+short snapshots and return detached values, without capturing the Run or retaining
+a growing body cache. History plots consume compact summaries; comparison takes
+only baseline and exact best. Missing, corrupt or replaced evidence fails without
+fallback or whole-history replay. The [Runtime lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle)
+owns the exact fixed-reader and materialization rules. Historical files retain
+their execution identities but older operation Workspaces have no compatible reader.
 Benchmark and recovery readers retain their separate diagnostic and checkpoint
 responsibilities. This readback change does not change numerical requests,
 cache selection, optimization order or winner semantics.
@@ -247,9 +307,13 @@ identity; a selected or unknown delta is never blindly replayed. Uncommitted
 objects do not establish a completed generation. Diagnostic persistence failures
 must not mask a primary numerical, callback or interruption exception.
 
-Grouped generations remain in process memory until commit. Increasing N can
-increase buffered evidence and recomputation after process death: only the latest
-committed full CMA/RNG snapshot is resumable, and an uncommitted tail is unknown.
+Grouped generation bodies reside in Workspace-bound operation-local scratch
+until commit; cache and staged writer state retain light references. Publication
+and verified resume hydration consume bodies one at a time. Increasing N can
+increase uncommitted evidence and recomputation after process death: only the
+latest committed full CMA/RNG snapshot is resumable, and an uncommitted tail is
+unknown. Returning the complete typed ledger still requires its public result
+representation; this policy is not a constant-RSS or bounded-result-size claim.
 Normal completion or a handleable interruption flushes completed generations; a
 SIGKILL cannot run that flush. SQLite object references identify canonical bytes
 by role, length and hash within the relative database name, so relocation does
@@ -260,7 +324,7 @@ contract; this operation-store replacement does not rewrite native receipts.
 
 ## Current Workspace storage (dev22 CONVERGING)
 
-OperationStore version5 retains DELETE/EXTRA and rejects older operation
+OperationStore version6 retains DELETE/EXTRA and rejects older operation
 Workspaces; use a new Workspace and recompute, without migration or deletion.
 A verified-object cache lasts only one transaction or readonly snapshot and
 includes role/length bindings; reopen/relock revalidates. Manifest plus operation
@@ -287,8 +351,11 @@ The report preserves both facts: committed task success does not synthesize a
 successful operation finalization, and diagnostic failure cannot hide that
 committed numerical state. It does
 not accept a Spec, backend arm, alternate workspace or launch controls. The old
-public comparison executor is superseded. `BenchmarkResult.open(workspace)`
-reads current version5 operation stores; older operation stores fail explicitly
+public comparison executor is superseded. A returned `BenchmarkResult.workspace`
+is the exact `<Plan leaf>/operations` directory containing `operations.sqlite3`,
+not the enclosing Workspace root. `BenchmarkResult.open(benchmark.workspace)`
+reads that same current version6 operation store without leaf discovery, recovery
+or a root scan; older operation stores fail explicitly
 and require a new Workspace and recomputation.
 
 Every solve/evaluate/optimize operation has one root span beginning at the

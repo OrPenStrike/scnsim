@@ -31,7 +31,7 @@ from .documents import (
     replaceable_workspace_document,
     versioned_workspace_document,
 )
-from .primitives import _relative_path
+from .primitives import _inside, _relative_path
 from .records import (
     AttemptAllocation,
     BaselineCheckpoint,
@@ -41,9 +41,9 @@ from .records import (
 )
 from .storage import (
     _ATTEMPT,
-    _CHECKPOINT_STAGING,
     _LEAF_STAGING,
     _STAGING,
+    _operation_staging_matches,
     _WorkspacePublishIndeterminate,
     _atomic_write,
     _decode_bytes,
@@ -54,6 +54,7 @@ from .storage import (
     _publish_workspace_state,
     _remove_leaf,
 )
+from .operation_lease import _exclusive_activity_lease, _idle_operation_lease
 from .validation.common import (
     _SHA256,
     _UUID4,
@@ -71,13 +72,20 @@ from .validation.optimization import (
     _verify_generation_artifacts,
     _verify_terminal_optimization_failure,
 )
-from .validation.requests import _verify_failure_document, _verify_request_document
+from .validation.requests import (
+    _is_current_native_optimization_request,
+    _verify_failure_document,
+    _verify_request_document,
+)
 from .validation.results import _verify_result_document
 from .validation.sweeps import (
     _parameter_source_points,
     _verify_point_checkpoint_record,
     _verify_point_checkpoints,
 )
+
+_NATIVE_SELECTION = re.compile(r"^selection-([0-9a-f]{64})\.json$")
+_OPERATION_STAGING = ".scnsim-workspace-staging"
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -96,6 +104,299 @@ def _new_uuid(*, excluding: str | None = None) -> str:
         value = str(uuid.uuid4())
     return value
 
+
+def _native_index_file_ref(
+    directory: Path,
+    reference: object,
+    *,
+    role: str,
+    verify_file: bool = True,
+) -> dict[str, object]:
+    """Check one JSON index reference and, when selected, its owned file."""
+    if not isinstance(reference, Mapping) or set(reference) != {
+        "id", "path", "sha256", "byte_length", "media_type", "role"
+    }:
+        raise _integrity("Native index contains a malformed artifact reference.")
+    if (
+        not isinstance(reference.get("id"), str)
+        or not reference["id"]
+        or not isinstance(reference.get("path"), str)
+        or not isinstance(reference.get("sha256"), str)
+        or _SHA256.fullmatch(reference["sha256"]) is None
+        or not isinstance(reference.get("byte_length"), int)
+        or isinstance(reference.get("byte_length"), bool)
+        or reference["byte_length"] < 1
+        or reference.get("media_type") != "application/json"
+        or reference.get("role") != role
+    ):
+        raise _integrity("Native index artifact reference has invalid fields.", role=role)
+    path = _inside(directory, reference["path"])
+    if verify_file and (
+        not path.is_file() or path.is_symlink() or path.stat().st_size != reference["byte_length"]
+    ):
+        raise _integrity("Native index artifact is missing or has the wrong size.", path=reference["path"])
+    return dict(reference)
+
+
+def _verify_native_index_selection(
+    directory: Path,
+    *,
+    workspace_instance_id: str,
+    plan_sha256: str,
+    request: Mapping[str, object],
+    request_sha256: str,
+    attempt: Mapping[str, object],
+    receipt: Mapping[str, object],
+    result: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Verify the Workspace completion sidecar and native index root only.
+
+    Generation summaries and Julia ledgers remain lazy. Their exact references
+    and directory entries are sealed here; selected bytes are rechecked by the
+    short-read API when a Result asks for them.
+    """
+    index_directory = _inside(directory, "artifacts/native-index")
+    if index_directory.is_symlink() or not index_directory.is_dir():
+        raise _integrity("Native Optimization lacks its Workspace index directory.")
+    selections = [
+        (child, match.group(1))
+        for child in index_directory.iterdir()
+        if (match := _NATIVE_SELECTION.fullmatch(child.name)) is not None
+    ]
+    if len(selections) != 1:
+        raise _integrity("Native Optimization must have one content-addressed completion sidecar.")
+    selection_path, selection_sha256 = selections[0]
+    if selection_path.is_symlink() or not selection_path.is_file():
+        raise _integrity("Native completion sidecar is not a regular file.")
+    selection_raw = selection_path.read_bytes()
+    if _sha256(selection_raw) != selection_sha256:
+        raise _integrity("Native completion sidecar filename does not match its content.")
+    selection = _decode_bytes(selection_raw, "Workspace native completion")
+
+    attempt_sha256 = _sha256(_canonical_bytes(dict(attempt)))
+    result_sha256 = _sha256(_canonical_bytes(dict(result)))
+    expected_selection_fields = {
+        "schema", "schema_version", "workspace_instance_id", "plan_sha256",
+        "request_sha256", "attempt_sha256", "attempt_directory",
+        "result_sha256", "index_root_ref",
+    }
+    if (
+        set(selection) != expected_selection_fields
+        or selection.get("schema") != "scnsim.workspace_native_completion"
+        or selection.get("schema_version") != 1
+        or selection.get("workspace_instance_id") != workspace_instance_id
+        or selection.get("plan_sha256") != plan_sha256
+        or selection.get("request_sha256") != request_sha256
+        or selection.get("attempt_sha256") != attempt_sha256
+        or selection.get("attempt_directory") != attempt.get("directory")
+        or selection.get("result_sha256") != result_sha256
+        or receipt.get("request_sha256") != request_sha256
+        or receipt.get("attempt_sha256") != attempt_sha256
+        or receipt.get("result_sha256") != result_sha256
+        or receipt.get("outcome") != "success"
+        or result.get("request_sha256") != request_sha256
+        or result.get("attempt_sha256") != attempt_sha256
+        or result.get("result_kind") != "optimization"
+    ):
+        raise _integrity("Native completion sidecar differs from the selected attempt and Result.")
+
+    root_path = _inside(directory, "artifacts/native-index/root.json")
+    if root_path.is_symlink() or not root_path.is_file():
+        raise _integrity("Native index root is missing or unsafe.")
+    root_raw = root_path.read_bytes()
+    root_ref = selection.get("index_root_ref")
+    expected_root_ref = {
+        "id": "native_result_index",
+        "path": "artifacts/native-index/root.json",
+        "sha256": _sha256(root_raw),
+        "byte_length": len(root_raw),
+        "media_type": "application/json",
+        "role": "native_result_index",
+    }
+    if not isinstance(root_ref, Mapping) or dict(root_ref) != expected_root_ref:
+        raise _integrity("Native completion sidecar does not bind the actual index root.")
+    root = _decode_bytes(root_raw, "native result index")
+    root_fields = {
+        "schema", "schema_version", "workspace_instance_id", "plan_sha256",
+        "request_sha256", "attempt_identity", "native_result_ref",
+        "generation_index_refs", "generation_count", "population_candidate_count",
+        "baseline_locator", "best_locator",
+    }
+    attempt_identity = {
+        "sha256": attempt_sha256,
+        "ordinal": attempt.get("ordinal"),
+        "directory": attempt.get("directory"),
+    }
+    native_result_ref = {
+        "id": "native_result", "path": "result.json", "sha256": result_sha256,
+        "byte_length": len(_canonical_bytes(dict(result))),
+        "media_type": "application/json", "role": "native_result",
+    }
+    optimizer = request.get("spec", {}).get("optimizer", {})
+    population = optimizer.get("resolved_population_size") if isinstance(optimizer, Mapping) else None
+    generation_refs = root.get("generation_index_refs")
+    ledger_refs = result.get("ledger_artifacts")
+    generation_count = result.get("completed_generations")
+    if (
+        set(root) != root_fields
+        or root.get("schema") != "scnsim.native_result_index"
+        or root.get("schema_version") != 1
+        or root.get("workspace_instance_id") != workspace_instance_id
+        or root.get("plan_sha256") != plan_sha256
+        or root.get("request_sha256") != request_sha256
+        or root.get("attempt_identity") != attempt_identity
+        or root.get("native_result_ref") != native_result_ref
+        or not isinstance(population, int)
+        or isinstance(population, bool)
+        or not isinstance(generation_refs, list)
+        or not isinstance(ledger_refs, list)
+        or not isinstance(generation_count, int)
+        or isinstance(generation_count, bool)
+        or generation_count != len(generation_refs)
+        or generation_count != len(ledger_refs)
+        or root.get("generation_count") != generation_count
+        or root.get("population_candidate_count") != generation_count * population
+    ):
+        raise _integrity("Native index root differs from its bound request, attempt, or Result.")
+
+    baseline = root.get("baseline_locator")
+    if (
+        not isinstance(baseline, Mapping)
+        or baseline.get("member") != "baseline"
+        or baseline.get("evaluation_ordinal") != 0
+        or baseline.get("generation") != 0
+        or baseline.get("native_result_ref") != native_result_ref
+    ):
+        raise _integrity("Native index baseline locator is malformed.")
+    baseline_ref = _native_index_file_ref(
+        directory, baseline.get("summary_ref"), role="native_baseline_index",
+        verify_file=False,
+    )
+    if baseline_ref.get("path") != "artifacts/native-index/baseline.json":
+        raise _integrity("Native baseline index reference has an unexpected path.")
+
+    expected_names = {"root.json", "baseline.json", selection_path.name}
+    best_ordinal = result.get("best", {}).get("evaluation_ordinal")
+    best_locator = root.get("best_locator")
+    if not isinstance(best_locator, Mapping) or best_locator.get("evaluation_ordinal") != best_ordinal:
+        raise _integrity("Native index best locator differs from the terminal Result.")
+    if best_ordinal == 0 and dict(best_locator) != dict(baseline):
+        raise _integrity("Native baseline winner differs from the sealed baseline locator.")
+
+    for generation, (entry, ledger_ref) in enumerate(zip(generation_refs, ledger_refs, strict=True), 1):
+        if (
+            not isinstance(entry, Mapping)
+            or entry.get("generation") != generation
+            or entry.get("native_ledger_ref") != ledger_ref
+        ):
+            raise _integrity("Native generation index does not bind its Result ledger.", generation=generation)
+        summary_ref = _native_index_file_ref(
+            directory, entry.get("summary_ref"), role="native_generation_index",
+            verify_file=False,
+        )
+        if (
+            summary_ref.get("path") != f"artifacts/native-index/generation-{generation:06d}.json"
+            or entry.get("first_ordinal") != (generation - 1) * population + 1
+            or entry.get("row_count") != population
+        ):
+            raise _integrity("Native generation index entry is malformed.", generation=generation)
+        expected_names.add(Path(summary_ref["path"]).name)
+    names = {child.name for child in index_directory.iterdir()}
+    if names != expected_names:
+        raise _integrity("Native index directory contains undeclared entries.", entries=sorted(names - expected_names))
+    return dict(root_ref), root
+
+
+def read_native_result_artifact(
+    *,
+    binding_identity: Mapping[str, object],
+    directory: Path,
+    index_ref: Mapping[str, object],
+    artifact_ref: Mapping[str, object],
+) -> dict[str, Any]:
+    """Read one selected native index/ledger file from its fixed success.
+
+    The short Workspace reader revalidates the current leaf and success seal,
+    then hashes only the root or body explicitly selected by the caller. It
+    never scans every generation ledger to serve an unrelated projection.
+    """
+    try:
+        binding = WorkspaceBinding(
+            Path(binding_identity["root"]),
+            Path(binding_identity["leaf"]),
+            str(binding_identity["plan_sha256"]),
+            str(binding_identity["workspace_instance_id"]),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise _integrity("Native result read lacks its bound Workspace identity.") from error
+
+    attempt_directory = Path(directory)
+    try:
+        relative_directory = attempt_directory.relative_to(binding.leaf)
+    except ValueError as error:
+        raise _integrity("Native result attempt is outside its bound Workspace leaf.") from error
+    parts = relative_directory.parts
+    if (
+        len(parts) != 4
+        or parts[0] != "requests"
+        or _SHA256.fullmatch(parts[1]) is None
+        or parts[2] != "attempts"
+        or _ATTEMPT.fullmatch(parts[3]) is None
+    ):
+        raise _integrity("Native result path is not a canonical final attempt directory.")
+
+    with binding.reader():
+        attempt, receipt, result, actual_index_ref, index_metadata = binding._verify_attempt(
+            attempt_directory,
+            parts[1],
+            parts[3],
+            require_final_name=True,
+            metadata_only_native_success=True,
+        )
+        if (
+            receipt.get("outcome") != "success"
+            or result is None
+            or actual_index_ref is None
+            or index_metadata is None
+            or dict(index_ref) != actual_index_ref
+        ):
+            raise _integrity("Native result read no longer matches its fixed success and index root.")
+
+        allowed: list[Mapping[str, object]] = [actual_index_ref]
+        baseline = index_metadata.get("baseline_locator")
+        if isinstance(baseline, Mapping) and isinstance(baseline.get("summary_ref"), Mapping):
+            allowed.append(baseline["summary_ref"])
+        generations = index_metadata.get("generation_index_refs")
+        if isinstance(generations, list):
+            for entry in generations:
+                if not isinstance(entry, Mapping):
+                    continue
+                for field in ("summary_ref", "native_ledger_ref"):
+                    reference = entry.get(field)
+                    if isinstance(reference, Mapping):
+                        allowed.append(reference)
+        if not any(dict(reference) == dict(artifact_ref) for reference in allowed):
+            raise _integrity("Requested native result artifact is not selected by the sealed index.")
+
+        relative_path = artifact_ref.get("path")
+        digest = artifact_ref.get("sha256")
+        length = artifact_ref.get("byte_length")
+        if (
+            not isinstance(relative_path, str)
+            or _SHA256.fullmatch(str(digest)) is None
+            or not isinstance(length, int)
+            or isinstance(length, bool)
+            or length < 1
+        ):
+            raise _integrity("Selected native result artifact reference is malformed.")
+        path = _inside(attempt_directory, relative_path)
+        if path.is_symlink() or not path.is_file() or path.stat().st_size != length:
+            raise _integrity("Selected native result artifact is missing or has the wrong size.", path=relative_path)
+        raw = path.read_bytes()
+        if _sha256(raw) != digest:
+            raise _integrity("Selected native result artifact hash does not match its reference.", path=relative_path)
+        return _decode_bytes(raw, "selected native result artifact")
+
 @dataclass(frozen=True)
 class WorkspaceBinding:
     """One Run's concrete, Plan-bound leaf beneath a stable workspace root."""
@@ -108,8 +409,13 @@ class WorkspaceBinding:
     _expected_blas_threads: int = field(default=1, repr=False, compare=False)
 
     @contextmanager
-    def writer(self) -> Iterator[WorkspaceBinding]:
-        """Hold the root's exclusive lock for a complete durable operation."""
+    def writer(self, *, cleanup_staging: bool = True) -> Iterator[WorkspaceBinding]:
+        """Hold the root's exclusive lock for one Workspace mutation.
+
+        Staging cleanup is an entry-time recovery action, not part of each
+        publication transaction. Callers that already completed that recovery
+        for the active operation can omit it on subsequent short mutations.
+        """
 
         with _workspace_lock(self.root, exclusive=True):
             state = _load_canonical(self.root / "workspace.json")
@@ -118,7 +424,8 @@ class WorkspaceBinding:
             _validate_active_evidence(self.root, state)
             _finish_root_maintenance(self.root, state)
             self.assert_current()
-            self._cleanup_staging()
+            if cleanup_staging:
+                self._cleanup_staging()
             yield self
 
     @contextmanager
@@ -337,7 +644,7 @@ class WorkspaceBinding:
                 "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
                 "request_sha256": request_sha256, "entries": []}))
             _fsync_directory(request_directory)
-        stage = root / f".staging-{uuid.uuid4()}"
+        stage = staging / f".staging-point-checkpoint-{uuid.uuid4()}"
         stage.mkdir()
         try:
             _atomic_write(stage / "record.json", raw)
@@ -353,6 +660,7 @@ class WorkspaceBinding:
             if _path_entry_exists(final):
                 raise _integrity("Point checkpoint publication target already exists.")
             os.replace(stage, final)
+            _fsync_directory(stage.parent)
             _fsync_directory(root)
             entries = [{"ordinal": index, "seal_sha256": item.seal_sha256}
                 for index, item in enumerate(previous)]
@@ -426,7 +734,7 @@ class WorkspaceBinding:
             _fsync_directory(producer_path.parent)
             return existing
 
-        staging = request_directory / f".staging-baseline-checkpoint-{uuid.uuid4()}"
+        staging = producer_path.parent / f".staging-baseline-checkpoint-{uuid.uuid4()}"
         staging.mkdir()
         try:
             _atomic_write(staging / "checkpoint.json", checkpoint_bytes)
@@ -453,6 +761,7 @@ class WorkspaceBinding:
                     "Baseline checkpoint publication target appeared during publication."
                 )
             os.replace(staging, final)
+            _fsync_directory(staging.parent)
             _fsync_directory(request_directory)
             published = _verify_baseline_checkpoint_directory(
                 final, request_sha256=request_sha256, request=request, plan=plan,
@@ -466,12 +775,25 @@ class WorkspaceBinding:
             if staging.exists():
                 shutil.rmtree(staging)
 
-    def allocate_attempt(self, request_sha256: str) -> AttemptAllocation:
-        """Reserve the next append-only attempt staging directory.
+    def allocate_attempt(
+        self, request_sha256: str, *, operation_id: str, operation_lease,
+    ) -> AttemptAllocation:
+        """Reserve one operation-owned attempt staging directory.
 
-        The child is still blocked: no ``attempt.json`` exists until bootstrap
-        observation supplies its truthful allocated or launched evidence.
+        The child remains blocked until bootstrap observation seals truthful
+        allocated/launched evidence. Scratch lives under the operation UUID,
+        so cleanup can use its stable OS lease without scanning request history.
         """
+
+        operation_id = _valid_uuid(operation_id)
+        try:
+            lease_operation_id = operation_lease.operation_id
+            lease_root = Path(operation_lease.root)
+            operation_lease.descriptors
+        except (AttributeError, RuntimeError, TypeError) as error:
+            raise _integrity("Attempt allocation requires an active operation lease.") from error
+        if lease_operation_id != operation_id or lease_root != self.root:
+            raise _integrity("Attempt allocation lease differs from its Workspace operation.")
 
         request_directory = self.leaf / "requests" / request_sha256
         if request_directory.is_symlink() or not request_directory.is_dir():
@@ -486,10 +808,37 @@ class WorkspaceBinding:
         ordinal = self._next_attempt_ordinal(attempts)
         text = str(ordinal).zfill(6)
         final = attempts / text
-        staging = attempts / f".staging-{text}-{uuid.uuid4()}"
+        staging_root = self.leaf / _OPERATION_STAGING
+        if staging_root.is_symlink():
+            raise _integrity("Workspace operation-staging directory is symlinked.")
+        staging_root.mkdir(mode=0o700, exist_ok=True)
+        operation_directory = staging_root / operation_id
+        if operation_directory.is_symlink():
+            raise _integrity("Operation staging directory is symlinked.", operation_id=operation_id)
+        operation_directory.mkdir(mode=0o700, exist_ok=True)
+        if operation_directory.is_symlink() or not operation_directory.is_dir():
+            raise _integrity("Operation staging directory is unsafe.", operation_id=operation_id)
+        request_staging = operation_directory / request_sha256
+        if request_staging.is_symlink():
+            raise _integrity("Operation request-staging directory is symlinked.")
+        request_staging.mkdir(mode=0o700, exist_ok=True)
+        if request_staging.is_symlink() or not request_staging.is_dir():
+            raise _integrity("Operation request-staging directory is unsafe.")
+        staging = request_staging / f".staging-{text}-{uuid.uuid4()}"
         staging.mkdir()
+        _fsync_directory(request_staging)
+        _fsync_directory(operation_directory)
+        _fsync_directory(staging_root)
         _fsync_directory(attempts)
-        return AttemptAllocation(request_sha256, ordinal, text, staging, final)
+        return AttemptAllocation(
+            request_sha256=request_sha256,
+            ordinal=ordinal,
+            ordinal_text=text,
+            staging_directory=staging,
+            final_directory=final,
+            operation_id=operation_id,
+            operation_lease=operation_lease,
+        )
 
     def seal_attempt(self, allocation: AttemptAllocation, attempt: Mapping[str, object]) -> str:
         """Seal the one allocated/launched attempt envelope before authorization."""
@@ -519,6 +868,79 @@ class WorkspaceBinding:
         _atomic_write(path, raw)
         return _sha256(raw)
 
+    def seal_native_result_index(
+        self,
+        allocation: AttemptAllocation,
+        receipt: Mapping[str, object],
+    ) -> None:
+        """Build and seal the Workspace index for a successful native Optimization.
+
+        The Julia Result and receipt remain untouched. The native index builder
+        writes its compact summaries into the allocated attempt; this method
+        then adds one content-addressed Workspace completion record that binds
+        the index root to the exact terminal attempt and Result.
+        """
+        self._require_allocation(allocation)
+        request_path = self.leaf / "requests" / allocation.request_sha256 / "request.json"
+        request = _load_canonical(request_path)
+        attempt_path = allocation.staging_directory / "attempt.json"
+        attempt = _load_canonical(attempt_path)
+        result_path = allocation.staging_directory / "result.json"
+        result = _load_canonical(result_path)
+        if (
+            not _is_current_native_optimization_request(request)
+            or receipt.get("outcome") != "success"
+            or result.get("result_kind") != "optimization"
+        ):
+            raise _integrity("Native index sealing requires one successful native Optimization.")
+
+        from .native_result_index import build_native_result_index
+
+        index = build_native_result_index(
+            binding_identity={
+                "workspace_instance_id": self.workspace_instance_id,
+                "plan_sha256": self.plan_sha256,
+            },
+            request=request,
+            attempt=attempt,
+            receipt=receipt,
+            result=result,
+            directory=allocation.staging_directory,
+        )
+        index_directory = allocation.staging_directory / "artifacts" / "native-index"
+        root_path = index_directory / "root.json"
+        root_ref = dict(index.root_ref)
+        if (
+            root_ref.get("path") != "artifacts/native-index/root.json"
+            or root_ref.get("role") != "native_result_index"
+            or not root_path.is_file()
+            or root_path.is_symlink()
+        ):
+            raise _integrity("Native index builder returned no owned root artifact.")
+        root_raw = root_path.read_bytes()
+        if (
+            len(root_raw) != root_ref.get("byte_length")
+            or _sha256(root_raw) != root_ref.get("sha256")
+        ):
+            raise _integrity("Native index root reference differs from its staged bytes.")
+        selection = {
+            "schema": "scnsim.workspace_native_completion",
+            "schema_version": 1,
+            "workspace_instance_id": self.workspace_instance_id,
+            "plan_sha256": self.plan_sha256,
+            "request_sha256": allocation.request_sha256,
+            "attempt_sha256": _sha256(_canonical_bytes(attempt)),
+            "attempt_directory": attempt.get("directory"),
+            "result_sha256": receipt.get("result_sha256"),
+            "index_root_ref": root_ref,
+        }
+        raw = _canonical_bytes(selection)
+        digest = _sha256(raw)
+        selection_path = index_directory / f"selection-{digest}.json"
+        if selection_path.exists() or selection_path.is_symlink():
+            raise _integrity("Native completion selection would overwrite existing evidence.")
+        _atomic_write(selection_path, raw)
+
     def promote_attempt(self, allocation: AttemptAllocation, receipt: Mapping[str, object]) -> None:
         """Write ``receipt.json`` last, fsync, and atomically publish one attempt."""
 
@@ -547,6 +969,7 @@ class WorkspaceBinding:
         if allocation.final_directory.exists():
             raise _integrity("Attempt promotion would overwrite final evidence.")
         os.replace(allocation.staging_directory, allocation.final_directory)
+        _fsync_directory(allocation.staging_directory.parent)
         _fsync_directory(allocation.final_directory.parent)
         self._verify_attempt(
             allocation.final_directory,
@@ -581,11 +1004,17 @@ class WorkspaceBinding:
             raise _integrity("Request attempts path is unsafe.", path=str(attempts))
         successful: list[VerifiedSuccess] = []
         for final in self._final_attempt_directories(attempts):
-            attempt, receipt, result = self._verify_attempt(final, request_sha256, final.name, require_final_name=True)
+            attempt, receipt, result, native_index_ref, native_index_metadata = self._verify_attempt(
+                final, request_sha256, final.name, require_final_name=True,
+                metadata_only_native_success=True,
+            )
             if receipt["outcome"] == "success":
                 if result is None:
                     raise _integrity("Successful receipt lacks a Result.", attempt=str(final))
-                successful.append(VerifiedSuccess(request_document, attempt, receipt, result, final))
+                successful.append(VerifiedSuccess(
+                    request_document, attempt, receipt, result, final,
+                    native_index_ref, native_index_metadata,
+                ))
         if len(successful) > 1:
             raise _integrity("One request has competing verified successes.", request_sha256=request_sha256)
         return successful[0] if successful else None
@@ -671,7 +1100,7 @@ class WorkspaceBinding:
                     continue
                 outcomes: list[str] = []
                 for final in finals:
-                    _attempt, receipt, _result = self._verify_attempt(
+                    _attempt, receipt, _result, _native_ref, _native_metadata = self._verify_attempt(
                         final, request_sha256, final.name, require_final_name=True
                     )
                     outcome = receipt.get("outcome")
@@ -719,7 +1148,7 @@ class WorkspaceBinding:
             raise _integrity("Request attempts path is unsafe.", path=str(attempts))
         candidates: list[tuple[int, str]] = []
         for final in self._final_attempt_directories(attempts):
-            attempt, receipt, _ = self._verify_attempt(
+            attempt, receipt, _, _, _ = self._verify_attempt(
                 final, request_sha256, final.name, require_final_name=True
             )
             if receipt["outcome"] == "success":
@@ -727,6 +1156,7 @@ class WorkspaceBinding:
             ledgers = _verify_generation_artifacts(
                 final,
                 receipt["artifacts"],
+                request_path=self.leaf / "requests" / request_sha256 / "request.json",
                 request_sha256=request_sha256,
                 attempt_sha256=_sha256(_canonical_bytes(attempt)),
                 expected_julia_threads=self._expected_julia_threads,
@@ -747,47 +1177,31 @@ class WorkspaceBinding:
         return digests.pop()
 
     def _cleanup_staging(self) -> None:
-        """Remove only canonical crash leftovers while holding the exclusive lock."""
+        """Prune only operation-owned staging proven inactive by its OS lease."""
 
-        requests = self.leaf / "requests"
-        if requests.is_symlink():
-            raise _integrity("Workspace requests path is symlinked.", path=str(requests))
-        if not requests.exists():
+        staging_root = self.leaf / _OPERATION_STAGING
+        if staging_root.is_symlink():
+            raise _integrity("Workspace operation-staging directory is symlinked.")
+        if not staging_root.exists():
             return
-        for request in requests.iterdir():
-            if request.is_symlink() or not request.is_dir() or _SHA256.fullmatch(request.name) is None:
-                raise _integrity("Workspace contains a malformed request directory.", path=str(request))
-            attempts = request / "attempts"
-            point_root = request / "point-checkpoints"
-            if point_root.exists():
-                if point_root.is_symlink() or not point_root.is_dir():
-                    raise _integrity("Workspace contains unsafe point checkpoint directory.")
-                for child in point_root.iterdir():
-                    if child.name.startswith(".staging-"):
-                        if child.is_symlink() or not child.is_dir() or _UUID4.fullmatch(child.name[len(".staging-"):]) is None:
-                            raise _integrity("Workspace contains malformed point checkpoint staging.")
-                        shutil.rmtree(child)
-                        _fsync_directory(point_root)
-            for child in request.iterdir():
-                if not child.name.startswith(".staging-baseline-checkpoint-"):
+        if not staging_root.is_dir():
+            raise _integrity("Workspace operation-staging path is not a directory.")
+        for operation_directory in tuple(staging_root.iterdir()):
+            if operation_directory.is_symlink() or not operation_directory.is_dir():
+                raise _integrity(
+                    "Workspace operation-staging entry is unsafe.",
+                    path=str(operation_directory),
+                )
+            operation_id = _valid_uuid(operation_directory.name)
+            with _idle_operation_lease(self.root, operation_id) as lease:
+                if not lease.acquired:
                     continue
-                if child.is_symlink() or not child.is_dir() or _CHECKPOINT_STAGING.fullmatch(child.name) is None:
-                    raise _integrity("Workspace contains malformed checkpoint staging evidence.", path=str(child))
-                shutil.rmtree(child)
-                _fsync_directory(request)
-            if attempts.is_symlink():
-                raise _integrity("Workspace contains an unsafe attempts path.", path=str(attempts))
-            if not attempts.exists():
-                continue
-            if not attempts.is_dir():
-                raise _integrity("Workspace contains an unsafe attempts path.", path=str(attempts))
-            for child in attempts.iterdir():
-                if child.name.startswith(".staging-"):
-                    match = _STAGING.fullmatch(child.name)
-                    if match is None or not child.is_dir() or child.is_symlink():
-                        raise _integrity("Workspace contains malformed staging evidence.", path=str(child))
-                    shutil.rmtree(child)
-                    _fsync_directory(attempts)
+                if operation_directory.exists() and not operation_directory.is_symlink():
+                    shutil.rmtree(operation_directory)
+                    _fsync_directory(staging_root)
+        if staging_root.exists() and not any(staging_root.iterdir()):
+            staging_root.rmdir()
+            _fsync_directory(self.leaf)
 
     def _next_attempt_ordinal(self, attempts: Path) -> int:
         ordinals: list[int] = []
@@ -802,13 +1216,35 @@ class WorkspaceBinding:
         return len(ordinals) + 1
 
     def _require_allocation(self, allocation: AttemptAllocation) -> None:
-        if allocation.request_sha256 == "" or allocation.staging_directory.parent != allocation.final_directory.parent:
-            raise _integrity("Attempt allocation does not belong to one request directory.")
-        if allocation.staging_directory.parent != self.leaf / "requests" / allocation.request_sha256 / "attempts":
-            raise _integrity("Attempt allocation belongs to another workspace leaf.")
+        expected_final_parent = self.leaf / "requests" / allocation.request_sha256 / "attempts"
+        expected_staging_parent = (
+            self.leaf / _OPERATION_STAGING / allocation.operation_id / allocation.request_sha256
+        )
         if (
-            allocation.staging_directory.parent.is_symlink()
-            or allocation.staging_directory.is_symlink()
+            allocation.request_sha256 == ""
+            or _valid_uuid(allocation.operation_id) != allocation.operation_id
+            or allocation.final_directory.parent != expected_final_parent
+            or allocation.staging_directory.parent != expected_staging_parent
+        ):
+            raise _integrity("Attempt allocation belongs to another workspace leaf.")
+        try:
+            if (
+                allocation.operation_lease.operation_id != allocation.operation_id
+                or Path(allocation.operation_lease.root) != self.root
+            ):
+                raise _integrity("Attempt allocation operation lease has changed.")
+            allocation.operation_lease.descriptors
+        except (AttributeError, RuntimeError, TypeError) as error:
+            raise _integrity("Attempt allocation operation lease is no longer active.") from error
+        staging_ancestors = (
+            expected_staging_parent,
+            expected_staging_parent.parent,
+            expected_staging_parent.parent.parent,
+        )
+        if any(parent.is_symlink() or not parent.is_dir() for parent in staging_ancestors):
+            raise _integrity("Attempt allocation operation-staging path is unsafe.")
+        if (
+            allocation.staging_directory.is_symlink()
             or not allocation.staging_directory.is_dir()
             or allocation.final_directory.is_symlink()
             or allocation.final_directory.exists()
@@ -839,12 +1275,19 @@ class WorkspaceBinding:
         ordinal_text: str,
         *,
         require_final_name: bool,
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+        metadata_only_native_success: bool = False,
+    ) -> tuple[
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any] | None,
+        dict[str, object] | None,
+        dict[str, object] | None,
+    ]:
         if directory.is_symlink() or not directory.is_dir() or directory.parent.is_symlink() or directory.parent.parent.is_symlink():
             raise _integrity("Attempt path traverses a symlink.", path=str(directory))
         if require_final_name and directory.name != ordinal_text:
             raise _integrity("Final attempt directory does not match its ordinal.", path=str(directory))
-        request_path = directory.parent.parent / "request.json"
+        request_path = self.leaf / "requests" / request_sha256 / "request.json"
         if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
             raise _integrity("Attempt request bytes do not match their identity.", attempt=str(directory))
         request_document = _load_canonical(request_path)
@@ -855,6 +1298,11 @@ class WorkspaceBinding:
         receipt_path = directory / "receipt.json"
         attempt = _load_canonical(attempt_path)
         receipt = _load_canonical(receipt_path)
+        native_success_index = (
+            metadata_only_native_success
+            and _is_current_native_optimization_request(request_document)
+            and receipt.get("outcome") == "success"
+        )
         expected_directory = f"requests/{request_sha256}/attempts/{ordinal_text}"
         staging_directory = attempt.get("staging_directory")
         expected_attempt_version = 2 if request_document.get("operation") == "optimize_direct" else 1
@@ -865,9 +1313,9 @@ class WorkspaceBinding:
             or attempt.get("ordinal_text") != ordinal_text
             or attempt.get("ordinal") != int(ordinal_text)
             or attempt.get("directory") != expected_directory
-            or not isinstance(staging_directory, str)
-            or _STAGING.fullmatch(Path(staging_directory).name) is None
-            or staging_directory != f"requests/{request_sha256}/attempts/{Path(staging_directory).name}"
+            or not _operation_staging_matches(
+                staging_directory, request_sha256, ordinal_text
+            )
         ):
             raise _integrity("Attempt envelope has inconsistent path evidence.", attempt=str(directory))
         state = attempt.get("attempt_state")
@@ -916,13 +1364,14 @@ class WorkspaceBinding:
             ):
                 raise _integrity("Attempt baseline checkpoint reference is absent or corrupt.")
         resume = attempt.get("resume_ledger_sha256")
-        if resume is not None:
+        if resume is not None and not native_success_index:
             resume = _valid_sha(resume)
             found = False
-            for sibling in self._final_attempt_directories(directory.parent):
+            attempts_directory = self.leaf / "requests" / request_sha256 / "attempts"
+            for sibling in self._final_attempt_directories(attempts_directory):
                 if int(sibling.name) >= int(ordinal_text):
                     continue
-                producer_attempt, producer_receipt, _ = self._verify_attempt(
+                producer_attempt, producer_receipt, _, _, _ = self._verify_attempt(
                     sibling,
                     request_sha256,
                     sibling.name,
@@ -931,6 +1380,7 @@ class WorkspaceBinding:
                 ledgers = _verify_generation_artifacts(
                     sibling,
                     producer_receipt["artifacts"],
+                    request_path=self.leaf / "requests" / request_sha256 / "request.json",
                     request_sha256=request_sha256,
                     attempt_sha256=_sha256(_canonical_bytes(producer_attempt)),
                     expected_julia_threads=self._expected_julia_threads,
@@ -1027,6 +1477,8 @@ class WorkspaceBinding:
         ):
             raise _integrity("Receipt evidence hashes do not match their exact sources.", attempt=str(directory))
         result: dict[str, Any] | None = None
+        native_index_ref: dict[str, object] | None = None
+        native_index_metadata: dict[str, object] | None = None
         completed_generation_count = 0
         outcome_document: dict[str, Any] | None = None
         outcome_path = directory / "outcome.json"
@@ -1098,23 +1550,48 @@ class WorkspaceBinding:
                 plan_document,
                 optimization_checkpoint=checkpoint,
             )
-            _verify_artifact_inventory(directory, result, receipt)
-            if result.get("result_kind") == "optimization":
-                verified_generations = _verify_generation_artifacts(
+            native_optimization = (
+                _is_current_native_optimization_request(request_document)
+            )
+            if native_optimization:
+                native_index_ref, native_index_metadata = _verify_native_index_selection(
                     directory,
-                    receipt["artifacts"],
+                    workspace_instance_id=self.workspace_instance_id,
+                    plan_sha256=self.plan_sha256,
+                    request=request_document,
                     request_sha256=request_sha256,
-                    attempt_sha256=attempt_sha256,
-                    expected_julia_threads=self._expected_julia_threads,
-                    expected_blas_threads=self._expected_blas_threads,
+                    attempt=attempt,
+                    receipt=receipt,
+                    result=result,
                 )
-                completed_generation_count = len(verified_generations)
+            _verify_artifact_inventory(
+                directory, result, receipt,
+                request_path=self.leaf / "requests" / request_sha256 / "request.json",
+                workspace_native_index=native_index_ref is not None,
+                defer_native_optimization_ledgers=native_success_index,
+            )
+            if result.get("result_kind") == "optimization":
+                if native_success_index:
+                    completed_generation_count = int(native_index_metadata["generation_count"])
+                else:
+                    verified_generations = _verify_generation_artifacts(
+                        directory,
+                        receipt["artifacts"],
+                        request_path=self.leaf / "requests" / request_sha256 / "request.json",
+                        request_sha256=request_sha256,
+                        attempt_sha256=attempt_sha256,
+                        expected_julia_threads=self._expected_julia_threads,
+                        expected_blas_threads=self._expected_blas_threads,
+                        allow_other_artifacts=native_index_ref is not None,
+                    )
+                    completed_generation_count = len(verified_generations)
         elif receipt.get("result_sha256") is not None or (directory / "result.json").exists():
             raise _integrity("Non-success evidence must not retain a Result.", attempt=str(directory))
         else:
             verified_generations = _verify_generation_artifacts(
                 directory,
                 receipt["artifacts"],
+                request_path=self.leaf / "requests" / request_sha256 / "request.json",
                 request_sha256=request_sha256,
                 attempt_sha256=attempt_sha256,
                 expected_julia_threads=self._expected_julia_threads,
@@ -1152,7 +1629,7 @@ class WorkspaceBinding:
             if not (outcome == "failure" and isinstance(failure, dict) and failure.get("kind") in {"backend_protocol", "optimization_progress_callback"}):
                 raise _integrity("Completed terminal evidence requires a valid outcome envelope.", attempt=str(directory))
         _verify_attempt_layout(directory, outcome=outcome, has_authoritative_outcome=outcome_sha is not None)
-        return attempt, receipt, result
+        return attempt, receipt, result, native_index_ref, native_index_metadata
 
 @contextmanager
 def _workspace_lock(root: Path, *, exclusive: bool) -> Iterator[None]:
@@ -1197,7 +1674,7 @@ def bind_workspace(
         raise TypeError("workspace commit must be callable")
     root = Path(workspace).expanduser().resolve(strict=False)
     root.mkdir(parents=True, exist_ok=True)
-    with _workspace_lock(root, exclusive=True):
+    with _exclusive_activity_lease(root), _workspace_lock(root, exclusive=True):
         try:
             state_path = root / "workspace.json"
             if not state_path.exists():
@@ -1341,7 +1818,10 @@ def _recover_or_create_root(
     """
 
     _cleanup_initial_leaf_staging(root)
-    entries = {child.name: child for child in root.iterdir() if child.name != ".scnsim.lock"}
+    entries = {
+        child.name: child for child in root.iterdir()
+        if child.name not in {".scnsim.lock", ".scnsim-operation-lease.lock"}
+    }
     if not entries:
         return _create_root(root, plan_sha256, plan_bytes, versioned)
     if versioned and set(entries) == {"iteration01"}:

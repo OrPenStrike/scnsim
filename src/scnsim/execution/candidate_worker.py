@@ -7,7 +7,7 @@ from __future__ import annotations
 
 
 def _codec():
-    from ..benchmark.prepared import record_bytes, record_document
+    from ..numeric_encoding import record_bytes, record_document
     return record_bytes, record_document
 
 
@@ -16,7 +16,7 @@ def create_backend_factory(declaration_bytes, *, operation_resources=None):
     declaration = _codec()[1](declaration_bytes)
     def factory():
         from .config import get_runtime_configuration
-        from ..benchmark.backends.jax_backend import get_jax_backend
+        from .jax_backend import get_jax_backend
         return get_jax_backend(precision=declaration['precision'],
                                resources=get_runtime_configuration(), trace=None,
                                operation_resources=operation_resources, diagnostics=False)

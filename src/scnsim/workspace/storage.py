@@ -18,6 +18,13 @@ _STAGING = re.compile(
     r"^\.staging-((?!000000-)(?:[0-9]{6}|[1-9][0-9]{6,}))"
     r"-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
 )
+_OPERATION_STAGING_DIRECTORY = re.compile(
+    r"^\.scnsim-workspace-staging/"
+    r"(?P<operation_id>[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/"
+    r"(?P<request_sha256>[0-9a-f]{64})/"
+    r"\.staging-(?P<ordinal>(?!000000-)(?:[0-9]{6}|[1-9][0-9]{6,}))-"
+    r"(?P<staging_id>[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
+)
 _LEAF_STAGING = re.compile(
     r"^\.staging-leaf-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
 )
@@ -25,6 +32,18 @@ _CHECKPOINT_STAGING = re.compile(
     r"^\.staging-baseline-checkpoint-"
     r"([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
 )
+
+
+def _operation_staging_matches(value: object, request_sha256: str, ordinal_text: str) -> bool:
+    """Check a sealed attempt's leaf-relative path against its allocation identity."""
+    if not isinstance(value, str):
+        return False
+    match = _OPERATION_STAGING_DIRECTORY.fullmatch(value)
+    return (
+        match is not None
+        and match.group("request_sha256") == request_sha256
+        and match.group("ordinal") == ordinal_text
+    )
 
 def _load_canonical(path: Path) -> dict[str, Any]:
     if path.is_symlink() or not path.is_file():

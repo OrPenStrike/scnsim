@@ -23,7 +23,7 @@ from ..errors import (
     WorkspaceCommitIndeterminateError,
     WorkspaceRecoveryRequiredError,
 )
-from .prepared import record_bytes
+from ..numeric_encoding import record_bytes
 from .models import TimingMode
 
 
@@ -229,7 +229,7 @@ class OperationRecorder:
         if self._entered:
             raise RuntimeError("operation recorder cannot be entered twice")
         self._entered = True
-        from .storage import start_operation
+        from ..workspace.evidence import start_operation
 
         with self.binding.writer():  # type: ignore[attr-defined]
             start_operation(self.binding, self.root_row(), clock_binding=self.clock)
@@ -252,7 +252,7 @@ class OperationRecorder:
             finalize_root = not self._diagnostics_stopped
         if finalize_root:
             try:
-                from .storage import finish_operation
+                from ..workspace.evidence import finish_operation
 
                 with self.binding.writer():  # type: ignore[attr-defined]
                     # Keep lock acquisition, workspace/Plan revalidation and
@@ -316,7 +316,7 @@ class OperationRecorder:
             # association. Publish that association atomically at the cache
             # boundary; ordinary execution fields remain staged until the
             # task/request/attempt registration transaction.
-            from .storage import bind_operation
+            from ..workspace.evidence import bind_operation
 
             with self.binding.writer():  # type: ignore[attr-defined]
                 bind_operation(self.binding, row=self.root_row())
@@ -555,7 +555,7 @@ class OperationRecorder:
             if stopped_error is not None:
                 self._note_diagnostic_error(primary_error, stopped_error)
             return None
-        from .storage import publish_timing_batch
+        from ..workspace.evidence import publish_timing_batch
 
         try:
             acknowledgement = publish_timing_batch(self.binding, batch)
@@ -778,7 +778,7 @@ def _selected_operation_ids(operations: Sequence[str] | str | None) -> set[str] 
     return set(operations)
 
 
-def project_indexed_operation_rows(
+def project_indexed_operation_document(
     rows: Mapping[str, object] | None,
     *,
     workspace: Path,
@@ -789,7 +789,7 @@ def project_indexed_operation_rows(
     backend: str | None = None,
     precision: str | None = None,
 ):
-    """Project current SQLite operation authority and independent diagnostics."""
+    """Project current Workspace operation authority into its detached document."""
     selected_ids = _selected_operation_ids(operations)
     if rows is None:
         source_operations = source_batches = ()
@@ -871,8 +871,33 @@ def project_indexed_operation_rows(
         "clock_domains": [clocks[key] for key in sorted(clocks)],
         "numerical_refs": numerical_refs,
     }
-    from .models import BenchmarkResult
+    return document
 
+
+def project_indexed_operation_rows(
+    rows: Mapping[str, object] | None,
+    *,
+    workspace: Path,
+    plan_sha256: object,
+    workspace_instance_id: object,
+    operations: Sequence[str] | str | None = None,
+    method: str | None = None,
+    backend: str | None = None,
+    precision: str | None = None,
+):
+    """Project indexed rows into the current public immutable report value."""
+    from ..benchmark.models import BenchmarkResult
+
+    document = project_indexed_operation_document(
+        rows,
+        workspace=workspace,
+        plan_sha256=plan_sha256,
+        workspace_instance_id=workspace_instance_id,
+        operations=operations,
+        method=method,
+        backend=backend,
+        precision=precision,
+    )
     return BenchmarkResult.from_document(workspace, document)
 
 
@@ -886,13 +911,13 @@ def read_operations(
     status: str | None = None,
 ):
     """Read operation roots, bounded timing batches and current task-state refs."""
-    from . import storage
+    from ..workspace import evidence
 
     with binding.reader():  # type: ignore[attr-defined]
         operation_ids = (
             None if operations is None else (operations,) if isinstance(operations, str) else tuple(operations)
         )
-        indexed_rows = storage.query_operation_rows(
+        indexed_rows = evidence.query_operation_rows(
             binding,
             operation_ids=operation_ids,
             method=method,
@@ -901,7 +926,7 @@ def read_operations(
             status=status,
         )
 
-    workspace = storage.operation_workspace(binding)
+    workspace = Path(evidence.operation_workspace(binding))
     plan_sha256 = getattr(binding, "plan_sha256")
     workspace_instance_id = getattr(binding, "workspace_instance_id")
     return project_indexed_operation_rows(

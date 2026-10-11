@@ -1,28 +1,37 @@
 """Shared same-process JAX assembly and worker-local CPU SuperLU evaluation.
 
-Executable reuse is process-local and contains only static signatures and compiled
-kernels. Plans, coefficients, Jobs, traces and numerical history remain call-local.
+Executable owners are a Run's explicit warm holder or one operation handle.
+The process-wide index is weak: it shares live static-signature kernels without
+extending their lifetime. Plans, coefficients and numerical history are not cached.
 """
 
 from __future__ import annotations
 
 import importlib.metadata
 import os
-from contextlib import nullcontext
-from threading import RLock
+from contextlib import contextmanager, nullcontext
+from threading import RLock, local
 from time import perf_counter_ns
+from weakref import WeakValueDictionary
+from types import SimpleNamespace
 
 import numpy as np
 
-from ..models import EvaluationJob, EvaluationResult, NumericalFailure
-from .base import evidence_bytes
+from ..numerics.models import EvaluationJob, EvaluationResult, NumericalFailure
+from ..numerics.evidence import evidence_bytes
 
 
-# Cache lifetime is the Python process; closing a call-local handle never drops
-# reusable kernels. Lock only lookup/compile; executions use independent arguments.
+# Lock lookup/compile only; execution arguments remain independent and local.
 _ALGORITHM_ID = "scnsim.jax-sparse-csc-superlu-direct-quantities-newton32.v8"
-_EXECUTABLES = {}
+_EXECUTABLES = WeakValueDictionary()
 _EXECUTABLE_LOCK = RLock()
+
+
+class _ExecutableEntry:
+    __slots__ = ('executable', '__weakref__')
+
+    def __init__(self, executable):
+        self.executable = executable
 
 
 def _span(trace, kind, **details):
@@ -43,7 +52,7 @@ class JaxBackend:
             raise ValueError("JAX execution supports only the CPU device")
         if precision not in ("float32", "float64"):
             raise ValueError("precision must be float32 or float64")
-        from ...execution.config import ensure_jax_configuration, get_runtime_configuration, mark_jax_initialized
+        from .config import ensure_jax_configuration, get_runtime_configuration, mark_jax_initialized
         configured = get_runtime_configuration()
         resources = configured if resources is None else resources
         if resources != configured:
@@ -57,7 +66,7 @@ class JaxBackend:
         with _span(trace, "numerical_backend_initialization", precision=precision):
             ensure_jax_configuration()
             import jax
-            from . import jax_core
+            from ..numerics import jax_core
             self.jax = jax
             self.core = jax_core
             self.device = jax.devices("cpu")[0]
@@ -68,7 +77,129 @@ class JaxBackend:
         self.cpu_threads = resources.cpu_threads
         self._closed = False
         self._template_cache = {}
+        self._executables = {}
+        self._default_owner = SimpleNamespace(templates=self._template_cache, executables=self._executables)
+        self._owner_local = local()
         self.initialization_ns = perf_counter_ns() - started
+
+    def _numerical_owner(self):
+        return getattr(self._owner_local, 'current', self._default_owner)
+
+    @contextmanager
+    def continuation_step_scope(self):
+        """Own transient patterns/kernels through synchronized step completion.
+
+        Broker requests carry this owner explicitly; a shared executable remains
+        live while any endpoint, warm Run or concurrent step owns its entry.
+        Releasing Python ownership does not promise immediate native map reuse.
+        """
+        previous = self._numerical_owner()
+        owner = SimpleNamespace(templates={}, executables={})
+        self._owner_local.current = owner
+        try:
+            yield
+        finally:
+            self._owner_local.current = previous
+            owner.templates.clear()
+            with _EXECUTABLE_LOCK:
+                owner.executables.clear()
+
+    def _compiled(self, signature, compile_kernel, *, owners=None):
+        """Share live kernels; retain only the explicit consuming owners."""
+        owners = (self._numerical_owner(),) if owners is None else owners
+        with _EXECUTABLE_LOCK:
+            entry = next((owner.executables[signature] for owner in owners
+                          if signature in owner.executables), None)
+            entry = entry or self._executables.get(signature) or _EXECUTABLES.get(signature)
+            new_shape = entry is None
+            if new_shape:
+                entry = _ExecutableEntry(compile_kernel())
+                _EXECUTABLES[signature] = entry
+            for owner in owners:
+                owner.executables[signature] = entry
+        return entry.executable, new_shape
+
+    def compile_warm_view(self, view, *, kind, frequency_count=1, family=None,
+                          candidate_batch=False):
+        """Lower static signatures without running an assembly or local solve.
+
+        Abstract selected-dtype operands preserve the execution cache keys.
+        Candidate batch widths, continuation meshes and future CSR shapes are
+        unknown here and remain lazy; no fabricated numerical state is emitted.
+        """
+        from ..numerics.sparse_direct import System
+        from scipy.sparse import coo_matrix
+        system = System(view, self.real_dtype, self.complex_dtype,
+                        template_cache=self._template_cache)
+        observations = []
+        exclusive = (nullcontext() if self.operation_resources is None
+                     else self.operation_resources.exclusive_assembly())
+        with exclusive, self.jax.enable_x64(self.precision == 'float64'):
+            def prepare(args, kernel, controls, function):
+                args = self.jax.tree.map(
+                    lambda value: self.jax.ShapeDtypeStruct(value.shape, value.dtype), args)
+                leaves, tree = self.jax.tree.flatten(args)
+                shapes = tuple((tuple(value.shape), str(value.dtype)) for value in leaves)
+                signature = (self.device.platform, self.device.id, self.cpu_threads,
+                             self.precision, _ALGORITHM_ID, kernel, *controls, tree, shapes)
+                compile_ns = None
+                def compile_kernel():
+                    nonlocal compile_ns
+                    started = perf_counter_ns()
+                    try:
+                        return self.jax.jit(function).lower(*args).compile()
+                    finally:
+                        compile_ns = perf_counter_ns() - started
+                started = perf_counter_ns()
+                _, new_shape = self._compiled(
+                    signature, compile_kernel)
+                observations.append((signature, kernel, shapes, not new_shape,
+                                     perf_counter_ns() - started, compile_ns))
+
+            groups = system.payload[3]
+            if any(np.any(group[6]) for group in groups):
+                prepare((groups,), 'pure_inductive_coefficients', (),
+                        self.core.inductive_coefficients)
+            if kind in ('direct', 'response_element'):
+                loaded = derivative = not view.port_realizable
+            elif kind == 'transfer_zero':
+                loaded, derivative = not view.port_realizable, True
+            else:
+                loaded = derivative = True
+            compensated = kind == 'transfer_zero' and family == 'Z' and not view.port_realizable
+            counts = (min(8, frequency_count),)
+            if frequency_count > 8 and frequency_count % 8:
+                counts += (frequency_count % 8,)
+            for count in dict.fromkeys(counts):
+                omega = np.empty(count, dtype=self.complex_dtype)
+                core = self.core
+                function = self.jax.vmap(
+                    lambda data, w: core.assemble(data, w, loaded=loaded,
+                                                 derivative=derivative, compensated=compensated),
+                    in_axes=(None, 0))
+                args, kernel = (system.payload, omega), 'sparse_assembly'
+                if candidate_batch:
+                    # The baseline actor is the one known ready candidate.
+                    # Future concurrently ready widths remain runtime-lazy.
+                    function = self.jax.vmap(function, in_axes=(0, 0))
+                    args = (self.jax.tree.map(lambda value: value[None, ...], system.payload),
+                            omega[None, ...])
+                    kernel = 'candidate_sparse_assembly'
+                prepare(args, kernel,
+                        (loaded, derivative, compensated), function)
+            if compensated and len(system.eliminated):
+                # Slice the actual structural pattern, including its zeros.
+                # Only actual-RHS-sized placeholders are dense, never global Q.
+                pattern = coo_matrix((np.zeros(len(system.rows), dtype=self.complex_dtype),
+                                      (system.rows, system.cols)), shape=(system.n, system.n)).tocsr()
+                for rows in (system.eliminated, system.selected):
+                    matrix = pattern[rows][:, system.eliminated].tocsr()
+                    rhs = np.empty((len(system.eliminated), len(system.selected)),
+                                   dtype=self.complex_dtype)
+                    payload = (matrix.data, matrix.indices, matrix.indptr,
+                               matrix.data, matrix.indices, matrix.indptr, rhs, rhs)
+                    prepare((payload,), 'csr_pair_product', (), self.core.csr_pair_product)
+        return tuple(observations)
 
     def identity(self) -> dict[str, object]:
         return {
@@ -79,6 +210,7 @@ class JaxBackend:
             "sparse_solver": "scipy.sparse.linalg.splu", "factorization_backend": "SuperLU",
             "superlu_version": None, "superlu_version_status": "not exposed by scipy public API",
             "assembly": "jax-runtime-coo-coalesced",
+            "executable_ownership": "Run_warm_or_operation_strong_process_index_weak",
             "pure_inductive_stamp": "exact-realized-zero-R-real-dtype-scaled-analytic-width1-2-L-inverse-LU-larger", "assembly_chunk_limit": 8,
             "compensated_arithmetic": {
                 "scope": "transfer_zero.Z.non_port_realizable",
@@ -126,13 +258,10 @@ class JaxBackend:
                          self.precision, _ALGORITHM_ID, 'pure_inductive_coefficients', tree,
                          tuple((tuple(a.shape), str(a.dtype)) for a in leaves))
             context['argument_shapes'] = [[list(a.shape), str(a.dtype)] for a in leaves]
-            with _EXECUTABLE_LOCK:
-                executable = _EXECUTABLES.get(signature)
-                new_shape = executable is None
-                if new_shape:
-                    with _span(trace, 'shape_compilation', **context):
-                        executable = self.jax.jit(self.core.inductive_coefficients).lower(*args).compile()
-                        _EXECUTABLES[signature] = executable
+            def compile_kernel():
+                with _span(trace, 'shape_compilation', **context):
+                    return self.jax.jit(self.core.inductive_coefficients).lower(*args).compile()
+            executable, new_shape = self._compiled(signature, compile_kernel)
             if self.operation_resources is not None:
                 self.operation_resources.record_assembly(new_shape=new_shape)
             context['executable_cache_hit'] = not new_shape
@@ -154,7 +283,7 @@ class JaxBackend:
             compatibility = (self.device.platform, self.device.id, self.precision,
                              loaded, derivative, compensated, system.n, tree,
                              tuple((tuple(value.shape), str(value.dtype)) for value in leaves))
-            request = dict(compatibility=compatibility, payload=system.payload,
+            request = dict(compatibility=compatibility, owner=self._numerical_owner(), payload=system.payload,
                            omegas=omega_array, loaded=loaded, derivative=derivative, compensated=compensated)
             return self.operation_resources.assemble(request, self._assemble_candidates_exclusive)
         return self._assembly_single(system, omegas, loaded=loaded, derivative=derivative,
@@ -176,17 +305,15 @@ class JaxBackend:
                 signature = (self.device.platform, self.device.id, self.cpu_threads,
                              self.precision, _ALGORITHM_ID, 'candidate_sparse_assembly', loaded, derivative, compensated,
                              tree, tuple((tuple(a.shape),str(a.dtype)) for a in leaves))
-                with _EXECUTABLE_LOCK:
-                    executable = _EXECUTABLES.get(signature)
-                    new_shape = executable is None
-                    if new_shape:
-                        core = self.core
-                        one_candidate = self.jax.vmap(
-                            lambda data,omega: core.assemble(data,omega,loaded=loaded,derivative=derivative,compensated=compensated),
-                            in_axes=(None,0))
-                        function = self.jax.vmap(one_candidate,in_axes=(0,0))
-                        executable = self.jax.jit(function).lower(*args).compile()
-                        _EXECUTABLES[signature] = executable
+                def compile_kernel():
+                    core = self.core
+                    one_candidate = self.jax.vmap(
+                        lambda data,omega: core.assemble(data,omega,loaded=loaded,derivative=derivative,compensated=compensated),
+                        in_axes=(None,0))
+                    function = self.jax.vmap(one_candidate,in_axes=(0,0))
+                    return self.jax.jit(function).lower(*args).compile()
+                executable, new_shape = self._compiled(
+                    signature, compile_kernel, owners=tuple(request['owner'] for request in requests))
                 self.operation_resources.record_assembly(new_shape=new_shape)
                 output = executable(*args)
                 self.jax.block_until_ready(output)
@@ -214,16 +341,13 @@ class JaxBackend:
         context['argument_shapes'] = [[list(shape), dtype] for shape, dtype in shapes]
         signature = (self.device.platform, self.device.id, self.cpu_threads, self.precision,
                      _ALGORITHM_ID, 'sparse_assembly', loaded, derivative, compensated, tree, shapes)
-        with _EXECUTABLE_LOCK:
-            executable = _EXECUTABLES.get(signature)
-            new_shape = executable is None
-            if new_shape:
-                # Coefficients and maps remain runtime inputs; only controls are static.
-                with _span(trace, 'shape_compilation', **context):
-                    core = self.core
-                    function = self.jax.vmap(lambda data, omega: core.assemble(data, omega, loaded=loaded, derivative=derivative, compensated=compensated), in_axes=(None, 0))
-                    executable = self.jax.jit(function).lower(*args).compile()
-                    _EXECUTABLES[signature] = executable
+        def compile_kernel():
+            # Coefficients and maps remain runtime inputs; only controls are static.
+            with _span(trace, 'shape_compilation', **context):
+                core = self.core
+                function = self.jax.vmap(lambda data, omega: core.assemble(data, omega, loaded=loaded, derivative=derivative, compensated=compensated), in_axes=(None, 0))
+                return self.jax.jit(function).lower(*args).compile()
+        executable, new_shape = self._compiled(signature, compile_kernel)
         if self.operation_resources is not None:
             self.operation_resources.record_assembly(new_shape=new_shape)
         context['executable_cache_hit'] = not new_shape
@@ -252,14 +376,11 @@ class JaxBackend:
                 shapes = tuple((tuple(value.shape), str(value.dtype)) for value in leaves)
                 signature = (self.device.platform, self.device.id, self.cpu_threads,
                              self.precision, _ALGORITHM_ID, 'csr_pair_product', tree, shapes)
-                with _EXECUTABLE_LOCK:
-                    executable = _EXECUTABLES.get(signature)
-                    new_shape = executable is None
-                    if new_shape:
-                        with measurements.phase('kernel_shape_compilation', kernel='csr_pair_product',
-                                                argument_shapes=[[list(shape), dtype] for shape, dtype in shapes]):
-                            executable = self.jax.jit(self.core.csr_pair_product).lower(*args).compile()
-                            _EXECUTABLES[signature] = executable
+                def compile_kernel():
+                    with measurements.phase('kernel_shape_compilation', kernel='csr_pair_product',
+                                            argument_shapes=[[list(shape), dtype] for shape, dtype in shapes]):
+                        return self.jax.jit(self.core.csr_pair_product).lower(*args).compile()
+                executable, new_shape = self._compiled(signature, compile_kernel)
                 with measurements.phase('kernel_synchronized_compute', kernel='csr_pair_product',
                                         executable_cache_hit=not new_shape,
                                         argument_shapes=[[list(shape), dtype] for shape, dtype in shapes]):
@@ -269,10 +390,10 @@ class JaxBackend:
                     return self.jax.tree.map(np.asarray, output)
 
     def _evaluate_batch(self, jobs: tuple[EvaluationJob, ...]) -> tuple[EvaluationResult, ...]:
-        from .sparse_direct import Measurements, System, network, retained_response
-        from .sparse_root import diagonal_root
-        from .sparse_quantities import evaluate_quantity
-        from .determinants import QuantityError
+        from ..numerics.sparse_direct import Measurements, System, network, retained_response
+        from ..numerics.sparse_root import diagonal_root
+        from ..numerics.sparse_quantities import evaluate_quantity
+        from ..numerics.determinants import QuantityError
         if self._closed:
             raise RuntimeError('numerical backend is closed')
         results = []
@@ -287,7 +408,7 @@ class JaxBackend:
                        batch_size=1, arithmetic_precision=self.precision) as parent:
                 measurements = Measurements(self.trace, parent, enabled=self.diagnostics, resource=self.operation_resources)
                 with measurements.phase('sparse_pattern_prepare'):
-                    system = System(job.view, self.real_dtype, self.complex_dtype, template_cache=self._template_cache, resource=self.operation_resources,
+                    system = System(job.view, self.real_dtype, self.complex_dtype, template_cache=self._numerical_owner().templates, resource=self.operation_resources,
                                     pair_product=lambda payload: self._pair_product(payload, measurements))
                 def assemble(omega, *, loaded, derivative, compensated=False):
                     arrays = self._assembly(system, [omega], loaded=loaded, derivative=derivative,
@@ -318,11 +439,11 @@ class JaxBackend:
                         for offset in range(0, len(omegas), 8):
                             arrays = self._assembly(system, omegas[offset:offset+8], loaded=True, derivative=True,
                                                     measurements=measurements)
-                            from .sparse_direct import selected_state
+                            from ..numerics.sparse_direct import selected_state
                             for index in range(len(omegas[offset:offset+8])):
                                 state, code = selected_state(system, tuple(a[index] for a in arrays), measurements)
                                 if code:
-                                    from .sparse_quantities import numerical_code
+                                    from ..numerics.sparse_quantities import numerical_code
                                     numerical_code(code)
                                 operators.append(state[0])
                         values = {'operator_values': np.asarray(operators, dtype=self.complex_dtype)}
@@ -395,5 +516,7 @@ class JaxBackend:
 
     def close(self) -> None:
         self._template_cache.clear()
+        self._executables.clear()
         self._closed = True
         self.trace = None
+        self.operation_resources = None

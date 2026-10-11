@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
 
 import numpy as np
 
@@ -12,7 +11,7 @@ from .. import units
 from ..canonical import complex_quantity_from_envelope, float64_from_hex, quantity_from_envelope
 from ..errors import EvidenceIntegrityError
 from ..workspace.artifacts import (
-    _direct_request_frequencies, _operator_request_frequencies, _read_json_artifact,
+    _direct_request_frequencies, _operator_request_frequencies,
     _read_zarr, _validate_direct_values,
 )
 from .base import ParameterPointIdentity, ResultIdentity
@@ -25,6 +24,7 @@ from .matrix import (
     ScatteringMatrixResult,
 )
 from .optimization import OptimizationBest, OptimizationResult
+from .lazy_optimization import LazyCandidateDiscretizationSequence, LazyGenerationSequence
 
 def _decode_result_operation(
     decoder,
@@ -32,6 +32,8 @@ def _decode_result_operation(
     result: Mapping[str, object],
     request: Mapping[str, object],
     directory: Path,
+    *,
+    native_reader: object | None = None,
 ):
     """Decode one already-verified ordinary scientific payload."""
 
@@ -347,13 +349,23 @@ def _decode_result_operation(
         )
         return _verified_result(OperatorResult, identity=identity, points=points, discretization=discretization)
     if kind == "optimization":
+        if native_reader is None:
+            raise EvidenceIntegrityError(
+                "native Optimization decoding requires its fixed artifact reader",
+                stage="result_decode",
+            )
         best = result["best"]
         parameters = decoder._decode_parameter_set(best["parameters"])
-        baseline = result["baseline"]
+        comparison = native_reader.project("comparison")
+        baseline = comparison["baseline"]
         initial_parameters = decoder._decode_parameter_set(baseline["parameters"])
-        ledger = tuple(
-            _read_json_artifact(directory, artifact)
-            for artifact in result["ledger_artifacts"]
+        best_candidate = comparison["best"]
+        ledger = LazyGenerationSequence(
+            native_reader,
+            native_reader.generation_count,
+            lambda record: record,
+            generation_rows=lambda block: block["candidates"],
+            candidate_ordinal=lambda row: row["evaluation_ordinal"],
         )
         return _verified_result(
             OptimizationResult,
@@ -365,14 +377,17 @@ def _decode_result_operation(
                 cost=float64_from_hex(best["cost_f64"]),
                 discretization=_decode_discretization(best.get("discretization")),
             ),
+            _fixed_reader=native_reader,
             ledger=ledger,
-            candidate_discretization=tuple(
-                _decode_discretization(candidate.get("discretization"))
-                for generation in ledger for candidate in cast(Sequence[Mapping[str, object]], generation["candidates"])
+            candidate_discretization=LazyCandidateDiscretizationSequence(
+                native_reader,
+                native_reader.candidate_count,
+                lambda record: _decode_discretization(record),
             ),
             _presentation={
                 "initial_parameters": initial_parameters,
                 "initial_candidate": baseline,
+                "best_candidate": best_candidate,
                 "objectives": tuple(request["spec"]["objectives"]),
                 "variables": tuple(request["spec"]["variables"]),
                 "best_evaluation_ordinal": best["evaluation_ordinal"],

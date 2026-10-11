@@ -15,13 +15,16 @@ from time import perf_counter_ns
 import numpy as np
 
 from ..canonical import canonical_json_bytes
-from ..benchmark.compiler import compile_model, parameter_key, parameter_values
-from ..benchmark.mesh import quantity
-from ..benchmark.models import EvaluationJob, EvaluationResult, MeshSpec
-from ..benchmark.optimization import Evaluator, bits, checked_results, numerical_error, optimize
-from ..benchmark.prepared import array_record
+from ..compilation.compiler import compile_model, parameter_key, parameter_values
+from ..compilation.mesh import quantity
+from ..numerics.models import EvaluationJob, EvaluationResult
+from ..compilation.models import MeshSpec
+from .optimization import Evaluator, checked_results, optimize
+from ..numeric_encoding import bits
+from ..numerics.evidence import numerical_error
+from ..numeric_encoding import array_record
 from .quantities import EvaluationFailure, QuantityEvaluator, quantity_body_id, quantity_record
-from ..benchmark.views import realize_view
+from ..compilation.views import realize_view
 
 
 def resolved_points(source: dict) -> list[dict]:

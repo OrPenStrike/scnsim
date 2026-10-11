@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from itertools import product
+from pathlib import Path
 from typing import Literal, overload
 
 from ...canonical import canonical_json_bytes as _canonical_bytes, sha256_hex as _sha256
@@ -210,6 +211,7 @@ def _verify_parameter_sweep_artifacts(
     result: Mapping[str, object],
     receipt: Mapping[str, object],
     *,
+    request_path: Path,
     include_records: bool = False,
 ) -> list[dict[str, object]] | None:
     from ...authoring.identity import canonical_parameters_sha256
@@ -264,13 +266,14 @@ def _verify_parameter_sweep_artifacts(
             raise _integrity("Parameter-sweep file manifest hash is incorrect.")
         manifest_by_path[row["path"]] = row
 
-    request = _load_canonical(directory.parent.parent / "request.json")
-    plan = _load_canonical(directory.parent.parent.parent.parent / "plan.json")
+    request_path = Path(request_path)
+    request = _load_canonical(request_path)
+    plan = _load_canonical(request_path.parents[2] / "plan.json")
     source = request.get("parameter_source")
     if not isinstance(source, Mapping):
         raise _integrity("Parameter-sweep request source is unavailable.")
     expected_points = list(_parameter_source_points(source))
-    checkpoints = _verify_point_checkpoints(directory.parent.parent, request, plan)
+    checkpoints = _verify_point_checkpoints(request_path.parent, request, plan)
     if len(checkpoints) != len(expected_points):
         raise _integrity("Final sweep does not bind every published point checkpoint.")
     verified_points: list[dict[str, object]] | None = [] if include_records else None

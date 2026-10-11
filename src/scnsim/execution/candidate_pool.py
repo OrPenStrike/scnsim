@@ -109,6 +109,9 @@ class _ThreadActor:
             except BaseException as error:
                 if first is None: first = error
                 else: _secondary(first,'Candidate actor join also failed',error)
+        self.actor = None
+        self.futures.clear()
+        self.executor = None
         if first is not None:
             raise first
 
@@ -126,6 +129,7 @@ class CandidatePool:
         self.residency = {}
         self.anchors = None
         self.closed = False
+        self._closed_readiness = []
 
     def __enter__(self):
         if self.capacity > 1:
@@ -240,13 +244,15 @@ class CandidatePool:
 
     def snapshot_statistics(self):
         result=self.resource.snapshot_statistics()
-        result['actor_readiness']=[dict(actor_id=i, **actor.ready) for i,actor in enumerate(self.actors)]
+        result['actor_readiness']=(list(self._closed_readiness) if self.closed else
+                                  [dict(actor_id=i, **actor.ready) for i,actor in enumerate(self.actors)])
         result['candidate_capacity']=self.capacity
         result['scheduler_id']='scnsim.candidate-thread-ready-batch.v1'
         return result
 
     def close(self,*,cancel=False):
         if self.closed:return
+        self._closed_readiness = [dict(actor_id=i, **actor.ready) for i,actor in enumerate(self.actors)]
         self.closed=True
         if cancel:
             self.resource.stop_assembly(CancelledError("candidate operation interrupted or failed"))
@@ -261,6 +267,10 @@ class CandidatePool:
                 if first is None:first=error
                 else:_secondary(first,'Another candidate actor cleanup also failed',error)
         self.residency.clear()
+        self.actors.clear()
+        self.anchors = None
+        self.declaration_bytes = None
+        self.declaration = None
         self.resource.assembly_batching=False
         if first is not None:raise first
 

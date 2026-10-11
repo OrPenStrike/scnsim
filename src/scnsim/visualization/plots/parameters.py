@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from html import escape
+import textwrap
 from typing import Any
 
 import numpy as np
@@ -312,24 +313,114 @@ def parameter_field_add_to(result: Any, figure: Any, *, row: int, col: int, x: A
     return figure
 
 
-def points_plot(points: Sequence[Any], *, theme: Theme = Theme.AUTO, title: str = "Parameter sweep outcomes") -> Any:
-    from html import escape
+def _point_parameter_lines(point: Any) -> list[str]:
+    from ...authoring.physical_values import RLGC
+    from ...units import Quantity
+    from ..quantity_presentation import _quantity
 
+    bindings = point.parameters.values
+    if not bindings:
+        return ["∅"]
+
+    lines: list[str] = []
+    for parameter, value in bindings.items():
+        name = f"{parameter.definitions_id}.{parameter.id}"
+        if isinstance(value, Quantity):
+            magnitude, unit = _quantity(value)
+            lines.append(f"{name} = {magnitude} {unit}")
+            continue
+        if isinstance(value, RLGC):
+            conductors = ", ".join(value.conductors)
+            lines.append(
+                f"{name}: RLGC({conductors}; reference {value.reference_conductor})"
+            )
+            for label, attribute in (
+                ("R", "resistance_per_length"),
+                ("L", "inductance_per_length"),
+                ("G", "conductance_per_length"),
+                ("C", "capacitance_per_length"),
+            ):
+                matrix = getattr(value, attribute)
+                rows = np.asarray(matrix.magnitude).tolist()
+                entries = "; ".join(
+                    "[" + ", ".join(repr(float(item)) for item in row) + "]"
+                    for row in rows
+                )
+                lines.append(f"{name} {label} = [{entries}] {matrix.units:~P}")
+            continue
+        raise TypeError(
+            f"unsupported sweep parameter value type: "
+            f"{type(value).__module__}.{type(value).__qualname__}"
+        )
+    return lines
+
+
+def _wrapped_table_cell(value: str, *, width: int) -> tuple[str, int]:
+    lines: list[str] = []
+    for line in value.splitlines() or [""]:
+        lines.extend(
+            textwrap.wrap(
+                line,
+                width=width,
+                break_long_words=True,
+                break_on_hyphens=False,
+                replace_whitespace=False,
+            )
+            or [""]
+        )
+    return "<br>".join(escape(line) for line in lines), len(lines)
+
+
+def points_plot(points: Sequence[Any], *, theme: Theme = Theme.AUTO, title: str = "Parameter sweep outcomes") -> Any:
     go, _, _ = _plotly()
     source_index: list[str] = []
     status: list[str] = []
     parameters: list[str] = []
+    identities: list[str] = []
     failure: list[str] = []
+    row_line_counts: list[int] = []
     for point in points:
-        source_index.append(escape(str(point.source_index)))
-        status.append("success" if point.succeeded else "failure")
-        parameters.append(escape(point.identity.parameters_sha256))
-        failure.append("—" if point.succeeded else escape(f"{point.failure.kind}: {point.failure}"))
+        source, source_lines = _wrapped_table_cell(str(point.source_index), width=12)
+        state, state_lines = _wrapped_table_cell(
+            "success" if point.succeeded else "failure", width=14
+        )
+        parameter, parameter_lines = _wrapped_table_cell(
+            "\n".join(_point_parameter_lines(point)), width=56
+        )
+        identity, identity_lines = _wrapped_table_cell(
+            point.identity.parameters_sha256, width=32
+        )
+        failure_text = "—" if point.succeeded else f"{point.failure.kind}: {point.failure}"
+        failure_value, failure_lines = _wrapped_table_cell(failure_text, width=32)
+        source_index.append(source)
+        status.append(state)
+        parameters.append(parameter)
+        identities.append(identity)
+        failure.append(failure_value)
+        row_line_counts.append(
+            max(source_lines, state_lines, parameter_lines, identity_lines, failure_lines)
+        )
+
+    cell_height = max(30, 8 + 16 * max(row_line_counts, default=1))
     figure = go.Figure(data=[go.Table(
-        header={"values": ["source index", "status", "parameters", "failure"]},
-        cells={"values": [source_index, status, parameters, failure]},
+        columnwidth=[0.08, 0.10, 0.40, 0.20, 0.22],
+        header={
+            "values": ["source index", "status", "parameter values", "parameters SHA-256", "failure"],
+            "height": 36,
+            "font": {"size": 13},
+        },
+        cells={
+            "values": [source_index, status, parameters, identities, failure],
+            "height": cell_height,
+            "align": "left",
+            "font": {"size": 12},
+        },
     )])
-    figure.update_layout(meta={"scnsim": {"kind": "parameter_sweep_outcomes", "point_count": len(points)}})
+    figure.update_layout(
+        width=1100,
+        height=72 + 64 + 36 + cell_height * len(points),
+        meta={"scnsim": {"kind": "parameter_sweep_outcomes", "point_count": len(points)}},
+    )
     return _style(figure, theme, title=title)
 
 

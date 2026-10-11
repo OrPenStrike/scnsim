@@ -4,21 +4,13 @@ subtitle: "Which layer owns each Runtime responsibility?"
 toc-depth: 2
 ---
 
-**Status:** accepted physical formulas remain authoritative. The dev13 sparse
-JAX assembly/CPU SuperLU implementation, Run publication,
-public value ownership, and maintenance diagnostics are a `CONVERGING`
-candidate. The [public contracts](../contracts/index.qmd#public-contracts)
-remain authoritative; this page does not assign one lifecycle state to the
-whole package.
-
-The responsibility-based Python reorganization below is an authorized
-implementation candidate extracted from starting revision
-`b4e13d82bfe53e1e6788cf8eb4cc471f681ab5b8`. The source now uses the responsibility
-packages described here, and its public exports resolve in the development
-checkout. Those observations do not establish installed-wheel coverage, native
-execution, or completed delivery. This maintenance preserves each affected
-scope's existing semantic state; authorization to reorganize code does not
-accept reopened product semantics.
+**Status:** the dev24 responsibility and lifecycle target is `CONVERGING`,
+implementation is in progress. Numerical meanings remain unchanged. The single
+[Runtime lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle)
+owns Run state, operation leases, fixed lazy Results, bounded recovery and native
+supervision. This page describes its module handoffs, not a second policy.
+Existing dev23 WIP is candidate input; historical observations are not relabelled.
+Schematic completion remains incomplete and deferred.
 
 ## Organize Python by responsibility
 
@@ -29,14 +21,23 @@ schemas, stored data, and the existing `_julia` and `_schemas` resources.
 Internal modules may move and large modules may be decomposed without adding a
 second implementation or a compatibility fallback.
 
-| Implementation owner | Responsibility and state | Handoff |
+| Implementation owner | Responsibility | Handoff |
 |---|---|---|
-| `authoring/` | Physical value models, independent parameter definitions, mutable assembly, reusable catalog bodies, root Plan lifecycle, normalized capture, and captured-point resolution | Immutable authoring snapshot and resolved parameter point |
-| `execution/` | View realization, prepared analysis, backend preparation, process coordination, and numerical operation orchestration | Finalized request declarations and independently verified execution evidence |
-| `workspace/` | Workspace binding, locks, allocation, publication, receipts, integrity verification, and recovery/checkpoint publication | Verified evidence within the applicable reader or writer lifetime |
-| `results/` | Typed Result reconstruction, retained public values, lazy payload access, and Result identity | Verified typed values and presentation selections |
-| `benchmark/` | Isolated CPU experiment: independent lowering/Views, numerical adapters, Python CMA, task protocol, observations and read-only records | Benchmark-owned numerical evidence; original whole-Julia control remains distinct |
-| `visualization/` | Diagram specification and realization, numerical presentation, and pure report composition | Derived SVG, Plotly, and HTML artifacts |
+| `authoring/` | Components, assembly, capture, parameter point and Plan sealing | Immutable snapshot and resolved parameters |
+| `specs.py` | Numerical, Optimization and presentation declarations | Resource-free declarations with deferred presentation imports |
+| `compilation/` | Lowering, discretization, coordinates and View realization | Immutable compiled model and realized View, independent of Workspace |
+| `numerics/` | JAX assembly, sparse solves and quantity algorithms | Numerical values or existing typed failures; no storage authority |
+| `execution/` | Request, operation, CMA ordering, backend transport and resources | Ordered outcomes and evidence publication handoff |
+| `workspace/` | Binding, SQLite mechanism, evidence, checkpoint, short reads and bounded recovery | Fixed verified evidence selection |
+| `results/` | Typed decoding, exact selection and lazy access | Detached immutable values and minimal reader metadata |
+| `diagnostics/` | Optional operation timing and resource observations | Bound diagnostic projections, not numerical success |
+| `benchmark/` | Current readonly public operation Benchmark facade | Diagnostic queries and presentation; no experiment execution |
+| `visualization/` | Schematic, numerical plots, HTML and reports | Presentation from frozen authoring or typed Results |
+
+These are target responsibilities; active compiler/numerics/CMA/storage code
+currently under `benchmark/` must move before obsolete experiment paths are
+removed. No empty abstraction hierarchy, parallel implementation, compatibility
+wrapper or numerical redesign is implied.
 
 Public modules such as `runtime.py` and `specs.py` remain facades with their
 existing imports and interfaces. Converting `authoring.py` and `results.py`
@@ -45,6 +46,21 @@ package exports. Other existing public entry points continue to expose their
 documented names. Public reexports are legitimate interface boundaries, not
 duplicate production authorities. The public `units.py` retains the one Pint
 registry, and `io.py` retains its bounded external-artifact ingestion interface.
+
+| Surface before the split | Current responsibility |
+|---|---|
+| `CircuitRun`, `NetworkViewRef` and public Specs | Retained public names; Run delegates captured binding, request and operation work, with optional `close()` |
+| Public numerical Results and `BenchmarkResult` | Retained names; fixed selected evidence and readonly diagnostic reports respectively. `BenchmarkResult.workspace` is the explicit operation-store locator; `BenchmarkResult.open(benchmark.workspace)` reopens that store, not the enclosing Workspace root. |
+| Experimental `BenchmarkSpec`, comparison arms and native benchmark executable | Removed experimental execution surface; normal Run operations are the execution authority |
+| Internal `benchmark.compiler`, `mesh`, `views` and numerical backends | Replaced by `compilation`, `numerics` and the execution adapter; no old-path compatibility reexports |
+| Internal benchmark storage, checkpoint, optimization and timing modules | Replaced by Workspace, execution and diagnostics owners respectively |
+
+Internal relocation is not a second public execution mode. Retained public
+reexports point to one implementation; removed experiment modules do not remain
+as fallback paths. The CLI has no package console-script entry point or
+`scnsim.__main__` service. Packaged Julia request resources remain necessary for
+the optional native backend; removing its experimental comparator does not
+remove the native request protocol.
 
 Shared code has a named responsibility rather than a generic `core` owner.
 Root `canonical.py` owns canonical representation and identity primitives;
@@ -101,7 +117,7 @@ flowchart TD
     Plan["Authoring: one physical Plan"]
     Snapshot["Immutable snapshot and resolved point"]
     Prepared["Execution: immutable prepared analysis"]
-    Process["Execution: one Julia process"]
+    Process["Execution: selected backend and owned native supervisor"]
     Evidence["Workspace: verified receipts and artifacts"]
     Results["Results: typed values and lazy access"]
     Visual["Visualization: diagrams, plots, reports"]
@@ -297,8 +313,9 @@ The Plan leaf owns verified typed Results and checkpoints for either backend.
 The base requires Python 3.12 and pinned CPU JAX/CMA dependencies. Initialization
 remains lazy and Julia discovery optional. Resolve and operation Benchmark remain
 read-only; the latter aggregates parented spans and numerical references without
-launching an independent comparison task. Historical dev10 comparison records
-remain immutable and readable under their original identities. CUDA, ROCm and
+launching an independent comparison task. Historical dev10 comparison files
+retain their original identities; current readers do not support those older
+operation Workspaces. Use a new Workspace and recompute. CUDA, ROCm and
 Apple GPU execution are outside this Goal.
 
 ## Keep the runtime dependency boundary explicit
@@ -314,18 +331,18 @@ frozen snapshot directly. No numerical operation depends on rendering success, a
 compiled diagrams remain one-way evidence consumers.
 
 The base package uses Pint, NumPy, Zarr, Plotly, Matplotlib and Schemdraw.
-The optional `julia` extra supplies JuliaPkg discovery support; the `benchmark`
-extra supplies CPU JAX/CMA dependencies without requiring JuliaPkg. Julia-backed
+CPU JAX/CMA and sparse numerical dependencies belong to the base package.
+The optional `julia` extra supplies JuliaPkg discovery support. Julia-backed
 features require a separately provided Julia 1.12.6; feature calls never acquire
 its executable. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
 JosephsonCircuits, and Julia standard libraries. The lockfile and committed
 Julia project/Manifest are the executable dependency authority; this page
 explains their ownership boundary rather than defining alternate versions.
 
-V1 deliberately does not add Pydantic, a database, a web service, a distributed
-runner, JuliaCall, or a persistent daemon. Canonical files, one child process,
-and typed Python classes cover the declared ownership without another service
-layer.
+SCNSim retains its Plan-leaf SQLite store and backend-specific native artifacts.
+It does not add an ORM, external database service, distributed runner, JuliaCall
+or persistent daemon. Operation supervision and short storage transactions have
+distinct ownership; canonical bodies remain one numerical authority.
 
 ## Preserve provenance without inheriting the old product
 

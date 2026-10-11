@@ -31,19 +31,20 @@ from .authoring import (
 )
 from .errors import InvalidDiagonalRootHint, InvalidOptimizationSpec, SCNSimValidationError
 from .presentation import Theme, _require_theme
-from .results import (
-    AnalysisResult,
-    DirectQuantityResult,
-    DirectSolveResult,
-    HBBatchResult,
-    HtmlPresentation,
-    OperatorResult,
-    OptimizationResult,
-    ParameterSweepResult,
-    _is_verified_analysis_result,
-)
+
 
 if TYPE_CHECKING:
+    from .results import (
+        AnalysisResult,
+        DirectQuantityResult,
+        DirectSolveResult,
+        HBBatchResult,
+        HtmlPresentation,
+        OperatorResult,
+        OptimizationResult,
+        ParameterSweepResult,
+        _is_verified_analysis_result,
+    )
     from .visualization.diagram.spec import CircuitDiagramSpec
     from .runtime import NetworkViewRef
 
@@ -1004,6 +1005,8 @@ class OptimizationSpec:
     def show(self) -> HtmlPresentation:
         """Present model defaults, active overrides, objectives, and CMA controls."""
 
+        from .results import HtmlPresentation
+
         def mapping_scale(variable: OptimizationVariable) -> str:
             if variable.scale is not None:
                 return str(variable.scale)
@@ -1435,6 +1438,11 @@ class ReportPanel:
         objective: str | None = None,
         parameter: ParameterRef | None = None,
     ) -> None:
+        from .results import (
+            DirectSolveResult, HBBatchResult, OperatorResult, OptimizationResult,
+            ParameterSweepResult, _is_verified_analysis_result,
+        )
+
         if not _is_verified_analysis_result(result):
             raise TypeError("ReportPanel.result must be a verified AnalysisResult")
         if family is not None:
@@ -1691,6 +1699,8 @@ class ReportSpec:
         theme: Theme = Theme.AUTO,
         panels: Sequence[ReportPanel] = (),
     ) -> None:
+        from .results import _is_verified_analysis_result
+
         checked = tuple(inputs)
         if not checked or not all(_is_verified_analysis_result(item) for item in checked):
             raise TypeError("ReportSpec.inputs must be nonempty AnalysisResult values")

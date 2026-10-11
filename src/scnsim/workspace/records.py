@@ -3,20 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..errors import EvidenceIntegrityError
+from ..errors import EvidenceIntegrityError, _freeze
 
 @dataclass(frozen=True)
 class AttemptAllocation:
-    """Reserved, unsealed sibling staging directory for one immutable attempt."""
+    """Reserved, unsealed operation-owned staging for one immutable attempt."""
 
     request_sha256: str
     ordinal: int
     ordinal_text: str
     staging_directory: Path
     final_directory: Path
+    operation_id: str
+    operation_lease: object = field(repr=False, compare=False)
 
     @property
     def attempt_directory_text(self) -> str:
@@ -24,10 +26,8 @@ class AttemptAllocation:
 
     @property
     def staging_directory_text(self) -> str:
-        return (
-            f"requests/{self.request_sha256}/attempts/"
-            f"{self.staging_directory.name}"
-        )
+        leaf_directory = self.final_directory.parents[3]
+        return self.staging_directory.relative_to(leaf_directory).as_posix()
 
 @dataclass(frozen=True)
 class VerifiedSuccess:
@@ -38,6 +38,14 @@ class VerifiedSuccess:
     receipt: Mapping[str, object]
     result: Mapping[str, object]
     directory: Path
+    native_index_ref: Mapping[str, object] | None = None
+    native_index_metadata: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        if self.native_index_ref is not None:
+            object.__setattr__(self, "native_index_ref", _freeze(self.native_index_ref))
+        if self.native_index_metadata is not None:
+            object.__setattr__(self, "native_index_metadata", _freeze(self.native_index_metadata))
 
 @dataclass(frozen=True)
 class BaselineCheckpoint:

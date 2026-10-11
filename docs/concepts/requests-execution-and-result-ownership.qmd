@@ -81,8 +81,9 @@ A current JAX numerical body owns scientific values, intrinsic parameters,
 identity, dependencies and numerical evidence. A task occurrence owns its exact
 ordered position, source/cache/attempt context and reference to that body. The
 store writes the body directly once as canonical bytes; it does not wrap it in
-a task/key record. Read-only Result construction hydrates references in one
-verified snapshot without recalculating quantities.
+a task/key record. Read-only Result construction fixes the completion seal and reference root.
+Selected lazy reads verify and decode only their indexed evidence in a short
+snapshot, without recalculating quantities or retaining the Run.
 
 Optimization evaluates the baseline and seals continuation anchors in memory;
 workers acknowledge those anchors in memory. There is no standalone baseline
@@ -93,7 +94,7 @@ restore state, while off omits restore-only state. A required group ACK comes
 before its callback; optional Benchmark timing is separate. Native Julia keeps
 its own baseline publication handshake.
 
-Operation stores are version5. Old operation Workspaces are unsupported: use a
+Operation stores are version6. Old operation Workspaces are unsupported: use a
 new Workspace and recompute, without migration or deleting historical data.
 The [Runtime Contract](../v1-runtime-contract.qmd) owns exact failure and
 checkpoint rules; this distinction does not alter mathematical quantities.

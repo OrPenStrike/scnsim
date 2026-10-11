@@ -9,7 +9,7 @@ from pathlib import Path
 from ...canonical import canonical_json_bytes as _canonical_bytes, sha256_hex as _sha256
 from ..primitives import _inside
 from ..records import BaselineCheckpoint
-from ..storage import _ATTEMPT, _STAGING, _decode_bytes, _load_canonical
+from ..storage import _ATTEMPT, _STAGING, _decode_bytes, _load_canonical, _operation_staging_matches
 from .common import (
     _SHA256,
     _f64_value,
@@ -42,6 +42,7 @@ def _verify_generation_artifacts(
     directory: Path,
     artifacts: object,
     *,
+    request_path: Path,
     request_sha256: str,
     attempt_sha256: str,
     expected_julia_threads: int = 1,
@@ -51,11 +52,11 @@ def _verify_generation_artifacts(
 ) -> list[tuple[int, str]] | list[tuple[int, str, Mapping[str, object]]]:
     if not isinstance(artifacts, list):
         raise _integrity("Attempt has no artifact inventory.")
-    request_path = directory.parent.parent / "request.json"
+    request_path = Path(request_path)
     if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
         raise _integrity("Optimization ledgers lack their exact request envelope.")
     request = _load_canonical(request_path)
-    plan_path = directory.parents[3] / "plan.json"
+    plan_path = request_path.parents[2] / "plan.json"
     plan = _load_canonical(plan_path)
     plan_sha256 = request.get("plan_sha256")
     if not isinstance(plan_sha256, str) or _sha256(plan_path.read_bytes()) != plan_sha256:
@@ -116,6 +117,7 @@ def _verify_generation_artifacts(
         producer = ledger.get("attempt_sha256")
         if producer != attempt_sha256 and not _prior_ledger_is_receipt_backed(
             directory,
+            attempts_directory=request_path.parent / "attempts",
             request_sha256=request_sha256,
             attempt_sha256=producer,
             artifact_id=identifier,
@@ -604,9 +606,7 @@ def _verify_checkpoint_source_attempt(
         or not isinstance(ordinal, int) or isinstance(ordinal, bool) or ordinal < 1
         or ordinal_text != str(ordinal).zfill(6)
         or attempt.get("directory") != f"requests/{request_sha256}/attempts/{ordinal_text}"
-        or not isinstance(staging, str)
-        or not staging.startswith(f"requests/{request_sha256}/attempts/.staging-{ordinal_text}-")
-        or _STAGING.fullmatch(Path(staging).name) is None
+        or not _operation_staging_matches(staging, request_sha256, ordinal_text)
         or not isinstance(attempt.get("started_at_utc"), str)
         or not str(attempt["started_at_utc"]).endswith("Z")
         or _SHA256.fullmatch(str(attempt.get("julia_executable_sha256", ""))) is None
@@ -1189,6 +1189,7 @@ def _optimization_outcome_without_candidate_position(value: object) -> object:
 def _prior_ledger_is_receipt_backed(
     directory: Path,
     *,
+    attempts_directory: Path,
     request_sha256: str,
     attempt_sha256: object,
     artifact_id: str,
@@ -1204,7 +1205,10 @@ def _prior_ledger_is_receipt_backed(
         current_ordinal = int(staging_match.group(1))
     else:
         return False
-    for sibling in directory.parent.iterdir():
+    attempts_directory = Path(attempts_directory)
+    if attempts_directory.is_symlink() or not attempts_directory.is_dir():
+        raise _integrity("Prior attempt directory is missing or unsafe.", path=str(attempts_directory))
+    for sibling in attempts_directory.iterdir():
         if (
             sibling.is_symlink()
             or not sibling.is_dir()
@@ -1244,6 +1248,7 @@ def _prior_ledger_is_receipt_backed(
 def verified_generation_links(
     directory: Path,
     *,
+    request_path: Path,
     request_sha256: str,
     attempt_sha256: str,
     expected_julia_threads: int = 1,
@@ -1276,6 +1281,7 @@ def verified_generation_links(
     verified = _verify_generation_artifacts(
         directory,
         links,
+        request_path=request_path,
         request_sha256=request_sha256,
         attempt_sha256=attempt_sha256,
         expected_julia_threads=expected_julia_threads,

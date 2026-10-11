@@ -8,6 +8,142 @@ The reader-facing [Simulation conventions](concepts/simulation-conventions.qmd)
 connect these version-bound rules to the canonical phasor, wave-reference, and
 linewidth definitions without adding a second runtime contract.
 
+## Package ownership and lifecycle target (dev24) {#package-lifecycle}
+
+This section is the current **CONVERGING implementation target**, for
+`1.0.0.dev24` and SQLite operation evidence v6. It supersedes the dev23 ownership
+and eager-history target, without changing physical equations, numerical
+algorithms, dtype, Newton/CMA rules, candidate order or numerical conditions.
+Historical observations retain their original version and scope; they are not
+observations of this target. Schematic completion remains incomplete and deferred.
+
+### Run and operation ownership
+
+`CircuitRun` remains the public facade for `solve`, `evaluate`, `optimize`,
+`resolve`, `warmup`, `explain`, inventory and reports. Parameter binding, request
+encoding, preparation, execution, Workspace access and decoding have separate
+owners; a mutable Run is not their common context. Compiled models and realized
+Views are immutable handoffs independent of a Workspace.
+
+| Owner | Held state | Release boundary |
+|---|---|---|
+| Process | PJRT initialization and runtime resource configuration | Process exit; closing a Run does not reset them |
+| Plan | Authoring capture and sealing | Plan lifetime; Run close does not unseal |
+| Run | Fixed binding, necessary lookup and explicitly warmed executables | Optional close or disappearance of its references |
+| Operation | Backend, workers, resource authorization, spool and diagnostics | Success, failure or interruption after necessary cleanup |
+| Candidate/generation | Prepared state, dependencies and necessary reuse | Consumption of the corresponding work |
+| Continuation step | Temporary compiler, material, View, pattern, factor and executable references | Synchronized evaluation and observation, before recursion |
+| Result | Fixed evidence root, minimum immutable metadata and delivered values | Caller ownership; no Run or execution-resource capture |
+| Workspace | Committed bodies, occurrences, checkpoints and diagnostics | Explicit data management, never Run close |
+
+Normal operation cleanup does not require `run.close()` or a public context
+manager. Optional `close()` is idempotent and releases only Run-owned resources.
+Operation registration and close share one short lifecycle lock: OPEN is checked
+and active work registered atomically; registration includes preparation,
+execution, commit, callback, decoding and cleanup. Close with active work raises
+the existing state error and does not cancel it. Once CLOSED, new operations are
+rejected even if cleanup fails. Blocking cleanup and user callbacks run outside
+that lock. Original errors retain priority over cleanup errors.
+
+External Views may keep their Run alive. Internal Run-owned View declarations
+must not create a strong Run→View→Run cycle. Results, decoder closures and lazy
+readers do not retain a Run. Explicit warm holders differ from operation-local
+executables; a weak shared index does not own their lifetime. Reference release
+does not promise immediate allocator, mapped-memory or RSS return.
+
+### Operation lease, storage and recovery
+
+An operation obtains a stable OS lease before scratch or native resource
+creation, and retains it through publication and cleanup. Its inode/descriptor
+is distinct from short Workspace locks and SQL transactions. Supervisor handoff
+is explicit; PID and age alone never establish that cleanup is safe. Numerical
+work and callbacks do not execute inside SQL transactions or storage locks.
+
+JAX and native execution also hold a private same-request execution lease, preserving
+cache selection and one-success publication while short storage locks are
+released for child work. It is distinct from root/operation activity leases.
+For native work, the supervisor additionally retains its descriptor through actual drain; this is not
+a new public concurrency mode or a change to native numerical bodies.
+
+SQLite operation evidence v6 retains one canonical scientific body, separate task-local occurrences and
+restore state. Numerical evidence and required indexes become visible at the
+same atomic publication boundary. Only complete post-tell generations are
+resumable; baseline is not generation zero. Durable callbacks follow ACK;
+uncertain commits use transaction-identity reconciliation, not blind resubmission.
+Timing and instant progress remain separate from numerical success/checkpoints.
+
+Creating a Run performs bounded transaction recovery and lease-aware cleanup of
+its centralized abandoned operation scratch. It verifies schema, binding and
+necessary commit state, without scanning all historical bodies or directories.
+`recover_workspace()` shares this implementation and never resumes computation.
+Full database/body/history audit is explicit maintenance, not routine opening.
+Pure readonly access does not recover, delete or solve. Unsupported old operation
+Workspaces require a new Workspace and recomputation: no compatible reader,
+migration or automatic destructive rebuild. Preserved Julia native artifacts
+retain their backend-specific format responsibility.
+
+### Fixed, detached and lazy Results
+
+A completed Result fixes Workspace/leaf instance, Plan, request, attempt,
+completion seal, selected generation ancestry, baseline/best, history length and
+reference-directory root. It never reselects latest success or follows a replaced
+leaf. Fixing this root does not preload every candidate reference.
+
+`ResultIdentity.attempt_sha256` continues to name the canonical completed
+terminal attempt document, not the initial running-attempt allocation. The
+SQLite completion seal includes `terminal_attempt_ref` so this identity can be
+verified without replaying task history. SQLite v6 does not renumber the Plan,
+request, Julia result-body or native artifact schemas.
+
+`OptimizationResult.ledger` is a readonly generation Sequence; indexing and
+Python negative-index/slice semantics decode only selected generations into
+detached immutable values. `len()` uses the fixed length. Flat
+`candidate_discretization` uses the same fixed candidate locators. Complete
+iteration or `ledger[:]` is explicit caller materialization. Each read acquires a
+short readonly snapshot, verifies its selected seal/body and releases before
+return or iterator yield. Missing, corrupt or replaced evidence fails plainly,
+without selecting another attempt or replaying whole task history. Unread bodies
+are not claimed verified. Accessors do not accumulate all previously read bodies;
+caller-held point outcomes may retain their own loaded values. Run close does not
+invalidate Result access; deleting Workspace invalidates unread portions, while
+already delivered detached values remain usable.
+
+History/objective/parameter plots consume bound summary projections; comparison
+consumes baseline and exact best; detail tables consume selected candidate bodies.
+Plot/show/repr/Notebook display must not first materialize full dependency history.
+Indexes and summaries are bound to the same completion seal, not a second
+numerical authority. Benchmark consumes only operation diagnostics and necessary
+result references, and never launches an experiment or solver.
+
+Native Optimization uses a Workspace-owned `scnsim.native_result_index` v1:
+sealed compact generation summaries and qualified artifact/body locators are
+published before immutable success selection. History plots read those summary
+chunks; selected-generation or candidate access reads its exact native artifact.
+The Julia numerical body and artifact schemas stay independent and unchanged.
+Reader construction verifies fixed root metadata; subsequent short reads verify
+the selected index/body, without a full-history scan or rebuilding a missing
+index. A missing or corrupt index is an evidence error, not an automatic repair.
+
+### Native supervision
+
+Every SCNSim-triggered Julia startup, including discovery/juliaup, version checks,
+initialization, preflight, inspection and numerical execution, belongs to an
+operation supervisor. Dependency discovery runs in its managed helper process.
+The native Run operation owns one supervisor before runtime preparation and
+lends it explicitly to preparation, compiler inspection and execution. The same
+owner keeps it through callbacks, Result decoding and recorder finalization;
+an immutable prepared runtime does not hide a live supervisor. Standalone native
+preparation owns its own scope. JAX scopes allocate no native supervisor.
+Installed dependencies are not patched globally. A separate Kernel-liveness pipe
+preserves stdin protocol and does not leak its writer into descendants. UI/network
+disconnection alone does not cancel a live Kernel. Kernel death triggers owned
+process termination/reaping, including managed process-group escape handling;
+the lease remains until actual exit. The supervisor has no COMMIT/checkpoint or
+numerical publication authority, is not a persistent daemon, and does not claim
+protection against arbitrary OS/process-tree disruption. Handled interruption
+cancels queued work and drains active work before cleanup; garbage collection is
+not a safety mechanism for external processes or publication.
+
 ::: {.callout-note}
 ## Stabilized numerical meanings with CONVERGING ownership paths
 
@@ -554,7 +690,9 @@ Attempt ordinals start at one and use a minimum width of six decimal digits:
 `attempts/000001/`, `attempts/000002/`, and so on. Values beyond six digits
 grow naturally without an artificial maximum. Before promotion, the same
 ordinal appears in
-`attempts/.staging-000001-<lowercase-canonical-UUIDv4>/`. An ordinal spelling,
+the leaf-relative
+`.scnsim-workspace-staging/<operation-UUIDv4>/<request-sha256>/.staging-000001-<lowercase-canonical-UUIDv4>/`.
+This is the actual centralized staging path, not a logical identifier. An ordinal spelling,
 UUID form, final directory, or staging directory that does not match its
 sealed attempt evidence fails integrity validation; path formatting is not an
 implementation choice.
@@ -1744,6 +1882,22 @@ evidenced.
 
 ## Optimization and numerical scaling
 
+The dev24 CONVERGING preparation/display boundary is documented in
+[Execution backends](implementation/benchmark-and-backends.qmd#warm-preparation-progress-and-evidence-residency-dev24).
+`CircuitRun.warmup(view, spec, *, parameters=None)` prepares JAX signatures and
+returns immutable preparation facts without numerical execution or stored
+success. `optimize(progress=True)` adds a transient observer distinct from the
+durable callback; it cannot change numeric request identity or commit policy.
+Display failures warn and disable display, while durable callback failures keep
+their existing error contract. Private uncommitted-generation scratch is not a
+checkpoint or a compatibility reader; current Workspace schema is v6.
+Intermediate continuation-step preparation and executable references end after
+the synchronized result is observed, before recursion; endpoint/generation state
+and Run warm holders retain their existing scope. Weak indexing does not own
+their lifetime, and reference release is not an immediate RSS-return guarantee.
+The transient `population_evaluating` phase precedes ask and is not a durable
+generation notification.
+
 ### Quantity objectives and one Julia execution
 
 V1 optimization evaluates Direct objectives only. It accepts any number of
@@ -1999,7 +2153,9 @@ The callback return is ignored. Its exception terminates the child and is
 reported as callback failure, without discarding already-published evidence;
 `KeyboardInterrupt` remains interruption. Progress is process-local telemetry,
 not Plan, request, candidate, or Result identity, verified Result, durability
-promise, or scientific Gate. V1 has no per-candidate observer, public JobRef,
+promise, or scientific Gate. The built-in native display therefore reports an
+unknown durable generation count until verified terminal success publication;
+its completed-generation telemetry is not a committed-generation count. V1 has no per-candidate observer, public JobRef,
 or persistent daemon.
 
 In a Notebook, a DisplayHandle can update in place without polling:
@@ -2370,7 +2526,7 @@ read-derived. Incomplete intervals have no zero duration. Inclusive/nested
 sums are not API wall time. Aggregates cannot reconstruct a detailed Timeline;
 detailed mode stores actual diagnostic intervals only.
 
-Operation SQLite evidence is version5, with DELETE journal mode and EXTRA
+Operation SQLite evidence is version6, with DELETE journal mode and EXTRA
 synchronization. Verified object reuse is scoped to one transaction or readonly
 snapshot, including hash/role/length bindings; a reopen or relock revalidates.
 Manifest and operation start publish atomically; task/request/attempt/running
@@ -2427,25 +2583,25 @@ implementation scope.
 
 ## Results, display, and reports
 
-`Result` means an immutable, already-materialized value whose inspection cannot
-execute work. `AnalysisResult(Result)` is the receipt-backed terminal subset
+`Result` means an immutable value or fixed evidence selection. Inspection never
+executes a solver; selected lazy access may perform bounded readonly evidence I/O. `AnalysisResult(Result)` is the receipt-backed terminal subset
 returned by `solve()`, `evaluate()`, and `optimize()`. Every Analysis Result
 exposes an immutable `ResultIdentity` containing its Plan, request, attempt, and
 Result SHA-256 values. `DiagonalRootResult` is the concrete result of
 `DiagonalRootSpec`; `resolve()` overloads preserve the corresponding concrete
 type.
 
-Completed JAX Optimization readback eagerly materializes the complete ordered
-numerical ledger and winner as detached immutable values. Result inspection
-does not defer reads into its workspace. Return, cache reuse and `resolve()`
-project the necessary numerical evidence in one verified ordered traversal,
-separately from the complete diagnostic history. The snapshot lock, Plan/task
-bindings, committed selection and reference role, byte length and SHA-256 checks
-are preserved. Successful readback requires the selected success's explicit
-`numerical_evidence` locator for baseline, ordered generation evidence and the
-terminal event. Missing locators fail directly, with no old-layout fallback or
-migration. Historical files are preserved, without promising old-layout
-numerical readback in this flow. Read-only Benchmark and checkpoint readers
+Completed JAX Optimization readback fixes its completion seal and minimal immutable
+selection metadata. The generation Sequence and flat candidate discretization
+use the selected indexes, verify bodies on demand and return detached values.
+They do not preload every reference, replay all task history or capture the Run.
+History, objective and parameter plots use bound summaries; comparison selects
+baseline and exact best. Full iteration or slicing is caller-requested
+materialization. The [lifecycle boundary](#package-lifecycle) owns the detailed
+reader lifetime and missing/corrupt/replaced-evidence failure rules. Historical
+files retain their execution identities; current v6 readers reject older
+operation Workspaces, without migration or automatic destructive rebuilding.
+Read-only Benchmark and checkpoint readers
 retain their distinct responsibilities. Diagnostic batches advance their
 published prefix only after a separate confirmed diagnostic acknowledgement.
 Detailed mode preserves actual span/parent/clock facts; aggregate mode preserves

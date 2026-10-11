@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -25,17 +25,29 @@ class OptimizationBest:
 
 @dataclass(frozen=True, slots=True)
 class OptimizationResult(AnalysisResult):
-    """Verified CMA winner and immutable completed-generation ledgers."""
+    """Verified CMA winner and read-only completed-generation history."""
 
     best: OptimizationBest
-    ledger: tuple[Mapping[str, object], ...] = ()
-    candidate_discretization: tuple[tuple[LineDiscretization, ...] | None, ...] = ()
+    _fixed_reader: object = field(repr=False, compare=False)
+    ledger: Sequence[Mapping[str, object]] = ()
+    candidate_discretization: Sequence[tuple[LineDiscretization, ...] | None] = ()
     _presentation: Mapping[str, object] = field(
         default_factory=dict, repr=False, compare=False
     )
 
     def __init__(self) -> None:
         unavailable("OptimizationResult construction")
+
+    def __repr__(self) -> str:
+        """Keep interactive inspection bounded without materializing history."""
+        identity = self.identity
+        return (
+            "OptimizationResult("
+            f"request={identity.request_sha256[:12]}, "
+            f"generations={len(self.ledger)}, "
+            f"candidates={len(self.candidate_discretization)}, "
+            f"best_cost={self.best.cost:.12g})"
+        )
 
     def plot(
         self,

@@ -70,7 +70,7 @@ def _optimization_series(
     kind: Literal["history", "objective", "residual", "parameter"],
     objective: str | None,
     parameter: Any | None,
-) -> tuple[list[int], list[float | None], list[str], str, str]:
+) -> tuple[list[int], list[float | None], list[str], str, str, list[str]]:
     from ..canonical import float64_from_hex
     from ..authoring import ParameterRef
 
@@ -106,67 +106,60 @@ def _optimization_series(
     elif objective is not None or parameter is not None:
         raise ValueError("objective and parameter are invalid for total-cost history")
 
+    selector = (
+        objective if kind in {"objective", "residual"}
+        else None if kind != "parameter"
+        else {"definitions_id": parameter.definitions_id, "parameter_id": parameter.id}
+    )
+    rows = result._fixed_reader.project(kind, selector)
     ordinals: list[int] = []
     values: list[float | None] = []
     statuses: list[str] = []
+    details: list[str] = []
     found = False
     unit = "dimensionless"
-    for ledger in result.ledger:
-        candidates = ledger.get("candidates") if isinstance(ledger, Mapping) else None
-        if not isinstance(candidates, Sequence):
-            raise ValueError("Optimization ledger candidates are malformed")
-        for candidate in candidates:
-            if not isinstance(candidate, Mapping) or not isinstance(candidate.get("outcome"), Mapping):
-                raise ValueError("Optimization candidate evidence is malformed")
-            outcome = candidate["outcome"]
-            ordinal = candidate.get("evaluation_ordinal")
-            if not isinstance(ordinal, int):
-                raise ValueError("Optimization candidate ordinal is malformed")
-            value: float | None = None
-            status = str(outcome.get("status", ""))
-            if kind == "history":
-                encoded = outcome.get("cost_f64")
+    for row in rows:
+        ordinal = row["evaluation_ordinal"]
+        value: float | None = None
+        status = str(row["status"])
+        details.append("; ".join(
+            f"{item.get('objective_id')}: {item.get('status')} "
+            f"({len(item.get('terms', ())) } terms)"
+            for item in row.get("components", ())
+        ))
+        if kind == "history":
+            encoded = row.get("cost_f64")
+            value = float64_from_hex(encoded) if isinstance(encoded, str) else None
+        elif kind in {"objective", "residual"}:
+            components = row["components"]
+            component = next(
+                (item for item in components if item["objective_id"] == objective),
+                None,
+            )
+            if component is not None:
+                found = True
+                status = str(component["status"])
+                field = "weighted_cost_f64" if kind == "objective" else "normalized_residual_f64"
+                encoded = component.get(field)
                 value = float64_from_hex(encoded) if isinstance(encoded, str) else None
-            elif kind in {"objective", "residual"}:
-                components = outcome.get("objective_components")
-                if not isinstance(components, Sequence):
-                    raise ValueError("Optimization objective evidence is malformed")
-                component = next(
-                    (
-                        item for item in components
-                        if isinstance(item, Mapping) and item.get("objective_id") == objective
-                    ),
-                    None,
-                )
-                if component is not None:
-                    found = True
-                    status = str(component.get("status", status))
-                    field = "weighted_cost_f64" if kind == "objective" else "normalized_residual_f64"
-                    encoded = component.get(field)
-                    value = float64_from_hex(encoded) if isinstance(encoded, str) else None
-            else:
-                bindings = candidate.get("parameters", {}).get("bindings") if isinstance(candidate.get("parameters"), Mapping) else None
-                if not isinstance(bindings, Sequence):
-                    raise ValueError("Optimization candidate parameters are malformed")
-                key = {"definitions_id": parameter.definitions_id, "parameter_id": parameter.id}
-                binding = next(
-                    (item for item in bindings if isinstance(item, Mapping) and item.get("parameter") == key),
-                    None,
-                )
-                if binding is not None and isinstance(binding.get("value"), Mapping):
-                    found = True
-                    envelope = binding["value"]
-                    encoded = envelope.get("si_value_f64")
-                    stored_unit = envelope.get("si_unit")
-                    if isinstance(encoded, str) and isinstance(stored_unit, str):
-                        quantity = Quantity(float64_from_hex(encoded), stored_unit).to(
-                            parameter.spec.si_unit
-                        )
-                        value = float(quantity.magnitude)
-                        unit = str(quantity.units)
-            ordinals.append(ordinal)
-            values.append(value)
-            statuses.append(status)
+        else:
+            bindings = row["parameters"]["bindings"]
+            key = {"definitions_id": parameter.definitions_id, "parameter_id": parameter.id}
+            binding = next(
+                (item for item in bindings if item["parameter"] == key),
+                None,
+            )
+            if binding is not None:
+                found = True
+                envelope = binding["value"]
+                quantity = Quantity(
+                    float64_from_hex(envelope["si_value_f64"]), envelope["si_unit"]
+                ).to(parameter.spec.si_unit)
+                value = float(quantity.magnitude)
+                unit = str(quantity.units)
+        ordinals.append(ordinal)
+        values.append(value)
+        statuses.append(status)
     if kind in {"objective", "residual", "parameter"} and not found:
         selected = objective if parameter is None else f"{parameter.definitions_id}.{parameter.id}"
         raise ValueError(f"selected {kind} history is absent from the completed ledger: {selected}")
@@ -178,7 +171,7 @@ def _optimization_series(
         label = f"{objective} normalized residual"
     else:
         label = f"{parameter.definitions_id}.{parameter.id}"
-    return ordinals, values, statuses, label, unit
+    return ordinals, values, statuses, label, unit, details
 
 
 __all__ = ["Channel", "_channel_index", "_frequency_index", "_optimization_series"]

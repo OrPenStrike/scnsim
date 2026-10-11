@@ -254,8 +254,9 @@ context and body references. Generation checkpoints additionally preserve
 anchor restore state and latest completed CMA/RNG state at generation >=1;
 off omits restore-only state. There is no standalone baseline commit,
 generation-0 checkpoint or initial callback. Required group ACK precedes its
-callback and is independent of optional diagnostics. Readers hydrate scientific
-bodies in one verified version5 snapshot, without a version3 fallback.
+callback and is independent of optional diagnostics. SQLite v6 readers fix the
+completion root and hydrate only selected scientific bodies in short verified
+snapshots, without an old-format fallback or whole-history replay.
 
 A valid budget can contain zero complete populations:
 `complete_generations=(max_evaluations-1)//population_size` may be zero. A

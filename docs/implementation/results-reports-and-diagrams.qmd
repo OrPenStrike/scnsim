@@ -16,9 +16,17 @@ The scalar Quantity HTML/Figure presentation described below is also
 
 ## Separate materialized values from analysis evidence
 
-`Result` is the shared immutable, already-materialized value role.
+`Result` is the shared immutable value or fixed evidence-selection role. The
+dev24 lazy-access boundary remains `CONVERGING`: readers keep fixed completion
+metadata, not a Run, worker, connection or full decoded history. The
+[Runtime lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle) owns
+its selection, short-snapshot and materialization rules. Already delivered
+values are detached; reading an unloaded portion may perform readonly evidence
+I/O, never numerical execution.
 `AnalysisResult` is the receipt-backed terminal subset and exposes immutable
 `ResultIdentity(plan_sha256, request_sha256, attempt_sha256, result_sha256)`.
+The attempt digest remains the canonical completed terminal attempt document;
+SQLite v6 binds it through `terminal_attempt_ref`, not a running allocation.
 `DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and
 `HBBatchResult` derive from it. Each HB batch contains one `HBCaseOutcome` for
 every declared case. The outcome is a derived view of its parent receipt: a
@@ -454,6 +462,16 @@ Selected Engineer-course diagram exports are source-bound evidence, not a claim 
 all course cells executed. The central evidence status retains current
 limitations; Human acceptance and durable stabilization of reopened semantics
 remain separate lifecycle steps.
+
+## Bound history projections
+
+Optimization presentation reads the minimum fixed projection: history/cost,
+objective/residual and parameters use ordered compact summaries; comparison
+reads baseline and exact best; detail tables read selected candidate bodies.
+`plot`, `show`, `repr` and Notebook display do not first convert the entire ledger
+or dependency history to ordinary containers. A complete history plot can read
+all cost points without loading every numerical body. These projections share
+the completion seal; they are not independently mutable numerical authorities.
 
 ## Assemble reports from explicit inputs
 

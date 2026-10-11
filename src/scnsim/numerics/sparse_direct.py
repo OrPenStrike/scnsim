@@ -167,7 +167,7 @@ class System:
         bases = (model.C, model.K, model.G)
         matrices = (*bases, B, *((Bk,) if Bk is not None else ()),
                     *(block.incidence for block in model.series_rl))
-        from ...canonical import canonical_json_bytes
+        from ..canonical import canonical_json_bytes
         declaration = json.loads(view.lineage_bytes)['declaration']
         # Exact ordered indices/mesh/View establish structure. Numerical values,
         # pair weights and coefficients are refreshed even on a template hit.
