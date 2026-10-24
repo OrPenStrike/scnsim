@@ -102,7 +102,7 @@ def _resolve_in_fresh_process(workspace, strategy, cpu_threads):
     # replacement numerical result. No optimizer is called in this process.
     with patch.object(JaxBackend, "__init__", side_effect=AssertionError("resolve initialized a numerical backend")), \
             patch.object(JaxBackend, "execute_native", side_effect=AssertionError("resolve dispatched native work")):
-        run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64")
+        run = CircuitRun(plan=plan, workspace=Path(workspace), precision="float64")
         try:
             view = run.original.reduce(ReductionPipeline().retain(coordinate))
             result = run.resolve(view, spec)
@@ -115,7 +115,7 @@ class WorkspaceOptimizationReadbackTests(unittest.TestCase):
     def _check_readback(self, strategy):
         plan, coordinate, spec = _fixture(strategy)
         with TemporaryDirectory(prefix="optimization readback ") as directory:
-            run = CircuitRun(plan=plan, workspace=Path(directory), backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, workspace=Path(directory), precision="float64")
             try:
                 view = run.original.reduce(ReductionPipeline().retain(coordinate))
                 native_calls = []

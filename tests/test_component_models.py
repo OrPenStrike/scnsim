@@ -5,10 +5,7 @@ cases do not freeze its new scope, alias or parameter-identity representation.
 """
 from __future__ import annotations
 
-import math
-import os
 from pathlib import Path
-import struct
 import numpy as np
 from tests.analytic_conditions import assert_forward, mutual_stiffness_oracle
 from tempfile import TemporaryDirectory
@@ -96,7 +93,7 @@ class LibraryProvenanceTests(unittest.TestCase):
             self.catalog.other = object()
         plan = self._plan(component, id="factory_once")
         with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax")
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
             try:
                 self.assertTrue(plan.sealed)
                 self.assertEqual(_factory_calls, ["resonator"])
@@ -110,7 +107,7 @@ class LibraryProvenanceTests(unittest.TestCase):
         plan = self._plan(component, id="direct_composite")
         spec = DirectSolveSpec(frequencies=[5.0]*u.GHz)
         with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax")
+            run = CircuitRun(plan=plan, workspace=Path(workspace))
             try:
                 with self.assertRaises(ResultUnavailableError):
                     run.resolve(run.original, spec)
@@ -142,7 +139,7 @@ class ComponentExpansionTests(unittest.TestCase):
                 use = component if component is junction else component.between(
                     component.pin("terminal_1"), component.pin("terminal_2"))
                 plan.series(id="body", start=signal, elements=(use,), end=return_bus)
-                run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64")
+                run = CircuitRun(plan=plan, workspace=Path(workspace), precision="float64")
                 try:
                     view = run.original.reduce(ReductionPipeline().retain("signal", "return"))
                     explanation = run.explain(view, OperatorSpec(frequencies=[5.0]*u.GHz))
@@ -165,7 +162,7 @@ class ComponentExpansionTests(unittest.TestCase):
                 inductor_b=inductors[b].inductive_branch("self"),
                 coupling_coefficient=coefficient*u.dimensionless)
         with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, workspace=Path(workspace), precision="float64")
             try:
                 view = run.original.reduce(ReductionPipeline().retain("signal"))
                 # The public compiler owns complete-graph physical rejection;
@@ -189,7 +186,7 @@ class ComponentExpansionTests(unittest.TestCase):
         plan.couple_inductive(id="mutual", inductor_a=left.inductive_branch("loop"),
             inductor_b=right.inductive_branch("loop"), coupling_coefficient=0.25*u.dimensionless)
         with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, workspace=Path(workspace), precision="float64")
             try:
                 evidence = run.explain(run.original, DirectSolveSpec(frequencies=[5.0]*u.GHz)).evidence
             finally:
@@ -226,53 +223,3 @@ class ComponentExpansionTests(unittest.TestCase):
         self.assertTrue(np.isfinite(actual).all())
         self.assertNotEqual(actual.flat[0], 0.0)
         assert_forward(self, "mutual_inductance_stiffness", actual, expected, condition, "1/H")
-
-
-@unittest.skipUnless(os.environ.get("SCNSIM_RUN_JULIA_TESTS") == "1",
-                     "deferred Julia mutual-inductance evidence layout")
-class JuliaComponentEvidenceTests(unittest.TestCase):
-    def test_valid_mutual_coupling_survives_recursive_julia_compilation(self):
-        plan = CircuitPlan(id="mutual_compiler")
-        left = plan.add(components.symmetric_squid(id="left_squid",
-            josephson_inductance=8.0*u.nH, junction_capacitance=2.0*u.fF, loop_inductance=4.0*u.nH))
-        right = plan.add(components.symmetric_squid(id="right_squid",
-            josephson_inductance=8.0*u.nH, junction_capacitance=2.0*u.fF, loop_inductance=9.0*u.nH))
-        signal = plan.bus(id="signal")
-        plan.parallel(id="parallel_squids", start=signal,
-            branches=((left.between(left.pin("terminal_1"), left.pin("terminal_2")),),
-                      (right.between(right.pin("terminal_1"), right.pin("terminal_2")),)), end=plan.ground)
-        plan.add_port(id="port", at=signal, role="terminated", reference_impedance=50.0*u.ohm)
-        plan.couple_inductive(id="mutual", inductor_a=left.inductive_branch("loop"),
-            inductor_b=right.inductive_branch("loop"), coupling_coefficient=0.25*u.dimensionless)
-        with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="julia", precision="float64")
-            try:
-                compiled = run.explain(run.original, DirectSolveSpec(frequencies=[5.0]*u.GHz)).evidence["compiled"]
-            finally:
-                run.close()
-        rows = compiled["expanded_branch_rows"]
-        mutual = next(row for row in rows if row["kind"] == "mutual_inductance")
-        self.assertEqual(mutual["coupling_id"], "mutual")
-        self.assertEqual(mutual["branch_a"], {"path": ("left_squid", "loop"), "branch_id": "self"})
-        self.assertEqual(mutual["branch_b"], {"path": ("right_squid", "loop"), "branch_id": "self"})
-        self.assertEqual(mutual["coupling_coefficient"]["si_value_f64"], "3fd0000000000000")
-        self.assertEqual(mutual["derived_mutual_inductance"]["si_value_f64"], "3e19c511dc3a41e1")
-        self.assertFalse(mutual["omitted_as_zero"])
-        k_matrix = compiled["k_matrix"]
-        self.assertEqual(k_matrix["shape"], (3, 3))
-        values = [struct.unpack(">d", bytes.fromhex(value))[0] for value in k_matrix["row_major_f64"]]
-        self.assertTrue(values and all(math.isfinite(value) for value in values))
-        self.assertNotEqual(values[0], 0.0)
-
-
-    def test_custom_composite_resolve_inventory_is_empty(self):
-        component = _TestCatalog().nested_lc(id="resonator", capacitance=100.0*u.fF)
-        plan = LibraryProvenanceTests()._plan(component, id="direct_composite_inventory")
-        with TemporaryDirectory() as workspace:
-            run = CircuitRun(plan=plan, workspace=Path(workspace), backend="julia")
-            try:
-                with self.assertRaises(ResultUnavailableError):
-                    run.resolve(run.original, DirectSolveSpec(frequencies=[5.0]*u.GHz))
-                self.assertEqual(run.inventory().requests, ())
-            finally:
-                run.close()

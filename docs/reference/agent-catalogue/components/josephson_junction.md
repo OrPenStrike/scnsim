@@ -71,7 +71,7 @@ The canonical factory has no docstring; no description is inferred.
         "Use the installed public scnsim.components Library and its scnsim.units registry.",
         "Factory construction only; no Plan execution, solver, rendering or native physics."
       ],
-      "scope": "Documented per-junction zero-bias LJ0 and independent Cj; no nonlinear/HB execution.",
+      "scope": "Documented per-junction zero-bias LJ0 and independent Cj; linear construction only.",
       "source_ref": "docs/component-authoring.qmd"
     },
     "observation": {
@@ -109,10 +109,10 @@ Only these inputs were constructed. Pin names are not proof of independent elect
 
 ## Source provenance
 
-- `docs/agent-catalogue-cases.json` — SHA-256 `49f673acfba38cba1e854bd39feb4cbe52b66af92998aeda22ae349790746f66`
-- `docs/component-authoring.qmd` — SHA-256 `1ee9a620d5616d96261613f52f28ee91bf8da7250c10d09f90374dfc8478309b`
+- `docs/agent-catalogue-cases.json` — SHA-256 `32d37ca52c5b4560a6c4b76467e94078a73658d25343a379a904722f82be8413`
+- `docs/component-authoring.qmd` — SHA-256 `e305be504c16a9008f35d0b95bcecef66c0a7096dbbc0542aeab8651aac7e7d8`
 - `scripts/generate_agent_catalogue.py` — SHA-256 `040d05273dc882d2f645ab1cac13e37e878901925ba234c67e1933b439d69c9d`
-- `src/scnsim/__init__.py` — SHA-256 `d63398709f6adf047b20887ec4a0081cdfe08a5d29ba1887ec946ff8e05081bd`
+- `src/scnsim/__init__.py` — SHA-256 `2b3523836e4152aa0a836a8df1081eaff945458a5df34adac42e08688b970438`
 - `src/scnsim/authoring/assembly.py` — SHA-256 `da95087557c8a623bbb60654957fb8b43a1d68a68f1cf2c695effe0ecee87aa2`
 - `src/scnsim/authoring/catalogs.py` — SHA-256 `7276b23d3aad359ae0baf4db60b95c5249ccc854bc937a74891baa7a7f543917`
 - `src/scnsim/authoring/components.py` — SHA-256 `2b53329380ae89b0bc1594378b0c74ecbe533f6bb5b92e2dc1bb41f4295361c2`

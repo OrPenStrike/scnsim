@@ -22,7 +22,7 @@ from .base import (
 )
 from .derived import TraceResult
 from .factory import _MEMORY_RESULT_TOKEN, _verified_result
-from .matrix import ScatteringMatrixResult
+from .matrix import ScatteringMatrixResult, _fresh_evidence_attribute
 
 if TYPE_CHECKING:
     from plotly.graph_objects import Figure
@@ -46,6 +46,7 @@ class InMemoryDirectSolveResult(Result):
     execution_id: str
     discretization: tuple[LineDiscretization, ...] | None
     metadata: Mapping[str, object]
+    evidence: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
     _benchmark: InMemoryBenchmarkResult | None = field(default=None, repr=False, compare=False)
     _memory_report_token: object = field(default=None, init=False, repr=False, compare=False)
     _quantity_fields = frozenset({"frequencies"})
@@ -54,6 +55,8 @@ class InMemoryDirectSolveResult(Result):
         unavailable("InMemoryDirectSolveResult construction")
 
     def __getattribute__(self, name: str) -> object:
+        if name == "evidence":
+            return _fresh_evidence_attribute(object.__getattribute__(self, name))
         if name == "benchmark":
             benchmark = object.__getattribute__(self, "_benchmark")
             if benchmark is None:
@@ -258,6 +261,8 @@ def build_memory_direct_result(
         execution_id=execution_id,
         discretization=_memory_discretization(raw_metadata.get("discretization")),
         metadata=metadata,
+        evidence=({"affine_evidence": raw_metadata["affine_evidence"]}
+                  if raw_metadata.get("affine_evidence") else {}),
         _benchmark=benchmark,
     )
     object.__setattr__(result, "_memory_report_token", _MEMORY_RESULT_TOKEN)

@@ -22,8 +22,7 @@ quantities, derivatives and parameter searches.
 SCNSim models a physical circuit in one `CircuitPlan`. A View selects its
 analysis boundary; a Spec names the requested quantity. Declare the model first,
 then choose `CircuitRun` operations. This guide is the installed knowledge entry
-`getting-started`; it describes current candidate interfaces, not evidence that
-your circuit has been executed or certified.
+`getting-started`.
 
 ### Choose a first task
 
@@ -73,8 +72,7 @@ seed, not a target value or an instruction to discover every root.
 ### Execution prerequisites and Result ownership
 
 Use an exact-version installation matching your Python/platform. JAX CPU is
-the default numerical backend; Julia-only capabilities require an explicitly
-selected backend and a separately provided Julia installation. Notebook
+the numerical runtime. Notebook
 presentation has its own optional dependencies. See the
 [setup guide](examples/engineer/setup.qmd) (`engineer-setup`) before executing.
 Reading this bundle imports no producer and performs no simulation.
@@ -196,7 +194,7 @@ plan.add_port(
     reference_impedance=50.0 * u.ohm,
 )
 
-run = CircuitRun(plan=plan, workspace="workspaces/readme_lc")
+run = CircuitRun(plan=plan, storage="memory")
 reflection = SParameterTrace(
     id="reflection",
     input_port="signal_in",
@@ -218,11 +216,12 @@ baseline_s11 = baseline.traces["reflection"]
 selected_s11 = selected.traces["reflection"]
 baseline_s11.show(component="magnitude", magnitude="db")
 selected_s11.show(component="magnitude", magnitude="db")
+run.close()
 ```
 
-The code uses the default JAX backend. The S11 figures below are the existing
-Chapter 1 Julia outputs for this authored case and channel; the website does
-not run the example to regenerate them.
+The code uses the JAX runtime. The figures below are historical Chapter 1
+Julia outputs for this authored case and channel. New course figures are
+published separately after their JAX execution.
 
 ![Previously published baseline S11 for 110 fF on the 401-point 5.75–6.25 GHz grid.](examples/engineer/figures/01-s11-baseline.svg)
 
@@ -236,43 +235,36 @@ Continue with the [Engineer course](docs/index.qmd).
 
 ## Install
 
-`1.0.0.dev40` is an unreleased development candidate, and the 1.0 beta remains
-held. The exact-version development wheels delivered for `1.0.0.dev39` are
-historical artifacts, not dev40 installations. That prior wheel cohort targeted
-CPython 3.12 on Linux x86_64 (`manylinux_2_28`), macOS arm64 (minimum deployment
-target macOS 12), and Windows x86_64 (AMD64). These tags identify binary targets
-and do not establish coverage for every operating-system version or circuit
-workload.
-Install only a published wheel matching the version you intend to use; do not
-substitute a dev39 wheel for dev40.
+Use Python 3.12 and an exact published SCNSim wheel matching your platform.
+The current development version is `1.0.0.dev42`; 1.0 beta publication is pending.
+JAX CPU is included in the base dependencies. No backend keyword, Julia
+installation or Julia extra is required.
 
-For a Windows consumer repository using CPython 3.12 AMD64, its maintainer
-configures the matching prebuilt SCNSim wheel as the package source and records
-that choice in the repository's `uv.lock`. Once an exact-version wheel is
-published and the consumer lock is configured, users install from the
-repository with:
+For a consumer project, configure its exact SCNSim wheel source and retain that
+choice in `uv.lock`. Then install the locked environment:
 
-```powershell
+```bash
 uv sync
 ```
 
-The prior dev39 Windows CPU-JAX wheel evidence covered both in-memory and
-Workspace operations. Windows ARM, GPU, and Julia were outside that wheel; this
-historical evidence does not establish dev40 behavior.
+On Windows, use CPython 3.12 AMD64 and the matching Windows wheel. The same
+command works in PowerShell. Linux and macOS installations likewise require
+a wheel matching their Python ABI and architecture.
 
-The pure-Python `asciitree` dependency may be installed from its source
-distribution; it has no native extension or custom build. Other native
-dependencies remain wheel-only. Installing a matching prebuilt SCNSim wheel
+Installing a matching prebuilt SCNSim wheel
 does not require a C++ compiler. Installing SCNSim from source requires a
 C++17 toolchain. Depending on the wheel's MSVC runtime requirements, Windows
 may also need the matching Microsoft Visual C++ Redistributable, separate from
 the compiler tools; see
 [Microsoft's supported Redistributable guidance](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
-For the CPU JAX backend, see the [JAX CPU installation notes](https://docs.jax.dev/en/latest/installation.html#cpu).
-For a notebook environment, source installation and optional backends, see the
-[setup guide](examples/engineer/setup.qmd). Julia-only features use explicit
-backend selection and a separately provided Julia installation; see
-[Direct and HB realizations](docs/concepts/direct-and-hb-realizations.qmd).
+For CPU JAX, see the [JAX CPU installation notes](https://docs.jax.dev/en/latest/installation.html#cpu).
+For a notebook environment and source installation, see the
+[setup guide](examples/engineer/setup.qmd).
+
+## Installation history
+
+The previously delivered dev39 wheels and their Windows CPU-JAX observations
+remain historical dev39 evidence; they are not installations of dev42.
 
 ## Learn the model, then choose the calculation
 

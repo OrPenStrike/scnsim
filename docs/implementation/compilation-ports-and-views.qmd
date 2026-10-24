@@ -1,6 +1,6 @@
 ---
 title: "Compilation, Ports, and Network Views"
-subtitle: "How does one authored Plan become a selected Direct or HB network?"
+subtitle: "How does one authored Plan become a selected linear network?"
 toc-depth: 2
 ---
 
@@ -14,11 +14,11 @@ This page keeps their shared physical-graph and logical-Port boundary aligned.
 
 ## Compile one backend-neutral physical graph
 
-After ParameterSet binding, Julia expands every component into oriented
-physical rows and one ordered node-flux basis. The compile product carries
-component, parameter, node, ground, Port, coupling, and source provenance. It
-forms reciprocal C/K/G evidence for Direct and an exact JosephsonCircuits
-netlist realization for HB; neither backend becomes the Plan authority.
+After ParameterSet binding, the Python compiler expands every component into
+oriented physical rows and one ordered node-flux basis. The compile product
+carries component, parameter, node, ground, Port, coupling and source provenance.
+It forms reciprocal C/K/G evidence for Direct; the compiler does not become the
+Plan authority.
 
 The primitive slice follows the canonical
 [branch-stamping rule](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/physical-circuit-coordinates-node-flux-basis.qmd#g2--stamp-branches-before-interpreting-matrix-entries).
@@ -65,16 +65,14 @@ pin and wire correspondence. Historical compiled exports projected this
 expanded graph; automatic compiled drawing is retired, while the numerical
 expansion remains maintained.
 
-## Lower one logical Port two ways
+## Lower one logical Port
 
 Direct maps each Port to selector column `B`, reference admittance `Y0`, load
-stamp `B Y0 B^T`, and power-wave conversion. HB lowers the same Port to exact
-JosephsonCircuits `P + R` rows and solver indices. The receipt proves that node,
-orientation, reference impedance, and load are equivalent across lowerings.
+stamp `B Y0 B^T`, and power-wave conversion. Selected-network evidence retains
+the node, orientation, reference impedance and actual load boundary.
 
 PTC removes only declared, evidenced `nonloading_probe` loads from the analysis
-network. For driven HB it leaves the nonlinear/static balance loaded and
-compensates only the linearized response, as required by the public contract.
+network.
 Its canonical port set, transform ordering, retained-coordinate order, and
 selected-network maps are fixed in
 [View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
@@ -86,8 +84,8 @@ transforms, optional terminal retain, then zero-current complement elimination.
 The exact lineage grammar, ParameterSet-dependent weights, port
 canonicalization, N-port realizability, and failure evidence live in
 [View Lineage and Selected Networks](view-lineage-and-selected-networks.qmd).
-Direct may evaluate a named unported coordinate; S/Y/Z and HB require a
-Port-realizable final basis and fail rather than returning a smaller or
+Direct quantities may evaluate a named unported coordinate; Direct S/Y/Z matrix
+requests require a Port-realizable final basis and fail rather than returning a smaller or
 backend-specific fallback view.
 
 [Next: RLGC, Q2D, and pi expansion](rlgc-q2d-and-pi-expansion.qmd)

@@ -116,7 +116,7 @@ class WorkspacePathLifetimeTests(unittest.TestCase):
                     plan = _plan()
                     for _ in range(2):
                         run = CircuitRun(plan=plan, workspace=str(path) if as_string else path,
-                                         backend="jax", precision="float64")
+                                          precision="float64")
                         try:
                             self.assertIsNotNone(run.original)
                             self.assertTrue(path.is_dir())
@@ -130,7 +130,7 @@ class WorkspacePathLifetimeTests(unittest.TestCase):
                     moved.rename(path)
 
     def test_public_memory_run_without_workspace(self):
-        run = CircuitRun(plan=_plan(), storage="memory", backend="jax", precision="float64")
+        run = CircuitRun(plan=_plan(), storage="memory", precision="float64")
         try:
             self.assertIsNotNone(run.original)
         finally:

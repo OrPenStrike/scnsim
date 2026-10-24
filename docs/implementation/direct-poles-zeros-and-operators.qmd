@@ -14,8 +14,7 @@ S/Y/Z `TransferZeroSpec`, `ResidueNormalizedCouplingSpec` and `OperatorSpec` to
 public `evaluate`, declared parameter sweeps and scalar Optimization selectors.
 Operators remain matrix outputs, not scalar objectives. Functionality and
 performance conclusions remain bound to exact installed-source observations,
-not an implied full Example regression or Human acceptance. Explicit Julia
-retains its separate legacy/reference contract; HB is outside this route.
+not an implied full Example regression or Human acceptance. HB is outside 1.0.
 For the reader-facing distinction between Hint, a plotted notch, explicit
 search and a tracked branch, start with the
 [root and branch-selection guide](../guides/roots-and-branch-selection.qmd).
@@ -30,8 +29,8 @@ $$
 \tau(q)=256(q+1)\epsilon_{\mathrm{Float64}}.
 $$
 
-The displayed Float64 convention describes the existing native Julia path.
-For JAX, the same prescribed procedures use the selected real arithmetic dtype:
+The displayed Float64 convention uses binary64 epsilon. The prescribed JAX
+procedures use the selected real arithmetic dtype:
 Float32/Complex64 or Float64/Complex128, including epsilon, analytic Newton
 updates, reductions, correction, bitwise stagnation and certificate arithmetic.
 Host coherent-SI declarations and CMA/RNG state remain binary64; widening a
@@ -55,7 +54,7 @@ wrappers over immutable array backing, mappings and tuples.
 Candidate terms and coupling branch dependencies refer to canonical numerical
 bodies instead of duplicating their evidence. Ordered occurrences retain their
 own task-local context and reference the supplied body. The current Workspace
-operation store is v7; readonly selected access hydrates exact immutable
+operation store uses revision 8; readonly selected access hydrates exact immutable
 references within a short verified snapshot, without a latest-result selector,
 legacy fallback or numerical recomputation. Memory Results retain detached
 actual bodies without inventing a saved receipt. The decoder projects supplied
@@ -292,30 +291,17 @@ S is dimensionless, Y is in siemens, and Z is in ohms.
 ### `OperatorSpec`
 
 `OperatorSpec` evaluates the complete $Q_R^{E\downarrow}(\omega)$ at every
-frequency in the same nonempty, finite, positive, strictly increasing,
-duplicate-free grid contract used by Direct. The Result shape is `[F, N, N]`
+frequency in the same nonempty, finite, positive grid contract used by Direct.
+Declared frequency occurrences, including repeats and reverse order, are retained. The Result shape is `[F, N, N]`
 in terminal coordinate order. It includes every uncompensated Port load in
 $M$ and is not the source-resistor-de-embedded public Y matrix. Its canonical
 unit is `siemens / second`, equivalent to inverse henry under this convention.
 
-The native Julia `OperatorResult` envelope has exactly two array-catalog entries:
-
-| ID | Path | Datasets | dtype and shape | Axes and unit |
-|---|---|---|---|---|
-| `frequencies` | `artifacts/frequencies.zarr` | `values` | `<f8`, `[F]` | `frequency`; `hertz` |
-| `operator` | `artifacts/operator.zarr` | `real`, `imag` | paired `<f8`, `[F,N,N]` | `frequency`, `row_coordinate`, `column_coordinate`; `siemens / second` |
-
-The external manifests are respectively
-`artifacts/frequencies.manifest.json` and
-`artifacts/operator.manifest.json`. Both are canonical Zarr V2 artifacts under
-the shared no-codec/no-extra-file rules. With $c(F)=\min(F,1024)$, chunks are
-`[c(F)]` and `[c(F),N,N]`: no coordinate matrix at one frequency is split
-between chunks. C order, paired real/imag storage, ordered coordinate IDs, PTC
-load labels, and exact dataset metadata belong to the artifact manifest and
-runtime identity. An operator matrix is inspectable output and cannot itself
-be one scalar objective. JAX publishes the same typed axes and units through
-its existing verified SQLite numerical-record codec: the actual output dtype
-is retained, without fabricating Julia Zarr artifacts or receipt identities.
+Operator values retain their actual requested dtype, terminal coordinate order
+and units. Workspace stores them with evidence-v3 binary columns and fixed
+manifest references; Memory retains detached arrays. The public readonly
+same-call evidence is available after close and through saved resolution.
+An operator matrix is inspectable output and cannot itself be one scalar objective.
 
 ## Locate one hybridized pole
 
@@ -444,14 +430,11 @@ evaluation at the continued candidate supplies the returned root, slope, and
 null vector together. The public frequency, linewidth, and root evidence use
 that returned root; no second certificate evaluation supplies another field.
 
-The hybridized-pole `DirectQuantityResult` envelope owns one required complex
-artifact: ID `null_vector`,
-path `artifacts/null_vector.zarr`, and manifest
-`artifacts/null_vector.manifest.json`. Its `real`/`imag` datasets are paired
-little-endian Float64 in C order with shape and one complete chunk `[q]`, axis
-the exact retained coordinate sequence $C$, unit `dimensionless`, and the
-canonical phase fixed above. Its required `coordinate_ids` and the inline
-`retained_coordinate` axis contain exactly that same sequence.
+The hybridized-pole Result retains the actual dtype-preserved dimensionless
+null-vector Quantity and exact ordered coordinate bindings in its readonly
+evidence. Workspace serializes those actual values through the v3 storage codec;
+Memory retains their immutable backing. The canonical phase remains the one
+specified above.
 
 This is machine-resolution and local-simple-pole evidence. It is not a
 validated enclosure, a global pole count, or proof that another starting basin
@@ -593,7 +576,7 @@ For Z the denominator is the product of norms of the complete Y rows retained
 by its numerator minor, before the output column is deleted; the one-port
 empty cofactor retains constant one and zero derivative. Positive scales and
 ratios use mantissa/power-of-two exponent pairs in their declared arithmetic
-precision (binary64 in the native Julia envelope), so product overflow
+precision, so product overflow
 or underflow cannot be accepted as a zero certificate.
 Residual `0/0` is zero; nonzero-slope and rank-gap predicates reject a zero
 denominator. `numerator_slope` stores $\widehat N'$ and the coherently scaled
@@ -726,7 +709,7 @@ vectors to unit 2-norm, and write $V=[v_a\ v_b]$ with singular values
 $\gamma_1\ge\gamma_2$. SCNSim requires $q\ge2$ and
 $\gamma_2/\gamma_1>\tau(q)$; a zero denominator fails. At each bitwise-distinct
 point in $\{\widetilde\omega_a,\widetilde\omega_b,\omega_*\}$, the existing native
-Julia reciprocity certificate requires the selected operator to satisfy
+reciprocity certificate requires the selected operator to satisfy
 
 $$
 \eta_{\mathrm{sym}}=
@@ -842,6 +825,119 @@ operator, matrix, arbitrary Python callable, or nested expression language. A
 dependency failure propagates to that optimization candidate with its original
 typed context; no partial sum or stale term is published.
 
+Scalar public outputs retain their existing typed units and selectors.
+Scientific bodies own their numerical evidence and dependencies; ordered
+occurrences reference those bodies. Public quantity evidence supplements the
+scalar fields with the recorded branch, vector, denominator, residue and
+coordinate bindings. An unrecorded transient diagnostic is not promised saved
+evidence. Workspace encoding uses evidence v3; it does not create Zarr files
+or a `result.json` scalar catalogue.
+
+## JAX host and durable evidence ownership
+
+One quantity implementation supplies standalone evaluation, parameter sweeps
+and scalar Optimization dependencies. The host binds each exact View and
+effective ParameterSet, owns dependency declaration order and scalar projection,
+and continues each nonbaseline root independently from its sealed baseline.
+For JAX Optimization, worker anchor installation has a memory ACK, not a standalone baseline storage commit. Coupling
+branches retain separate baseline locators/vectors; midpoint
+mode uses the actual candidate roots. A baseline is not a CMA-resumable
+checkpoint. Candidate caches do not turn a preceding candidate into an anchor.
+
+Successful root/pole/zero/coupling records retain their actual complex state,
+analytic slopes, required vectors/denominator/residue evidence, coordinates,
+units and parameter/lineage identity. Numerical failures retain their existing
+kind/stage/context with no partial success value. Verified read-only decoding
+reconstructs the existing public Result types without running a solver.
+JAX algorithm and dependency identities bind the new implementation and prevent
+relabeling earlier requests or checkpoints. No new public Spec or selector is
+introduced.
+
+SQLite retains the default commit interval of ten completed post-tell
+generations. Baseline and anchors remain pending memory; the first completed
+group saves the required baseline body once. There is no generation-0 checkpoint
+or initial callback. Generation checkpoints add anchor restore state and the
+latest completed post-tell CMA/RNG state (generation >=1); off excludes
+restore-only state. Required group ACK precedes its callback; optional timing is
+separate. Exact same-version
+resume consumes committed completed-generation state. Quantity work does not
+change CMA/RNG, winner order, transaction uncertainty, interrupt or failure
+ownership. Only the existing legitimate candidate numerical failures become
+Optimization penalties; baseline, compiler, storage, callback, cancellation,
+resource and infrastructure failures retain their established owners.
+
+## Failure ownership
+
+| Condition | Typed owner |
+|---|---|
+| Invalid family, locator/frequency, coordinate, dimensionality, composition, or branch compatibility | `SCNSimValidationError` with the exact quantity stage |
+| Valid public Spec outside the implemented slice | `ScaffoldUnavailableError` |
+| Failed retained/complement or response matrix solve | `EliminatedBlockSolveFailure` or `DirectResponseFormationError`, with matrix stage and frequency |
+| Zero/non-finite analytic derivative, repeated pole/zero, unresolved null rank, or missing residue evidence | `RootSlopeUnresolved` with branch and certificate evidence |
+| No machine certificate within 32 Newton updates or dyadic depth | `NumericalResolutionUnresolved` |
+| Non-finite/singular transfer denominator or unresolved cancellation | `NumericalResolutionUnresolved` with `transfer_denominator` or `pole_zero_cancellation` stage |
+| Sealed compiler topology/operator invariant is violated | `CompilerInvariantError`; never a bad quantity or optimizer penalty |
+| Saved reference, binary header, shape/order/unit or content hash disagrees | `EvidenceIntegrityError`; never a numerical root failure |
+
+No failure path returns a nearby pole/zero, pseudoinverse, partial operator,
+untyped `None`, or a previous successful value.
+
+[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)
+
+## History: retired process, replay and file artifacts
+
+<details>
+<summary>Superseded pre-1.0 source record</summary>
+
+The native Julia `OperatorResult` envelope has exactly two array-catalog entries:
+
+</details>
+
+## History: native Operator artifact layout
+
+<details>
+<summary>Retired source record</summary>
+
+| ID | Path | Datasets | dtype and shape | Axes and unit |
+|---|---|---|---|---|
+| `frequencies` | `artifacts/frequencies.zarr` | `values` | `<f8`, `[F]` | `frequency`; `hertz` |
+| `operator` | `artifacts/operator.zarr` | `real`, `imag` | paired `<f8`, `[F,N,N]` | `frequency`, `row_coordinate`, `column_coordinate`; `siemens / second` |
+
+The external manifests are respectively
+`artifacts/frequencies.manifest.json` and
+`artifacts/operator.manifest.json`. Both are canonical Zarr V2 artifacts under
+the shared no-codec/no-extra-file rules. With $c(F)=\min(F,1024)$, chunks are
+`[c(F)]` and `[c(F),N,N]`: no coordinate matrix at one frequency is split
+between chunks. C order, paired real/imag storage, ordered coordinate IDs, PTC
+load labels, and exact dataset metadata belong to the artifact manifest and
+runtime identity. An operator matrix is inspectable output and cannot itself
+be one scalar objective. JAX publishes the same typed axes and units through
+its existing verified SQLite numerical-record codec: the actual output dtype
+is retained, without fabricating Julia Zarr artifacts or receipt identities.
+
+</details>
+
+## History: native hybridized-pole vector file
+
+<details>
+<summary>Retired source record</summary>
+
+The hybridized-pole `DirectQuantityResult` envelope owns one required complex
+artifact: ID `null_vector`,
+path `artifacts/null_vector.zarr`, and manifest
+`artifacts/null_vector.manifest.json`. Its `real`/`imag` datasets are paired
+little-endian Float64 in C order with shape and one complete chunk `[q]`, axis
+the exact retained coordinate sequence $C$, unit `dimensionless`, and the
+canonical phase fixed above. Its required `coordinate_ids` and the inline
+`retained_coordinate` axis contain exactly that same sequence.
+
+</details>
+
+## History: native scalar catalogue and algorithm identifiers
+
+<details>
+<summary>Retired source record</summary>
+
 Scalar public outputs for `HybridizedPoleSpec`, `TransferZeroSpec`,
 `ResidueNormalizedCouplingSpec`, and `ResponseElementSpec` live canonically in
 the typed `scalar_catalog` of `result.json`; they do not create scalar Zarr
@@ -862,54 +958,4 @@ The existing native Julia algorithm IDs are
 formula, derivative, normalization, iteration/subdivision rule, artifact
 layout, or branch policy requires a new runtime algorithm identity.
 
-## JAX host and durable evidence ownership
-
-One quantity implementation supplies standalone evaluation, parameter sweeps
-and scalar Optimization dependencies. The host binds each exact View and
-effective ParameterSet, owns dependency declaration order and scalar projection,
-and continues each nonbaseline root independently from its sealed baseline.
-For JAX Optimization, worker anchor installation has a memory ACK, not a native
-Julia checkpoint handshake or standalone baseline storage commit. Coupling
-branches retain separate baseline locators/vectors; midpoint
-mode uses the actual candidate roots. A baseline is not a CMA-resumable
-checkpoint. Candidate caches do not turn a preceding candidate into an anchor.
-
-Successful root/pole/zero/coupling records retain their actual complex state,
-analytic slopes, required vectors/denominator/residue evidence, coordinates,
-units and parameter/lineage identity. Numerical failures retain their existing
-kind/stage/context with no partial success value. Verified read-only decoding
-reconstructs the existing public Result types without running a solver.
-JAX algorithm and dependency identities bind the new implementation and prevent
-relabeling earlier requests or checkpoints. No new public Spec or selector is
-introduced.
-
-SQLite retains the default commit interval of ten completed post-tell
-generations. Baseline and anchors remain pending memory; the first completed
-group saves the required baseline body once. There is no generation-0 checkpoint
-or initial callback. Generation checkpoints add anchor restore state and the
-latest completed post-tell CMA/RNG state (generation >=1); off excludes
-restore-only state. Required group ACK precedes its callback; optional timing is
-separate. Native Julia's baseline handshake remains unchanged. Exact same-version
-resume consumes committed completed-generation state. Quantity work does not
-change CMA/RNG, winner order, transaction uncertainty, interrupt or failure
-ownership. Only the existing legitimate candidate numerical failures become
-Optimization penalties; baseline, compiler, storage, callback, cancellation,
-resource and infrastructure failures retain their established owners.
-
-## Failure ownership
-
-| Condition | Typed owner |
-|---|---|
-| Invalid family, locator/frequency, coordinate, dimensionality, composition, or branch compatibility | `SCNSimValidationError` with the exact quantity stage |
-| Valid public Spec outside the implemented slice | `ScaffoldUnavailableError` |
-| Failed retained/complement or response matrix solve | `EliminatedBlockSolveFailure` or `DirectResponseFormationError`, with matrix stage and frequency |
-| Zero/non-finite analytic derivative, repeated pole/zero, unresolved null rank, or missing residue evidence | `RootSlopeUnresolved` with branch and certificate evidence |
-| No machine certificate within 32 Newton updates or dyadic depth | `NumericalResolutionUnresolved` |
-| Non-finite/singular transfer denominator or unresolved cancellation | `NumericalResolutionUnresolved` with `transfer_denominator` or `pole_zero_cancellation` stage |
-| Sealed compiler topology/operator invariant is violated | `CompilerInvariantError`; never a bad quantity or optimizer penalty |
-| Julia envelope, artifact shape/order/unit, or receipt hash disagrees | `BackendProtocolError` or `EvidenceIntegrityError`; never a numerical root failure |
-
-No failure path returns a nearby pole/zero, pseudoinverse, partial operator,
-untyped `None`, or a previous successful value.
-
-[Next: Direct quantities and optimization](direct-quantities-and-optimization.qmd)
+</details>

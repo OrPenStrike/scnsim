@@ -24,7 +24,6 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 - [AcceptedIterateSelection](api/acceptediterateselection.md) — `catalogue/api/acceptediterateselection`
 - [AffineMap](api/affinemap.md) — `catalogue/api/affinemap`
 - [AnalysisResult](api/analysisresult.md) — `catalogue/api/analysisresult`
-- [BackendProtocolError](api/backendprotocolerror.md) — `catalogue/api/backendprotocolerror`
 - [BenchmarkResult](api/benchmarkresult.md) — `catalogue/api/benchmarkresult`
 - [BiasState](api/biasstate.md) — `catalogue/api/biasstate`
 - [BranchRef](api/branchref.md) — `catalogue/api/branchref`
@@ -41,7 +40,6 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 - [CoordinateRef](api/coordinateref.md) — `catalogue/api/coordinateref`
 - [CostObjective](api/costobjective.md) — `catalogue/api/costobjective`
 - [CouplingRef](api/couplingref.md) — `catalogue/api/couplingref`
-- [CurrentDrive](api/currentdrive.md) — `catalogue/api/currentdrive`
 - [DiagonalRootResult](api/diagonalrootresult.md) — `catalogue/api/diagonalrootresult`
 - [DiagonalRootSpec](api/diagonalrootspec.md) — `catalogue/api/diagonalrootspec`
 - [DiagramBoxSize](api/diagramboxsize.md) — `catalogue/api/diagramboxsize`
@@ -69,13 +67,6 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 - [FixedMeshSpec](api/fixedmeshspec.md) — `catalogue/api/fixedmeshspec`
 - [GeometryRealization](api/geometryrealization.md) — `catalogue/api/geometryrealization`
 - [GroundRef](api/groundref.md) — `catalogue/api/groundref`
-- [HBBatchResult](api/hbbatchresult.md) — `catalogue/api/hbbatchresult`
-- [HBCaseFailure](api/hbcasefailure.md) — `catalogue/api/hbcasefailure`
-- [HBCaseOutcome](api/hbcaseoutcome.md) — `catalogue/api/hbcaseoutcome`
-- [HBCaseSpec](api/hbcasespec.md) — `catalogue/api/hbcasespec`
-- [HBScatteringMatrixResult](api/hbscatteringmatrixresult.md) — `catalogue/api/hbscatteringmatrixresult`
-- [HBSolveSpec](api/hbsolvespec.md) — `catalogue/api/hbsolvespec`
-- [HBTruncation](api/hbtruncation.md) — `catalogue/api/hbtruncation`
 - [HybridSpec](api/hybridspec.md) — `catalogue/api/hybridspec`
 - [HybridizedPoleSpec](api/hybridizedpolespec.md) — `catalogue/api/hybridizedpolespec`
 - [InMemoryAnalysisResult](api/inmemoryanalysisresult.md) — `catalogue/api/inmemoryanalysisresult`
@@ -92,7 +83,6 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 - [InvalidCandidatePhysicalParameter](api/invalidcandidatephysicalparameter.md) — `catalogue/api/invalidcandidatephysicalparameter`
 - [InvalidDiagonalRootHint](api/invaliddiagonalroothint.md) — `catalogue/api/invaliddiagonalroothint`
 - [InvalidOptimizationSpec](api/invalidoptimizationspec.md) — `catalogue/api/invalidoptimizationspec`
-- [InventoryResult](api/inventoryresult.md) — `catalogue/api/inventoryresult`
 - [JVP](api/jvp.md) — `catalogue/api/jvp`
 - [Jacobian](api/jacobian.md) — `catalogue/api/jacobian`
 - [LBFGSBSpec](api/lbfgsbspec.md) — `catalogue/api/lbfgsbspec`
@@ -135,7 +125,6 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 - [PortRef](api/portref.md) — `catalogue/api/portref`
 - [PreparedFunction](api/preparedfunction.md) — `catalogue/api/preparedfunction`
 - [ProjectedLBFGSSpec](api/projectedlbfgsspec.md) — `catalogue/api/projectedlbfgsspec`
-- [PumpAxis](api/pumpaxis.md) — `catalogue/api/pumpaxis`
 - [PumpState](api/pumpstate.md) — `catalogue/api/pumpstate`
 - [QuantityAbsolute](api/quantityabsolute.md) — `catalogue/api/quantityabsolute`
 - [QuantityDifference](api/quantitydifference.md) — `catalogue/api/quantitydifference`
@@ -201,9 +190,9 @@ Names come from actual `scnsim.__all__` and the builtin `components` Library, in
 
 ## Source provenance
 
-- `docs/agent-catalogue-cases.json` — SHA-256 `49f673acfba38cba1e854bd39feb4cbe52b66af92998aeda22ae349790746f66`
+- `docs/agent-catalogue-cases.json` — SHA-256 `32d37ca52c5b4560a6c4b76467e94078a73658d25343a379a904722f82be8413`
 - `scripts/generate_agent_catalogue.py` — SHA-256 `040d05273dc882d2f645ab1cac13e37e878901925ba234c67e1933b439d69c9d`
-- `src/scnsim/__init__.py` — SHA-256 `d63398709f6adf047b20887ec4a0081cdfe08a5d29ba1887ec946ff8e05081bd`
+- `src/scnsim/__init__.py` — SHA-256 `2b3523836e4152aa0a836a8df1081eaff945458a5df34adac42e08688b970438`
 - `src/scnsim/authoring/assembly.py` — SHA-256 `da95087557c8a623bbb60654957fb8b43a1d68a68f1cf2c695effe0ecee87aa2`
 - `src/scnsim/authoring/catalogs.py` — SHA-256 `7276b23d3aad359ae0baf4db60b95c5249ccc854bc937a74891baa7a7f543917`
 - `src/scnsim/authoring/components.py` — SHA-256 `2b53329380ae89b0bc1594378b0c74ecbe533f6bb5b92e2dc1bb41f4295361c2`

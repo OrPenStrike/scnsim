@@ -30,15 +30,6 @@
       "title": "AnalysisResult public API"
     },
     {
-      "id": "catalogue/api/backendprotocolerror",
-      "kind": "api",
-      "path": "resources/catalogue/api/backendprotocolerror.md",
-      "source_ref": "docs/reference/agent-catalogue/api/backendprotocolerror.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public BackendProtocolError declaration, signature, members and responsibility.",
-      "title": "BackendProtocolError public API"
-    },
-    {
       "id": "catalogue/api/benchmarkresult",
       "kind": "api",
       "path": "resources/catalogue/api/benchmarkresult.md",
@@ -199,15 +190,6 @@
       "status": "Generated current public reference; construction observations are limited to declared inputs.",
       "summary": "Public CouplingRef declaration, signature, members and responsibility.",
       "title": "CouplingRef public API"
-    },
-    {
-      "id": "catalogue/api/currentdrive",
-      "kind": "api",
-      "path": "resources/catalogue/api/currentdrive.md",
-      "source_ref": "docs/reference/agent-catalogue/api/currentdrive.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public CurrentDrive declaration, signature, members and responsibility.",
-      "title": "CurrentDrive public API"
     },
     {
       "id": "catalogue/api/diagonalrootresult",
@@ -453,69 +435,6 @@
       "title": "GroundRef public API"
     },
     {
-      "id": "catalogue/api/hbbatchresult",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbbatchresult.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbbatchresult.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBBatchResult declaration, signature, members and responsibility.",
-      "title": "HBBatchResult public API"
-    },
-    {
-      "id": "catalogue/api/hbcasefailure",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbcasefailure.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbcasefailure.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBCaseFailure declaration, signature, members and responsibility.",
-      "title": "HBCaseFailure public API"
-    },
-    {
-      "id": "catalogue/api/hbcaseoutcome",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbcaseoutcome.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbcaseoutcome.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBCaseOutcome declaration, signature, members and responsibility.",
-      "title": "HBCaseOutcome public API"
-    },
-    {
-      "id": "catalogue/api/hbcasespec",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbcasespec.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbcasespec.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBCaseSpec declaration, signature, members and responsibility.",
-      "title": "HBCaseSpec public API"
-    },
-    {
-      "id": "catalogue/api/hbscatteringmatrixresult",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbscatteringmatrixresult.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbscatteringmatrixresult.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBScatteringMatrixResult declaration, signature, members and responsibility.",
-      "title": "HBScatteringMatrixResult public API"
-    },
-    {
-      "id": "catalogue/api/hbsolvespec",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbsolvespec.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbsolvespec.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBSolveSpec declaration, signature, members and responsibility.",
-      "title": "HBSolveSpec public API"
-    },
-    {
-      "id": "catalogue/api/hbtruncation",
-      "kind": "api",
-      "path": "resources/catalogue/api/hbtruncation.md",
-      "source_ref": "docs/reference/agent-catalogue/api/hbtruncation.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public HBTruncation declaration, signature, members and responsibility.",
-      "title": "HBTruncation public API"
-    },
-    {
       "id": "catalogue/api/hybridizedpolespec",
       "kind": "api",
       "path": "resources/catalogue/api/hybridizedpolespec.md",
@@ -658,15 +577,6 @@
       "status": "Generated current public reference; construction observations are limited to declared inputs.",
       "summary": "Public InvalidOptimizationSpec declaration, signature, members and responsibility.",
       "title": "InvalidOptimizationSpec public API"
-    },
-    {
-      "id": "catalogue/api/inventoryresult",
-      "kind": "api",
-      "path": "resources/catalogue/api/inventoryresult.md",
-      "source_ref": "docs/reference/agent-catalogue/api/inventoryresult.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public InventoryResult declaration, signature, members and responsibility.",
-      "title": "InventoryResult public API"
     },
     {
       "id": "catalogue/api/jacobian",
@@ -1054,15 +964,6 @@
       "status": "Generated current public reference; construction observations are limited to declared inputs.",
       "summary": "Public ProjectedLBFGSSpec declaration, signature, members and responsibility.",
       "title": "ProjectedLBFGSSpec public API"
-    },
-    {
-      "id": "catalogue/api/pumpaxis",
-      "kind": "api",
-      "path": "resources/catalogue/api/pumpaxis.md",
-      "source_ref": "docs/reference/agent-catalogue/api/pumpaxis.md",
-      "status": "Generated current public reference; construction observations are limited to declared inputs.",
-      "summary": "Public PumpAxis declaration, signature, members and responsibility.",
-      "title": "PumpAxis public API"
     },
     {
       "id": "catalogue/api/pumpstate",

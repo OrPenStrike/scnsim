@@ -91,7 +91,7 @@ numerical evidence.
 A current JAX numerical body owns scientific values, intrinsic parameters,
 identity, dependencies and numerical evidence. A task occurrence owns its exact
 ordered position, source/cache/attempt context and reference to that body. The
-store writes the body directly once as canonical bytes; it does not wrap it in
+store writes each body once with the current binary storage codec; it does not wrap it in
 a task/key record. Read-only Result construction fixes the completion seal and reference root.
 Selected lazy reads verify and decode only their indexed evidence in a short
 snapshot, without recalculating quantities or retaining the Run.
@@ -105,15 +105,14 @@ group includes the global baseline body once. Local accepted iterations have
 their own declared publication cadence and support fresh restart, not exact
 curvature resume. CMA checkpoints retain the latest post-tell state and source-
 bound anchor/cache locators; checkpoint off omits recovery-only state. A required group ACK comes
-before its callback; optional Benchmark timing is separate. Native Julia keeps
-its own baseline publication handshake. Imported resume locators retain exact
+before its callback; optional Benchmark timing is separate. Imported resume locators retain exact
 source task/attempt/body ancestry; a point-dedup cache is not an occurrence ledger.
 Rebinding a resumed global baseline does not reevaluate or relabel its original
 stage/model identity, including when the resumed stage uses a different model.
 Results retain fixed readonly selections after Run close; they never retain the
 Run, a numerical frame, a factor or a live database connection.
 
-Operation stores are version7. Old operation Workspaces are unsupported: use a
+Operation stores use internal revision 8 and evidence version 3. Old operation Workspaces are unsupported: use a
 new Workspace and recompute, without migration or deleting historical data.
 The [Runtime Contract](../v1-runtime-contract.qmd) owns exact failure and
 checkpoint rules; this distinction does not alter mathematical quantities.

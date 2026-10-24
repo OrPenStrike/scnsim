@@ -12,6 +12,7 @@ These public source paths are known from `_quarto.yml` project.render plus READM
 - [`docs/contracts/implementation-evidence-history.qmd`](../../contracts/implementation-evidence-history.qmd)
 - [`docs/contracts/index.qmd`](../../contracts/index.qmd)
 - [`docs/contracts/static-capacitance.qmd`](../../contracts/static-capacitance.qmd)
+- [`docs/contracts/workspace-evidence-v3.qmd`](../../contracts/workspace-evidence-v3.qmd)
 - [`docs/guides/benchmark.qmd`](../../guides/benchmark.qmd)
 - [`docs/implementation/benchmark-and-backends.qmd`](../../implementation/benchmark-and-backends.qmd)
 - [`docs/implementation/canonical-identities-and-schemas.qmd`](../../implementation/canonical-identities-and-schemas.qmd)
@@ -25,9 +26,7 @@ These public source paths are known from `_quarto.yml` project.render plus READM
 - [`docs/implementation/external-inputs-and-delivery.qmd`](../../implementation/external-inputs-and-delivery.qmd)
 - [`docs/implementation/hb-realization-and-outcomes.qmd`](../../implementation/hb-realization-and-outcomes.qmd)
 - [`docs/implementation/index.qmd`](../../implementation/index.qmd)
-- [`docs/implementation/julia-runtime-preparation.qmd`](../../implementation/julia-runtime-preparation.qmd)
 - [`docs/implementation/plan-sealing-and-identity.qmd`](../../implementation/plan-sealing-and-identity.qmd)
-- [`docs/implementation/python-julia-protocol.qmd`](../../implementation/python-julia-protocol.qmd)
 - [`docs/implementation/results-reports-and-diagrams.qmd`](../../implementation/results-reports-and-diagrams.qmd)
 - [`docs/implementation/rlgc-q2d-and-pi-expansion.qmd`](../../implementation/rlgc-q2d-and-pi-expansion.qmd)
 - [`docs/implementation/system-architecture.qmd`](../../implementation/system-architecture.qmd)
@@ -56,7 +55,6 @@ These public source paths are known from `_quarto.yml` project.render plus READM
 - [`examples/engineer/chapter-04/03-ptc-core.qmd`](../../../examples/engineer/chapter-04/03-ptc-core.qmd)
 - [`examples/engineer/chapter-04/04-optional-transform.qmd`](../../../examples/engineer/chapter-04/04-optional-transform.qmd)
 - [`examples/engineer/chapter-04/05-optional-quantity.qmd`](../../../examples/engineer/chapter-04/05-optional-quantity.qmd)
-- [`examples/engineer/chapter-04/06-optional-hb.qmd`](../../../examples/engineer/chapter-04/06-optional-hb.qmd)
 - [`examples/engineer/chapter-04/chapter.qmd`](../../../examples/engineer/chapter-04/chapter.qmd)
 - [`examples/engineer/chapter-05/01-library.qmd`](../../../examples/engineer/chapter-05/01-library.qmd)
 - [`examples/engineer/chapter-05/02-instance.qmd`](../../../examples/engineer/chapter-05/02-instance.qmd)
@@ -90,13 +88,11 @@ These public source paths are known from `_quarto.yml` project.render plus READM
 - [`examples/tutorials/12_model_n_trace_line.qmd`](../../../examples/tutorials/12_model_n_trace_line.qmd)
 - [`examples/tutorials/13_compensate_probes.qmd`](../../../examples/tutorials/13_compensate_probes.qmd)
 - [`examples/tutorials/14_transform_retain.qmd`](../../../examples/tutorials/14_transform_retain.qmd)
-- [`examples/tutorials/15_prepare_hb.qmd`](../../../examples/tutorials/15_prepare_hb.qmd)
-- [`examples/tutorials/16_compare_direct_hb.qmd`](../../../examples/tutorials/16_compare_direct_hb.qmd)
 - [`index.qmd`](../../../index.qmd)
 
 ## Source provenance
 
-- `_quarto.yml` — SHA-256 `29c4734ca0e0551f094ba0cddbf61a7b40eeeb8232f686b74a6371ffdd2e1ad2`
-- `docs/agent-catalogue-cases.json` — SHA-256 `49f673acfba38cba1e854bd39feb4cbe52b66af92998aeda22ae349790746f66`
+- `_quarto.yml` — SHA-256 `8573ae9347c0ed463fa9d98e432eff3b3e3ba1613dfbd3c7a96cbe15ce217027`
+- `docs/agent-catalogue-cases.json` — SHA-256 `32d37ca52c5b4560a6c4b76467e94078a73658d25343a379a904722f82be8413`
 - `docs/agent-usage-inventory.json` — SHA-256 `c2ea004a3d7db6cd97defb6d3415795999928c48570bbde898cae3ef6a485448`
 - `scripts/generate_agent_catalogue.py` — SHA-256 `040d05273dc882d2f645ab1cac13e37e878901925ba234c67e1933b439d69c9d`

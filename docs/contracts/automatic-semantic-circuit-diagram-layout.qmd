@@ -147,7 +147,7 @@ CircuitDiagramSpec(
 
 Preparation accepts an authoring request without layout. It captures the exact
 Plan and effective parameter point, resolves native representation, and returns
-immutable inventory and measurements. It performs no solver work, JAX or Julia
+immutable inventory and measurements. It performs no solver work, JAX
 initialization, workspace allocation, or whole-scene certification. Authoring
 rendering with `layout=None` fails and points to `prepare_schematic()`.
 The compiled automatic diagram API and its exclusive layout/router consumers

@@ -1,7 +1,6 @@
 """JAX selector coverage and baseline loss, with deferred Julia evidence."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -157,14 +156,6 @@ def _selector_catalog(parameter: object):
     return pole, zero, coupling, response, objectives, spec
 
 
-def _population_candidates(result):
-    return tuple(
-        candidate
-        for generation in result.ledger
-        for candidate in generation["candidates"]
-    )
-
-
 def _stage_candidates(result):
     return tuple(row for stage in result.stages for row in stage.history)
 
@@ -176,7 +167,6 @@ class OptimizationTests(unittest.TestCase):
             run = CircuitRun(
                 plan=plan,
                 workspace=Path(workspace),
-                backend="jax",
                 precision="float64",
             )
             try:
@@ -208,7 +198,6 @@ class OptimizationTests(unittest.TestCase):
             run = CircuitRun(
                 plan=plan,
                 workspace=Path(workspace),
-                backend="jax",
                 precision="float64",
             )
             try:
@@ -284,7 +273,6 @@ class OptimizationTests(unittest.TestCase):
             zero_run = CircuitRun(
                 plan=zero_plan,
                 workspace=Path(zero_workspace),
-                backend="jax",
                 precision="float64",
             )
             try:
@@ -324,172 +312,6 @@ class OptimizationTests(unittest.TestCase):
                 for candidate in successes:
                     self.assertEqual(
                         [row["objective_id"] for row in candidate["components"]],
-                        ["zero_frequency"],
-                    )
-                self.assertEqual(result.best.cost, 0.0)
-            finally:
-                zero_run.close()
-
-
-@unittest.skipUnless(
-    os.environ.get("SCNSIM_RUN_JULIA_TESTS") == "1",
-    "set SCNSIM_RUN_JULIA_TESTS=1 to run packaged Julia Optimization regressions",
-)
-class JuliaOptimizationRetainedTests(unittest.TestCase):
-    def test_complete_selector_catalog_is_visible_without_allocating_a_request(self) -> None:
-        plan, parameter = _advanced_direct_plan()
-        with TemporaryDirectory() as workspace:
-            run = CircuitRun(
-                plan=plan,
-                workspace=Path(workspace),
-                backend="julia",
-                precision="float64",
-            )
-            try:
-                view = run.original.reduce(ReductionPipeline().retain("a", "b"))
-                _pole, _zero, _coupling, _response, _objectives, spec = _selector_catalog(parameter)
-                evidence = run.explain(view, spec).evidence
-                self.assertEqual(
-                    [
-                        (item["quantity"]["type"], item["quantity"]["projection"])
-                        for item in evidence["spec"]["objectives"]
-                    ],
-                    [
-                        ("hybridized_pole_projection", "frequency"),
-                        ("hybridized_pole_projection", "linewidth"),
-                        ("transfer_zero_projection", "frequency"),
-                        ("residue_coupling_projection", "magnitude"),
-                        ("response_element_projection", "magnitude"),
-                        ("response_element_projection", "real"),
-                        ("response_element_projection", "imag"),
-                    ],
-                )
-                self.assertEqual(run.inventory().requests, ())
-            finally:
-                run.close()
-
-    def test_cma_runs_all_declared_selector_branches_and_zero_baseline(self) -> None:
-        plan, parameter = _advanced_direct_plan()
-        with TemporaryDirectory() as workspace:
-            run = CircuitRun(
-                plan=plan,
-                workspace=Path(workspace),
-                backend="julia",
-                precision="float64",
-            )
-            try:
-                view = run.original.reduce(ReductionPipeline().retain("a", "b"))
-                pole, zero, coupling, response, _original_objectives, _selector_spec = (
-                    _selector_catalog(parameter)
-                )
-                operator = run.evaluate(view, OperatorSpec(frequencies=[5.0, 5.5] * u.GHz))
-                response_value = run.evaluate(view, response)
-                pole_value = run.evaluate(view, pole)
-                coupling_value = run.evaluate(view, coupling)
-                advanced_objectives = (
-                    CostObjective(
-                        id="pole_frequency", quantity=pole.frequency,
-                        target=pole_value.frequency, weight=1.0 * u.dimensionless,
-                    ),
-                    CostObjective(
-                        id="pole_linewidth", quantity=pole.linewidth,
-                        target=pole_value.linewidth, scale=1.0 * u.Hz,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                    CostObjective(
-                        id="coupling", quantity=coupling.magnitude,
-                        target=coupling_value.magnitude,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                    CostObjective(
-                        id="response_magnitude", quantity=response.magnitude,
-                        target=response_value.magnitude,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                    CostObjective(
-                        id="response_real", quantity=response.real,
-                        target=response_value.real, scale=1.0 * u.uS,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                    CostObjective(
-                        id="response_imag", quantity=response.imag,
-                        target=response_value.imag,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                )
-                advanced = run.optimize(
-                    view,
-                    OptimizationSpec(
-                        variables=(
-                            OptimizationVariable(
-                                parameter=parameter,
-                                bounds=(79.5 * u.fF, 80.5 * u.fF),
-                            ),
-                        ),
-                        objectives=advanced_objectives,
-                        optimizer=CMAESSpec(seed=29, max_evaluations=5),
-                    ),
-                )
-                advanced_successes = [
-                    candidate
-                    for candidate in _population_candidates(advanced)
-                    if candidate["outcome"]["status"] == "success"
-                ]
-                self.assertTrue(advanced_successes)
-                for candidate in advanced_successes:
-                    self.assertEqual(
-                        [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
-                        [objective.id for objective in advanced_objectives],
-                    )
-                self.assertEqual(advanced.best.cost, 0.0)
-            finally:
-                run.close()
-
-        with TemporaryDirectory() as zero_workspace:
-            zero_plan, zero_parameter = _matched_zero_plan()
-            zero_run = CircuitRun(
-                plan=zero_plan,
-                workspace=Path(zero_workspace),
-                backend="julia",
-                precision="float64",
-            )
-            try:
-                zero = TransferZeroSpec(
-                    anchor=6.3 * u.GHz,
-                    family="S",
-                    input_coordinate="p",
-                    output_coordinate="p",
-                )
-                zero_value = zero_run.evaluate(zero_run.original, zero)
-                zero_objectives = (
-                    CostObjective(
-                        id="zero_frequency", quantity=zero.frequency,
-                        target=zero_value.frequency,
-                        weight=1.0 * u.dimensionless,
-                    ),
-                )
-                result = zero_run.optimize(
-                    zero_run.original,
-                    OptimizationSpec(
-                        variables=(
-                            OptimizationVariable(
-                                parameter=zero_parameter,
-                                bounds=(79.5 * u.fF, 80.5 * u.fF),
-                            ),
-                        ),
-                        objectives=zero_objectives,
-                        optimizer=CMAESSpec(seed=31, max_evaluations=5),
-                    ),
-                )
-                successes = [
-                    candidate
-                    for candidate in _population_candidates(result)
-                    if candidate["outcome"]["status"] == "success"
-                ]
-                self.assertTrue(successes)
-                for candidate in successes:
-                    self.assertEqual(
-                        [row["objective_id"] for row in candidate["outcome"]["objective_components"]],
                         ["zero_frequency"],
                     )
                 self.assertEqual(result.best.cost, 0.0)

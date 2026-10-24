@@ -33,7 +33,7 @@ to the same shared physical-frame observables for primal and derivative use.
 The goal is one understandable implementation with coherent ownership and
 dependencies. Preserve documented public imports, signatures, singleton
 identities, physical and numerical behavior, failure contracts, canonical
-schemas, stored data, and the existing `_julia` and `_schemas` resources.
+schemas, stored data, and the current `_schemas` resources.
 Internal modules may move and large modules may be decomposed without adding a
 second implementation or a compatibility fallback.
 
@@ -61,7 +61,7 @@ and finite eviction. These handoffs are being implemented, not evidence of
 transform coverage or completed delivery. Specs own declarations, compilation fixed discretization
 and dependency structure, numerics pure sparse kernels, execution stage ordering
 and synchronized resources, and Workspace/Results verified evidence and readonly
-selection. JAX is primary; existing Julia code is frozen legacy/reference scope.
+selection. JAX is the sole numerical runtime.
 Implementation remains CONVERGING, without a compatibility wrapper.
 
 Public modules such as `runtime.py` and `specs.py` remain facades with their
@@ -83,9 +83,7 @@ registry, and `io.py` retains its bounded external-artifact ingestion interface.
 Internal relocation is not a second public execution mode. Retained public
 reexports point to one implementation; removed experiment modules do not remain
 as fallback paths. The CLI has no package console-script entry point or
-`scnsim.__main__` service. Packaged Julia request resources remain necessary for
-the optional native backend; removing its experimental comparator does not
-remove the native request protocol.
+`scnsim.__main__` service. The package has no Julia discovery, process protocol or optional Julia backend.
 
 Shared code has a named responsibility rather than a generic `core` owner.
 Root `canonical.py` owns canonical representation and identity primitives;
@@ -196,7 +194,7 @@ score, or numerical-threshold criteria.
 Source inspection supports architectural findings; it does not establish
 execution or delivery claims. The authorized implementation checks observe
 installed-wheel imports and resources, recursive source identity, real Direct
-and pump-off HB execution, exact resolve without a new process, existing
+execution, exact readonly resolve, existing
 parameter and optimization workflows, checkpoint/recovery and lazy reads, and
 fresh native diagram, numerical-plot, and report artifacts. Required CI,
 privacy review, and exact target reconciliation remain delivery obligations.
@@ -217,7 +215,7 @@ discarded volatile progress accumulation is removed. The live JSON pair
 decoder, reserved control recognition, canonical validation, geometry checks,
 coupling reconstruction, certification, and explicit old-guide refusal remain
 their existing authorities. Removed diagram parser islands and discarded box
-records have no role in that current path. Julia artifact metadata uses one
+records have no role in that current path. Historical artifact metadata used one
 builder while preserving existing serialization and numerical algorithms.
 
 These are source observations. Final installed-wheel, native, recovery,
@@ -267,6 +265,149 @@ ownership for unobserved escaped descendants. The platform limits and the
 Kernel-death versus UI-disconnection distinction belong to the single
 [Native supervision contract](../v1-runtime-contract.qmd#native-supervision).
 Preparation/smoke CI is not a macOS Kernel-death observation.
+
+The shared JAX physical program consumes immutable prepared operands in the
+calling Python process. Compilation owns sparse structure, discretization and
+View realization. Numerical producers return checked values and evidence;
+execution owns synchronized consumption and publication. Scalar coefficients
+and View operands are runtime data rather than a second model.
+
+```text
+Plan/View/Spec and parameters
+  -> immutable prepared request and physical program
+  -> checked JAX/native CPU numerical primitives
+  -> RAM sink or SQLite v3 publication
+  -> detached values or fixed readonly Result selection
+```
+
+`explain()` performs pure declaration/compiler preflight. `prepare()` acquires a
+detached transformable function; `warmup()` compiles the declared variants
+without evaluating a baseline, root or candidate. ParameterSpace preserves
+point order and the complete effective point. No external solver process is
+part of these paths.
+
+## Same-process CPU execution and read-only Benchmark
+
+The dev29 memory Direct candidate adds a storage boundary rather than another
+numerical evaluator. `CircuitRun(plan=plan, storage="memory")` captures and seals
+the Plan without binding or recovering a Workspace. Compile ownership and Run
+activity remain unchanged; warmup and the JAX point Direct execution use the
+same physical providers. The execution sink gathers immutable response arrays
+without a persistent codec or task journal. Results own those arrays and their
+compact in-memory Benchmark; the Run retains only its last Benchmark. Saved
+identity, recovery and resolution remain Workspace capabilities. See the [memory contract](../v1-runtime-contract.qmd#memory-direct-storage).
+
+The [backend guide](benchmark-and-backends.qmd) and
+[Benchmark usage guide](../guides/benchmark.qmd) describe the current
+`CONVERGING` candidate; dev11 is the historical origin of the same-process
+boundary. Normal supported Run operations default to JAX through the shared
+physical program. Ordinary analysis and Sensitivity use that program directly;
+CMA, local L-BFGS-B and Hybrid stages share its native physical callable and
+finalized Objective loss with separate
+controller and publication owners. The Plan leaf owns verified typed Results
+and checkpoints for JAX operations.
+Compilation acquires detached callable declarations and immutable layouts;
+Execution owns checked transport, operation-local linearization frames and
+publication. Warmup reuses the same producer keys without numerical execution.
+A raw Prepared callable remains caller-owned after Run close; finite compile
+ownership does not make its validity depend on cache residency. Known producer
+preparation does not imply that frame-dependent consumers have been warmed.
+
+The base requires Python 3.12 and pinned CPU JAX/CMA dependencies. Numerical
+initialization remains lazy. Resolve and operation Benchmark remain
+read-only; the latter aggregates parented spans and numerical references without
+launching an independent comparison task. Historical dev10 comparison files
+retain their original identities; current readers do not support those older
+operation Workspaces. Use a new Workspace and recompute. CUDA, ROCm and
+Apple GPU execution are outside this Goal.
+
+## Keep the runtime dependency boundary explicit
+
+The reopened [assembly contract](../contracts/circuit-plan-assembly.qmd)
+separates three consumers: Parameter, Calculation, and ASCDLS. Shared immutable
+assembly, units, and physical values sit below them. Diagram public reexports
+and diagram-spec validation load diagram modules lazily without changing public
+names. Pure `authoring/resolution.py` resolves a frozen snapshot and
+`ParameterSet`, while `authoring/physical_values.py` owns shared physical field
+validation. CircuitPlan convenience delegates and Runtime uses its own
+frozen snapshot directly. No numerical operation depends on rendering success, and
+manual diagrams remain one-way Plan projections; historical compiled exports retain their original evidence.
+
+The base package includes Pint, NumPy, JAX/jaxlib, SciPy, cmaes, threadpoolctl,
+Plotly, Matplotlib and Schemdraw. SQLite uses the Python standard library.
+`static-export` adds Kaleido; the existing `course-generation` group supplies
+Jupyter tooling. `pyproject.toml` and `uv.lock` own dependency declarations and
+resolution. There is no Julia or Zarr dependency or runtime installer.
+
+SCNSim retains its Plan-leaf SQLite store and backend-specific native artifacts.
+It does not add an ORM, external database service, distributed runner, JuliaCall
+or persistent daemon. Operation supervision and short storage transactions have
+distinct ownership; canonical bodies remain one numerical authority.
+
+## Preserve provenance without inheriting the old product
+
+The legacy Circuit Workbench remains historical implementation provenance. It
+does not own SCNSim names, workspace layout, public API, consumers, or release
+train. Reusable algorithms are admitted only through the classified matrix in
+[External Inputs and Delivery](external-inputs-and-delivery.qmd#legacy-adoption-matrix).
+
+[Next: Plan sealing and identity](plan-sealing-and-identity.qmd)
+
+## Sparse CPU numerical foundation
+
+The sparse foundation introduced in dev13 remains part of the current
+CONVERGING physical-program candidate: immutable indexed local stamps,
+parameter-dependent sparse View congruences and JAX numeric assembly followed
+by CPU CSC SuperLU. The shared program is the numerical authority for ordinary
+values, Sensitivity and staged optimization. Installed-wheel observations bind
+their actual source and requested workflow; historical dev13 receipts are not
+current functionality or performance evidence. There is no selectable dense
+numerical fallback. Dense conductor, Port, selected Schur
+and actual RHS blocks remain where the mathematics requires them; genuine fill
+is preserved without dropping small values.
+
+Compiler and View own binary64 SI lowering and declaration order. The backend
+owns requested arithmetic precision, local frequency assembly, direct factors,
+analytic derivatives and existing numerical certificates. C/K/G are coalesced
+before their separate absolute bounds; each series-RL section is bounded before
+section summation. Host continuation/CMA and Workspace commit/checkpoint
+authorities remain separate. 
+
+Line-station C/G arithmetic groups consecutive equal local shapes within each
+exact material/length dependency. Batched local contractions feed a compiled
+ordered scan of sparse updates, preserving original station and series order.
+Original binary64 physical validation and capacitance classification retain
+their own unchanged inputs. Series materials use one realized R/L bank per
+line dependency and ordered section gathers. Packed incidence values route
+through the same View expansions; assembly consumes grouped arrays without
+per-section runtime tuple leaves or Python stacks. Static section patterns,
+section-wise bounds and ordered compensated aggregation remain unchanged.
+No compilation-time or runtime performance improvement is claimed from source
+inspection alone.
+
+Runtime coefficients, indices and View weights are inputs, rather than captured
+physical constants. Static-pattern preparation, compiled-kernel reuse and actual
+call-local factor reuse are distinct observations. Each installed-wheel
+functionality claim is limited to its recorded workflow; historical measurements
+retain their original implementation identity and imply no current speed claim.
+
+
+### dev28 variant 與 native kernel 邊界
+
+`execution/variant_plan.py` 保存不可變的 role/key/callable/abstract operands 與
+prerequisite/lifetime/lazy reason；warmup 與 execution 共用 producer。Compilation
+只提供 pure Objective callable/key recipe，不向上匯入 Execution owner。
+`numerics/objective_loss.py` 是唯一 ordered loss formula，coefficient-free algebra
+僅捕捉 id/comparison/mode/unit；target/scale/weight arrays 留在 runtime operands。
+`CompileOwner` 持有 static programs/executables 與每 key pending build，沒有 point、
+factor、writer 或 live AD frame。Factory 在 owner lock 外執行，clear 阻止 late admission。
+`_native._compensated_cpu` 擁有 borrowed buffer 的 ordered CPU kernel，B native adapter
+與 public preparation 共用 lazy availability helper；authoring/spec 不 eager import kernel。
+
+## History: retired external runtime ownership
+
+<details>
+<summary>Superseded pre-1.0 source record</summary>
 
 Julia never imports Notebook objects or calls a Python objective callback. It
 receives one sealed request and owns the numerical work inside that request:
@@ -332,132 +473,7 @@ One ordered `ParameterSpace` operation is one request. The current JAX path
 executes in process and reuses operation-owned programs by actual static mesh
 and structured material identity; scalar coefficients and View operands remain
 runtime data. Listed points are sparse overrides of the recorded complete
-baseline, expanded in author order before compilation. The frozen explicit
-Julia path uses one Julia process per request, not one process per point or a
-persistent service. Both paths evaluate each point's declared physical model. Exact target behavior belongs to the
+baseline, expanded in author order before compilation. Each point evaluates its declared physical model. Exact target behavior belongs to the
 [Parameter System Contract](../contracts/parameter-system.qmd#parameterized-operations).
 
-## Same-process CPU execution and read-only Benchmark
-
-The dev29 memory Direct candidate adds a storage boundary rather than another
-numerical evaluator. `CircuitRun(plan=plan, storage="memory")` captures and seals
-the Plan without binding or recovering a Workspace. Compile ownership and Run
-activity remain unchanged; warmup and the JAX point Direct execution use the
-same physical providers. The execution sink gathers immutable response arrays
-without a persistent codec or task journal. Results own those arrays and their
-compact in-memory Benchmark; the Run retains only its last Benchmark. Saved
-identity, recovery, resolution and other numerical operation families remain
-Workspace capabilities. See the [memory contract](../v1-runtime-contract.qmd#memory-direct-storage).
-
-The [backend guide](benchmark-and-backends.qmd) and
-[Benchmark usage guide](../guides/benchmark.qmd) describe the current
-`CONVERGING` candidate; dev11 is the historical origin of the same-process
-boundary. Normal supported Run operations default to JAX through the shared
-physical program. Ordinary analysis and Sensitivity use that program directly;
-CMA, local L-BFGS-B and Hybrid stages share its native physical callable and
-finalized Objective loss with separate
-controller and publication owners. Explicit
-Julia retains the native process path described above; that path is no longer
-the default for supported Direct/root/response and corresponding Optimization.
-The Plan leaf owns verified typed Results and checkpoints for either backend.
-Compilation acquires detached callable declarations and immutable layouts;
-Execution owns checked transport, operation-local linearization frames and
-publication. Warmup reuses the same producer keys without numerical execution.
-A raw Prepared callable remains caller-owned after Run close; finite compile
-ownership does not make its validity depend on cache residency. Known producer
-preparation does not imply that frame-dependent consumers have been warmed.
-
-The base requires Python 3.12 and pinned CPU JAX/CMA dependencies. Initialization
-remains lazy and Julia discovery optional. Resolve and operation Benchmark remain
-read-only; the latter aggregates parented spans and numerical references without
-launching an independent comparison task. Historical dev10 comparison files
-retain their original identities; current readers do not support those older
-operation Workspaces. Use a new Workspace and recompute. CUDA, ROCm and
-Apple GPU execution are outside this Goal.
-
-## Keep the runtime dependency boundary explicit
-
-The reopened [assembly contract](../contracts/circuit-plan-assembly.qmd)
-separates three consumers: Parameter, Calculation, and ASCDLS. Shared immutable
-assembly, units, and physical values sit below them. Diagram public reexports
-and diagram-spec validation load diagram modules lazily without changing public
-names. Pure `authoring/resolution.py` resolves a frozen snapshot and
-`ParameterSet`, while `authoring/physical_values.py` owns shared physical field
-validation. CircuitPlan convenience delegates and Runtime uses its own
-frozen snapshot directly. No numerical operation depends on rendering success, and
-manual diagrams remain one-way Plan projections; historical compiled exports retain their original evidence.
-
-The base package uses Pint, NumPy, Zarr, Plotly, Matplotlib and Schemdraw.
-CPU JAX/CMA and sparse numerical dependencies belong to the base package.
-The optional `julia` extra supplies JuliaPkg discovery support. Julia-backed
-features require a separately provided Julia 1.12.6; feature calls never acquire
-its executable. Its internal Julia project uses JSON3, CMAEvolutionStrategy,
-JosephsonCircuits, and Julia standard libraries. The lockfile and committed
-Julia project/Manifest are the executable dependency authority; this page
-explains their ownership boundary rather than defining alternate versions.
-
-SCNSim retains its Plan-leaf SQLite store and backend-specific native artifacts.
-It does not add an ORM, external database service, distributed runner, JuliaCall
-or persistent daemon. Operation supervision and short storage transactions have
-distinct ownership; canonical bodies remain one numerical authority.
-
-## Preserve provenance without inheriting the old product
-
-The legacy Circuit Workbench remains historical implementation provenance. It
-does not own SCNSim names, workspace layout, public API, consumers, or release
-train. Reusable algorithms are admitted only through the classified matrix in
-[External Inputs and Delivery](external-inputs-and-delivery.qmd#legacy-adoption-matrix).
-
-[Next: Plan sealing and identity](plan-sealing-and-identity.qmd)
-
-## Sparse CPU numerical foundation
-
-The sparse foundation introduced in dev13 remains part of the current
-CONVERGING physical-program candidate: immutable indexed local stamps,
-parameter-dependent sparse View congruences and JAX numeric assembly followed
-by CPU CSC SuperLU. The shared program is the numerical authority for ordinary
-values, Sensitivity and staged optimization. Installed-wheel observations bind
-their actual source and requested workflow; historical dev13 receipts are not
-current functionality or performance evidence. There is no selectable dense
-numerical fallback. Dense conductor, Port, selected Schur
-and actual RHS blocks remain where the mathematics requires them; genuine fill
-is preserved without dropping small values.
-
-Compiler and View own binary64 SI lowering and declaration order. The backend
-owns requested arithmetic precision, local frequency assembly, direct factors,
-analytic derivatives and existing numerical certificates. C/K/G are coalesced
-before their separate absolute bounds; each series-RL section is bounded before
-section summation. Host continuation/CMA and Workspace commit/checkpoint
-authorities remain separate. The private Python-to-Julia transport may materialize
-a dense descriptor at that adapter boundary; explicit ordinary Julia is unchanged.
-
-Line-station C/G arithmetic groups consecutive equal local shapes within each
-exact material/length dependency. Batched local contractions feed a compiled
-ordered scan of sparse updates, preserving original station and series order.
-Original binary64 physical validation and capacitance classification retain
-their own unchanged inputs. Series materials use one realized R/L bank per
-line dependency and ordered section gathers. Packed incidence values route
-through the same View expansions; assembly consumes grouped arrays without
-per-section runtime tuple leaves or Python stacks. Static section patterns,
-section-wise bounds and ordered compensated aggregation remain unchanged.
-No compilation-time or runtime performance improvement is claimed from source
-inspection alone.
-
-Runtime coefficients, indices and View weights are inputs, rather than captured
-physical constants. Static-pattern preparation, compiled-kernel reuse and actual
-call-local factor reuse are distinct observations. Each installed-wheel
-functionality claim is limited to its recorded workflow; historical measurements
-retain their original implementation identity and imply no current speed claim.
-
-
-### dev28 variant 與 native kernel 邊界
-
-`execution/variant_plan.py` 保存不可變的 role/key/callable/abstract operands 與
-prerequisite/lifetime/lazy reason；warmup 與 execution 共用 producer。Compilation
-只提供 pure Objective callable/key recipe，不向上匯入 Execution owner。
-`numerics/objective_loss.py` 是唯一 ordered loss formula，coefficient-free algebra
-僅捕捉 id/comparison/mode/unit；target/scale/weight arrays 留在 runtime operands。
-`CompileOwner` 持有 static programs/executables 與每 key pending build，沒有 point、
-factor、writer 或 live AD frame。Factory 在 owner lock 外執行，clear 阻止 late admission。
-`_native._compensated_cpu` 擁有 borrowed buffer 的 ordered CPU kernel，B native adapter
-與 public preparation 共用 lazy availability helper；authoring/spec 不 eager import kernel。
+</details>

@@ -67,7 +67,7 @@ def _detach(value, memo=None):
 class MemoryCandidateRecords:
     """Typed same-frame projections, independent of durable candidate envelopes."""
 
-    def success(self, *, objective_program, outcome, parameters, objective_records):
+    def success(self, *, objective_program, outcome, parameters, objective_records, affine_evidence=()):
         from ..numerics.evidence import numerical_error
         from .physical_analysis import point_contexts, project_primal_bodies
         from .quantities import expression_leaves
@@ -105,13 +105,17 @@ class MemoryCandidateRecords:
                 'normalized_residual': float(outcome.normalized_residuals[ordinal]),
                 'weighted_cost': float(outcome.contributions[ordinal]), 'unit':objective_units[declaration['id']],
                 'residual_unit':'dimensionless', 'cost_unit':'dimensionless', 'terms': terms})
-        return {'parameters': parameters, 'objectives': objectives, 'cost': float(outcome.total_cost),
+        if affine_evidence:
+            for objective in objectives:
+                objective['affine_evidence'] = affine_evidence
+        return {**({'affine_evidence':affine_evidence} if affine_evidence else {}),
+            'parameters': parameters, 'objectives': objectives, 'cost': float(outcome.total_cost),
             'failure': None, 'bodies': bodies, 'observable_metadata': metadata,
             'gradient': None if outcome.gradient is None else np.frombuffer(np.asarray(outcome.gradient).tobytes(),dtype=np.asarray(outcome.gradient).dtype).reshape(np.asarray(outcome.gradient).shape),
             'derivative_reasons': outcome.aux.observable_reasons,
             'certificates': _detach(outcome.aux.certificates)}
 
-    def failure(self, *, parameters, objective_records, error):
+    def failure(self, *, parameters, objective_records, error, affine_evidence=()):
         from .quantities import expression_leaves
         failure = {'kind': error.kind, 'stage': error.stage, 'detail': str(error),
                    'evidence': error.evidence, 'phase':'quantity_evaluation'}
@@ -126,7 +130,11 @@ class MemoryCandidateRecords:
             terms = [{'term_ordinal':index,'selector':selector,'status':'unevaluated'}
                      for index,selector in enumerate(expression_leaves(declaration['quantity']))]
             objectives.append({'id':declaration['id'],'status':'unevaluated','terms':terms})
-        return {'parameters': parameters, 'cost': float('inf'), 'failure': failure,
+        if affine_evidence:
+            for objective in objectives:
+                objective['affine_evidence'] = affine_evidence
+        return {**({'affine_evidence':affine_evidence} if affine_evidence else {}),
+                'parameters': parameters, 'cost': float('inf'), 'failure': failure,
                 'gradient':None, 'objectives':objectives, 'certificates':(),
                 'bodies': {}, 'observable_metadata': ()}
 
@@ -134,6 +142,7 @@ class MemoryCandidateRecords:
         return {'evaluation_ordinal': candidate['evaluation_ordinal'],
                 'parameters': candidate['parameters'], 'cost': candidate['cost'],
                 'status': candidate['status'], 'objectives': candidate['objectives'],
+                **({'affine_evidence':candidate['affine_evidence']} if 'affine_evidence' in candidate else {}),
                 'failure': candidate['failure'],
                 'optimizer_unavailability': candidate.get('optimizer_unavailability')}
 
@@ -290,6 +299,7 @@ def execute_memory_optimization(*, plan_document, prepared_analysis, trace,
                         resources=configuration, trace=trace, operation_resources=resources, diagnostics=True)
                 terminal = run_physical_optimization(plan_document=plan_document, request=request,
                     effective_point=prepared_analysis.effective_point(), precision=backend.precision,
+                    parameter_authorizations=prepared_analysis.parameter_authorizations(),
                     backend=backend, operation_resource=resources, trace=trace, program_owner=program_owner,
                     checkpoint_policy='off', resume_state=None, commit_every_generations=commit_every_generations,
                     publish_batch=records.publish_batch,

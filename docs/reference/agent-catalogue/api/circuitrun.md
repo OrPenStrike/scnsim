@@ -48,15 +48,6 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": null,
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           },
           {
@@ -192,15 +183,6 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           },
           {
@@ -218,7 +200,7 @@ This page records the declared API; it does not construct this class or execute 
       }
     },
     {
-      "doc": "Explain the selected backend compiler without creating an attempt or solve.",
+      "doc": "Explain the JAX compiler without creating an attempt or solve.",
       "kind": "method",
       "name": "explain",
       "signature": {
@@ -240,7 +222,7 @@ This page records the declared API; it does not construct this class or execute 
             "name": "ref"
           },
           {
-            "annotation": "DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec",
+            "annotation": "DirectSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec",
             "default": {
               "kind": "required"
             },
@@ -263,38 +245,10 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           }
         ],
         "return_annotation": "ExplanationResult",
-        "state": "available"
-      }
-    },
-    {
-      "doc": "Inspect this Run's exact workspace leaf without selecting a latest result.",
-      "kind": "method",
-      "name": "inventory",
-      "signature": {
-        "parameters": [
-          {
-            "annotation": null,
-            "default": {
-              "kind": "required"
-            },
-            "kind": "POSITIONAL_OR_KEYWORD",
-            "name": "self"
-          }
-        ],
-        "return_annotation": "InventoryResult",
         "state": "available"
       }
     },
@@ -337,15 +291,6 @@ This page records the declared API; it does not construct this class or execute 
             },
             "kind": "KEYWORD_ONLY",
             "name": "parameters"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
-            "name": "backend"
           },
           {
             "annotation": "str | None",
@@ -536,7 +481,7 @@ This page records the declared API; it does not construct this class or execute 
             "name": "ref"
           },
           {
-            "annotation": "DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec | None",
+            "annotation": "DirectSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec | None",
             "default": {
               "kind": "literal",
               "value": null
@@ -560,15 +505,6 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           },
           {
@@ -581,7 +517,7 @@ This page records the declared API; it does not construct this class or execute 
             "name": "attempt"
           }
         ],
-        "return_annotation": "DirectSolveResult | HBBatchResult | DiagonalRootResult | OperatorElementRootResult | DirectQuantityResult | OperatorResult | StaticCapacitanceResult | StaticCapacitanceElementResult | OptimizationResult | ParameterSweepResult | SensitivityResult | None",
+        "return_annotation": "DirectSolveResult | DiagonalRootResult | OperatorElementRootResult | DirectQuantityResult | OperatorResult | StaticCapacitanceResult | StaticCapacitanceElementResult | OptimizationResult | ParameterSweepResult | SensitivityResult | None",
         "state": "available"
       }
     },
@@ -623,15 +559,6 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           },
           {
@@ -649,7 +576,7 @@ This page records the declared API; it does not construct this class or execute 
       }
     },
     {
-      "doc": "Execute the selected Direct response or one shared-basis HB batch.",
+      "doc": "Execute the selected Direct response.",
       "kind": "method",
       "name": "solve",
       "signature": {
@@ -671,7 +598,7 @@ This page records the declared API; it does not construct this class or execute 
             "name": "ref"
           },
           {
-            "annotation": "DirectSolveSpec | HBSolveSpec",
+            "annotation": "DirectSolveSpec",
             "default": {
               "kind": "required"
             },
@@ -694,15 +621,6 @@ This page records the declared API; it does not construct this class or execute 
               "value": null
             },
             "kind": "KEYWORD_ONLY",
-            "name": "backend"
-          },
-          {
-            "annotation": "str | None",
-            "default": {
-              "kind": "literal",
-              "value": null
-            },
-            "kind": "KEYWORD_ONLY",
             "name": "precision"
           },
           {
@@ -715,7 +633,7 @@ This page records the declared API; it does not construct this class or execute 
             "name": "timing"
           }
         ],
-        "return_annotation": "DirectSolveResult | InMemoryDirectSolveResult | HBBatchResult | ParameterSweepResult | InMemoryParameterSweepResult",
+        "return_annotation": "DirectSolveResult | InMemoryDirectSolveResult | ParameterSweepResult | InMemoryParameterSweepResult",
         "state": "available"
       }
     },
@@ -830,15 +748,6 @@ This page records the declared API; it does not construct this class or execute 
         "annotation": "str",
         "default": {
           "kind": "literal",
-          "value": "jax"
-        },
-        "kind": "KEYWORD_ONLY",
-        "name": "backend"
-      },
-      {
-        "annotation": "str",
-        "default": {
-          "kind": "literal",
           "value": "float64"
         },
         "kind": "KEYWORD_ONLY",
@@ -872,7 +781,7 @@ This page records the declared API; it does not construct this class or execute 
 
 ## Source provenance
 
-- `docs/agent-catalogue-cases.json` — SHA-256 `49f673acfba38cba1e854bd39feb4cbe52b66af92998aeda22ae349790746f66`
+- `docs/agent-catalogue-cases.json` — SHA-256 `32d37ca52c5b4560a6c4b76467e94078a73658d25343a379a904722f82be8413`
 - `scripts/generate_agent_catalogue.py` — SHA-256 `040d05273dc882d2f645ab1cac13e37e878901925ba234c67e1933b439d69c9d`
-- `src/scnsim/__init__.py` — SHA-256 `d63398709f6adf047b20887ec4a0081cdfe08a5d29ba1887ec946ff8e05081bd`
-- `src/scnsim/runtime.py` — SHA-256 `d78c0aad4250497f2b78ef1db286afe0f04f01c05f0d500c349d1d48ae9e82d8`
+- `src/scnsim/__init__.py` — SHA-256 `2b3523836e4152aa0a836a8df1081eaff945458a5df34adac42e08688b970438`
+- `src/scnsim/runtime.py` — SHA-256 `1ac4ddfd9d1c156716bca0e3cfedaeb71f2eac7682acd206bd1d1fdaa121f12c`

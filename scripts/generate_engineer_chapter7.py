@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import hashlib
 import importlib.metadata
@@ -17,7 +18,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from engineer_publication_binding import check_publication_binding
+from engineer_publication_binding import check_publication_binding, installed_course_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,18 +87,52 @@ def _source_tree() -> dict[str, object]:
 
 def _binding() -> dict[str, object]:
     cells = _parse_cells(); sources = (CHAPTER / "chapter.qmd", *SOURCES, *WRAPPERS, ROOT / "examples" / "engineer" / "diagram_layouts.py")
-    return {"generator_sha256": _hash(Path(__file__)), "sources": {str(path.relative_to(ROOT)): _hash(path) for path in sources}, "source_tree": _source_tree(), "cell_ids": list(EXPECTED_CELL_IDS), "cells": {cell_id: _hash_bytes(code.encode()) for cell_id, code in cells}}
+    return {"generator_sha256": _hash(Path(__file__)), "sources": {str(path.relative_to(ROOT)): _hash(path) for path in (*sources, ROOT / "scripts" / "engineer_publication_binding.py")}, "source_tree": _source_tree(), "cell_ids": list(EXPECTED_CELL_IDS), "cells": {cell_id: _hash_bytes(code.encode()) for cell_id, code in cells}}
 
 
-def _execute(cells: tuple[tuple[str, str], ...], workspace: Path) -> dict[str, object]:
+@contextmanager
+def _execute(cells: tuple[tuple[str, str], ...], workspace: Path):
     execution = workspace / "execution"; execution.mkdir(); path = execution / "chapter-07.py"
     code = "\n".join(f"# CELL {cell_id}\n{body}" for cell_id, body in cells); path.write_text(code, encoding="utf-8")
     name = "_scnsim_engineer_chapter7_generation"; module = types.ModuleType(name); module.__file__ = str(path); sys.modules[name] = module
     previous = Path.cwd()
+    namespace = module.__dict__
+    primary = None
     try:
-        os.chdir(execution); exec(compile(code, str(path), "exec"), module.__dict__); return module.__dict__
+        try:
+            os.chdir(execution); exec(compile(code, str(path), "exec"), module.__dict__)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            try:
+                os.chdir(previous)
+            except BaseException as error:
+                if primary is None:
+                    raise
+                primary.add_note("course working-directory cleanup: " + repr(error))
+            finally:
+                sys.modules.pop(name, None)
+        yield namespace
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        os.chdir(previous); sys.modules.pop(name, None)
+        cleanup_error = None
+        for name in ("run",):
+            run = namespace.get(name)
+            if run is None:
+                continue
+            try:
+                run.close()
+            except BaseException as error:
+                original = primary if primary is not None else cleanup_error
+                if original is None:
+                    cleanup_error = error
+                else:
+                    original.add_note("course Run.close: " + repr(error))
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _certificate(path: Path) -> dict[str, str]:
@@ -109,12 +144,13 @@ def _certificate(path: Path) -> dict[str, str]:
     return {field: identity[field] for field in required}
 
 
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, object]:
+    runtime_binding = installed_course_runtime(ROOT)
     import scnsim
-    if Path(scnsim.__file__).resolve() != (ROOT / "src" / "scnsim" / "__init__.py").resolve(): raise RuntimeError("generation imported scnsim from outside this checkout")
-    values = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
+    scnsim.configure_runtime(cpu_threads=10)
+    values = {"python": sys.version.split()[0], "scnsim": runtime_binding["scnsim"]}
     for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"): values[name] = importlib.metadata.version(name)
-    return values
+    return values | {"runtime_binding": runtime_binding}
 
 
 def _workspace(requested: Path | None) -> Path:
@@ -124,9 +160,8 @@ def _workspace(requested: Path | None) -> Path:
     workspace.mkdir(parents=True, exist_ok=True); return workspace
 
 
-def _point_identity(point: object) -> dict[str, object]:
-    identity = point.identity
-    return {"source_index": identity.source_index, "parameters_sha256": identity.parameters_sha256, "batch_result_sha256": identity.batch.result_sha256}
+def _point_record(point: object) -> dict[str, object]:
+    return {"source_index": point.source_index}
 
 
 def _write_diagram_outcome(namespace: dict[str, object], output: Path, variable: str, stem: str, label: str) -> tuple[dict[str, object], tuple[str, ...], dict[str, str] | None]:
@@ -146,17 +181,17 @@ def _write_points(namespace: dict[str, object], output: Path) -> tuple[list[dict
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream); writer.writerow(("point", "source_index", "status", "trace", "frequency_GHz", "real", "imag", "magnitude"))
         for label, point in zip(labels, points, strict=True):
-            identity = _point_identity(point)
+            point_record = _point_record(point)
             if not point.succeeded:
                 failure = point.failure; writer.writerow((label, point.source_index, "failure", "", "", "", "", ""))
-                observations.append({"label": label, "status": "failure", "kind": failure.kind, "stage": failure.stage, "message": str(failure), "identity": identity}); continue
+                observations.append({"label": label, "status": "failure", "kind": failure.kind, "stage": failure.stage, "message": str(failure), "point": point_record}); continue
             result = point.result; coordinates = list(result.s.view.coordinates)
             for trace_id in trace_ids:
                 trace = result.traces[trace_id]; frequencies = np.asarray(trace.frequencies.to("gigahertz").magnitude); values = np.asarray(trace.value.to("dimensionless").magnitude)
                 for frequency, value in zip(frequencies, values, strict=True): writer.writerow((label, point.source_index, "success", trace_id, float(frequency), float(value.real), float(value.imag), float(abs(value))))
             plot_name = {"baseline": "07-baseline-reflection.svg", "length_1p8_mm": "07-length-1p8-mm-reflection.svg", "capacitance_times_170_over_175": "07-capacitance-times-170-over-175-reflection.svg"}[label]
             result.traces["s_readout_head_from_readout_head"].plot(component="magnitude", magnitude="db").write_image(output / plot_name, format="svg"); plots.append(plot_name)
-            observations.append({"label": label, "status": "success", "coordinates": coordinates, "trace_ids": list(trace_ids), "identity": identity})
+            observations.append({"label": label, "status": "success", "coordinates": coordinates, "trace_ids": list(trace_ids), "point": point_record})
     lines = ["### Three exact Direct points", "", "| point | status | complete named S channels |", "|---|---|---:|"]
     for row in observations: lines.append(f"| `{row['label']}` | {row['status']} | {len(row.get('trace_ids', ())) if row['status'] == 'success' else '—'} |")
     lines += ["", "Every successful point retains all 16 output-from-input channels in the CSV. The plots below show only the explicitly named `s_readout_head_from_readout_head` reflection example.", ""]
@@ -169,26 +204,28 @@ def _write_points(namespace: dict[str, object], output: Path) -> tuple[list[dict
 
 
 def generate(workspace: Path) -> None:
-    namespace = _execute(_parse_cells(), workspace); output = workspace / "artifacts"; output.mkdir(); certificates = {}; observations = {}
-    for variable, stem, label in (("authoring", "07-n2-authoring", "N=2 authoring diagram"),):
-        observation, names, certificate = _write_diagram_outcome(namespace, output, variable, stem, label); observations[variable] = observation
-        if certificate is not None: certificates[names[0]] = certificate
-    point_observations, point_names = _write_points(namespace, output); observations["parameter_points"] = point_observations
-    if tuple(row.get("status") for row in point_observations) != ("success", "success", "success") or set(point_names) != set(REFLECTION_ARTIFACT_NAMES):
-        raise RuntimeError("Chapter 7 requires three successful named reflection artifacts")
-    names = (*BASE_ARTIFACT_NAMES, *(name for name in CONDITIONAL_ARTIFACT_NAMES if (output / name).exists()))
-    if _inventory(output) != set(names): raise RuntimeError("Chapter 7 generated artifact inventory is not exact")
-    artifacts = {name: _hash(output / name) for name in names}; binding = _binding(); batch_identity = namespace["direct_points"].identity
-    manifest = {"schema": "scnsim.engineer_chapter7_artifacts.v1", "binding": binding, "execution": {"generator_sha256": binding["generator_sha256"], "source_tree_sha256": binding["source_tree"]["sha256"], "cells": binding["cells"]}, "environment": _environment(), "results": {"batch": {field: getattr(batch_identity, field) for field in ("plan_sha256", "request_sha256", "attempt_sha256", "result_sha256")}}, "observations": observations, "certificates": certificates, "artifacts": artifacts}
-    FIGURES.mkdir(parents=True, exist_ok=True); unknown = _inventory(FIGURES) - set(OWNED_ARTIFACT_NAMES)
-    if unknown: raise RuntimeError(f"unknown Chapter 7 artifacts require review: {sorted(unknown)!r}")
-    for stale in CONDITIONAL_ARTIFACT_NAMES:
-        if stale not in names and (FIGURES / stale).exists(): (FIGURES / stale).unlink()
-    for name in names: shutil.copy2(output / name, FIGURES / name)
-    # Preserve only these named retired exports, outside the new execution.
-    retained = _inventory(FIGURES) & set(RETIRED_COMPILED_ARTIFACT_NAMES)
-    if _inventory(FIGURES) != set(names) | retained: raise RuntimeError("Chapter 7 published artifact inventory is not exact")
-    text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"; MANIFEST.write_text(text, encoding="utf-8"); receipt = workspace / "generation-receipt.json"; receipt.write_text(text, encoding="utf-8"); print(receipt)
+    runtime_environment = _environment()
+    with _execute(_parse_cells(), workspace) as namespace:
+        output = workspace / "artifacts"; output.mkdir(); certificates = {}; observations = {}
+        for variable, stem, label in (("authoring", "07-n2-authoring", "N=2 authoring diagram"),):
+            observation, names, certificate = _write_diagram_outcome(namespace, output, variable, stem, label); observations[variable] = observation
+            if certificate is not None: certificates[names[0]] = certificate
+        point_observations, point_names = _write_points(namespace, output); observations["parameter_points"] = point_observations
+        if tuple(row.get("status") for row in point_observations) != ("success", "success", "success") or set(point_names) != set(REFLECTION_ARTIFACT_NAMES):
+            raise RuntimeError("Chapter 7 requires three successful named reflection artifacts")
+        names = (*BASE_ARTIFACT_NAMES, *(name for name in CONDITIONAL_ARTIFACT_NAMES if (output / name).exists()))
+        if _inventory(output) != set(names): raise RuntimeError("Chapter 7 generated artifact inventory is not exact")
+        artifacts = {name: _hash(output / name) for name in names}; binding = _binding(); batch = namespace["direct_points"]
+        manifest = {"schema": "scnsim.engineer_chapter7_artifacts.v1", "binding": binding, "execution": {"generator_sha256": binding["generator_sha256"], "source_tree_sha256": binding["source_tree"]["sha256"], "cells": binding["cells"]}, "environment": runtime_environment, "results": {"batch": {field: getattr(batch, field) for field in ("plan_sha256", "request_sha256", "execution_id")}}, "observations": observations, "certificates": certificates, "artifacts": artifacts}
+        FIGURES.mkdir(parents=True, exist_ok=True); unknown = _inventory(FIGURES) - set(OWNED_ARTIFACT_NAMES)
+        if unknown: raise RuntimeError(f"unknown Chapter 7 artifacts require review: {sorted(unknown)!r}")
+        for stale in CONDITIONAL_ARTIFACT_NAMES:
+            if stale not in names and (FIGURES / stale).exists(): (FIGURES / stale).unlink()
+        for name in names: shutil.copy2(output / name, FIGURES / name)
+        # Preserve only these named retired exports, outside the new execution.
+        retained = _inventory(FIGURES) & set(RETIRED_COMPILED_ARTIFACT_NAMES)
+        if _inventory(FIGURES) != set(names) | retained: raise RuntimeError("Chapter 7 published artifact inventory is not exact")
+        text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"; MANIFEST.write_text(text, encoding="utf-8"); receipt = workspace / "generation-receipt.json"; receipt.write_text(text, encoding="utf-8"); print(receipt)
 
 
 def check() -> None:

@@ -15,7 +15,6 @@ from ..specs import (
     DiagonalRootSpec,
     OperatorElementRootSpec,
     DirectSolveSpec,
-    HBSolveSpec,
     HybridizedPoleSpec,
     OperatorSpec,
     StaticCapacitanceSpec,
@@ -114,7 +113,7 @@ def _quantity_selectors(value: object) -> tuple[QuantitySelector, ...]:
 def source_units(
         source_provenance,
         parameter_lookup,
-        spec: DirectSolveSpec | HBSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec,
+        spec: DirectSolveSpec | DiagonalRootSpec | OperatorElementRootSpec | HybridizedPoleSpec | TransferZeroSpec | ResidueNormalizedCouplingSpec | ResponseElementSpec | OperatorSpec | StaticCapacitanceSpec | StaticCapacitanceElementSpec | OptimizationSpec,
         parameters: ParameterSet,
         *,
         parameter_space: ParameterSet | ParameterSpace | None,
@@ -347,22 +346,6 @@ def source_units(
             return sorted(evidence, key=lambda item: str(item["identity"]))
         if isinstance(spec, DirectSolveSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
-        elif isinstance(spec, HBSolveSpec):
-            add(_source_unit_identity(scope="request_hb", parameter_id="frequencies", field="value"), spec.frequencies, "hertz")
-            for axis in spec.pump_axes:
-                add(_source_unit_identity(scope="request_hb", parameter_id=axis.id, field="pump_frequency"), axis.frequency, "hertz")
-            for case in spec.cases:
-                for drive in spec.drives:
-                    if drive in case.currents:
-                        add(
-                            _source_unit_identity(
-                                scope="request_hb",
-                                parameter_id=case.id,
-                                field=f"drive:{drive.id}:coefficient",
-                            ),
-                            case.currents[drive],
-                            "ampere",
-                        )
         elif isinstance(spec, DiagonalRootSpec):
             add(_source_unit_identity(scope="request_spec", parameter_id="root_hint", field="value"), spec.root_hint, "hertz")
         elif isinstance(spec, OperatorElementRootSpec):
@@ -480,42 +463,19 @@ def source_units(
 
 def prepare_request(*, plan_sha256, operation, view, encoded_spec,
                     parameter_source, runtime_base, source_units,
-                    backend, precision):
+                    precision, parameter_authorizations=()):
     """Encode validated request data once, without retaining facade state."""
     from .identity import _jax_runtime_identity
     from .prepared import PreparedAnalysis
-    semantic = dict(runtime_base)
-    if operation == "solve_direct":
-        semantic["algorithm_id"] = "scnsim.direct_response.v1"
-    elif operation == "solve_hb":
-        semantic["algorithm_id"] = "scnsim.hb_response.josephsoncircuits.v1"
-    elif operation == "evaluate_direct" and backend == "jax":
-        from .request import _JAX_ALGORITHMS
-        semantic["algorithm_id"] = _JAX_ALGORITHMS[encoded_spec["type"]]
-    elif operation == "evaluate_direct":
-        semantic["algorithm_id"] = {
-            "diagonal_root": "scnsim.diagonal_root.newton32.v2",
-            "operator_element_root": "scnsim.operator_element_root.newton32.v1",
-            "hybridized_pole": "scnsim.hybridized_pole.newton32.v1",
-            "transfer_zero": "scnsim.transfer_zero.newton32.v4",
-            "residue_normalized_coupling": "scnsim.residue_normalized_coupling.v2",
-            "response_element": "scnsim.response_element.v1",
-            "operator": "scnsim.direct_operator.v1",
-        }[encoded_spec["type"]]
-    elif operation == "optimize_direct":
-        semantic["algorithm_id"] = (
-            "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
-        )
-    else:
+    from .request import _JAX_ALGORITHMS
+    if operation not in {"solve_direct", "evaluate_direct", "optimize_direct"}:
         raise CompilerInvariantError(
             "operation is outside the runtime", stage="request_encode"
         )
-    if backend == "jax":
-        from .request import _JAX_ALGORITHMS
-        semantic = _jax_runtime_identity(runtime_base, precision=precision)
-        semantic["algorithm_id"] = _JAX_ALGORITHMS[
-            encoded_spec["type"] if operation == "evaluate_direct" else operation
-        ]
+    semantic = _jax_runtime_identity(runtime_base, precision=precision)
+    semantic["algorithm_id"] = _JAX_ALGORITHMS[
+        encoded_spec["type"] if operation == "evaluate_direct" else operation
+    ]
     return PreparedAnalysis.create(
         plan_sha256=plan_sha256,
         operation=operation,
@@ -524,5 +484,6 @@ def prepare_request(*, plan_sha256, operation, view, encoded_spec,
         parameter_source=parameter_source,
         runtime_semantic=semantic,
         source_units=source_units,
+        parameter_authorizations=parameter_authorizations,
     )
 

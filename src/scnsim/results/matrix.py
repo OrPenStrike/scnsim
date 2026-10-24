@@ -36,13 +36,6 @@ class ReconciliationEvidence:
     def __init__(self) -> None:
         unavailable("ReconciliationEvidence construction")
 
-@dataclass(frozen=True, slots=True)
-class HBScatteringMatrixResult(ScatteringMatrixResult):
-    backend_native: MatrixView | None = None
-    reconciliation: ReconciliationEvidence | None = None
-
-    def __init__(self) -> None:
-        unavailable("HBScatteringMatrixResult construction")
 
 @dataclass(frozen=True, slots=True)
 class DirectSolveResult(AnalysisResult):
@@ -53,12 +46,15 @@ class DirectSolveResult(AnalysisResult):
     y: MatrixFamilyResult
     z: MatrixFamilyResult
     traces: Mapping[str, TraceResult] = field(default_factory=dict)
+    evidence: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
     _quantity_fields = frozenset({"frequencies"})
 
     def __init__(self) -> None:
         unavailable("DirectSolveResult construction")
 
     def __getattribute__(self, name: str) -> object:
+        if name == "evidence":
+            return _fresh_evidence_attribute(object.__getattribute__(self, name))
         return _fresh_quantity_attribute(self, name)
 
     def __repr__(self) -> str:
@@ -221,9 +217,15 @@ class OperatorResult(AnalysisResult):
     """Verified selected-network operator points in declared frequency order."""
 
     points: tuple[OperatorPointResult, ...]
+    evidence: Mapping[str, object] = field(default_factory=dict, repr=False, compare=False)
 
     def __init__(self) -> None:
         unavailable("OperatorResult construction")
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "evidence":
+            return _fresh_evidence_attribute(object.__getattribute__(self, name))
+        return object.__getattribute__(self, name)
 
     def at(self, frequency: Quantity) -> OperatorPointResult:
         """Return the already materialized point at exactly ``frequency``."""

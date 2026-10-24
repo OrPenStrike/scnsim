@@ -8,6 +8,7 @@ workspace, while ``--check`` is source-only and launches no solver.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import hashlib
 import importlib.metadata
@@ -20,7 +21,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-from engineer_publication_binding import check_publication_binding
+from engineer_publication_binding import check_publication_binding, installed_course_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -149,7 +150,7 @@ def _binding() -> dict[str, object]:
     return {
         "generator_sha256": _hash(Path(__file__)),
         "sources": {
-            str(path.relative_to(ROOT)): _hash(path) for path in sources
+            str(path.relative_to(ROOT)): _hash(path) for path in (*sources, ROOT / "scripts" / "engineer_publication_binding.py")
         },
         "source_tree": _source_tree(),
         "cell_ids": list(EXPECTED_CELL_IDS),
@@ -159,16 +160,14 @@ def _binding() -> dict[str, object]:
     }
 
 
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, object]:
+    runtime_binding = installed_course_runtime(ROOT)
     import scnsim
-
-    expected = (ROOT / "src" / "scnsim" / "__init__.py").resolve()
-    if Path(scnsim.__file__).resolve() != expected:
-        raise RuntimeError("generation imported scnsim from outside this checkout")
-    versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
+    scnsim.configure_runtime(cpu_threads=10)
+    versions = {"python": sys.version.split()[0], "scnsim": runtime_binding["scnsim"]}
     for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
-    return versions
+    return versions | {"runtime_binding": runtime_binding}
 
 
 def _certificate(path: Path) -> dict[str, str]:
@@ -199,32 +198,8 @@ def _certificate(path: Path) -> dict[str, str]:
     return {field: identity[field] for field in required}
 
 
-def _identity(result: object) -> dict[str, object]:
-    identity = getattr(result, "identity")
-    if hasattr(identity, "batch"):
-        batch = identity.batch
-        return {
-            "batch": {
-                field: getattr(batch, field)
-                for field in (
-                    "plan_sha256",
-                    "request_sha256",
-                    "attempt_sha256",
-                    "result_sha256",
-                )
-            },
-            "source_index": identity.source_index,
-            "parameters_sha256": identity.parameters_sha256,
-        }
-    return {
-        field: getattr(identity, field)
-        for field in (
-            "plan_sha256",
-            "request_sha256",
-            "attempt_sha256",
-            "result_sha256",
-        )
-    }
+def _memory_call(result: object) -> dict[str, str]:
+    return {"storage": result.persistence_kind, "execution_id": result.execution_id}
 
 
 def _workspace(requested: Path | None) -> Path:
@@ -239,25 +214,55 @@ def _workspace(requested: Path | None) -> Path:
     return workspace
 
 
+@contextmanager
 def _execute(
     cells: tuple[tuple[str, str], ...], workspace: Path
-) -> dict[str, object]:
+):
     execution = workspace / "execution"
     execution.mkdir()
     namespace: dict[str, object] = {"__name__": "__main__"}
     previous = Path.cwd()
+    primary = None
     try:
-        os.chdir(execution)
-        for ordinal, (cell_id, code) in enumerate(cells, start=1):
-            path = execution / f"{ordinal:02d}-{cell_id}.py"
-            path.write_text(code, encoding="utf-8")
-            linecache.checkcache(str(path))
-            namespace["__file__"] = str(path)
-            exec(compile(code, str(path), "exec"), namespace)
-            print(f"completed Chapter 2 cell {ordinal:02d}: {cell_id}", flush=True)
+        try:
+            os.chdir(execution)
+            for ordinal, (cell_id, code) in enumerate(cells, start=1):
+                path = execution / f"{ordinal:02d}-{cell_id}.py"
+                path.write_text(code, encoding="utf-8")
+                linecache.checkcache(str(path))
+                namespace["__file__"] = str(path)
+                exec(compile(code, str(path), "exec"), namespace)
+                print(f"completed Chapter 2 cell {ordinal:02d}: {cell_id}", flush=True)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            try:
+                os.chdir(previous)
+            except BaseException as error:
+                if primary is None:
+                    raise
+                primary.add_note("course working-directory cleanup: " + repr(error))
+        yield namespace
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        os.chdir(previous)
-    return namespace
+        cleanup_error = None
+        for name in ("run",):
+            run = namespace.get(name)
+            if run is None:
+                continue
+            try:
+                run.close()
+            except BaseException as error:
+                original = primary if primary is not None else cleanup_error
+                if original is None:
+                    cleanup_error = error
+                else:
+                    original.add_note("course Run.close: " + repr(error))
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _quantity(value: object, unit: str) -> float:
@@ -289,7 +294,6 @@ def _point_rows(
             "failure_kind": None,
             "failure_stage": None,
             "failure_message": None,
-            "parameters_sha256": point.identity.parameters_sha256,
         }
         if point.succeeded:
             result = point.result
@@ -474,11 +478,11 @@ def _write_outputs(
     return {
         "certificate": certificate,
         "results": {
-            "capacitance_sweep": _identity(namespace["capacitance_sweep"]),
-            "optimization": _identity(optimization),
-            "winner_root": _identity(winner_root),
-            "optional_grid": _identity(namespace["optional_grid_sweep"]),
-            "listed_pairs": _identity(namespace["listed_pair_sweep"]),
+            "capacitance_sweep": _memory_call(namespace["capacitance_sweep"]),
+            "optimization": _memory_call(optimization),
+            "winner_root": _memory_call(winner_root),
+            "optional_grid": _memory_call(namespace["optional_grid_sweep"]),
+            "listed_pairs": _memory_call(namespace["listed_pair_sweep"]),
         },
         "observations": {
             "capacitance_sweep": capacitance_rows,
@@ -531,41 +535,42 @@ def main() -> int:
 
     workspace = _workspace(args.workspace)
     before = _binding()
-    namespace = _execute(cells, workspace)
-    exports = workspace / "exports"
-    records = _write_outputs(namespace, exports)
-    after = _binding()
-    if before != after:
-        raise RuntimeError("Chapter 2 or package sources changed during generation")
+    runtime_environment = _environment()
+    with _execute(cells, workspace) as namespace:
+        exports = workspace / "exports"
+        records = _write_outputs(namespace, exports)
+        after = _binding()
+        if before != after:
+            raise RuntimeError("Chapter 2 or package sources changed during generation")
 
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    for name in ARTIFACT_NAMES:
-        shutil.copyfile(exports / name, FIGURES / name)
-    manifest = {
-        "schema": "scnsim.engineer_chapter2_artifacts.v1",
-        "binding": before,
-        "execution": {
-            "cells": before["cells"],
-            "generator_sha256": before["generator_sha256"],
-            "source_tree_sha256": before["source_tree"]["sha256"],
-        },
-        "environment": _environment(),
-        "artifacts": {name: _hash(FIGURES / name) for name in ARTIFACT_NAMES},
-        **records,
-    }
-    temporary = FIGURES / ".chapter-02-artifacts.json.tmp"
-    temporary.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, MANIFEST)
-    (workspace / "generation-receipt.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    print(MANIFEST)
-    print(workspace / "generation-receipt.json")
-    return 0
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        for name in ARTIFACT_NAMES:
+            shutil.copyfile(exports / name, FIGURES / name)
+        manifest = {
+            "schema": "scnsim.engineer_chapter2_artifacts.v1",
+            "binding": before,
+            "execution": {
+                "cells": before["cells"],
+                "generator_sha256": before["generator_sha256"],
+                "source_tree_sha256": before["source_tree"]["sha256"],
+            },
+            "environment": runtime_environment,
+            "artifacts": {name: _hash(FIGURES / name) for name in ARTIFACT_NAMES},
+            **records,
+        }
+        temporary = FIGURES / ".chapter-02-artifacts.json.tmp"
+        temporary.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, MANIFEST)
+        (workspace / "generation-receipt.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        print(MANIFEST)
+        print(workspace / "generation-receipt.json")
+        return 0
 
 
 if __name__ == "__main__":

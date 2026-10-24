@@ -16,7 +16,7 @@ from .quantities import expression_leaves, quantity_body_id
 from .quantity_policy import diagonal_passive_policy, project_quantity
 
 
-def encode_physical_candidate(*, objective_program, outcome, parameters, objective_records):
+def encode_physical_candidate(*, objective_program, outcome, parameters, objective_records, affine_evidence=()):
     """Encode a synchronized ObjectiveOutcome with original requested selectors.
 
     ``objective_records`` is the ordered finalized canonical request declaration,
@@ -66,7 +66,8 @@ def encode_physical_candidate(*, objective_program, outcome, parameters, objecti
             'normalized_residual_f64': bits(float(outcome.normalized_residuals[ordinal])),
             'cost_f64': bits(float(outcome.contributions[ordinal])), 'terms': terms,
         })
-    return {'parameters': parameters, 'objectives': objectives,
+    return {**({'affine_evidence':affine_evidence} if affine_evidence else {}),
+            'parameters': parameters, 'objectives': objectives,
             'cost_f64': bits(float(outcome.total_cost)), 'failure': None,
             'dependencies': dependencies}
 
@@ -74,7 +75,7 @@ def encode_physical_candidate(*, objective_program, outcome, parameters, objecti
 def encode_physical_candidate_failure(*, parameters, objective_records, error,
                                       observed_dependencies=None, observed_result=None,
                                       completed_objectives=(), objective_ordinal=None,
-                                      term_ordinal=None):
+                                      term_ordinal=None, affine_evidence=()):
     """Encode an already classified actual numerical failure, never infer values.
 
     The coordinator alone decides which existing numerical failure codes are
@@ -113,6 +114,7 @@ def encode_physical_candidate_failure(*, parameters, objective_records, error,
         if ordinal == objective_ordinal:
             row.update(status='failure', failure=failure_record)
         objectives.append(row)
-    return {'parameters': parameters, 'objectives': objectives,
+    return {**({'affine_evidence':affine_evidence} if affine_evidence else {}),
+            'parameters': parameters, 'objectives': objectives,
             'cost_f64': bits(float('inf')), 'failure': failure_record,
             'dependencies': dependencies}

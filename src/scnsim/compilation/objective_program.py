@@ -49,18 +49,19 @@ class ObjectiveProgram:
     def inputs(self, parameter_set, *, branch_starts_rad_s=None):
         return self.quantity_program.inputs(parameter_set, branch_starts_rad_s=branch_starts_rad_s)
 
-    def prepare_batch(self, inputs_sequence, *, sparse_runner=None, program_owner=None):
+    def prepare_batch(self, inputs_sequence, *, sparse_runner=None, program_owner=None, affine_evidence=None):
         # Capability acquisition/classification only; no baseline solve or
         # optimizer-specific physics. The operation owns these static packets.
+        observations = ((None,) * len(inputs_sequence) if affine_evidence is None else affine_evidence)
         return tuple(self.quantity_program.native_program(inputs, program_owner=program_owner,
-                                                           admit_core=False)
-                     for inputs in inputs_sequence)
+                                                           admit_core=False, affine_evidence=observation)
+                     for inputs, observation in zip(inputs_sequence, observations, strict=True))
 
-    def _native_frame(self, inputs, prepared=None, *, program_owner=None):
+    def _native_frame(self, inputs, prepared=None, *, program_owner=None, affine_evidence=None):
         import jax
         import jax.numpy as jnp
         native = (self.quantity_program.native_program(inputs, program_owner=program_owner,
-                                                       admit_core=False)
+                                                       admit_core=False, affine_evidence=affine_evidence)
                   if prepared is None else prepared)
         # Physical classification uses the untouched host binary64 inputs.
         # Create device operands with x64 enabled BEFORE native tracing, even
@@ -149,11 +150,11 @@ class ObjectiveProgram:
             return function
 
     def value(self, inputs, sparse_runner=None, *, prepared=None, native_executor,
-              program_owner=None, device, compact_evidence=False, completed=None):
+              program_owner=None, device, compact_evidence=False, completed=None, affine_evidence=None):
         import jax
         with jax.enable_x64(True):
             from ..numerics.evidence import project_native_outcome
-            native, arguments = self._native_frame(inputs, prepared, program_owner=program_owner)
+            native, arguments = self._native_frame(inputs, prepared, program_owner=program_owner, affine_evidence=affine_evidence)
             error, (_, (result, payload)) = self._invoke(native, arguments, derivative=False,
                 native_executor=native_executor, program_owner=program_owner, device=device,
                 completed=completed)
@@ -163,7 +164,7 @@ class ObjectiveProgram:
                                     payload.contributions, payload.total_cost, None, primal.aux)
 
     def value_and_gradient(self, inputs, *, active_keys, sparse_runner=None,
-                           native_executor, program_owner=None, device, native_ad_runner=None, compact_evidence=False, completed=None):
+                           native_executor, program_owner=None, device, native_ad_runner=None, compact_evidence=False, completed=None, affine_evidence=None):
         """Project one certified complete-cost derivative from the shared loss.
 
         Response work requires native_ad_runner(native, arguments, loss,
@@ -180,7 +181,7 @@ class ObjectiveProgram:
         with jax.enable_x64(True):
             import jax.numpy as jnp
             from ..numerics.evidence import project_native_derivative_outcome
-            native, arguments = self._native_frame(inputs, program_owner=program_owner)
+            native, arguments = self._native_frame(inputs, program_owner=program_owner, affine_evidence=affine_evidence)
             if native.work_layout:
                 if native_ad_runner is None:
                     raise TypeError('response Objective AD requires the bounded native_ad_runner')

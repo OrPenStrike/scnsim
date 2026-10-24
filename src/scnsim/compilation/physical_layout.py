@@ -71,9 +71,9 @@ class PhysicalLayout:
                             ('_native_providers', WeakValueDictionary()), ('_native_cores', WeakValueDictionary()), ('_function_lock', RLock())):
             object.__setattr__(self, name, value)
 
-    def _capabilities(self, inputs):
+    def _capabilities(self, inputs, *, affine_evidence=None):
         # Original binary64 physical classification precedes selected casting.
-        fields = self.model_program.physical_fields(inputs.theta)
+        fields = self.model_program.physical_fields(inputs.theta, affine_evidence=affine_evidence)
         return tuple(view.capability(fields) if any(
             item.view_index == index and not item.kind.startswith('static_capacitance')
             for item in self.observables) else False

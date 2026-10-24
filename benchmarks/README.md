@@ -4,6 +4,19 @@ Use these tools to measure the exact release-review baseline and compare its
 numerical outputs before changing the implementation. The corpus lives in
 `circuits.py`; `golden.py` records returned values and actual execution evidence.
 
+## Current benchmark settings
+
+Use frequency grids of 401, 4001 and 10001 points, with the same authored
+frequency endpoints, circuits, parameters and optimization budgets. The benchmark
+CLI defaults to `--cpu-threads 10`; this declares the SCNSim runtime budget,
+not an observed CPU core count. Production defaults remain unchanged.
+Before and after comparisons use identical grid and thread settings.
+
+For the R2 compact baseline, use the installed R1 wheel built from
+`7f944d10b6835cb392c177d5ab7084efd1b03733`; the comparison uses the final R2
+wheel under those same settings. Keep historical 40001-point / two-thread
+observations labelled with their original settings.
+
 ## Run one operation
 
 Use the allocated Python environment containing the exact baseline wheel.
@@ -20,7 +33,7 @@ For installed-wheel capture, add `--installed-wheel-only`:
 
 ```bash
 python benchmarks/run.py --case C1 --operation direct --storage memory \
-  --points 401 --chunk-size 64 --repetitions 5 \
+  --points 401 --chunk-size 64 --cpu-threads 10 --repetitions 5 \
   --source-commit "$SCNSIM_SOURCE_COMMIT" --output /absolute/new/output
 ```
 

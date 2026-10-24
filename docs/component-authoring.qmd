@@ -8,7 +8,7 @@ toc-depth: 3
 ## Mixed lifecycle: accepted physical models, CONVERGING authoring target
 
 The Library provenance, primitive R/L/C/JJ models, RLGC/transmission-line
-meaning, mutual coupling, and Direct/HB lowering semantics on this page retain
+meaning, mutual coupling, and linear Direct lowering semantics on this page retain
 their accepted Full V1 authority. Parameter definition, physical binding, and
 batch identities are reopened only in the linked Parameter System target.
 
@@ -59,7 +59,7 @@ and authoring/diagram failures. The
 definitions, physical-field Plan adoption, points, spaces, and parameterized
 Results. The
 [V1 Runtime Contract](v1-runtime-contract.qmd) owns Plan sealing, Ref lineages,
-Direct/HB execution, Results, receipts, and resolution.
+Direct execution, Results, receipts, and resolution.
 
 For a user-led introduction, begin with
 [Engineer Chapter 1](../examples/engineer/chapter-01/01-build.qmd), then use
@@ -249,7 +249,7 @@ the caller-declared layout and actual contact geometry.
 
 Only the root `CircuitPlan` adds logical Ports. `add_port()` accepts a root
 `BusRef` or `TapRef`, retains the existing node-to-ground voltage/current
-orientation and reference load, and returns a `PortRef` for PTC and HB drive
+orientation and reference load, and returns a `PortRef` for PTC and network
 declarations:
 
 ```python
@@ -289,7 +289,7 @@ branch convention defined above.
 | `resistor` | `resistance` | none | one R branch |
 | `capacitor` | `capacitance` | none | one C branch |
 | `inductor` | `inductance` | `inductive_branch("self")` | one linear L branch |
-| `josephson_junction` | `josephson_inductance`, `junction_capacitance=0 * u.F` | `inductive_branch("self")` | nonlinear JJ plus optional parallel C row |
+| `josephson_junction` | `josephson_inductance`, `junction_capacitance=0 * u.F` | `inductive_branch("self")` | linear `L_J0` plus optional independent parallel C row |
 
 ```python
 r = plan.add(components.resistor(id="loss", resistance=2.0 * u.kohm))
@@ -305,9 +305,7 @@ j = plan.add(
 ```
 
 `josephson_inductance` always means the per-junction small-signal
-`L_J0` at the stable zero-phase, zero-bias operating point. It is also the
-parameter from which the HB backend obtains the nonlinear Josephson
-constitutive strength. SCNSim does not interpret it as an arbitrary
+`L_J0` at the stable zero-phase, zero-bias operating point. SCNSim does not interpret it as an arbitrary
 bias-point inductance.
 
 A nonzero `junction_capacitance` lowers as an independent capacitor in parallel
@@ -388,7 +386,7 @@ current convention; the 2D Extractor formulation assumes longitudinal
 z-directed currents and distributed line position `z` ([Ansys eddy-current
 solver](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/EddyCurrentSolver.htm),
 [distributed model](https://ansyshelp.ansys.com/public/Views/Secured/Electronics/v242/en/Subsystems/Q3DExtractor/Content/Q3D/DistributedModels.htm)).
-Consequently the signs of off-diagonal L/R entries and every derived HB
+Consequently the signs of off-diagonal L/R entries and every derived
 mutual-inductor row are meaningful only in that ordered, oriented basis;
 SCNSim never guesses or silently flips an unknown source direction.
 
@@ -449,9 +447,8 @@ the complete series matrices `R * dx` and `L * dx`, plus `C * dx / 2` and
 shunts at one physical node. Length optimization changes `dx`, never section
 count, topology, conductor order, or matrix rank.
 
-Direct supports the complete validated R/L/G/C matrices. HB supports complete
-C/G, complete L, and diagonal R. Any nonzero off-diagonal R in an HB request
-fails preflight; SCNSim does not silently drop, diagonalize, or approximate it.
+Direct supports the complete validated R/L/G/C matrices. SCNSim does not
+silently drop, diagonalize or approximate a declared matrix.
 Exact zero branches may be omitted in lowering while their declared matrix and
 section-boundary provenance remain in the receipt.
 
@@ -521,8 +518,7 @@ consumers belong to that Plan's audit or explanation.
 `AffineMap(input=x, slope=a, intercept=b, support=(lo, hi))` means exactly
 `y = a*x + b`. SCNSim validates the units of input, slope, intercept, output,
 and finite ordered support; the baseline must lie inside support. Mapping is
-resolved after each ParameterSet binding inside the same Julia
-candidate process. It is not an arbitrary Python callback, expression AST,
+resolved after each ParameterSet binding by the shared JAX physical program. It is not an arbitrary Python callback, expression AST,
 or interpolation table. A mapped nonphysical child value makes that candidate
 a typed failure rather than falling back to a baseline.
 
@@ -574,7 +570,7 @@ root Ports, and global electrical closure as its own overlay. Those declarations
 can common exposed returns without rewriting the built child or reapplying the
 child's intrinsic exposure-uniqueness check. The physical private expansion
 and declared structure contribute to current Plan identity. Layout and Theme do
-not. The V2 Plan schema, immutable snapshot, and one data-only Julia expansion
+not. The V2 Plan schema, immutable snapshot, and one data-only compilation expansion
 path share this boundary, described in
 [Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
 
@@ -774,6 +770,229 @@ floating_jj = plan.add(
 The two factories share the JJ model contract; only their capacitive subsystem
 and external pins differ.
 
+## Linear component realization
+
+The shared compiler lowers the same authored Plan for every JAX operation.
+
+| Component content | Linear realization |
+|---|---|
+| R, L, C | Declared finite physical rows |
+| General RLGC ladder | Complete validated R/L/G/C matrices in declared conductor order |
+| JJ | Zero-phase, zero-bias `L_J0` and independently declared parallel `Cj` |
+| Finite-loop SQUID | Both linearized junctions, finite loop and declared mutual couplings |
+| Logical Port | Ordered incidence and declared reference/load boundary; no synthetic Port marker row |
+
+The source-free DUT response and loaded operator/root boundary are distinct.
+PTC removes only its proved probe-load stamp and retains Port identity and
+reference impedance. Use the
+[selected-network equations](implementation/direct-poles-zeros-and-operators.qmd)
+for the actual S/Y/Z and loaded operator definitions. No caller-supplied bias
+phase or finite-bias JJ/SQUID linearization is inferred.
+
+The physical coupling identity remains `M = k * sqrt(L1 * L2)`, with its
+oriented branches and signed authored `k`. Pumped or nonlinear analysis is
+outside 1.0; its former example is retained in History below.
+
+### Snapshot-backed linear and coupled expansion
+
+Built-in and custom components share one recursive snapshot expansion; neither
+receives a special Python lowering path. Direct expands every JJ into its
+zero-phase, zero-bias `L_J0` row and independently declared parallel `Cj` row.
+A finite-loop SQUID expands to both junction paths, its
+oriented loop branch, and every declared mutual coupling; no effective-cosine
+replacement or synthetic bias-dependent inductance is permitted.
+
+Exact-zero declared terms may be omitted from backend rows only with their
+component path, value, and `omitted-as-zero` evidence preserved for compiled
+inspection. The terminal receipt binds the sealed Plan and exact runtime
+identity instead of duplicating compiler-row diagnostics. The same rule applies
+to a zero derived mutual term: it never becomes an unrecorded disappearance.
+Signed branch orientation,
+`M = k * sqrt(L1 * L2)`, and complete reciprocal positive-definite inductance
+validation remain the existing public coupling contract, not new tolerances.
+The implementation-facing recursive row order and evidence maps are defined in
+[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
+
+## Parameter variants and derived mutual inductance
+
+Public parameters have four separate owners:
+
+| Owner | Declares |
+|---|---|
+| definitions author | `ParameterSpec`, baseline, and independent parameter identity |
+| Component Library author | public boundary, child fan-out, `AffineMap`, calibration support |
+| Circuit-model author | Default `OptimizationSpec`, active variables, finite bounds, objectives, weights, optimizer |
+| Notebook consumer | Design Target and an optional immutable override of the model default |
+
+This separation prevents a reusable composite from creating a hidden search
+envelope. Different circuit models may optimize the same parameter over
+different ranges without duplicating its unit, baseline, or calibration map.
+
+Every ref is stable when its independent definition is created. It becomes a
+Plan input only through registered physical-field consumption, and a factory
+makes it consumer-visible only when it exposes that original ref:
+
+```python
+candidate = ParameterSet({
+    jpa.parameter("loop_inductance"): 44.0 * u.pH,
+    pump_inductor.parameter("inductance"): 1.1 * u.nH,
+})
+
+result = run.solve(run.original, direct_spec, parameters=candidate)
+```
+
+After each ParameterSet is bound, SCNSim resolves both self inductances and
+derives the mutual inductance from the signed coupling coefficient:
+
+```text
+M = k * sqrt(L1 * L2)
+```
+
+`k` must be finite and dimensionless with `abs(k) < 1`. It is the only public
+mutual-coupling input in V1; the consumer cannot provide an independent `M`
+that might disagree with the two bound self inductances. `run.explain()` records
+branch orientations, `L1`, `L2`, `k`, derived `M`, and the exact backend
+mapping; terminal receipts bind the sealed request and runtime identities
+without copying that preflight table.
+
+For more than two coupled inductive branches, every pairwise `abs(k) < 1`
+check is only necessary. Preflight assembles the complete reciprocal
+inductance matrix after ParameterSet binding and requires it to be positive
+definite for the declared independent finite branches. SCNSim rejects an
+incompatible collection of individually plausible pairwise coefficients.
+
+## Inspection and evidence
+
+### Inspect authoring or compiler-expanded structure
+
+The Plan owns authoring and compiler-expanded inspection projections, but
+neither projection is another circuit definition. The target structure,
+caller-declared complete geometry, independent visible electrical/ownership
+reconstruction, separately verified source rows, snapshot provenance, and
+code-free review packet belong to
+[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
+
+That authoring/identity/diagram scope remains `CONVERGING` despite its integrated
+implementation baseline. The [central evidence status](contracts/index.qmd#implementation-evidence-status)
+separates scoped checks from unexecuted course and historical regressions.
+Superseded catalog-hint classes are not a compatibility path. The physical
+Library, RLGC, Josephson, SQUID, and coupling meanings remain the input authority.
+
+A Plan diagram represents baseline physical authoring by default and may
+project one explicitly selected `ParameterSet`. It neither selects nor displays
+an analysis `NetworkViewRef`. Request-specific PTC, transforms, retain, Schur
+reduction, Direct results, and numerical capability evidence remain with
+`run.explain()` and verified Results.
+
+`run.explain(ref, spec).show()` performs the same deterministic component and
+ParameterSet preflight used by execution, without launching a solver or
+writing the workspace. For component authoring it shows:
+
+- every Library exact identity and public component schema;
+- composite hierarchy and primitive/backend expansion;
+- structured series/parallel/branch/link declarations, bus/tap membership,
+  public exposures, generated private nodes, and canonical-ground endpoints;
+- every logical Port's node attachment, role, reference impedance,
+  one-Port-per-node evidence, and Direct lowering;
+- source units, canonical SI values, and public `ParameterRef` identities;
+- Direct realization of each expanded row;
+- RLGC conductor/reference identities, matrix order and health evidence,
+  head-to-tail current/extractor `+z` orientation, manual/Q2D source
+  classification, canonical matrices, extraction frequency, and
+  content-derived provenance, plus TL section count and bound section length;
+- Composite public schema, hidden-child expansion, public parameter baselines,
+  identity fan-out, `AffineMap` equations/support, and separately exposed pins
+  and coordinates;
+- all three IDC capacitance branches;
+- JJ and optional parallel `Cj` rows;
+- both SQUID junction rows, their shared parameter refs, loop orientation, and
+  loop branch; and
+- coupled branch orientations, bound `L1` and `L2`, signed `k`, derived `M`,
+  and backend mapping.
+
+The sealed Plan/request/receipt chain binds the declarations and exact runtime
+identity. `run.explain()` materializes the expanded rows for inspection without
+creating a second durable receipt schema.
+
+## Failure contract
+
+Plan seal or deterministic preflight fails before backend execution for:
+
+- any authoring-grammar, endpoint, ownership, component-consumption, exposure,
+  Port, or structural-layout violation enumerated by the
+  [target fail-closed contract](contracts/circuit-plan-assembly.qmd#assembly-failures);
+- duplicate component, parameter, or Port IDs; duplicate pin/public-parameter
+  names inside one component schema; or an unknown/foreign Library instance;
+- a bare physical number, foreign Pint registry, non-finite Quantity, or
+  dimensional mismatch;
+- non-positive R, L, C, or `L_J0`; negative `Cj`; or a non-positive/non-integer
+  `n_sections`;
+- a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
+  primary C/G/L/R matrix blocks; invalid per-length units or extraction
+  frequency; inconsistent conductor labels/order or dimensions; an incomplete
+  or non-bijective conductor map; or non-finite parsed values;
+- `N < 1`; duplicate/unknown conductor or reference labels; a reference included
+  in matrix rows; non-square or shape-inconsistent R/L/G/C; nonreciprocal
+  matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;
+  G/R not positive semidefinite;
+- a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
+  structure; wiring a `CoordinateRef`; exposing foreign or hidden state; or an
+  unbound native terminal;
+- an incomplete or invalid Plan passed to `render_schematic()`;
+- an `AffineMap` with incompatible units, non-finite coefficients, unordered or
+  dimensionally invalid support, a baseline outside support, or a mapped
+  nonphysical child value;
+- a SQUID whose junction parameters are not shared or whose finite loop
+  inductance is missing, non-finite, or non-positive;
+- mutual coupling between branches from different Plans, a non-inductive or
+  unknown branch, or missing branch orientation; and
+- a coupling coefficient that is not a finite SCNSim-registry dimensionless
+  Quantity or has `abs(k) >= 1`, or a complete bound inductance matrix that is
+  not reciprocal positive definite.
+
+After the physical Plan input is valid, diagram-specific unit/span,
+Theme, placement, routing, and certification failures belong exclusively
+to the linked layout contract. They fail as
+`SCNSimValidationError(stage="schematic_layout")` or
+`SCNSimValidationError(stage="schematic_audit")` and do not create runtime
+evidence.
+
+Exact `0 * u.F` is the one valid zero for optional `junction_capacitance`.
+Zero series resistance or conductance in an RLGC model may be valid when the
+declared branch permits it; negative or non-finite values are not.
+
+## Known V1 limits
+
+- Primitive, Composite, RLGC, and transmission-line physical models retain
+  their accepted Full V1 meaning. The replacement structured authoring grammar
+  remains `CONVERGING` with an integrated implementation baseline.
+- The transmission line is a uniform, fixed-section general N-conductor RLGC
+  ladder; N=1 uses the same matrix path.
+- AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
+  frequency. It does not verify a solver receipt, interpolate/extrapolate in
+  frequency, or create a broadband line.
+  Direct does.
+- Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
+  has no arbitrary callback, expression tree, or calibration-table
+  interpolation.
+- Symmetric SQUID factories do not expose junction asymmetry or arbitrary
+  per-arm parameter injection.
+- Direct JJ/SQUID analysis is limited to the declared zero-phase, zero-bias
+  `L_J0` small-signal realization.
+- JosephsonCircuits flux-pump and three-wave-mixing capability retains the
+  upstream validation limitation described above.
+- `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
+  build those circuits from the declared generic components.
+- Caller-declared schematic rendering remains a projection of the Plan,
+  never topology or backend authority. Automatic compiled drawing is retired;
+  the mathematical compiler and historical exports remain unchanged. Implementation evidence does not confer
+  Human acceptance on certified structured projection.
+
+## History: flux-pump example and native HB lowering
+
+<details>
+<summary>Retired pre-1.0 contract</summary>
+
 ### Finite-loop SQUID flux-pump example
 
 The pump coil is an ordinary Plan component. Mutual coupling refers to exact
@@ -895,7 +1114,7 @@ The physical coupling identity is
 The canonical orientation, energy, and passivity semantics remain in
 [Inductive Coupling Coefficient, Mutual Inductance, and Self Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/quantum-circuits/inductive-coupling-coefficient-mutual-self-inductance.qmd).
 
-## Direct and HB realization
+## Direct realization
 
 The same Plan and component identities feed both backends:
 
@@ -929,199 +1148,4 @@ path, while also describing flux-bias and three-wave-mixing support as
 relatively untested. SCNSim preserves that limitation rather than expanding
 the backend's guarantee.
 
-### Snapshot-backed nonlinear and coupled expansion
-
-Built-in and custom components share one recursive snapshot expansion; neither
-receives a special Python lowering path. Direct expands every JJ into its
-zero-phase, zero-bias `L_J0` row and independently declared parallel `Cj` row.
-HB instead receives the nonlinear Josephson row plus that same independently
-declared `Cj` row. A finite-loop SQUID expands to both junction paths, its
-oriented loop branch, and every declared mutual coupling; no effective-cosine
-replacement or synthetic bias-dependent inductance is permitted.
-
-Exact-zero declared terms may be omitted from backend rows only with their
-component path, value, and `omitted-as-zero` evidence preserved for compiled
-inspection. The terminal receipt binds the sealed Plan and exact runtime
-identity instead of duplicating compiler-row diagnostics. The same rule applies
-to a zero derived mutual term: it never becomes an unrecorded disappearance.
-Signed branch orientation,
-`M = k * sqrt(L1 * L2)`, and complete reciprocal positive-definite inductance
-validation remain the existing public coupling contract, not new tolerances.
-The implementation-facing recursive row order and evidence maps are defined in
-[Composite Snapshots and Recursive Expansion](implementation/composite-snapshots-and-recursive-expansion.qmd).
-
-## Parameter variants and derived mutual inductance
-
-Public parameters have four separate owners:
-
-| Owner | Declares |
-|---|---|
-| definitions author | `ParameterSpec`, baseline, and independent parameter identity |
-| Component Library author | public boundary, child fan-out, `AffineMap`, calibration support |
-| Circuit-model author | Default `OptimizationSpec`, active variables, finite bounds, objectives, weights, optimizer |
-| Notebook consumer | Design Target and an optional immutable override of the model default |
-
-This separation prevents a reusable composite from creating a hidden search
-envelope. Different circuit models may optimize the same parameter over
-different ranges without duplicating its unit, baseline, or calibration map.
-
-Every ref is stable when its independent definition is created. It becomes a
-Plan input only through registered physical-field consumption, and a factory
-makes it consumer-visible only when it exposes that original ref:
-
-```python
-candidate = ParameterSet({
-    jpa.parameter("loop_inductance"): 44.0 * u.pH,
-    pump_inductor.parameter("inductance"): 1.1 * u.nH,
-})
-
-result = run.solve(run.original, direct_spec, parameters=candidate)
-```
-
-After each ParameterSet is bound, SCNSim resolves both self inductances and
-derives the mutual inductance from the signed coupling coefficient:
-
-```text
-M = k * sqrt(L1 * L2)
-```
-
-`k` must be finite and dimensionless with `abs(k) < 1`. It is the only public
-mutual-coupling input in V1; the consumer cannot provide an independent `M`
-that might disagree with the two bound self inductances. `run.explain()` records
-branch orientations, `L1`, `L2`, `k`, derived `M`, and the exact backend
-mapping; terminal receipts bind the sealed request and runtime identities
-without copying that preflight table.
-
-For more than two coupled inductive branches, every pairwise `abs(k) < 1`
-check is only necessary. Preflight assembles the complete reciprocal
-inductance matrix after ParameterSet binding and requires it to be positive
-definite for the declared independent finite branches. SCNSim rejects an
-incompatible collection of individually plausible pairwise coefficients.
-
-## Inspection and evidence
-
-### Inspect authoring or compiler-expanded structure
-
-The Plan owns authoring and compiler-expanded inspection projections, but
-neither projection is another circuit definition. The target structure,
-caller-declared complete geometry, independent visible electrical/ownership
-reconstruction, separately verified source rows, snapshot provenance, and
-code-free review packet belong to
-[Structured Circuit Authoring and Certified Diagrams](contracts/automatic-semantic-circuit-diagram-layout.qmd).
-
-That authoring/identity/diagram scope remains `CONVERGING` despite its integrated
-implementation baseline. The [central evidence status](contracts/index.qmd#implementation-evidence-status)
-separates scoped checks from unexecuted course and historical regressions.
-Superseded catalog-hint classes are not a compatibility path. The physical
-Library, RLGC, Josephson, SQUID, and coupling meanings remain the input authority.
-
-A Plan diagram represents baseline physical authoring by default and may
-project one explicitly selected `ParameterSet`. It neither selects nor displays
-an analysis `NetworkViewRef`. Request-specific PTC, transforms, retain, Schur
-reduction, Direct/HB results, and numerical capability evidence remain with
-`run.explain()` and verified Results.
-
-`run.explain(ref, spec).show()` performs the same deterministic component and
-ParameterSet preflight used by execution, without launching a solver or
-writing the workspace. For component authoring it shows:
-
-- every Library exact identity and public component schema;
-- composite hierarchy and primitive/backend expansion;
-- structured series/parallel/branch/link declarations, bus/tap membership,
-  public exposures, generated private nodes, and canonical-ground endpoints;
-- every logical Port's node attachment, role, reference impedance,
-  one-Port-per-node evidence, and Direct/HB lowering;
-- source units, canonical SI values, and public `ParameterRef` identities;
-- Direct and HB realization of each expanded row;
-- RLGC conductor/reference identities, matrix order and health evidence,
-  head-to-tail current/extractor `+z` orientation, manual/Q2D source
-  classification, canonical matrices, extraction frequency, and
-  content-derived provenance, plus TL section count and bound section length;
-- Composite public schema, hidden-child expansion, public parameter baselines,
-  identity fan-out, `AffineMap` equations/support, and separately exposed pins
-  and coordinates;
-- all three IDC capacitance branches;
-- JJ and optional parallel `Cj` rows;
-- both SQUID junction rows, their shared parameter refs, loop orientation, and
-  loop branch; and
-- coupled branch orientations, bound `L1` and `L2`, signed `k`, derived `M`,
-  and backend mapping.
-
-The sealed Plan/request/receipt chain binds the declarations and exact runtime
-identity. `run.explain()` materializes the expanded rows for inspection without
-creating a second durable receipt schema.
-
-## Failure contract
-
-Plan seal or deterministic preflight fails before backend execution for:
-
-- any authoring-grammar, endpoint, ownership, component-consumption, exposure,
-  Port, or structural-layout violation enumerated by the
-  [target fail-closed contract](contracts/circuit-plan-assembly.qmd#assembly-failures);
-- duplicate component, parameter, or Port IDs; duplicate pin/public-parameter
-  names inside one component schema; or an unknown/foreign Library instance;
-- a bare physical number, foreign Pint registry, non-finite Quantity, or
-  dimensional mismatch;
-- non-positive R, L, C, or `L_J0`; negative `Cj`; or a non-positive/non-integer
-  `n_sections`;
-- a missing, empty, malformed, or unsupported Q2D CSV; missing or repeated
-  primary C/G/L/R matrix blocks; invalid per-length units or extraction
-  frequency; inconsistent conductor labels/order or dimensions; an incomplete
-  or non-bijective conductor map; or non-finite parsed values;
-- `N < 1`; duplicate/unknown conductor or reference labels; a reference included
-  in matrix rows; non-square or shape-inconsistent R/L/G/C; nonreciprocal
-  matrices; invalid Maxwell C/G signs or row sums; C/L not positive definite;
-  G/R not positive semidefinite; or an HB request with nonzero off-diagonal R;
-- a duplicate/unknown Composite child, parameter, pin, coordinate, or internal
-  structure; wiring a `CoordinateRef`; exposing foreign or hidden state; or an
-  unbound native terminal;
-- an incomplete or invalid Plan passed to `render_schematic()`;
-- an `AffineMap` with incompatible units, non-finite coefficients, unordered or
-  dimensionally invalid support, a baseline outside support, or a mapped
-  nonphysical child value;
-- a SQUID whose junction parameters are not shared or whose finite loop
-  inductance is missing, non-finite, or non-positive;
-- mutual coupling between branches from different Plans, a non-inductive or
-  unknown branch, or missing branch orientation; and
-- a coupling coefficient that is not a finite SCNSim-registry dimensionless
-  Quantity or has `abs(k) >= 1`, or a complete bound inductance matrix that is
-  not reciprocal positive definite.
-
-After the physical Plan input is valid, diagram-specific unit/span,
-Theme, placement, routing, and certification failures belong exclusively
-to the linked layout contract. They fail as
-`SCNSimValidationError(stage="schematic_layout")` or
-`SCNSimValidationError(stage="schematic_audit")` and do not create runtime
-evidence.
-
-Exact `0 * u.F` is the one valid zero for optional `junction_capacitance`.
-Zero series resistance or conductance in an RLGC model may be valid when the
-declared branch permits it; negative or non-finite values are not.
-
-## Known V1 limits
-
-- Primitive, Composite, RLGC, and transmission-line physical models retain
-  their accepted Full V1 meaning. The replacement structured authoring grammar
-  remains `CONVERGING` with an integrated implementation baseline.
-- The transmission line is a uniform, fixed-section general N-conductor RLGC
-  ladder; N=1 uses the same matrix path.
-- AEDT Q2D import freezes one primary R/L/G/C extraction at its recorded
-  frequency. It does not verify a solver receipt, interpolate/extrapolate in
-  frequency, or create a broadband line.
-- HB does not accept nonzero off-diagonal series R in Full V1;
-  Direct does.
-- Composite mapping is limited to exact identity fan-out and `AffineMap`; V1
-  has no arbitrary callback, expression tree, or calibration-table
-  interpolation.
-- Symmetric SQUID factories do not expose junction asymmetry or arbitrary
-  per-arm parameter injection.
-- Direct JJ/SQUID analysis is limited to the declared zero-phase, zero-bias
-  `L_J0` small-signal realization.
-- JosephsonCircuits flux-pump and three-wave-mixing capability retains the
-  upstream validation limitation described above.
-- `LinearizedFloatingQubit` and `ReflectiveJPA` are not V1 built-ins; consumers
-  build those circuits from the declared generic components.
-- Caller-declared schematic rendering remains a projection of the Plan,
-  never topology or backend authority. Automatic compiled drawing is retired;
-  the mathematical compiler and historical exports remain unchanged. Implementation evidence does not confer
-  Human acceptance on certified structured projection.
+</details>

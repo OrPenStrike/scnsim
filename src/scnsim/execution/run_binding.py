@@ -11,7 +11,7 @@ from ..authoring.identity import canonical_plan_snapshot
 from ..authoring.resolution import resolve_parameter_point
 from ..canonical import canonical_json_bytes, sha256_hex
 from ..errors import CompilerInvariantError, SCNSimValidationError
-from ..workspace import _plan_coordinates
+from ..workspace.validation.common import _plan_coordinates
 
 def _parameter_key(parameter: ParameterRef) -> tuple[str, str]:
     """Return one independent definitions-collection/local identity."""

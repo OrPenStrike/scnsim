@@ -25,7 +25,7 @@ selected pins or coordinates, and call `build()`.
 The sealed Plan stores the built snapshot, not a callable factory, Python
 object graph, import name to resolve later, callback, expression AST, or
 Notebook execution state. A factory runs neither during `CircuitRun` sealing
-nor in Julia. An exception, a missing public map, an incomplete node, or a
+nor during numerical execution. An exception, a missing public map, an incomplete node, or a
 cycle leaves no partial `ComponentInstance` to add to a Plan. Factory source
 provenance remains required at creation time under
 [Catalog and Runtime Identity](catalog-and-runtime-identity.qmd#prove-a-factory-when-it-creates-a-component).
@@ -33,7 +33,7 @@ provenance remains required at creation time under
 This makes the boundary explicit:
 
 ```text
-Python factory -> built immutable snapshot -> CircuitPlan hash -> Julia expansion
+Python factory -> built immutable snapshot -> CircuitPlan hash -> compiler expansion
 ```
 
 The first arrow is authoring. The remaining arrows consume data only.
@@ -54,7 +54,7 @@ custom components therefore participate in the same traversal.
 
 Expansion is finite and acyclic. A snapshot may contain already-built nested
 snapshots, but cannot contain itself through any descendant. The builder rejects
-a cycle before returning its `ComponentInstance`; Julia walks the sealed tree
+a cycle before returning its `ComponentInstance`; The compiler walks the sealed tree
 depth-first and stops only at primitive component snapshots. V1 defines no
 numeric nesting-depth limit or truncating fallback.
 
@@ -123,7 +123,7 @@ data forms:
 The snapshot preserves every identity and map edge, including multiple child
 slots fed by one `ParameterRef` and several different `AffineMap` outputs fed
 by that same ref. It does not turn equal-valued constants into a shared
-parameter or merge distinct maps. Julia evaluates these frozen bindings after a
+parameter or merge distinct maps. The shared JAX physical program evaluates these frozen bindings after a
 `ParameterSet` is selected; it receives no Python callable, source object, or
 AST. Invalid dimensionality, support, or mapped physical value follows the
 existing typed failure path and never silently reuses a baseline.
@@ -133,20 +133,20 @@ The parameter meaning and calibration limits remain the public
 contract. This page adds no optimizer bounds, support tolerance, or acceptance
 Gate.
 
-## Expand one snapshot for both backends
+## Expand one snapshot for the linear network
 
-Julia receives the sealed Plan snapshot plus the resolved physical parameter
+The compiler receives the sealed Plan snapshot plus the resolved physical parameter
 binding. It validates snapshot structure and recursively emits one
 backend-neutral physical graph in deterministic component-path order. Direct
-and HB then lower that same graph; custom composites do not receive a separate
-backend or a second source of topology.
+consumes that graph; custom composites do not receive a separate compiler or a
+second source of topology.
 
-| Snapshot content | Direct expansion | HB expansion |
-|---|---|---|
-| R/L/C child | One oriented linear physical branch | Corresponding linear row |
-| JJ | `L_J0` at zero phase/zero bias and separately declared parallel `Cj` | Nonlinear Josephson row and the same separate `Cj` |
-| Finite-loop SQUID | Two zero-phase/zero-bias `L_J0` junction branches, finite loop branch, and mutuals | Two nonlinear junction rows, finite loop branch, and the same mutuals |
-| Mutual coupling | Signed branch orientations and derived `M` in the complete inductance system | The corresponding oriented solver coupling realization |
+| Snapshot content | Direct expansion |
+|---|---|
+| R/L/C child | One oriented linear physical branch |
+| JJ | `L_J0` at zero phase/zero bias and separately declared parallel `Cj` |
+| Finite-loop SQUID | Two zero-phase/zero-bias `L_J0` junction branches, finite loop branch, and mutuals |
+| Mutual coupling | Signed branch orientations and derived `M` in the complete inductance system |
 
 `josephson_inductance` is always the per-junction `L_J0`; it is not an inferred
 finite-bias inductance. `junction_capacitance` remains an independent parallel
@@ -155,7 +155,7 @@ identities while its loop branch retains its own orientation. The physical
 meaning is unchanged from [Josephson Current, Phase, Energy, and Inductance](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/josephson-current-phase-energy-and-inductance.qmd#independent-parallel-junction-capacitance)
 and [DC SQUID Flux Tunability](https://github.com/arfiligol/SCQ_Design/blob/main/docs/knowledge/josephson-physics/dc-squid-flux-tunability.qmd#finite-loop-mutually-pumped-dc-squid).
 
-For every coupling, Julia binds the two oriented branch paths, resolves
+For every coupling, The compiler binds the two oriented branch paths, resolves
 `M = k * sqrt(L1 * L2)`, and validates the existing signed `k` and complete
 reciprocal positive-definite inductance requirements. It neither guesses a
 sign from drawing placement nor accepts an independent `M`. The physical
@@ -192,10 +192,10 @@ or stamping; Calculation validates that boundary separately.
 Python rejects incomplete public maps, foreign or duplicate child snapshots,
 ambiguous component paths, cyclic nesting, incomplete nodes, private/foreign
 endpoint access, unsafe zero-wire aliasing, invalid grounding, invalid map
-bindings, or an exposed reference that does not belong to the composite. Julia
+bindings, or an exposed reference that does not belong to the composite. Compilation
 rejects a snapshot whose canonical bytes, child provenance,
 paths, parameter bindings, branch orientation, or recursive expansion do not
-match the sealed Plan. Neither side imports a custom factory during execution,
+match the sealed Plan. Neither preparation nor execution imports a custom factory during execution,
 fills a missing mapping by name, drops an ambiguous term, or substitutes a
 primitive approximation.
 

@@ -14,5 +14,4 @@ the [complete Chapter Notebook](chapter.ipynb), not this page independently.
 {{< include _05-optional-quantity.qmd >}}
 
 [Previous: Lesson 4 — Transform](04-optional-transform.qmd) ·
-[Next: Lesson 6 — Pump-off HB](06-optional-hb.qmd) ·
 [Download the complete Chapter Notebook](chapter.ipynb)

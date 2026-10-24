@@ -13,7 +13,7 @@ for this distinction and the common View authority for S, Y, and Z.
 
 ```{python}
 #| id: ch4-derive-ptc-view
-run = CircuitRun(backend="julia", plan=plan, workspace="workspaces/engineer-chapter-04")
+run = CircuitRun(plan=plan, storage="memory")
 raw_loaded_view = run.original
 raw_transmission_trace = SParameterTrace(
     id="transmission",
@@ -44,8 +44,6 @@ ptc_direct_spec = DirectSolveSpec(
     frequencies=[5.5, 6.0, 6.5] * u.GHz,
     traces=(ptc_transmission_trace,),
 )
-run.explain(raw_loaded_view, raw_direct_spec).show()
-run.explain(ptc_view, ptc_direct_spec).show()
 ```
 
 These three frequencies are exact declared samples, not a continuous scan or

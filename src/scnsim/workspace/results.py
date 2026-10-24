@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..errors import _freeze
-from ..numeric_encoding import record_bytes, record_document
+from .binary_blocks import record_bytes, record_document
+from ..numeric_encoding import record_bytes as numerical_record_bytes
 from .operation_store import OperationStore, _reference
 
 
@@ -1211,6 +1212,18 @@ class FixedPhysicalOptimizationReader:
             root["_verified_generation_ancestry"] = ancestry
         return completion, root
 
+    @staticmethod
+    def _require_baseline_occurrence(value, locator):
+        """Bind the fetched occurrence, not only the caller's locator label."""
+        if (locator.get("kind") == "baseline"
+                and (value.get("kind") != "baseline"
+                     or type(value.get("evaluation_ordinal")) is not int
+                     or type(locator.get("evaluation_ordinal")) is not int
+                     or value["evaluation_ordinal"] != locator["evaluation_ordinal"])):
+            from .validation.common import _integrity
+            raise _integrity("Physical Optimization baseline candidate differs from its locator.",
+                             stage_id=locator.get("stage_id"))
+
     def _candidate(self, snapshot, reference, *, model_identity=None, stage_id=None, root=None):
         from .validation.common import _integrity
         locator = dict(reference) if isinstance(reference, Mapping) and "candidate_ref" in reference else {
@@ -1325,6 +1338,7 @@ class FixedPhysicalOptimizationReader:
                     or value.get("kind") != locator.get("kind", "evaluation")):
                 raise _integrity("Physical Optimization source candidate differs from its fixed locator.",
                                  task_id=source_task_id, attempt_id=source_attempt_id)
+        self._require_baseline_occurrence(value, locator)
         if (stage_id is not None and value.get("stage_id") != stage_id
                 or model_identity is not None and value.get("model_identity") != dict(model_identity)):
             raise _integrity("Physical Optimization candidate differs from its model locator.",
@@ -1341,7 +1355,7 @@ class FixedPhysicalOptimizationReader:
             body_raw = snapshot.get_object(body_ref)
             body = record_document(body_raw)
             if (not isinstance(body, dict) or record_bytes(body) != body_raw
-                    or sha256(body_raw).hexdigest() != body_id):
+                    or sha256(numerical_record_bytes(body)).hexdigest() != body_id):
                 raise _integrity("Physical Optimization candidate dependency body differs from its identity.",
                                  body_id=body_id)
             dependencies[body_id] = body
@@ -1564,6 +1578,22 @@ class FixedPhysicalOptimizationReader:
             raise _integrity("Physical Optimization history count differs from its seal.", stage_id=stage_id)
         rows = []
         model = stage["model_identity"]
+        # This required v3 field is separate from the population-only SQL
+        # index; a missing field is not an older private-format fallback.
+        if "baseline_locator" not in history:
+            raise _integrity("Physical Optimization history lacks its baseline declaration.",
+                             stage_id=stage_id)
+        baseline_locator = history["baseline_locator"]
+        if baseline_locator is not None:
+            if (not isinstance(baseline_locator, Mapping)
+                    or baseline_locator.get("kind") != "baseline"
+                    or baseline_locator.get("stage_id") != stage_id
+                    or type(baseline_locator.get("evaluation_ordinal")) is not int
+                    or baseline_locator["evaluation_ordinal"] != 0):
+                raise _integrity("Physical Optimization history baseline locator is malformed.",
+                                 stage_id=stage_id)
+            rows.append(self._candidate(snapshot, baseline_locator,
+                                        model_identity=model, stage_id=stage_id, root=root))
         for ordinal, (reference, source, row) in enumerate(zip(refs, sources, indexed, strict=True)):
             summary = row.get("summary_json")
             if (row.get("ordinal") != ordinal or row.get("model_identity") != model
@@ -2142,7 +2172,7 @@ def _read_chunked_success(snapshot, binding_identity, *, descriptor, attempt_id,
     source_kind = source.get("kind") if isinstance(source, Mapping) else None
     direct_points = (
         request.get("operation") == "solve_direct"
-        and source_kind == "points"
+        and source_kind in {"grid", "points"}
         and isinstance(spec, Mapping)
         and spec.get("type") == "direct_solve"
     )
@@ -2457,7 +2487,7 @@ class FixedDirectResultReader(_FixedChunkedResultReader):
 def _expected_sweep_point(source: Mapping[str, Any], ordinal: int):
     """Return one request-declared source index and its complete parameters."""
     kind = source.get("kind")
-    from .validation.sweeps import _merge_parameter_records
+    from .validation.common import _merge_parameter_records
 
     if kind == "points":
         points = source["points"]
@@ -2513,7 +2543,7 @@ def _hydrate_sweep_record(snapshot, record):
             body = _chunked_canonical(
                 snapshot, reference, role="benchmark_value", schema=None,
             )
-            if sha256(record_bytes(body)).hexdigest() != body_id:
+            if sha256(numerical_record_bytes(body)).hexdigest() != body_id:
                 raise _integrity("Sweep dependency body differs from its content identity.",
                                  body_id=body_id)
             dependencies[body_id] = body

@@ -29,7 +29,6 @@ from ..specs import (
     DiagonalRootSpec,
     OperatorElementRootSpec,
     DirectSolveSpec,
-    HBSolveSpec,
     HybridizedPoleSpec,
     OperatorSpec,
     StaticCapacitanceSpec,
@@ -198,6 +197,7 @@ class PreparedAnalysis:
 
     request_bytes: bytes
     source_unit_bytes: tuple[bytes, ...]
+    parameter_authorization_bytes: tuple[bytes, ...] = ()
 
     @classmethod
     def create(
@@ -210,6 +210,7 @@ class PreparedAnalysis:
         parameter_source: Mapping[str, object],
         runtime_semantic: Mapping[str, object],
         source_units: Sequence[Mapping[str, object]],
+        parameter_authorizations: Sequence[Mapping[str, object]] = (),
     ) -> PreparedAnalysis:
         if runtime_semantic.get("backend") == "jax" and operation == "optimize_direct":
             # Backend identity and transform naming share one canonical owner;
@@ -242,6 +243,8 @@ class PreparedAnalysis:
             source_unit_bytes=tuple(
                 canonical_json_bytes(record) for record in source_units
             ),
+            parameter_authorization_bytes=tuple(canonical_json_bytes(ref)
+                                                for ref in parameter_authorizations),
         )
 
     def request(self) -> dict[str, object]:
@@ -258,6 +261,10 @@ class PreparedAnalysis:
         if source['kind'] != 'point':
             raise TypeError('effective_point requires a single-point parameter source')
         return source['parameters']
+
+    def parameter_authorizations(self) -> tuple[dict[str, object], ...]:
+        """Actual caller authorization before optimization's baseline union."""
+        return tuple(json.loads(ref) for ref in self.parameter_authorization_bytes)
 
     def source_units(self) -> tuple[dict[str, object], ...]:
         return tuple(json.loads(record) for record in self.source_unit_bytes)
@@ -688,7 +695,7 @@ def _optimizer_controls(optimizer, declared_variables, parameters, *, discretiza
 
 def _encode_spec(
     spec: DirectSolveSpec
-    | HBSolveSpec
+
     | DiagonalRootSpec
     | OperatorElementRootSpec
     | HybridizedPoleSpec
@@ -722,57 +729,6 @@ def _encode_spec(
             "type": "direct_solve",
             "frequencies": _frequency_grid(spec.frequencies),
             "traces": [trace_record(trace) for trace in spec.traces],
-        }
-    if isinstance(spec, HBSolveSpec):
-        return {
-            "type": "hb_solve",
-            "pump_axes": [
-                {
-                    "id": axis.id,
-                    "frequency": quantity_envelope(
-                        axis.frequency, si_unit="hertz", registry=units.registry
-                    ),
-                }
-                for axis in spec.pump_axes
-            ],
-            "drives": [
-                {
-                    "id": drive.id,
-                    "port_id": drive.at.id,
-                    "mode": list(drive.mode),
-                    "orientation": "port_node_to_reference",
-                }
-                for drive in spec.drives
-            ],
-            "frequencies": _frequency_grid(spec.frequencies),
-            "cases": [
-                {
-                    "id": case.id,
-                    "currents": [
-                        {
-                            "drive_id": drive.id,
-                            "coefficient": complex_quantity_envelope(
-                                case.currents[drive],
-                                si_unit="ampere",
-                                registry=units.registry,
-                            ),
-                            "coefficient_convention": "exp_minus_i_m_dot_omega_t_fourier_coefficient",
-                        }
-                        for drive in spec.drives
-                        if drive in case.currents
-                    ],
-                }
-                for case in spec.cases
-            ],
-            "truncation": {
-                "pump_harmonics": list(spec.truncation.pump_harmonics),
-                "modulation_harmonics": list(spec.truncation.modulation_harmonics),
-                "max_intermodulation_order": spec.truncation.max_intermodulation_order,
-                "three_wave_mixing": spec.truncation.three_wave_mixing,
-                "four_wave_mixing": spec.truncation.four_wave_mixing,
-            },
-            "traces": [trace_record(trace) for trace in spec.traces],
-            "allow_driven_ptc": spec.allow_driven_ptc,
         }
     if isinstance(
         spec,

@@ -1,3 +1,3 @@
-### N=2 authoring diagram outcome
+![N=2 authoring diagram.](../figures/07-n2-authoring.svg)
 
-The existing deterministic renderer reported a typed `schematic_layout` failure. No fallback layout was substituted.
+[Open the SVG](../figures/07-n2-authoring.svg)

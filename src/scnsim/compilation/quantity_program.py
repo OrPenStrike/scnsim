@@ -85,14 +85,14 @@ class QuantityProgram:
     identity_bytes: bytes
     observable_metadata_bytes: tuple[bytes, ...] = ()
 
-    def native_program(self, inputs, *, program_owner=None, admit_core=False):
+    def native_program(self, inputs, *, program_owner=None, admit_core=False, affine_evidence=None):
         """Admit one static native partition after actual physical classification.
 
         Inputs are used only during acquisition, never retained by the admitted
         function. Concurrent callers use the atomically admitted same callable.
         """
         from ..numerics.native_program import compile_native_program, acquire_native_core
-        capabilities = self.program._capabilities(inputs)
+        capabilities = self.program._capabilities(inputs, affine_evidence=affine_evidence)
         key = ('native_program', capabilities)
         with self.program._function_lock:
             admitted = self.program._native_providers.get(key)

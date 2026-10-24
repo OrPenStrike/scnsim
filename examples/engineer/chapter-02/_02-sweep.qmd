@@ -8,9 +8,9 @@ answer.
 
 ```{python}
 #| id: ch2-prepare-root-request
-run = CircuitRun(backend="julia",
+run = CircuitRun(
     plan=plan,
-    workspace="workspaces/engineer-chapter-02",
+    storage="memory",
 )
 root_view = run.original.reduce(
     ReductionPipeline().retain(resonator_coordinate)
@@ -48,7 +48,7 @@ capacitance_sweep = run.evaluate(
 ```
 
 Every point retains its complete effective `ParameterSet`, source index,
-identity, and either a typed root Result or typed failure. Collection reads a
+origin, and either a typed root Result or typed failure. Collection reads a
 quantity already requested by `root_spec`; it launches no new calculation.
 
 ```{python}

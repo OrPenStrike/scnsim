@@ -14,8 +14,7 @@ Use the declarations in [Chapter 1, Build](../../examples/engineer/chapter-01/01
 `plan`, scalar `capacitance` (baseline 110 fF), `resonator_coordinate`, the grounded
 5.8 nH inductor, 6 fF coupling capacitor and terminated 50 ohm Port. Keep those
 objects from the same authored Plan; a new parameter with the same display name
-is not the captured parameter. This guide creates a JAX Run rather than executing
-the Chapter's Julia response cell.
+is not the captured parameter. This guide creates a Run using that same model.
 
 ```python
 import numpy as np
@@ -25,7 +24,7 @@ from scnsim import (
     OutputCoordinate, SensitivityScales, units as u,
 )
 
-run = CircuitRun(plan=plan, backend="jax", workspace="workspaces/lc-sensitivity")
+run = CircuitRun(plan=plan, workspace="workspaces/lc-sensitivity")
 frequencies = np.linspace(5.75, 6.25, 401) * u.GHz
 response_spec = DirectSolveSpec(frequencies=frequencies)
 root_view = run.original.reduce(ReductionPipeline().retain(resonator_coordinate))
@@ -200,9 +199,8 @@ executable. Warmup neither solves a physical result nor publishes success, and
 unrequested transforms or future shapes remain lazy. Saved Result ownership is
 separate; released references do not promise an immediate RSS drop.
 
-JAX is the current physical-program and checked-AD path. Julia keeps its existing
-legacy/reference capabilities and native schemas; Sensitivity and new local or
-Hybrid strategies do not select Julia or fall back to it. Requested dtype,
+JAX is the physical-program and checked-AD path for Sensitivity, local and
+Hybrid strategies. Requested dtype,
 arithmetic and numerical certification remain distinct from forward accuracy.
 Advanced raw access uses the same detached acquisition:
 
@@ -294,7 +292,7 @@ budget, line-search condition or stopping tolerance.
 from scnsim import LBFGSBSpec, OptimizationSpec
 
 local_run = CircuitRun(
-    plan=plan, backend="jax", workspace="workspaces/lc-local-stage",
+    plan=plan, workspace="workspaces/lc-local-stage",
 )
 local_view = local_run.original.reduce(
     ReductionPipeline().retain(resonator_coordinate)

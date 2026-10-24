@@ -23,7 +23,7 @@ units and the selected context for plotting, comparison or reporting.
 | Which components exist, and how can I reuse a resonator or network? | [Circuit models, subsystems and reuse](physical-authority-and-reusable-composition.qmd) |
 | What is a coordinate, Port or selected network View? | [Compilation, coordinates and Views](compilation-coordinates-and-network-views.qmd) |
 | What do the phasor sign, current direction and wave reference mean? | [Simulation conventions](simulation-conventions.qmd) |
-| Which calculation and operating point do I need? | [Direct and HB realizations](direct-and-hb-realizations.qmd) |
+| Which calculation and operating point do I need? | [Linear Direct realization](direct-and-hb-realizations.qmd) |
 | How do units, parameters and scalar objectives fit together? | [Units, parameters and optimization](units-parameters-and-optimization.qmd) |
 | How is a distributed line represented by sections? | [Electrical resolution](electrical-resolution.qmd) |
 | What does Run own, and what can I read after a calculation? | [Requests, execution and Results](requests-execution-and-result-ownership.qmd) |

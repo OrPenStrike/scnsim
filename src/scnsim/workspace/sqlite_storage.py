@@ -18,7 +18,8 @@ from uuid import uuid4
 
 from ..errors import EvidenceIntegrityError, UnsupportedEvidenceVersionError
 from .operation_store import OperationStore, Snapshot, _VERSION as _OPERATION_STORE_VERSION, _reference
-from ..numeric_encoding import record_bytes, record_document
+from .binary_blocks import record_bytes, record_document
+from ..numeric_encoding import record_bytes as numerical_record_bytes
 from .operation_scratch import cleanup_inactive_operation_scratch
 
 _ACTIVE: ContextVar[tuple[Path, Snapshot] | None] = ContextVar('operation_sql_snapshot', default=None)
@@ -82,8 +83,8 @@ def _new_task_descriptor(task):
 
 def _unsupported_old_record(path):
     return UnsupportedEvidenceVersionError(
-        "This Workspace uses an older benchmark evidence format; use a new Workspace and recompute.",
-        stage="benchmark_record",
+        "This Workspace uses an unsupported evidence format; use a new Workspace and recompute.",
+        stage="operation_store",
         evidence={"path": str(path), "action": "use a new Workspace and recompute"},
     )
 
@@ -226,7 +227,6 @@ def recover_operation_workspace(binding):
     store = _bound(binding)
     if store.path.exists() or store.path.is_symlink():
         store.recover()
-    binding._cleanup_staging()
     cleanup_inactive_operation_scratch(operation_workspace(binding), binding.root)
 
 
@@ -1226,7 +1226,7 @@ def complete_sensitivity_operation(binding, *, operation_id, task_id, attempt_id
         raise _error("Sensitivity equation evidence differs from its derivative declaration.")
     _valid_sha(equation_evidence["program_sha256"])
     manifest_body = {
-        "schema": "scnsim.sensitivity_manifest", "schema_version": 1,
+        "schema": "scnsim.sensitivity_manifest", "schema_version": 1, "evidence_version": 3,
         "workspace_instance_id": workspace_instance_id, "plan_sha256": plan_sha256,
         "request_sha256": request_sha256, "task_id": task_id, "attempt_id": attempt_id,
         "outcome": outcome, "request_ref": dict(request_ref),
@@ -1442,7 +1442,7 @@ def _complete_chunked_operation(binding, *, domain, operation_id, task_id, attem
         spec = request.get("spec") if isinstance(request, Mapping) else None
         is_sweep = isinstance(source, Mapping) and source.get("kind") in {"grid", "points"}
         is_direct_points = (
-            isinstance(source, Mapping) and source.get("kind") == "points"
+            isinstance(source, Mapping) and source.get("kind") in {"grid", "points"}
             and isinstance(spec, Mapping) and spec.get("type") == "direct_solve"
         )
         if (not isinstance(request, dict) or record_bytes(request) != request_raw
@@ -1461,7 +1461,7 @@ def _complete_chunked_operation(binding, *, domain, operation_id, task_id, attem
                          domain=domain, task_id=task_id)
         expected_sweep_points = None
         if domain == "sweep":
-            from .validation.sweeps import _parameter_source_points
+            from .validation.common import _parameter_source_points
 
             expected_sweep_points = iter(_parameter_source_points(source))
         stream = _stream(task_id)
@@ -1507,11 +1507,11 @@ def _complete_chunked_operation(binding, *, domain, operation_id, task_id, attem
             raise _error("Chunked result binding changed before terminal publication.",
                          operation_id=operation_id, task_id=task_id, attempt_id=attempt_id)
         manifest_body = {
-            "schema": f"scnsim.{domain}_manifest", "schema_version": 1,
+            "schema": f"scnsim.{domain}_manifest", "schema_version": 1, "evidence_version": 3,
             **identity, "request_ref": dict(request_ref), "metadata": dict(metadata),
         }
         manifest_ref = tx.put_object(record_bytes(manifest_body), role=f"{domain}_manifest")
-        for ordinal, source_chunk in enumerate(chunks):
+        for ordinal, source_chunk in enumerate(chunks(tx) if callable(chunks) else chunks):
             if not isinstance(source_chunk, Mapping):
                 raise _error("Chunk source is malformed.", domain=domain, ordinal=ordinal)
             count = source_chunk.get("point_count")
@@ -1594,7 +1594,20 @@ def _complete_chunked_operation(binding, *, domain, operation_id, task_id, attem
                 **identity, "ordinal": ordinal, "first_point": first_point,
                 "point_count": count, **dict(payload),
             }
+            if domain == "direct":
+                body["array_context"] = {key: metadata[key] for key in (
+                    "terminal_ids", "input_channels", "output_channels", "family_units")
+                    if key in metadata}
             reference = tx.put_object(record_bytes(body), role=f"{domain}_chunk")
+            if domain == "direct":
+                if not isinstance(chunk_summary.get("evidence"), Mapping):
+                    raise _error("Direct chunk lacks its same-call equation evidence.", ordinal=ordinal)
+                summary_body = {
+                    "schema": "scnsim.direct_chunk_summary", "schema_version": 1,
+                    **identity, "ordinal": ordinal, "evidence": dict(chunk_summary["evidence"]),
+                }
+                summary_reference = tx.put_object(record_bytes(summary_body), role="direct_chunk_summary")
+                chunk_summary = {"summary_ref": summary_reference}
             chunk_rows.append({
                 "ordinal": ordinal, "first_point": first_point, "point_count": count,
                 "chunk_ref": reference, "summary_json": dict(chunk_summary),
@@ -1886,7 +1899,9 @@ def _physical_dependency_references(tx, dependencies):
         if not isinstance(body_id, str) or not isinstance(body, Mapping):
             raise _error("Physical Optimization dependency body is malformed.")
         raw = record_bytes(dict(body))
-        digest = sha256(raw).hexdigest()
+        # The producer's logical body ID and the storage object address are
+        # separate authorities; both bind the same decoded exact array bits.
+        digest = sha256(numerical_record_bytes(dict(body))).hexdigest()
         if digest != body_id:
             raise _error("Physical Optimization dependency body identity changed.",
                          body_id=body_id, actual_sha256=digest)
@@ -1908,7 +1923,7 @@ def _physical_hydrate_dependencies(snapshot, candidate):
         raw = snapshot.get_object(reference)
         body = record_document(raw)
         if (not isinstance(body, dict) or record_bytes(body) != raw
-                or sha256(raw).hexdigest() != body_id):
+                or sha256(numerical_record_bytes(body)).hexdigest() != body_id):
             raise _error("Physical Optimization dependency body differs from its content identity.",
                          body_id=body_id)
         hydrated[body_id] = body
@@ -2924,6 +2939,43 @@ def _physical_candidate_locator(candidate_ref, candidate_body):
     }
 
 
+def _physical_candidate_source_locator(selected):
+    """Keep an actual candidate's source; terminal-only values have no batch."""
+    return {
+        "kind": selected["kind"], "stage_id": selected["stage_id"],
+        "evaluation_ordinal": selected.get("evaluation_ordinal"),
+        "candidate_ref": dict(selected["candidate_ref"]),
+        "source_task_id": selected["source_task_id"],
+        "source_attempt_id": selected["source_attempt_id"],
+        **({"source_batch_ref": dict(selected["source_batch_ref"])}
+           if "source_batch_ref" in selected else {}),
+    }
+
+
+def _physical_stage_history_baseline_locator(candidate_locators, baseline_ref,
+                                              stage_id, model_identity):
+    # Evaluation keys are (authored stage_id, ordinal), so an authored stage
+    # named "baseline" is not a discriminator. The actual occurrence owns kind.
+    saved_baselines = [row for row in candidate_locators.values()
+                       if row.get("kind") == "baseline" and row["stage_id"] == stage_id]
+    if any(row["model_identity"] != dict(model_identity) for row in saved_baselines):
+        raise _error("Physical Optimization history baseline uses another model.",
+                     stage_id=stage_id)
+    current_baseline = (None if baseline_ref is None else
+                        candidate_locators.get(("baseline", baseline_ref["sha256"])))
+    if current_baseline is not None and current_baseline["stage_id"] == stage_id:
+        saved_baseline = current_baseline
+    elif len(saved_baselines) == 1:
+        saved_baseline = saved_baselines[0]
+    elif saved_baselines:
+        raise _error("Physical Optimization history has ambiguous baseline sources.",
+                     stage_id=stage_id)
+    else:
+        saved_baseline = None
+    return (None if saved_baseline is None else
+            _physical_candidate_source_locator(saved_baseline))
+
+
 def complete_optimization_operation(binding, *, operation_id, task_id, attempt_id,
                                     result, manifest, stages, transitions, outcome):
     """Seal physical Optimization result/indexes and terminal task state atomically.
@@ -3229,17 +3281,10 @@ def complete_optimization_operation(binding, *, operation_id, task_id, attempt_i
                                  evaluation_ordinal=evaluation_ordinal)
                 if supplied_ref is not None and dict(supplied_ref) != dict(selected["candidate_ref"]):
                     raise _error("Physical Optimization candidate locator reference changed.", field=label)
-        return {
-            "kind": selected["kind"], "stage_id": selected["stage_id"],
-            "evaluation_ordinal": selected.get("evaluation_ordinal"),
-            "candidate_ref": dict(selected["candidate_ref"]),
-            "source_task_id": selected["source_task_id"],
-            "source_attempt_id": selected["source_attempt_id"],
-            "source_batch_ref": dict(selected["source_batch_ref"]),
-        }
+        return _physical_candidate_source_locator(selected)
 
     manifest_body = {
-        "schema": "scnsim.optimization_manifest", "schema_version": 1,
+        "schema": "scnsim.optimization_manifest", "schema_version": 1, "evidence_version": 3,
         **identity, "outcome": outcome,
         "request_ref": dict(request_ref), "declarations": dict(manifest),
         "stage_ids": list(stage_order),
@@ -3282,6 +3327,13 @@ def complete_optimization_operation(binding, *, operation_id, task_id, attempt_i
                 **identity,
             }
             baseline_ref = tx.put_object(record_bytes(baseline_candidate_body), role="optimization_candidate")
+            candidate_locators[("baseline", baseline_ref["sha256"])] = {
+                "kind": "baseline", "stage_id": stage_id,
+                "model_identity": dict(model_identity),
+                "evaluation_ordinal": baseline_candidate["evaluation_ordinal"],
+                "candidate_ref": baseline_ref,
+                "source_task_id": task_id, "source_attempt_id": attempt_id,
+            }
 
         manifest_ref = tx.put_object(record_bytes(manifest_body), role="optimization_manifest")
         completed_stage_ids = []
@@ -3329,8 +3381,12 @@ def complete_optimization_operation(binding, *, operation_id, task_id, attempt_i
                 "accepted_iterate_ref": (None if accepted_ref is None else accepted_ref["candidate_ref"]),
                 "accepted_iterate_locator": accepted_ref,
             }
+            history_baseline_locator = _physical_stage_history_baseline_locator(
+                candidate_locators, baseline_ref, stage_id, model_identity,
+            )
             history_body = {
                 "schema": "scnsim.optimization_stage_history", "schema_version": 1,
+                "baseline_locator": history_baseline_locator,
                 **identity, "stage_id": stage_id, "model_identity": dict(model_identity),
                 "row_count": len(stage_rows),
                 "candidate_refs": [dict(row["candidate_ref"]) for row in stage_rows],
@@ -3615,3 +3671,37 @@ def find_operation_success(binding,request_sha256,*,projection_consumer=None):
     return None
 
 
+
+
+class _ChunkReference:
+    """One verified immutable staging object; it owns no execution lifetime."""
+    __slots__ = ("reference", "byte_length")
+
+    def __init__(self, reference):
+        self.reference = dict(reference)
+        self.byte_length = reference["byte_length"]
+
+
+class ChunkStorage:
+    """Same-call Direct/Sweep staging in checked SQLite objects, without spool.
+
+    Chunk writes cannot publish completion. The terminal publisher consumes the
+    references through its own transaction snapshot, so it never nests a reader
+    lock inside the final writer lock.
+    """
+    def __init__(self, binding):
+        self.binding = binding
+        self.store = _bound(binding)
+
+    def put_record(self, value):
+        payload = record_bytes(value)
+        with self.binding.writer():
+            with self.store.transaction(str(uuid4()), expected_revisions={}) as tx:
+                reference = tx.put_object(payload, role="chunk_staging")
+        return _ChunkReference(reference)
+
+    def get_record(self, reference, *, snapshot=None):
+        if snapshot is not None:
+            return _decode(snapshot, reference.reference)
+        with _snapshot(self.store) as reader:
+            return _decode(reader, reference.reference)

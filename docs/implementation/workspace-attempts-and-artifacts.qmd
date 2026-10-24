@@ -1,8 +1,94 @@
 ---
-title: "Workspace, Attempts, Receipts, and Artifacts"
-subtitle: "How is durable evidence appended and resolved safely?"
+title: "Workspace, operations and saved Results"
+subtitle: "Publish exact binary evidence and resolve a fixed result"
 toc-depth: 2
 ---
+
+A Workspace stores immutable numerical objects and fixed result selections in
+SQLite. Reconstruct the same Plan, View, Spec and parameters to read a saved
+Result with `resolve()`; reading never runs a solver.
+
+## One Plan leaf and one operation store
+
+A replaceable Workspace root selects one sealed Plan leaf. Its operation store
+is `operations/operations.sqlite3`, internal revision 8 with evidence version 3.
+SQLite uses DELETE journaling and EXTRA synchronization. Object references bind
+schema, storage/database, role, full hash and exact length.
+
+`versioned=False` supports topology iteration: a changed Plan selects a new
+leaf, and a reader bound to the replaced instance raises
+`WorkspacePlanReplacedError`. `versioned=True` retains separate topology
+iterations. Workspace location does not become the physical circuit identity.
+
+## Immutable data and atomic completion
+
+Direct, including a parameter Sweep of Direct, writes the original call's
+synchronized host arrays directly to checked immutable objects. Its sink retains
+small references, not a spool or a second numerical result. Optimization keeps
+its operation spool and ordered lazy history.
+
+A newly inserted object is read back and verified before `put_object` returns.
+Completed chunks may commit independently, but those chunks alone do not select
+a successful Result. The final revision-checked transaction publishes the
+manifest, result, completion, terminal attempt state and success selection
+atomically. Failed or interrupted attempts keep their actual evidence.
+
+CMA publishes complete post-tell groups and the declared checkpoint state.
+The baseline is not generation zero; iteration/evaluation counters retain their
+optimizer meaning. Each public `stage.history` includes its saved baseline
+before its evaluations. Stage/model/source-bound locators preserve ancestry,
+including continuation histories; absent or corrupt declarations are not
+replaced by a global baseline.
+
+## Readback and lifetime
+
+Readers fix immutable completion metadata and hydrate selected objects in short
+readonly snapshots. They verify role, schema, hash, framing, length and the closed
+binary header. A reopened snapshot verifies again. Results retain no Run,
+live connection, numerical factor or AD tape. Values already materialized remain
+detached, while unloaded values require their original intact Workspace.
+
+`run.close()` releases Run-owned resources. Fixed saved Results remain readable
+after close and in an independent process. Memory Results are detached and have
+no saved attempt or completion identity. Sweep points retain their original
+source order, repeated points, values, executed markers and structured failures.
+Public Direct/Operator evidence is readonly and belongs to the same call;
+conditional affine evidence appears only when used.
+
+## Format admission and recovery
+
+Opening an existing Workspace checks its envelope/store version read-only
+before creating a directory, lock file or writable SQLite connection. The
+current format is checked again under the ordinary lock before mutation.
+Old data are neither migrated nor deleted. The typed rejection states:
+
+> Operation evidence was written by a pre-1.0 development build that 1.0 does not support; use a new Workspace and recompute.
+
+Readonly `resolve()` and Benchmark never recover or repair evidence. When an
+existing current store requires recovery, explicitly use
+`run.recover_workspace()`; that operation does not resume numerical work.
+Preserve the complete leaf and any SQLite journal when relocating data.
+
+## Locks and platform boundary
+
+Stable Workspace locks and operation leases preserve the established ownership
+order. POSIX uses advisory file locks; Windows uses native byte-range locks.
+Readonly SQLite paths use `Path.as_uri()` with `mode=ro`, including Windows
+paths and Unicode. Lock success is separate from publication durability;
+filesystem and SQLite errors retain their original typed causes.
+
+See [Workspace evidence v3](../contracts/workspace-evidence-v3.qmd) for exact
+columns and [the lifecycle contract](../v1-runtime-contract.qmd#package-lifecycle)
+for operation and reader ownership.
+
+## History: superseded pre-1.0 implementation
+
+The following record describes the earlier runtime and storage versions.
+Its algorithms, schema IDs and execution observations keep their original scope.
+Use the current interfaces above for 1.0.
+
+<details>
+<summary>Earlier implementation record</summary>
 
 **Status:** Accepted append-only Result evidence remains `STABILIZED`; the
 newer Run preparation, replacement maintenance, read leases, and optimization
@@ -370,3 +456,5 @@ The exact envelopes and Result/artifact references are defined by the
 [machine-readable identity schemas](canonical-identities-and-schemas.qmd).
 
 [Next: Composite snapshots and recursive expansion](composite-snapshots-and-recursive-expansion.qmd)
+
+</details>

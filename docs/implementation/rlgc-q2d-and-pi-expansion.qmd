@@ -166,9 +166,9 @@ A drawing is not an independent proof of numerical stamping or solver accuracy.
 
 `run.explain()` recompiles the bound graph and reports the facts above,
 including Q2D/manual provenance, validation evidence, station map, zero-row
-evidence, and Direct/HB capability. It is pure preflight: it does not launch a
+evidence, and Direct capability. It is pure preflight: it does not launch a
 solver, allocate an attempt, write a workspace receipt, or materialize a
-numerical Result. It may prepare the package-owned Julia environment when a
-real compiler preflight requires it; preparation is not solver or receipt work.
+numerical Result. Compiler preflight uses the captured Python model without initializing the
+numerical runtime.
 
 [Next: View lineage and selected networks](view-lineage-and-selected-networks.qmd)

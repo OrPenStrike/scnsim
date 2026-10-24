@@ -74,7 +74,7 @@ new pair of objects, never mutation of the earlier Run.
 By default, binding a different Plan to the same workspace replaces the prior
 workspace evidence when the new active pointer commits. Retirement of the old
 leaf is postcommit maintenance: failure leaves the new Run usable and exposes
-one exact cleanup-pending record through `run.inventory()`. A later exclusive
+one exact cleanup-pending record in the Workspace maintenance evidence. A later exclusive
 workspace operation may finish only that classified cleanup. `versioned=True` instead
 selects a Plan-specific iteration subworkspace. The exact replacement,
 one-way-upgrade, and stale-handle behavior is defined in

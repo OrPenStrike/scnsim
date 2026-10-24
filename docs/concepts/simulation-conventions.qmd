@@ -59,8 +59,7 @@ from a variable name.
 
 JAX Direct and Operator response grids preserve the declared frequency order,
 including repeated entries and reverse sweeps. An axis position is a requested
-occurrence, not a promise that frequencies are sorted or unique. HB and the
-frozen Julia reference retain their separately documented grid capabilities.
+occurrence, not a promise that frequencies are sorted or unique. The retired HB contract retains its historical grid capabilities.
 
 Voltage is relative to the Plan's canonical reference ground. Terminal current
 is positive **into the DUT**. With these choices, the elementary impedances and

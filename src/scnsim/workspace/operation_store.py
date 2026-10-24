@@ -31,7 +31,7 @@ from ._os_io import lock_fd, unlock_fd
 from .storage import _fsync_directory
 
 _DATABASE = "operations.sqlite3"
-_VERSION = 7
+_VERSION = 8
 _SCHEMA = (
     "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE objects (sha256 TEXT PRIMARY KEY, payload BLOB NOT NULL)",
@@ -83,11 +83,35 @@ def _integrity(message: str, **evidence: object) -> EvidenceIntegrityError:
 
 def _unsupported_version(found: str) -> UnsupportedEvidenceVersionError:
     return UnsupportedEvidenceVersionError(
-        "Operation evidence uses an unsupported version; use a new Workspace and recompute.",
+        "Operation evidence was written by a pre-1.0 development build that 1.0 does not support; use a new Workspace and recompute.",
         stage="operation_store",
         evidence={"found_schema_version": found, "supported_schema_version": _VERSION,
                   "action": "use a new Workspace and recompute"},
     )
+
+
+def preflight_operation_store(root: Path) -> None:
+    """Inspect existing version metadata without locks, writes or recovery."""
+    root = Path(root)
+    path = root / _DATABASE
+    for name in ("benchmark.json", "requests", ".zgroup", ".zarray", "zarr.json"):
+        legacy = root / name
+        if legacy.exists() or legacy.is_symlink():
+            raise _unsupported_version("legacy")
+    if not path.exists() and not path.is_symlink():
+        return
+    if root.is_symlink() or path.is_symlink() or not root.is_dir():
+        raise _integrity("Operation store must not traverse a symlink.", path=str(path))
+    connection = sqlite3.connect(path.absolute().as_uri() + "?mode=ro&immutable=1",
+                                 uri=True, isolation_level=None)
+    try:
+        metadata = dict(connection.execute("SELECT key,value FROM metadata"))
+        if metadata.get("schema_version") != str(_VERSION):
+            raise _unsupported_version(metadata.get("schema_version"))
+        if metadata.get("evidence_version") != "3":
+            raise _unsupported_version(metadata.get("evidence_version"))
+    finally:
+        _close(connection)
 
 
 def _reference(digest: str, role: str, length: int) -> dict[str, Any]:
@@ -140,7 +164,7 @@ class OperationStore:
         self._phase_scope = phase_scope or (lambda name, details: nullcontext())
         self.root = Path(root)
         self.path = self.root / _DATABASE
-        self._metadata = {"schema_version": str(_VERSION), "plan_sha256": plan_sha256,
+        self._metadata = {"schema_version": str(_VERSION), "evidence_version": "3", "plan_sha256": plan_sha256,
                           "workspace_instance_id": workspace_instance_id}
 
     @contextmanager
@@ -171,6 +195,7 @@ class OperationStore:
         """Read the archived binding; this does not assert active Plan identity."""
         store = cls(root, plan_sha256="", workspace_instance_id="")
         if not store.path.exists() and not store.path.is_symlink():
+            preflight_operation_store(store.root)
             return None
         with store._lock(exclusive=False):
             connection = None
@@ -178,10 +203,12 @@ class OperationStore:
                 connection = store._connect(mode="ro")
                 connection.execute("BEGIN")
                 metadata = dict(connection.execute("SELECT key,value FROM metadata"))
-                if set(metadata) != {"schema_version", "plan_sha256", "workspace_instance_id"}:
+                if set(metadata) != {"schema_version", "evidence_version", "plan_sha256", "workspace_instance_id"}:
                     raise _integrity("Operation database binding metadata is malformed.")
                 if metadata["schema_version"] != str(_VERSION):
                     raise _unsupported_version(metadata["schema_version"])
+                if metadata["evidence_version"] != "3":
+                    raise _unsupported_version(metadata["evidence_version"])
                 return cls(root, plan_sha256=metadata["plan_sha256"],
                            workspace_instance_id=metadata["workspace_instance_id"])
             except sqlite3.Error as error:
@@ -199,6 +226,7 @@ class OperationStore:
 
     @contextmanager
     def _lock(self, *, exclusive: bool) -> Iterator[None]:
+        preflight_operation_store(self.root)
         self._check_paths()
         path = self.root / ".scnsim.lock"
         flags = (os.O_RDWR | os.O_CREAT) if exclusive else os.O_RDONLY
@@ -251,6 +279,7 @@ class OperationStore:
                              expected=self._metadata, actual=actual)
 
     def initialize(self) -> None:
+        preflight_operation_store(self.root)
         created_root = not self.root.exists()
         self.root.mkdir(exist_ok=True)
         if created_root:
@@ -825,12 +854,13 @@ class StoreTransaction(Snapshot):
         reference = _reference(digest, role, len(payload))
         cursor = self._connection.execute("INSERT INTO objects VALUES (?,?) ON CONFLICT DO NOTHING", (digest, payload))
         self.counts["inserted_objects"] += cursor.rowcount
-        if cursor.rowcount == 0:
-            existing = self._connection.execute(
-                "SELECT payload FROM objects WHERE sha256=?", (digest,)
-            ).fetchone()[0]
-            if existing != payload:
-                raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
+        stored = self._connection.execute(
+            "SELECT payload FROM objects WHERE sha256=?", (digest,)
+        ).fetchone()
+        if (stored is None or stored[0] != payload
+                or len(stored[0]) != len(payload)
+                or hashlib.sha256(stored[0]).hexdigest() != digest):
+            raise _integrity("Object digest identifies different stored bytes.", sha256=digest)
         self._connection.execute("INSERT INTO object_roles VALUES (?,?) ON CONFLICT DO NOTHING", (digest, role))
         return reference
 

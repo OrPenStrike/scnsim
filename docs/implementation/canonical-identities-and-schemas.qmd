@@ -1,8 +1,77 @@
 ---
-title: "Canonical Identities and Schemas"
-subtitle: "Which bytes name a Plan, request, attempt, Result, and receipt?"
+title: "Canonical identities and schemas"
+subtitle: "Keep physical declarations, execution identity and stored numerical bytes distinct"
 toc-depth: 2
 ---
+
+SCNSim identifies physical declarations with canonical documents and stores
+numerical evidence in exact binary columns. Use the document's own version;
+evidence v3 does not renumber Plan, Request or ParameterSet declarations.
+
+## Current version domains
+
+| Authority | Current format |
+|---|---|
+| Plan, Request, ParameterSet and authoring snapshot | Existing per-document discriminators in `identity-v2.schema.json` |
+| Workspace envelope | Schema 1 with required `evidence_version: 3` |
+| Binary numeric block and evidence manifest | Evidence version 3, defined in `identity-v3.schema.json` |
+| SQLite operation store and object references | Internal revision 8 |
+| Shared canonical quantities and identities | Named definitions in `identity-common.schema.json` |
+
+The site publishes the actual package [v2](../../src/scnsim/_schemas/identity-v2.schema.json),
+[v3](../../src/scnsim/_schemas/identity-v3.schema.json) and
+[common](../../src/scnsim/_schemas/identity-common.schema.json) resources.
+
+## Declaration and runtime identity
+
+`canonical.py` owns canonical JSON, coherent-SI scalar encoding and hashes.
+`authoring/identity.py` owns Plan and parameter records;
+`execution/request.py` owns finalized requests; `execution/identity.py` binds
+the installed Python/runtime source; `workspace/documents.py` owns saved
+envelopes. Identity metadata uses canonical JSON, not the numerical column codec.
+
+Canonical documents are UTF-8, use NFC-normalized keys and strings, and sort
+mapping keys. Ordered physical axes, Ports, coordinates, parameters and View
+lineage retain their declared order. Physical scalar declarations retain their
+binary64 encoding and unit vocabulary. Source changes can change a request's
+source-bound identity even when the circuit inputs are unchanged.
+
+## Binary numerical evidence
+
+`workspace/binary_blocks.py` is the single current storage codec. Its closed
+header binds dtype, shape, order, units where declared, byte ranges and execution
+context. SHA-256 covers framing, header and exact payload together. Float,
+complex, integer and boolean arrays retain their actual bits. A content address
+is not a substitute for checking role, schema, length or selected occurrence.
+
+Readers verify the current object reference, framing and header before decoding.
+Legacy JSON numerical array records are rejected rather than accepted as a
+compatibility codec. Small scalar and identity JSON documents remain valid.
+See [Workspace evidence v3](../contracts/workspace-evidence-v3.qmd).
+
+## Fixed selection and occurrence identity
+
+A saved Result fixes a completion and its referenced manifest. Ordered Sweep
+points, repeated points and optimization candidate occurrences remain distinct,
+even when content-addressed objects share a body. `terminal_attempt_ref` names
+the completed attempt document used by `ResultIdentity.attempt_sha256`.
+
+Each public optimization stage history includes its own saved baseline at
+ordinal zero when present, followed by that stage's ordered evaluations.
+`baseline_locator` binds the actual stage/model, candidate kind/ordinal and
+source ancestry. A terminal-only baseline may have no batch reference; the
+reader preserves that absence and verifies the candidate directly.
+Missing or corrupt evidence is an integrity failure, never an invitation to
+recompute or substitute another stage's baseline.
+
+## History: superseded pre-1.0 implementation
+
+The following record describes the earlier runtime and storage versions.
+Its algorithms, schema IDs and execution observations keep their original scope.
+Use the current interfaces above for 1.0.
+
+<details>
+<summary>Earlier implementation record</summary>
 
 **Status:** the structured Plan, Parameter, Request, and Result identity
 replacement is `CONVERGING`, with an integrated implementation baseline.
@@ -577,3 +646,5 @@ scheme and does not claim resistance to an adversary able to rewrite every file
 and recompute every hash. V1 adds no signing or external attestation service.
 
 [Next: Catalog and runtime identity](catalog-and-runtime-identity.qmd)
+
+</details>

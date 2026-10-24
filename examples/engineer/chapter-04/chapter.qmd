@@ -8,11 +8,11 @@ execute:
 
 # Chapter 4 — Four-Port capstone
 
-This complete Chapter is its own clean-kernel execution unit. Its six web
+This complete Chapter is its own clean-kernel execution unit. Its five web
 Lessons are reading views over these ordered source fragments; they are not
 independent notebooks. QMD is the editable authority, while `chapter.ipynb` is
 a generated zero-output transport artifact. The required core ends after
-Lesson 3; Lessons 4–6 are optional continuations on the same Plan.
+Lesson 3; Lessons 4–5 are optional continuations on the same Plan.
 
 {{< include _01-physical-plan.qmd >}}
 
@@ -24,4 +24,3 @@ Lesson 3; Lessons 4–6 are optional continuations on the same Plan.
 
 {{< include _05-optional-quantity.qmd >}}
 
-{{< include _06-optional-hb.qmd >}}

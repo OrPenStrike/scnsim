@@ -69,7 +69,6 @@ from scnsim import (
 sections_per_wavelength = 40
 maximum_frequency = 10 * u.GHz
 positions = (2 * u.mm, 4 * u.mm, 6 * u.mm)
-workspace_root = Path("workspaces/engineer-position-electrical-resolution")
 ```
 
 For lossless lines, the telegrapher equation gives
@@ -89,7 +88,7 @@ strictly positive. A new position point changes lengths only.
 
 ```{python}
 #| id: ch7-position-build
-def build_position_model(M, workspace):
+def build_position_model(M):
     definitions = ParameterDefinitions(id=f"position_m{M}")
     x = definitions.parameter(
         id="position", baseline=4*u.mm, spec=ParameterSpec(unit=u.mm),
@@ -141,7 +140,7 @@ def build_position_model(M, workspace):
             id=name, at=buses[name], role="terminated",
             reference_impedance=50*u.ohm,
         )
-    run = CircuitRun(backend="julia", plan=plan, workspace=workspace, versioned=True)
+    run = CircuitRun(plan=plan, storage="memory")
     trace = SParameterTrace(
         id="through_a", input_port="left_a", input_mode=(),
         output_port="right_a", output_mode=(),
@@ -152,33 +151,49 @@ def build_position_model(M, workspace):
     return plan, run, x, spec
 
 plan, run, x, direct_spec = build_position_model(
-    sections_per_wavelength, workspace_root / f"m{sections_per_wavelength}",
+    sections_per_wavelength,
 )
 ```
 
-## 4. Inspect modal delays and the initial grid
+## 4. Solve one three-position ParameterSpace
 
-`explain()` compiles the baseline in Julia but creates no numerical solve
-attempt. This is the realized grid for the 4 mm + 4 mm point. The Plan
-still represents two physical lines with a policy; this compiler table is
-the actual N-section evidence for the bound point. Certified diagram layout
-is separate and has the typed limitation noted in Step 1.
+The 61-point real-frequency grid is inclusive from 1 to 10 GHz. The same
+single request evaluates x = 2, 4, and 6 mm; each point recompiles before
+allocating its internal stations, while the Port names and wiring stay fixed.
+The returned in-memory Result contains the ordered point outcomes and their
+computed quantities. Read those outcomes in the current process; this lesson
+does not create a persistent batch checkpoint.
+
+```{python}
+#| id: ch7-position-solve
+position_space = ParameterSpace.points(tuple(ParameterSet({x: value}) for value in positions))
+position_points = run.solve(run.original, direct_spec, parameters=position_space)
+```
+
+## 5. Inspect the computed baseline grid
+
+Read the realized grid from the existing 4 mm + 4 mm point in the returned
+in-memory sweep. The Plan still represents two physical lines with a policy.
+If that point failed, display its typed failure instead of another point's grid.
+Certified diagram layout is separate from the electrical discretization.
 
 ```{python}
 #| id: ch7-position-explain
-explanation = run.explain(run.original, direct_spec, parameters=ParameterSet())
-rows = ["| body | length (mm) | modal velocities (m/s) | hmax (mm) | N | dx (mm) |",
-        "|---|---:|---|---:|---:|---:|"]
-for line in explanation.discretization:
-    modal_text = ", ".join(f"{v.to('m/s').magnitude:.6g}" for v in line.modal_velocities)
-    rows.append(
-        f"| {'/'.join(line.component_path)} | {line.length.to('mm').magnitude:.6g} | "
-        f"{modal_text} | "
-        f"{line.hmax.to('mm').magnitude:.6g} | {line.n_sections} | "
-        f"{line.dx.to('mm').magnitude:.6g} |"
-    )
-display(Markdown("\n".join(rows)))
-display(explanation.show())
+baseline_point = position_points.points[1]
+if not baseline_point.succeeded:
+    display(baseline_point.failure)
+else:
+    rows = ["| body | length (mm) | modal velocities (m/s) | hmax (mm) | N | dx (mm) |",
+            "|---|---:|---|---:|---:|---:|"]
+    for line in baseline_point.result.discretization:
+        modal_text = ", ".join(f"{v.to('m/s').magnitude:.6g}" for v in line.modal_velocities)
+        rows.append(
+            f"| {'/'.join(line.component_path)} | {line.length.to('mm').magnitude:.6g} | "
+            f"{modal_text} | "
+            f"{line.hmax.to('mm').magnitude:.6g} | {line.n_sections} | "
+            f"{line.dx.to('mm').magnitude:.6g} |"
+        )
+    display(Markdown("\n".join(rows)))
 ```
 
 ::: {.content-visible when-format="html"}
@@ -186,21 +201,6 @@ display(explanation.show())
 {{< include position-figures/07-position-baseline-grid.md >}}
 
 :::
-
-## 5. Solve one three-position ParameterSpace
-
-The 61-point real-frequency grid is inclusive from 1 to 10 GHz. The same
-single request evaluates x = 2, 4, and 6 mm; each point recompiles before
-allocating its internal stations, while the Port names and wiring stay fixed.
-If a previously interrupted batch has a verified completed first-point
-checkpoint, rerunning this same request reuses that completed point and solves
-the remaining points; it does not resume inside a point solve.
-
-```{python}
-#| id: ch7-position-solve
-position_space = ParameterSpace.points(tuple(ParameterSet({x: value}) for value in positions))
-position_points = run.solve(run.original, direct_spec, parameters=position_space)
-```
 
 ## 6. Read point outcomes and named complex channels
 
@@ -238,7 +238,7 @@ display(Markdown("\n".join(point_rows)))
 
 ## 7. Refine separately and compare exact complex samples
 
-M=80 uses a new Plan, Run, handles and workspace; it is not an in-place
+M=80 uses a new Plan, Run and handles with in-memory Results; it is not an in-place
 mutation of the sealed M=40 Plan. At the same three positions and 61
 frequencies, subtract the complex `through_a` samples. The difference is
 *measured refinement sensitivity* for this setup, not a certified error or a
@@ -247,7 +247,7 @@ winner threshold. The raw real and imaginary parts remain downloadable.
 ```{python}
 #| id: ch7-position-refinement
 refined_plan, refined_run, refined_x, refined_spec = build_position_model(
-    80, workspace_root / "m80",
+    80,
 )
 refined_space = ParameterSpace.points(tuple(
     ParameterSet({refined_x: value}) for value in positions
@@ -291,4 +291,4 @@ display(Markdown(f"[Download raw complex samples and differences]({output_dir / 
 
 The source notebook is generated from this QMD. Change positions by creating a
 new ParameterSpace on the same Run. Change resolution by rebuilding the Plan,
-Run and handles in a separate workspace; change wiring by rebuilding the model.
+Run and handles with separate in-memory Results; change wiring by rebuilding the model.

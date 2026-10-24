@@ -106,7 +106,7 @@ invertible transform of a complete Port-bound subspace. Anonymous Internal
 nodes are never selectable. An unported final coordinate fails rather than
 receiving a special matrix-only response.
 
-The failure is a preflight capability result: no Julia solver is launched and
+The failure is a preflight capability result: no numerical execution starts and
 no request attempt is allocated. Conversely, the quantity path consumes only
 the retained/complement node lineage and never interprets the not-applicable
 wave evidence as a Port selector or reference impedance.

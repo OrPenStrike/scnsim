@@ -1,6 +1,6 @@
 ### Three-position realized grids (M40)
 
-Read from the verified saved M40 point results.
+Read from the computed in-memory M40 point results.
 
 | x (mm) | status | left length / N / dx (mm) | right length / N / dx (mm) |
 |---:|---|---|---|

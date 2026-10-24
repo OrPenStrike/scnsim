@@ -72,7 +72,7 @@ restart_plan.add_port(
 ```{python}
 #| id: ch8-rebuild-request-after-restart
 restart_workspace = "workspaces/engineer-chapter-08"
-restart_run = CircuitRun(backend="julia", plan=restart_plan, workspace=restart_workspace)
+restart_run = CircuitRun(plan=restart_plan, workspace=restart_workspace)
 restart_view = restart_run.original.reduce(
     ReductionPipeline().retain(restart_coordinate)
 )
@@ -93,6 +93,7 @@ resolved_root = restart_run.resolve(
     parameters=restart_parameters,
 )
 resolved_root.plot()
+restart_run.close()
 ```
 
 ::: {.content-visible when-format="html"}
@@ -103,6 +104,6 @@ resolved_root.plot()
 
 The second kernel contains no `solve()`, `evaluate()`, retry, or fallback. It
 reconstructs the exact request identity and loads verified evidence from the
-shared workspace. Running every cell sequentially in one ordinary kernel does
-not prove this restart contract; the source-bound generation receipt records
-the two independent kernel sessions.
+shared SQLite workspace. Execute the two lessons in independent kernels using
+the same installed wheel. The course generator records both interpreter and
+RECORD bindings and rejects native numerical execution in the resolve-only kernel.

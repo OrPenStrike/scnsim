@@ -42,7 +42,6 @@ if TYPE_CHECKING:
         AnalysisResult,
         DirectQuantityResult,
         DirectSolveResult,
-        HBBatchResult,
         HtmlPresentation,
         OperatorResult,
         OptimizationResult,
@@ -233,37 +232,6 @@ def _nonnegative_int_tuple(value: tuple[int, ...], *, name: str) -> tuple[int, .
     if any(item < 0 for item in checked):
         raise ValueError(f"{name} must contain nonnegative integers")
     return checked
-
-
-def _validate_complex_current(value: Quantity, *, name: str) -> None:
-    if not isinstance(value, Quantity) or value._REGISTRY is not units.registry:
-        raise TypeError(f"{name} must use the scnsim.units registry")
-    try:
-        magnitude = np.asarray(value.to("ampere").magnitude)
-    except Exception as exc:
-        raise TypeError(f"{name} must be a current Quantity") from exc
-    if magnitude.ndim != 0:
-        raise ValueError(f"{name} must be a finite scalar Quantity")
-    scalar = complex(magnitude.item())
-    if not isfinite(scalar.real) or not isfinite(scalar.imag):
-        raise ValueError(f"{name} must be finite")
-
-
-def _validate_hb_mode(
-    mode: tuple[int, ...],
-    *,
-    rank: int,
-    limits: tuple[int, ...],
-    truncation: HBTruncation,
-    name: str,
-) -> None:
-    if len(mode) != rank:
-        raise ValueError(f"{name} rank must equal pump-axis rank")
-    if any(abs(value) > limit for value, limit in zip(mode, limits)):
-        raise ValueError(f"{name} is outside the declared harmonic lattice")
-    crop = truncation.max_intermodulation_order
-    if crop is not None and sum(abs(value) for value in mode) > crop:
-        raise ValueError(f"{name} is outside max_intermodulation_order")
 
 
 def _family(value: str) -> Literal["S", "Y", "Z"]:
@@ -1563,121 +1531,6 @@ class OptimizationSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class PumpAxis:
-    """Name one independent positive-frequency HB pump fundamental."""
-
-    id: str
-    _frequency: Quantity
-
-    def __init__(self, *, id: str, frequency: Quantity) -> None:
-        id = _identifier(id, field="pump-axis id")
-        units.require_positive_quantity(frequency, "hertz", name="pump-axis frequency")
-        object.__setattr__(self, "id", id)
-        object.__setattr__(self, "_frequency", _detached_quantity(frequency))
-
-    @property
-    def frequency(self) -> Quantity:
-        return quantity_view(self._frequency)
-
-    def _canonical_record(self) -> Mapping[str, object]:
-        return {"id": self.id, "frequency": self.frequency}
-
-
-@dataclass(frozen=True, slots=True)
-class CurrentDrive:
-    """Declare one logical-Port HB Fourier-current injection channel."""
-
-    id: str
-    at: PortRef
-    mode: tuple[int, ...]
-
-    def __init__(self, *, id: str, at: PortRef, mode: tuple[int, ...]) -> None:
-        id = _identifier(id, field="HB drive id")
-        if not isinstance(at, PortRef):
-            raise TypeError("CurrentDrive.at must be a PortRef")
-        checked = _mode_tuple(mode, name="CurrentDrive.mode")
-        object.__setattr__(self, "id", id)
-        object.__setattr__(self, "at", at)
-        object.__setattr__(self, "mode", checked)
-
-    def _canonical_record(self) -> Mapping[str, object]:
-        return {
-            "id": self.id,
-            "port_id": self.at.id,
-            "mode": self.mode,
-            "orientation": "port_node_to_reference",
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class HBCaseSpec:
-    """Name one immutable set of declared HB drive coefficients."""
-
-    id: str
-    _currents: Mapping[CurrentDrive, Quantity]
-
-    def __init__(self, *, id: str, currents: Mapping[CurrentDrive, Quantity]) -> None:
-        id = _identifier(id, field="HB case id")
-        if not isinstance(currents, Mapping):
-            raise TypeError("HBCaseSpec.currents must be a mapping")
-        checked: dict[CurrentDrive, Quantity] = {}
-        for drive, current in currents.items():
-            if not isinstance(drive, CurrentDrive):
-                raise TypeError("HBCaseSpec current keys must be CurrentDrive values")
-            _validate_complex_current(current, name=f"current for drive {drive.id!r}")
-            checked[drive] = _detached_quantity(current)
-        object.__setattr__(self, "id", id)
-        object.__setattr__(self, "_currents", MappingProxyType(checked))
-
-    @property
-    def currents(self) -> Mapping[CurrentDrive, Quantity]:
-        return MappingProxyType({drive: quantity_view(current) for drive, current in self._currents.items()})
-
-@dataclass(frozen=True, slots=True)
-class HBTruncation:
-    """Declare the request-global finite HB operating and response lattices."""
-
-    pump_harmonics: tuple[int, ...]
-    modulation_harmonics: tuple[int, ...]
-    three_wave_mixing: bool
-    four_wave_mixing: bool
-    max_intermodulation_order: int | None
-
-    def __init__(
-        self,
-        *,
-        pump_harmonics: tuple[int, ...],
-        modulation_harmonics: tuple[int, ...],
-        three_wave_mixing: bool,
-        four_wave_mixing: bool,
-        max_intermodulation_order: int | None = None,
-    ) -> None:
-        pump = _nonnegative_int_tuple(pump_harmonics, name="pump_harmonics")
-        modulation = _nonnegative_int_tuple(modulation_harmonics, name="modulation_harmonics")
-        if not isinstance(three_wave_mixing, bool) or not isinstance(four_wave_mixing, bool):
-            raise TypeError("HB mixing selections must be bool")
-        if (
-            max_intermodulation_order is not None
-            and (not isinstance(max_intermodulation_order, int) or isinstance(max_intermodulation_order, bool) or max_intermodulation_order < 0)
-        ):
-            raise ValueError("max_intermodulation_order must be a nonnegative integer or None")
-        object.__setattr__(self, "pump_harmonics", pump)
-        object.__setattr__(self, "modulation_harmonics", modulation)
-        object.__setattr__(self, "three_wave_mixing", three_wave_mixing)
-        object.__setattr__(self, "four_wave_mixing", four_wave_mixing)
-        object.__setattr__(self, "max_intermodulation_order", max_intermodulation_order)
-
-    def _canonical_record(self) -> Mapping[str, object]:
-        return {
-            "pump_harmonics": self.pump_harmonics,
-            "modulation_harmonics": self.modulation_harmonics,
-            "max_intermodulation_order": self.max_intermodulation_order,
-            "three_wave_mixing": self.three_wave_mixing,
-            "four_wave_mixing": self.four_wave_mixing,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class SParameterTrace:
     """Name one selected-matrix S projection for Direct or HB."""
 
@@ -1716,137 +1569,6 @@ class SParameterTrace:
         }
 
 
-@dataclass(frozen=True, slots=True)
-class HBSolveSpec:
-    """Request one immutable shared-basis nonlinear HB batch."""
-
-    pump_axes: tuple[PumpAxis, ...]
-    drives: tuple[CurrentDrive, ...]
-    _frequencies: Quantity
-    cases: tuple[HBCaseSpec, ...]
-    truncation: HBTruncation
-    traces: tuple[SParameterTrace, ...]
-    allow_driven_ptc: bool
-
-    def __init__(
-        self,
-        *,
-        pump_axes: Sequence[PumpAxis],
-        drives: Sequence[CurrentDrive],
-        frequencies: Quantity,
-        cases: Sequence[HBCaseSpec],
-        truncation: HBTruncation,
-        traces: Sequence[SParameterTrace] = (),
-        allow_driven_ptc: bool = False,
-    ) -> None:
-        axes = tuple(pump_axes)
-        declared_drives = tuple(drives)
-        declared_cases = tuple(cases)
-        declared_traces = tuple(traces)
-        if not all(isinstance(axis, PumpAxis) for axis in axes):
-            raise TypeError("pump_axes must contain PumpAxis values")
-        if len({axis.id for axis in axes}) != len(axes):
-            raise ValueError("pump-axis IDs must be unique")
-        if not all(isinstance(drive, CurrentDrive) for drive in declared_drives):
-            raise TypeError("drives must contain CurrentDrive values")
-        if len({drive.id for drive in declared_drives}) != len(declared_drives):
-            raise ValueError("HB drive IDs must be unique")
-        if not isinstance(truncation, HBTruncation):
-            raise TypeError("truncation must be an HBTruncation")
-        if len(truncation.pump_harmonics) != len(axes) or len(truncation.modulation_harmonics) != len(axes):
-            raise ValueError("HB truncation rank must equal pump-axis rank")
-        _validate_frequency_grid(frequencies)
-        if not all(isinstance(case, HBCaseSpec) for case in declared_cases) or not declared_cases:
-            raise ValueError("cases must be a nonempty sequence of HBCaseSpec values")
-        if len({case.id for case in declared_cases}) != len(declared_cases):
-            raise ValueError("HB case IDs must be unique")
-        if not all(isinstance(trace, SParameterTrace) for trace in declared_traces):
-            raise TypeError("traces must contain SParameterTrace values")
-        if len({trace.id for trace in declared_traces}) != len(declared_traces):
-            raise ValueError("HB trace IDs must be unique")
-        if not isinstance(allow_driven_ptc, bool):
-            raise TypeError("allow_driven_ptc must be bool")
-
-        rank = len(axes)
-        declared_by_mode: set[tuple[str, tuple[int, ...]]] = set()
-        for drive in declared_drives:
-            _validate_hb_mode(
-                drive.mode,
-                rank=rank,
-                limits=truncation.pump_harmonics,
-                truncation=truncation,
-                name=f"drive {drive.id!r}",
-            )
-            key = (drive.at.id, drive.mode)
-            inverse = (drive.at.id, tuple(-item for item in drive.mode))
-            if drive.mode and any(drive.mode) and inverse in declared_by_mode:
-                raise ValueError("HB drives must not independently declare conjugate modes at one Port")
-            declared_by_mode.add(key)
-        for trace in declared_traces:
-            _validate_hb_mode(
-                trace.input_mode,
-                rank=rank,
-                limits=truncation.modulation_harmonics,
-                truncation=truncation,
-                name=f"trace {trace.id!r} input_mode",
-            )
-            _validate_hb_mode(
-                trace.output_mode,
-                rank=rank,
-                limits=truncation.modulation_harmonics,
-                truncation=truncation,
-                name=f"trace {trace.id!r} output_mode",
-            )
-        declared_set = set(declared_drives)
-        for case in declared_cases:
-            for drive, current in case._currents.items():
-                if drive not in declared_set:
-                    raise ValueError("HB case binds a CurrentDrive not declared by this HBSolveSpec")
-                if not any(declared is drive for declared in declared_drives):
-                    raise ValueError("HB case must bind the exact declared CurrentDrive object")
-                if not any(drive.mode) and complex(current.to("ampere").magnitude).imag != 0.0:
-                    raise ValueError("a DC HB current coefficient must be real")
-        object.__setattr__(self, "pump_axes", axes)
-        object.__setattr__(self, "drives", declared_drives)
-        object.__setattr__(self, "_frequencies", _detached_quantity(frequencies))
-        object.__setattr__(self, "cases", declared_cases)
-        object.__setattr__(self, "truncation", truncation)
-        object.__setattr__(self, "traces", declared_traces)
-        object.__setattr__(self, "allow_driven_ptc", allow_driven_ptc)
-
-    @property
-    def frequencies(self) -> Quantity:
-        return quantity_view(self._frequencies)
-
-    def _canonical_record(self) -> Mapping[str, object]:
-        return {
-            "type": "hb_solve",
-            "pump_axes": tuple(axis._canonical_record() for axis in self.pump_axes),
-            "drives": tuple(drive._canonical_record() for drive in self.drives),
-            "frequencies": self.frequencies,
-            "cases": tuple(
-                {
-                    "id": case.id,
-                    "currents": tuple(
-                        {
-                            "drive_id": drive.id,
-                            "coefficient": current,
-                            "coefficient_convention": "exp_minus_i_m_dot_omega_t_fourier_coefficient",
-                        }
-                        for drive, current in self._ordered_case_currents(case)
-                    ),
-                }
-                for case in self.cases
-            ),
-            "truncation": self.truncation._canonical_record(),
-            "traces": tuple(trace._canonical_record() for trace in self.traces),
-            "allow_driven_ptc": self.allow_driven_ptc,
-        }
-
-    def _ordered_case_currents(self, case: HBCaseSpec) -> tuple[tuple[CurrentDrive, Quantity], ...]:
-        return tuple((drive, case._currents[drive]) for drive in self.drives if drive in case._currents)
-
-
 ReportChannel = str | tuple[str, tuple[int, ...]]
 
 
@@ -1878,40 +1600,6 @@ def _exact_report_channel(
     return channels[_channel_index(channels, selector, role=role, default=False)]
 
 
-def _declared_hb_trace_channels(
-    result: HBBatchResult,
-) -> Mapping[str, tuple[tuple[str, tuple[int, ...]], tuple[str, tuple[int, ...]]]]:
-    presentation = getattr(result, "_presentation", {})
-    declarations = (
-        presentation.get("declared_traces")
-        if isinstance(presentation, Mapping)
-        else None
-    )
-    if not isinstance(declarations, Mapping):
-        raise ValueError("HB Result has no verified declared-trace presentation metadata")
-    normalized: dict[
-        str, tuple[tuple[str, tuple[int, ...]], tuple[str, tuple[int, ...]]]
-    ] = {}
-    for identifier, declaration in declarations.items():
-        if not isinstance(identifier, str) or not isinstance(declaration, Mapping):
-            raise ValueError("HB Result declared-trace presentation metadata is malformed")
-        channels: list[tuple[str, tuple[int, ...]]] = []
-        for name in ("input_channel", "output_channel"):
-            channel = declaration.get(name)
-            coordinate = channel.get("coordinate") if isinstance(channel, Mapping) else None
-            mode = channel.get("mode") if isinstance(channel, Mapping) else None
-            if (
-                not isinstance(coordinate, str)
-                or not coordinate
-                or not isinstance(mode, (tuple, list))
-                or any(not isinstance(value, int) or isinstance(value, bool) for value in mode)
-            ):
-                raise ValueError("HB Result declared-trace presentation metadata is malformed")
-            channels.append((coordinate, tuple(mode)))
-        normalized[identifier] = (channels[0], channels[1])
-    return MappingProxyType(normalized)
-
-
 @dataclass(frozen=True, slots=True)
 class ReportPanel:
     """One closed presentation selection for an exact verified Result."""
@@ -1919,8 +1607,6 @@ class ReportPanel:
     result: Result
     kind: Literal["response", "matrix", "summary", "outcomes", "history"]
     family: Literal["S", "Y", "Z"] | None
-    case: str | None
-    trace: str | None
     input_channel: ReportChannel | None
     output_channel: ReportChannel | None
     _frequency: Quantity | None = field(repr=False)
@@ -1937,8 +1623,6 @@ class ReportPanel:
         result: Result,
         kind: Literal["response", "matrix", "summary", "outcomes", "history"] | None = None,
         family: Literal["S", "Y", "Z"] | None = None,
-        case: str | None = None,
-        trace: str | None = None,
         input_channel: ReportChannel | None = None,
         output_channel: ReportChannel | None = None,
         frequency: Quantity | None = None,
@@ -1950,7 +1634,7 @@ class ReportPanel:
         parameter: ParameterRef | None = None,
     ) -> None:
         from .results import (
-            DirectSolveResult, HBBatchResult, OperatorResult, OptimizationResult,
+            DirectSolveResult, OperatorResult, OptimizationResult,
             ParameterSweepResult, _is_checked_report_input,
             InMemoryDirectSolveResult, InMemoryAnalysisResult,
             InMemoryParameterSweepResult, InMemoryOptimizationResult,
@@ -1967,10 +1651,6 @@ class ReportPanel:
         is_optimization = isinstance(result, (OptimizationResult, InMemoryOptimizationResult))
         if family is not None:
             _family(family)
-        if case is not None and (not isinstance(case, str) or not case):
-            raise TypeError("case must be a nonempty case ID or None")
-        if trace is not None and (not isinstance(trace, str) or not trace):
-            raise TypeError("trace must be a nonempty trace ID or None")
         input_channel = _report_channel(input_channel, name="input_channel")
         output_channel = _report_channel(output_channel, name="output_channel")
         if frequency is not None:
@@ -1992,7 +1672,7 @@ class ReportPanel:
         history_requested = any(value is not None for value in (history_metric, objective, parameter))
         response_requested = any(
             value is not None
-            for value in (family, case, trace, input_channel, output_channel, component, magnitude)
+            for value in (family, input_channel, output_channel, component, magnitude)
         )
         if kind is None:
             groups = sum((matrix_requested, history_requested, response_requested and not matrix_requested))
@@ -2006,7 +1686,7 @@ class ReportPanel:
                 kind = "response"
             elif is_direct:
                 kind = "response" if len(result.s.view.input_channels) == len(result.s.view.output_channels) == 1 else "summary"
-            elif isinstance(result, (HBBatchResult, ParameterSweepResult, InMemoryParameterSweepResult)):
+            elif isinstance(result, (ParameterSweepResult, InMemoryParameterSweepResult)):
                 kind = "outcomes"
             elif is_optimization:
                 kind = "history"
@@ -2016,18 +1696,12 @@ class ReportPanel:
             raise ValueError("kind must be 'response', 'matrix', 'summary', 'outcomes', or 'history'")
 
         if kind == "response":
-            if not (is_direct or isinstance(result, HBBatchResult)):
-                raise TypeError("response panels require a Direct or HB Result")
+            if not is_direct:
+                raise TypeError("response panels require a Direct Result")
             if matrix_requested or history_requested:
                 raise ValueError("response panels do not accept matrix or history selectors")
-            if trace is not None and (input_channel is not None or output_channel is not None):
-                raise ValueError("trace and matrix-channel selection are mutually exclusive")
             if (input_channel is None) != (output_channel is None):
                 raise ValueError("input_channel and output_channel must be supplied together")
-            if is_direct and (case is not None or trace is not None):
-                raise ValueError("Direct response panels do not accept HB case or trace selectors")
-            if isinstance(result, HBBatchResult) and family not in {None, "S"}:
-                raise ValueError("HB response panels support only the S family")
             family = "S" if family is None else family
             component = "magnitude" if component is None else component
             magnitude = "linear" if magnitude is None else magnitude
@@ -2052,76 +1726,12 @@ class ReportPanel:
                     view.output_channels[0] if output_channel is None else output_channel,
                     role="output",
                 )
-            else:
-                if case is not None and case not in result.cases:
-                    raise ValueError(f"unknown HB case: {case}")
-                selected_cases = (
-                    (result.cases[case],)
-                    if case is not None
-                    else tuple(result.cases.values())
-                )
-                successful = tuple(
-                    outcome for outcome in selected_cases if outcome.succeeded
-                )
-                declared_traces = _declared_hb_trace_channels(result)
-                if trace is not None:
-                    if trace not in declared_traces:
-                        raise ValueError(f"unknown HB trace: {trace}")
-                    if any(trace not in outcome.traces for outcome in successful):
-                        raise ValueError(f"unknown HB trace: {trace}")
-                if trace is None and input_channel is None and successful:
-                    if any(
-                        len(outcome.s.view.input_channels) != 1
-                        or len(outcome.s.view.output_channels) != 1
-                        for outcome in successful
-                    ):
-                        raise ValueError("multichannel HB response panels require a trace or exact channels")
-                if input_channel is not None:
-                    if successful:
-                        first = successful[0].s.view
-                        input_channel = _exact_report_channel(
-                            first.input_channels, input_channel, role="HB input"
-                        )
-                        output_channel = _exact_report_channel(
-                            first.output_channels, output_channel, role="HB output"
-                        )
-                        for outcome in successful[1:]:
-                            view = outcome.s.view
-                            if (
-                                input_channel not in view.input_channels
-                                or output_channel not in view.output_channels
-                            ):
-                                raise ValueError(
-                                    "selected HB channels are absent from a successful case"
-                                )
-                    else:
-                        declared_pairs = tuple(declared_traces.values())
-                        declared_inputs = tuple(dict.fromkeys(
-                            item[0] for item in declared_pairs
-                        ))
-                        declared_outputs = tuple(dict.fromkeys(
-                            item[1] for item in declared_pairs
-                        ))
-                        input_channel = _exact_report_channel(
-                            declared_inputs,
-                            input_channel,
-                            role="HB declared input",
-                        )
-                        output_channel = _exact_report_channel(
-                            declared_outputs,
-                            output_channel,
-                            role="HB declared output",
-                        )
-                        if (input_channel, output_channel) not in declared_pairs:
-                            raise ValueError(
-                                "failed HB response channels must match one declared trace"
-                            )
             history_metric = None
         elif kind == "matrix":
             if not (is_direct or is_operator):
                 raise TypeError("matrix panels require a Direct or Operator Result")
-            if history_requested or any(value is not None for value in (case, trace, input_channel, output_channel)):
-                raise ValueError("matrix panels accept no response-channel, case, trace, or history selectors")
+            if history_requested or any(value is not None for value in (input_channel, output_channel)):
+                raise ValueError("matrix panels accept no response-channel or history selectors")
             if frequency is None:
                 raise ValueError("matrix panels require an exact frequency")
             matrix_style = "table" if matrix_style is None else matrix_style
@@ -2180,15 +1790,13 @@ class ReportPanel:
         else:
             if matrix_requested or history_requested or response_requested:
                 raise ValueError(f"{kind} panels accept no selection fields")
-            if kind == "outcomes" and not isinstance(result, (HBBatchResult, ParameterSweepResult, InMemoryParameterSweepResult)):
-                raise TypeError("outcomes panels require an HB batch or parameter sweep")
+            if kind == "outcomes" and not isinstance(result, (ParameterSweepResult, InMemoryParameterSweepResult)):
+                raise TypeError("outcomes panels require a parameter sweep")
             history_metric = None
 
         object.__setattr__(self, "result", result)
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "family", family)
-        object.__setattr__(self, "case", case)
-        object.__setattr__(self, "trace", trace)
         object.__setattr__(self, "input_channel", input_channel)
         object.__setattr__(self, "output_channel", output_channel)
         object.__setattr__(self, "_frequency", None if frequency is None else immutable_quantity(frequency))

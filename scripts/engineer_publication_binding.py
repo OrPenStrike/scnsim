@@ -621,6 +621,106 @@ def _publish_all(candidates: list[tuple[Path, bytes]]) -> None:
             temporary.unlink(missing_ok=True)
 
 
+
+def _bind_course_examples(root: Path) -> None:
+    """Expose only this course's companion namespace after installed validation."""
+    import importlib.machinery
+    import importlib.util
+    import sys
+
+    directory = (root / "examples").resolve(strict=True)
+    if "examples" in sys.modules:
+        existing = sys.modules["examples"]
+        paths = getattr(existing, "__path__", ())
+        if tuple(Path(path).resolve(strict=True) for path in paths) != (directory,):
+            raise RuntimeError("existing examples namespace differs from course source")
+        return
+    spec = importlib.machinery.ModuleSpec("examples", loader=None, is_package=True)
+    spec.submodule_search_locations = [str(directory)]
+    sys.modules["examples"] = importlib.util.module_from_spec(spec)
+
+
+def installed_course_runtime(root: Path) -> dict[str, object]:
+    """Bind explicit course execution to an exact noneditable installed wheel.
+
+    Source-only --check never calls this. Generated knowledge has its own
+    maintenance authority; all installed files still bind to the actual wheel
+    and RECORD, while runtime contributors must match the canonical source.
+    Paths remain private execution facts, not public figure metadata.
+    """
+    import base64
+    import csv
+    import importlib.metadata
+    import sys
+    import tomllib
+    from urllib.parse import unquote, urlparse
+    import zipfile
+    import scnsim
+
+    distribution = importlib.metadata.distribution("scnsim")
+    package = Path(scnsim.__file__).resolve(strict=True).parent
+    prefix = Path(sys.prefix).resolve(strict=True)
+    if package.is_relative_to(root.resolve()) or not package.is_relative_to(prefix):
+        raise RuntimeError("course generation requires the isolated installed wheel")
+    direct = json.loads(distribution.read_text("direct_url.json") or "{}")
+    if direct.get("dir_info", {}).get("editable", False):
+        raise RuntimeError("course generation does not use editable producer installation")
+    url = urlparse(direct.get("url", ""))
+    if url.scheme != "file" or url.netloc not in ("", "localhost"):
+        raise RuntimeError("course generation requires its retained local wheel input")
+    wheel = Path(unquote(url.path))
+    if os.name == "nt" and wheel.as_posix().startswith("/") and len(wheel.as_posix()) > 3 and wheel.as_posix()[2] == ":":
+        wheel = Path(wheel.as_posix()[1:])
+    if wheel.suffix != ".whl" or not wheel.is_file():
+        raise RuntimeError("course wheel input is unavailable")
+    record = distribution.read_text("RECORD")
+    if record is None:
+        raise RuntimeError("installed wheel RECORD is unavailable")
+    for name, digest, length in csv.reader(record.splitlines()):
+        if digest:
+            raw = Path(distribution.locate_file(name)).read_bytes()
+            actual = "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).decode().rstrip("=")
+            if actual != digest or len(raw) != int(length):
+                raise RuntimeError("installed course RECORD mismatch: " + name)
+    with zipfile.ZipFile(wheel) as archive:
+        wheel_record, = [name for name in archive.namelist() if name.endswith(".dist-info/RECORD")]
+        for name, digest, length in csv.reader(archive.read(wheel_record).decode().splitlines()):
+            if digest:
+                raw = archive.read(name)
+                actual = "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).decode().rstrip("=")
+                if actual != digest or len(raw) != int(length):
+                    raise RuntimeError("course wheel RECORD mismatch: " + name)
+                if Path(distribution.locate_file(name)).read_bytes() != raw:
+                    raise RuntimeError("installed course input differs from exact wheel: " + name)
+    version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    if distribution.version != version:
+        raise RuntimeError("installed course version differs from canonical source")
+    contributors = {}
+    for source in sorted((root / "src/scnsim").rglob("*")):
+        relative = source.relative_to(root / "src")
+        if (not source.is_file() or "_agent_knowledge" in relative.parts
+                or source.suffix not in {".py", ".json", ".toml", ".cpp"}):
+            continue
+        installed = Path(distribution.locate_file(relative.as_posix()))
+        raw = source.read_bytes()
+        if installed.read_bytes() != raw:
+            raise RuntimeError("installed course contributor differs: " + relative.as_posix())
+        contributors[relative.as_posix()] = hashlib.sha256(raw).hexdigest()
+    native = {str(path.relative_to(package)): hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in sorted((package / "_native").glob("_compensated_cpu*"))
+              if path.suffix in {".so", ".pyd", ".dll"}}
+    if not native:
+        raise RuntimeError("installed compensated native resource is unavailable")
+    _bind_course_examples(root)
+    return {"python": sys.version.split()[0], "scnsim": distribution.version,
+            "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+            "installed_record_sha256": hashlib.sha256(record.encode()).hexdigest(),
+            "course_helper_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "runtime_contributors_sha256": hashlib.sha256(json.dumps(
+                contributors, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "native_resources": native, "noneditable": True}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rebind", action="store_true", help="publish the exact reviewed source-only transition")

@@ -115,16 +115,21 @@ class ModelProgram:
     scalar_domains: tuple[tuple[int, bool], ...]
     evidence_bytes: bytes
 
-    def physical_fields(self, theta):
+    def physical_fields(self, theta, *, affine_evidence=None):
         """Validate the original binary64 point before numerical dtype casting.
 
         This shares field expressions and fixed stamps with the traced path;
         selected-dtype underflow does not create a different physical domain.
         """
         from ..errors import InvalidCandidatePhysicalParameter
-        fields = self.fields.apply(np.asarray(theta, dtype=np.float64), xp=np)
+        if affine_evidence is not None:
+            affine_evidence.rows.clear()
+        fields = self.fields.apply(np.asarray(theta, dtype=np.float64), xp=np,
+                                   affine_evidence=affine_evidence)
         if fields.status:
-            raise InvalidCandidatePhysicalParameter("affine input is outside declared support", stage="affine_support")
+            raise InvalidCandidatePhysicalParameter("affine input is outside declared support", stage="affine_support",
+                **({"evidence": {"affine_evidence": affine_evidence.rows}}
+                   if affine_evidence is not None and affine_evidence.rows else {}))
         for index, nonnegative in self.scalar_domains:
             value = fields.scalars[index]
             if not math.isfinite(value) or (value < 0 if nonnegative else value <= 0):

@@ -4,25 +4,15 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
 
 from .. import units
-from ..canonical import canonical_json_bytes, float64_from_hex, quantity_from_envelope, sha256_hex
+from ..canonical import canonical_json_bytes, float64_from_hex, quantity_from_envelope
 from ..authoring import CoordinateRef, ElectricNodeRef, ParameterRef, ParameterSet
 from ..authoring.physical_values import RLGC, RLGCParameterSpec
 from ..errors import EvidenceIntegrityError, SCNSimValidationError
-from ..workspace import VerifiedSuccess
-from ..workspace.artifacts import _VerifiedEvidenceLease
-from .base import ParameterPointIdentity, ResultIdentity
-from .factory import _verified_result
-from .decode_hb import _decode_hb_batch_operation
-from .decode_result import _decode_result_operation
-from .decode_sweep import _decode_parameter_sweep_operation
-from .hb import HBBatchResult
-from .sweep import ParameterSweepResult
 
 
 class VerifiedResultDecoder:
@@ -71,52 +61,6 @@ class VerifiedResultDecoder:
             raise ValueError("coordinate is not a public alias in this Plan")
         return resolved
 
-    def _decode_success(
-        self,
-        success: VerifiedSuccess,
-        *,
-        bound_spec: object | None = None,
-        evidence_lease: _VerifiedEvidenceLease,
-    ):
-        attempt_sha = sha256_hex(canonical_json_bytes(success.attempt))
-        result_sha = success.receipt["result_sha256"]
-        identity = _verified_result(
-            ResultIdentity,
-            plan_sha256=self._plan_sha256,
-            request_sha256=str(success.attempt["request_sha256"]),
-            attempt_sha256=attempt_sha,
-            result_sha256=result_sha,
-        )
-        result = success.result
-        kind = result["result_kind"]
-        if kind == "parameter_sweep":
-            return self._decode_parameter_sweep(
-                identity,
-                result,
-                success.request,
-                success.directory,
-                bound_spec=bound_spec,
-                evidence_lease=evidence_lease,
-            )
-        native_reader = None
-        if kind == "optimization":
-            from .native_reader import NativeResultReader
-
-            native_reader = NativeResultReader(
-                self._binding_identity,
-                result,
-                success.request,
-                success.directory,
-                native_index_ref=success.native_index_ref,
-                index_metadata=success.native_index_metadata,
-            )
-        return self._decode_result(
-            identity,
-            result,
-            success.request,
-            success.directory,
-            native_reader=native_reader,
-        )
 
     def _decode_parameter_ref(self, record: object) -> ParameterRef:
         if not isinstance(record, Mapping) or set(record) != {
@@ -268,18 +212,6 @@ class VerifiedResultDecoder:
             )
         return parameters
 
-    def _decode_result(
-        self,
-        identity: ResultIdentity | ParameterPointIdentity,
-        result: Mapping[str, object],
-        request: Mapping[str, object],
-        directory: Path,
-        *,
-        native_reader: object | None = None,
-    ):
-        return _decode_result_operation(
-            self, identity, result, request, directory, native_reader=native_reader
-        )
 
     def _decode_sensitivity(
         self,
@@ -299,24 +231,3 @@ class VerifiedResultDecoder:
             projection=projection,
             fixed_reader=fixed_reader,
         )
-
-    def _decode_parameter_sweep(
-        self,
-        identity: ResultIdentity,
-        result: Mapping[str, object],
-        request: Mapping[str, object],
-        directory: Path,
-        *,
-        bound_spec: object | None,
-        evidence_lease: _VerifiedEvidenceLease,
-    ) -> ParameterSweepResult:
-        return _decode_parameter_sweep_operation(self, identity, result, request, directory, bound_spec=bound_spec, evidence_lease=evidence_lease)
-
-    def _decode_hb_batch(
-        self,
-        identity: ResultIdentity | ParameterPointIdentity,
-        result: Mapping[str, object],
-        request: Mapping[str, object],
-        directory: Path,
-    ) -> HBBatchResult:
-        return _decode_hb_batch_operation(self, identity, result, request, directory)

@@ -78,15 +78,17 @@ a second fresh kernel to run only Lesson 2 against the same preserved working
 directory. The shorter web Lessons are reading views over ordered source
 fragments and are not independently runnable.
 
-JAX CPU is the default numerical backend. A cold request can include runtime
-preparation and compilation. An explicitly selected Julia operation may also
-prepare its separately configured Julia runtime. A relative path such as
-`workspaces/engineer-chapter-02` is resolved from the process's current working
-directory. That workspace is Result evidence, not a disposable calculation
-cache: ignoring it in Git neither deletes nor backs it up, and exact later
-resolution requires its preserved bytes.
+Chapters 1–7 use `CircuitRun(plan=plan, storage="memory")`. Results remain
+available to the caller in the current Python process; these lessons create no
+persistent Workspace. A cold request can include JAX CPU preparation and
+compilation. Keep each Run open while reading or exporting its Results, then
+call `run.close()`.
 
-For ordinary design iteration, classify the change before reusing a workspace.
+Chapter 8 is the advanced persistence lesson. It uses an explicit Workspace
+and two independent kernels to save Results and resolve them after restart.
+Preserve that lesson's Workspace bytes for the second kernel.
+
+For ordinary design iteration, classify the change before reusing a Run.
 A new `ParameterSet` reuses the same captured Plan, Run, and Views. Changing an
 objective expression, comparison, target, scale, or weight constructs a new
 `OptimizationSpec` on those same objects. Changing model defaults, topology,
@@ -97,14 +99,8 @@ That rebuild may happen in the same kernel, but it must use the newly returned
 ParameterRef, Plan, Run, View, and Spec handles together; never mix a handle
 retained from the earlier Plan into the rebuilt object graph.
 
-With `versioned=False`, constructing that different Plan at the same workspace
-path deliberately replaces the prior active Plan evidence; it does not erase
-all evidence on every request. Requests on one Plan remain distinct by their
-canonical request identity. Use `versioned=True` when multiple Plan versions
-must coexist, and preserve the workspace bytes required by each version.
-Reusing the same variable names and workspace path in one live kernel is legal
-when the Plan identity is unchanged; a kernel restart is not an identity
-operation and does not repair a foreign handle.
+For the advanced Workspace workflow, see [Chapter 8](chapter-08/01-persist.qmd).
+Its storage and versioning rules do not change the beginner in-memory examples.
 
 - [Begin Chapter 1](chapter-01/01-build.qmd)
 - [Begin Chapter 2](chapter-02/01-build.qmd)

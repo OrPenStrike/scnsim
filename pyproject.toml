@@ -21,7 +21,6 @@ dependencies = [
   "schemdraw>=0.23,<1",
   "scipy==1.18.1",
   "threadpoolctl==3.7.0",
-  "zarr>=2.18.3,<3",
 ]
 
 [project.urls]
@@ -31,9 +30,6 @@ Issues = "https://github.com/OrPenStrike/scnsim/issues"
 Repository = "https://github.com/OrPenStrike/scnsim"
 
 [project.optional-dependencies]
-julia = [
-    "juliapkg>=0.1.26,<0.2",
-]
 static-export = [
     "kaleido>=1,<2",
 ]
@@ -58,8 +54,4 @@ scnsim = [
   "py.typed",
   "_native/*.cpp",
   "_schemas/*.json",
-  "_julia/*.toml",
-  "_julia/*.json",
-  "_julia/bin/*.jl",
-  "_julia/src/*.jl",
 ]

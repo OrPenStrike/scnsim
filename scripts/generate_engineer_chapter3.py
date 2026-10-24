@@ -8,6 +8,7 @@ source-only and launches no solver.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import hashlib
 import importlib.metadata
@@ -22,7 +23,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from engineer_publication_binding import check_publication_binding
+from engineer_publication_binding import check_publication_binding, installed_course_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,7 @@ EXPECTED_CELL_IDS = (
     "ch3-show-direct-s21",
 )
 ARTIFACT_NAMES = (
+    "03-complete-plan.svg",
     "03-feedline-illustration.svg",
     "03-readout-illustration.svg",
     "03-direct-s21.svg",
@@ -119,7 +121,7 @@ def _binding() -> dict[str, object]:
     cells = _parse_cells()
     return {
         "generator_sha256": _hash(Path(__file__)),
-        "sources": {str(path.relative_to(ROOT)): _hash(path) for path in sources},
+        "sources": {str(path.relative_to(ROOT)): _hash(path) for path in (*sources, ROOT / "scripts" / "engineer_publication_binding.py")},
         "source_tree": _source_tree(),
         "cell_ids": list(EXPECTED_CELL_IDS),
         "cells": {
@@ -128,16 +130,14 @@ def _binding() -> dict[str, object]:
     }
 
 
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, object]:
+    runtime_binding = installed_course_runtime(ROOT)
     import scnsim
-
-    expected = (ROOT / "src" / "scnsim" / "__init__.py").resolve()
-    if Path(scnsim.__file__).resolve() != expected:
-        raise RuntimeError("generation imported scnsim from outside this checkout")
-    versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
+    scnsim.configure_runtime(cpu_threads=10)
+    versions = {"python": sys.version.split()[0], "scnsim": runtime_binding["scnsim"]}
     for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
-    return versions
+    return versions | {"runtime_binding": runtime_binding}
 
 
 def _certificate(path: Path) -> dict[str, str]:
@@ -165,12 +165,8 @@ def _certificate(path: Path) -> dict[str, str]:
     return {field: identity[field] for field in required}
 
 
-def _identity(result: object) -> dict[str, str]:
-    identity = getattr(result, "identity")
-    return {
-        field: getattr(identity, field)
-        for field in ("plan_sha256", "request_sha256", "attempt_sha256", "result_sha256")
-    }
+def _memory_call(result: object) -> dict[str, str]:
+    return {"storage": result.persistence_kind, "execution_id": result.execution_id}
 
 
 def _jsonable(value: object) -> object:
@@ -202,23 +198,53 @@ def _workspace(requested: Path | None) -> Path:
     return workspace
 
 
-def _execute(cells: tuple[tuple[str, str], ...], workspace: Path) -> dict[str, object]:
+@contextmanager
+def _execute(cells: tuple[tuple[str, str], ...], workspace: Path):
     execution = workspace / "execution"
     execution.mkdir()
     namespace: dict[str, object] = {"__name__": "__main__"}
     previous = Path.cwd()
+    primary = None
     try:
-        os.chdir(execution)
-        for ordinal, (cell_id, code) in enumerate(cells, start=1):
-            path = execution / f"{ordinal:02d}-{cell_id}.py"
-            path.write_text(code, encoding="utf-8")
-            linecache.checkcache(str(path))
-            namespace["__file__"] = str(path)
-            exec(compile(code, str(path), "exec"), namespace)
-            print(f"completed {ordinal}/{len(cells)} {cell_id}", flush=True)
+        try:
+            os.chdir(execution)
+            for ordinal, (cell_id, code) in enumerate(cells, start=1):
+                path = execution / f"{ordinal:02d}-{cell_id}.py"
+                path.write_text(code, encoding="utf-8")
+                linecache.checkcache(str(path))
+                namespace["__file__"] = str(path)
+                exec(compile(code, str(path), "exec"), namespace)
+                print(f"completed {ordinal}/{len(cells)} {cell_id}", flush=True)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            try:
+                os.chdir(previous)
+            except BaseException as error:
+                if primary is None:
+                    raise
+                primary.add_note("course working-directory cleanup: " + repr(error))
+        yield namespace
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        os.chdir(previous)
-    return namespace
+        cleanup_error = None
+        for name in ("run",):
+            run = namespace.get(name)
+            if run is None:
+                continue
+            try:
+                run.close()
+            except BaseException as error:
+                original = primary if primary is not None else cleanup_error
+                if original is None:
+                    cleanup_error = error
+                else:
+                    original.add_note("course Run.close: " + repr(error))
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _write_trace(namespace: dict[str, object], output: Path) -> dict[str, object]:
@@ -267,55 +293,54 @@ def _write_trace(namespace: dict[str, object], output: Path) -> dict[str, object
     }
 
 
+def _write_complete_diagram(namespace: dict[str, object], output: Path) -> dict[str, object]:
+    diagram = namespace.get("complete_diagram")
+    if diagram is None:
+        raise RuntimeError("Chapter 3 declared complete diagram is missing")
+    path = output / "03-complete-plan.svg"
+    diagram.show().save(path)
+    return {"status": "success", "certificate": _certificate(path)}
+
+
 def generate(workspace: Path) -> None:
     cells = _parse_cells()
-    namespace = _execute(cells, workspace)
-    error = namespace.get("complete_diagram_error")
-    if namespace.get("complete_diagram") is not None or error is None:
-        raise RuntimeError("Chapter 3 complete Default layout did not retain its typed failure")
-    if getattr(error, "stage", None) != "schematic_layout":
-        raise RuntimeError("Chapter 3 complete diagram failed at the wrong stage")
-
-    output = workspace / "artifacts"
-    output.mkdir()
-    illustration_certificates: dict[str, object] = {}
-    for variable, name in (
-        ("feedline_illustration", "03-feedline-illustration.svg"),
-        ("readout_illustration", "03-readout-illustration.svg"),
-    ):
-        namespace[variable].show().save(output / name)
-        illustration_certificates[name] = _certificate(output / name)
-    observations = _write_trace(namespace, output)
-    artifacts = {name: _hash(output / name) for name in ARTIFACT_NAMES}
-    binding = _binding()
-    manifest = {
-        "schema": "scnsim.engineer_chapter3_artifacts.v1",
-        "binding": binding,
-        "execution": {
-            "generator_sha256": binding["generator_sha256"],
-            "source_tree_sha256": binding["source_tree"]["sha256"],
-            "cells": binding["cells"],
-        },
-        "environment": _environment(),
-        "complete_diagram": {
-            "status": "unavailable",
-            "stage": error.stage,
-            "message": str(error),
-            "evidence": _jsonable(dict(error.evidence)),
-            "plan_id": "two_port_feedline_readout",
-        },
-        "illustration_certificates": illustration_certificates,
-        "result": _identity(namespace["direct"]),
-        "observations": observations,
-        "artifacts": artifacts,
-    }
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    for name in ARTIFACT_NAMES:
-        shutil.copy2(output / name, FIGURES / name)
-    MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    receipt = workspace / "generation-receipt.json"
-    receipt.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(receipt)
+    runtime_environment = _environment()
+    with _execute(cells, workspace) as namespace:
+        output = workspace / "artifacts"
+        output.mkdir()
+        complete_diagram = _write_complete_diagram(namespace, output)
+        illustration_certificates: dict[str, object] = {}
+        for variable, name in (
+            ("feedline_illustration", "03-feedline-illustration.svg"),
+            ("readout_illustration", "03-readout-illustration.svg"),
+        ):
+            namespace[variable].show().save(output / name)
+            illustration_certificates[name] = _certificate(output / name)
+        observations = _write_trace(namespace, output)
+        artifacts = {name: _hash(output / name) for name in ARTIFACT_NAMES}
+        binding = _binding()
+        manifest = {
+            "schema": "scnsim.engineer_chapter3_artifacts.v1",
+            "binding": binding,
+            "execution": {
+                "generator_sha256": binding["generator_sha256"],
+                "source_tree_sha256": binding["source_tree"]["sha256"],
+                "cells": binding["cells"],
+            },
+            "environment": runtime_environment,
+            "complete_diagram": complete_diagram,
+            "illustration_certificates": illustration_certificates,
+            "result": _memory_call(namespace["direct"]),
+            "observations": observations,
+            "artifacts": artifacts,
+        }
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        for name in ARTIFACT_NAMES:
+            shutil.copy2(output / name, FIGURES / name)
+        MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        receipt = workspace / "generation-receipt.json"
+        receipt.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(receipt)
 
 
 def check() -> None:

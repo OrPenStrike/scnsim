@@ -14,13 +14,11 @@ from typing import Any
 from .. import units
 from ..canonical import canonical_json_bytes, quantity_envelope
 from .plots.common import _quantity_text, figure_fragment, report_palette
-from .plots.hb import hb_outcomes_plot
 from .plots.optimization import optimization_comparison_dataset
 from .presentation import Theme, _report_html
 from ..results import (
     DirectQuantityResult,
     DirectSolveResult,
-    HBBatchResult,
     InMemoryAnalysisResult,
     InMemoryDirectSolveResult,
     InMemoryOptimizationResult,
@@ -88,8 +86,6 @@ def _panel_record(panel: ReportPanel, input_index: int) -> dict[str, object]:
         "input_index": input_index,
         "kind": panel.kind,
         "family": panel.family,
-        "case": panel.case,
-        "trace": panel.trace,
         "input_channel": _channel_record(panel.input_channel),
         "output_channel": _channel_record(panel.output_channel),
         "frequency": None if frequency is None else quantity_envelope(
@@ -136,44 +132,6 @@ def _identity_table(inputs: Sequence[object]) -> str:
         "<th>Attempt</th><th>Result</th><th>Execution</th><th>source index</th>"
         f"<th>parameters SHA-256</th></tr></thead><tbody>{rows}</tbody></table>"
     )
-
-
-def _failed_hb_selection(panel: ReportPanel, result: HBBatchResult) -> str:
-    selected = (
-        result.cases
-        if panel.case is None
-        else {panel.case: result.cases[panel.case]}
-    )
-    requested: object
-    if panel.trace is not None:
-        declarations = result._presentation["declared_traces"]
-        declaration = declarations[panel.trace]
-        input_channel = declaration["input_channel"]
-        output_channel = declaration["output_channel"]
-        requested = (
-            f"trace {panel.trace}: "
-            f"{output_channel['coordinate']} mode={tuple(output_channel['mode'])} <- "
-            f"{input_channel['coordinate']} mode={tuple(input_channel['mode'])}"
-        )
-    elif panel.input_channel is not None:
-        requested = f"{panel.output_channel} <- {panel.input_channel}"
-    else:
-        requested = "case outcomes"
-    rows: list[tuple[object, object]] = [
-        ("requested family", panel.family),
-        ("requested response", requested),
-        ("requested component", panel.component),
-        ("requested magnitude", panel.magnitude),
-    ]
-    rows.extend(
-        (
-            f"case {identifier}",
-            "unavailable: "
-            f"{outcome.failure.kind} / {outcome.failure.stage}: {outcome.failure}",
-        )
-        for identifier, outcome in selected.items()
-    )
-    return _table("HB requested response and typed outcomes", rows)
 
 
 def _summary(result: object) -> str:
@@ -232,12 +190,6 @@ def _summary(result: object) -> str:
             ("materialized frequencies", ", ".join(str(point.frequency) for point in points)),
             ("coordinates", ", ".join(points[0].coordinates) if points else "none"),
             ("matrix shapes", ", ".join(str(point.matrix.shape) for point in points)),
-        ))
-    elif isinstance(result, HBBatchResult):
-        rows.extend((
-            ("declared cases", ", ".join(result.cases)),
-            ("successful cases", ", ".join(key for key, value in result.cases.items() if value.succeeded) or "none"),
-            ("failed cases", ", ".join(key for key, value in result.cases.items() if not value.succeeded) or "none"),
         ))
     elif isinstance(result, (ParameterSweepResult, InMemoryParameterSweepResult)):
         rows.append(("declared points", len(result.points)))
@@ -309,8 +261,6 @@ def _panel_content(panel: ReportPanel, *, theme: Theme) -> tuple[str, object | N
     if panel.kind == "summary":
         return _summary(result), None
     if panel.kind == "outcomes":
-        if isinstance(result, HBBatchResult):
-            return "HB outcomes", hb_outcomes_plot(result, theme=theme)
         assert isinstance(result, (ParameterSweepResult, InMemoryParameterSweepResult))
         return "Parameter sweep outcomes", result.plot(theme=theme)
     if panel.kind == "history":
@@ -353,38 +303,6 @@ def _panel_content(panel: ReportPanel, *, theme: Theme) -> tuple[str, object | N
             magnitude=panel.magnitude,
             theme=theme,
         )
-    assert isinstance(result, HBBatchResult)
-    if panel.case is None:
-        if not any(outcome.succeeded for outcome in result.cases.values()):
-            return _failed_hb_selection(panel, result), None
-        return "HB response — all declared cases", result.plot(
-            trace=panel.trace,
-            input_channel=panel.input_channel,
-            output_channel=panel.output_channel,
-            component=panel.component,
-            magnitude=panel.magnitude,
-            theme=theme,
-        )
-    outcome = result.cases[panel.case]
-    if not outcome.succeeded:
-        return _failed_hb_selection(panel, result), None
-    if panel.trace is not None:
-        trace_result = outcome.traces[panel.trace]
-        source = getattr(trace_result, "_presentation", {})
-        input_channel = source.get("input_channel") if isinstance(source, Mapping) else None
-        output_channel = source.get("output_channel") if isinstance(source, Mapping) else None
-        title = f"HB case {panel.case}: {panel.trace} {input_channel} -> {output_channel}"
-        return title, trace_result.plot(
-            component=panel.component, magnitude=panel.magnitude, theme=theme
-        )
-    return f"HB case {panel.case} S response", outcome.s.plot(
-        input_channel=panel.input_channel,
-        output_channel=panel.output_channel,
-        component=panel.component,
-        magnitude=panel.magnitude,
-        theme=theme,
-    )
-
 
 def _automatic_panels(result: object) -> tuple[ReportPanel, ...]:
     if _is_memory_direct(result) or isinstance(result, DirectSolveResult):
@@ -401,7 +319,7 @@ def _automatic_panels(result: object) -> tuple[ReportPanel, ...]:
                 ),
             )
         return (ReportPanel(result=result, kind="summary"),)
-    if isinstance(result, (HBBatchResult, ParameterSweepResult, InMemoryParameterSweepResult)):
+    if isinstance(result, (ParameterSweepResult, InMemoryParameterSweepResult)):
         return (ReportPanel(result=result, kind="outcomes"),)
     if isinstance(result, (OptimizationResult, InMemoryOptimizationResult)):
         return (

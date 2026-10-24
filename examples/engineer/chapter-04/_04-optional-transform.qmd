@@ -23,13 +23,7 @@ transformed_view = raw_loaded_view.reduce(
         "floating.differential",
     )
 )
-transform_explanation = run.explain(
-    transformed_view,
-    DirectSolveSpec(frequencies=[5.5, 6.0, 6.5] * u.GHz),
-)
-display(transform_explanation.evidence)
-transform_explanation.show()
 ```
 
-The transform is an analysis basis change with recorded lineage. It does not
+The declared pipeline selects an analysis basis with explicit lineage. It does not
 rename the two physical floating buses or alter the schematic.

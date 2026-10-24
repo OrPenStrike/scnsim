@@ -64,7 +64,7 @@ class DirectAdmittanceTests(unittest.TestCase):
     def test_dissipation_against_independent_oracle_and_numpy_schur(self):
         for quality in (1e3, 1e5, 1e7, 1e9):
             plan, _ = _plan(quality)
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             try:
                 result = run.solve(run.original, DirectSolveSpec(frequencies=FREQUENCIES * u.Hz))
                 values = result.y.view.matrix.to(u.S).magnitude[:, 0, 0]
@@ -101,7 +101,7 @@ class DirectAdmittanceTests(unittest.TestCase):
         # Change only the reference normalization, not the dissipative DUT.
         for reference in (50.0, 100.0):
             plan, _ = _plan(1e5, reference)
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             try:
                 result = run.solve(run.original, DirectSolveSpec(frequencies=[FREQUENCIES[0]] * u.Hz))
                 expected, _, condition, _ = _oracle(2*math.pi*FREQUENCIES[0], 1e5)
@@ -111,7 +111,7 @@ class DirectAdmittanceTests(unittest.TestCase):
                 run.close()
 
     def test_retained_nonport_scalar_y_and_z(self):
-        run = CircuitRun(plan=_advanced_direct_plan(), storage="memory", backend="jax", precision="float64")
+        run = CircuitRun(plan=_advanced_direct_plan(), storage="memory", precision="float64")
         try:
             view = run.original.reduce(ReductionPipeline().retain("a", "b"))
             omega = 2*math.pi*5.5e9
@@ -136,7 +136,7 @@ class DirectAdmittanceTests(unittest.TestCase):
     def test_parameter_jvp_vjp_and_independent_taylor(self):
         quality, frequency = 1e5, float(FREQUENCIES[0])
         plan, parameter = _plan(quality, parameterized=True)
-        run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+        run = CircuitRun(plan=plan, storage="memory", precision="float64")
         try:
             response = ResponseElementSpec(family="Y", input_coordinate="p", output_coordinate="p", frequency=frequency*u.Hz)
             quantities = {"loss": response.real.on(run.original)}
@@ -168,7 +168,7 @@ class DirectAdmittanceTests(unittest.TestCase):
             run.close()
 
     def test_matched_s_zero_consumes_analytic_frequency_jet(self):
-        run = CircuitRun(plan=_matched_zero_plan(), storage="memory", backend="jax", precision="float64")
+        run = CircuitRun(plan=_matched_zero_plan(), storage="memory", precision="float64")
         try:
             result = run.evaluate(run.original, TransferZeroSpec(anchor=6.3*u.GHz,
                 family="S", input_coordinate="p", output_coordinate="p"))

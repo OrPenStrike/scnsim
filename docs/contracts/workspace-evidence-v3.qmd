@@ -1,0 +1,86 @@
+---
+title: "Workspace evidence v3"
+---
+
+Workspace evidence stores numeric columns as exact binary bytes in immutable
+SQLite objects. A completed result selects a fixed manifest, so its arrays and
+evidence remain readable after `CircuitRun.close()` and in a fresh process.
+
+## Version domains
+
+| Document or store | Version |
+|---|---:|
+| Plan, Request, ParameterSet and authoring snapshot | Existing per-document versions; canonical bytes unchanged |
+| Workspace envelope | Schema 1, with required `evidence_version: 3` |
+| Numeric block header and evidence manifest authority | Evidence 3 |
+| Operation database and object references | Internal revision 8 |
+
+`identity-v3.schema.json` describes the evidence header, manifests and object
+references. It does not replace the authoring document definitions in
+`identity-v2.schema.json`.
+
+## Binary columns
+
+A numeric object contains eight magic bytes `SCNSIMB3`, an unsigned 64-bit
+little-endian header length, a canonical JSON header, and contiguous numeric
+column bytes. Each column uses its declared dtype, little-endian representation
+and C order. Complex values interleave their real and imaginary components.
+Signed zero, NaN payload bits, integer statuses and boolean masks retain their
+actual representation.
+
+The closed header binds column ordinals, record paths, dtype, shape, dimension
+order, units where declared, offsets and byte lengths. Its context binds the
+record's execution identities and chunk ordinal. Direct chunks also bind their
+terminal and channel order and family units. Other quantity units and physical
+axes remain in the enclosing record and selected manifest. The object reference
+hash covers the entire framing, header and column payload.
+
+The storage codec replaces only the closed `dtype`/`shape`/`data_hex` array
+vocabulary, actual host arrays, and the existing Direct `frequencies_hz`
+numerical sequence. Small scalar and identity envelopes retain their canonical
+representation. JSON numerical arrays are rejected by the current evidence
+reader rather than interpreted as an older storage format.
+
+## Publication and lifetime
+
+Direct, including parameter sweeps of Direct, writes the same call's completed
+host arrays into checked immutable objects without an operation spool. Only
+small references remain in the sink. Optimization retains its existing spool
+and lazy stage-history lifetime.
+
+Each public Optimization `stage.history` includes its saved starting baseline
+before that stage's ordered evaluation occurrences, matching Memory history.
+The v3 stage-history body declares `baseline_locator`: an exact stage/model-bound
+candidate reference with its original source and batch ancestry, or `null` when
+that stage has no separate baseline occurrence. The baseline retains its full
+saved values and certificates. Evaluation SQL indexes and optimizer iteration
+and evaluation counters are unchanged. Missing or corrupt baseline declarations
+fail through the existing evidence-integrity path; readers never substitute the
+global comparison baseline or run another solve.
+
+A new object is read back and checked before its write returns. Completed
+chunks can commit independently; their existence does not select a successful
+result. Direct certificate columns stay in separately referenced chunk-summary objects;
+the root index holds their references rather than all certificate arrays.
+The final revision-checked transaction publishes the manifest, result,
+completion, attempt state and success selection together. Sweep occurrences
+retain declared order, repeated points, executed markers and typed failures.
+
+Readers verify reference structure, content hash, framing, exact byte length
+and the closed header before decoding. Missing, truncated or corrupted data
+fails through the evidence error path. Reads never repair data or invoke a
+solver.
+
+## Opening a Workspace
+
+Opening an existing Workspace first reads its format metadata without creating
+a directory, lock file or writable SQLite connection. Older evidence requires
+a new Workspace and recomputation. The format is checked again under the
+ordinary lock before current-format mutation or recovery. There is no migration
+or older-format reader.
+
+The public Sweep, SParameterTrace, Result evidence and resolve interfaces retain
+their ownership and ordering. Direct and Operator Results expose readonly same-call evidence, including
+each Sweep point and saved resolution. Conditional affine evidence is present
+only when that call used it. Public history contains the complete saved stage
+baseline and ordered evaluations; iteration/evaluation counters remain separate.

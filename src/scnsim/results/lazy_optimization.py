@@ -9,6 +9,11 @@ from typing import Any
 from .base import _freeze
 
 
+def _public_optimization_candidate(record: Mapping[str, object]) -> dict[str, object]:
+    """Detach request approval from a public copy, retaining the stored occurrence."""
+    return dict(record, parameters=dict(record["parameters"], allow_extrapolation=[]))
+
+
 def _sequence_index(value: int | slice, length: int) -> int | range:
     if isinstance(value, slice):
         return range(*value.indices(length))
@@ -146,7 +151,7 @@ class LazyOptimizationStageHistory(Sequence[Mapping[str, object]]):
                     stage="result_decode",
                     evidence={"stage_id": self._stage_id, "index": index},
                 )
-            detached.append(_freeze(row))
+            detached.append(_freeze(_public_optimization_candidate(row)))
         return iter(tuple(detached))
 
     def __getitem__(self, selected: int | slice) -> Mapping[str, object] | tuple[Mapping[str, object], ...]:
@@ -166,7 +171,7 @@ class LazyOptimizationStageHistory(Sequence[Mapping[str, object]]):
                         stage="result_decode",
                         evidence={"stage_id": self._stage_id, "index": item},
                     )
-                selected_rows.append(_freeze(row))
+                selected_rows.append(_freeze(_public_optimization_candidate(row)))
             return tuple(selected_rows)
         row = rows[index]
         if (not isinstance(row, Mapping)
@@ -179,5 +184,5 @@ class LazyOptimizationStageHistory(Sequence[Mapping[str, object]]):
                 stage="result_decode",
                 evidence={"stage_id": self._stage_id, "index": index},
             )
-        return _freeze(row)
+        return _freeze(_public_optimization_candidate(row))
 

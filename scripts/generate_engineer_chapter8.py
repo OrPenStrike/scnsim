@@ -14,7 +14,7 @@ import sys
 import tempfile
 from typing import Any
 
-from engineer_publication_binding import check_publication_binding
+from engineer_publication_binding import check_publication_binding, installed_course_runtime
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAPTER = ROOT / "examples" / "engineer" / "chapter-08"
@@ -38,23 +38,17 @@ FAILED_GENERATOR_SHA256 = "033f58db9acd7631226682e5188b8f23f48762afe1117ee353706
 FAILED_RECEIPT_SCHEMA = "scnsim.private_chapter8_failed_run_capture"
 ORIGINAL_FAILED_RUN_SCHEMA = "scnsim.engineer_chapter8_original_failed_run.v1"
 NO_EXECUTION_GUARD_CODE = '''
-import scnsim.execution.preparation as _receipt_preparation
-import scnsim.execution.process as _receipt_process
-import scnsim.execution.coordinator as _receipt_coordinator
-import scnsim.execution.compilation as _receipt_compilation
-_forbidden_execution_calls = []
-def _forbid_execution(name):
-    def reject(*args, **kwargs):
-        _forbidden_execution_calls.append(name)
-        raise RuntimeError(f"receipt-bound resume forbids {name}")
-    return reject
-_receipt_preparation.prepare_runtime = _forbid_execution("preparation.prepare_runtime")
-_receipt_process.run_terminal = _forbid_execution("process.run_terminal")
-_receipt_process.run_preflight = _forbid_execution("process.run_preflight")
-_receipt_coordinator.prepare_runtime = _forbid_execution("coordinator.prepare_runtime")
-_receipt_coordinator.run_terminal = _forbid_execution("coordinator.run_terminal")
-_receipt_compilation.prepare_runtime = _forbid_execution("compilation.prepare_runtime")
-_receipt_compilation.run_preflight = _forbid_execution("compilation.run_preflight")
+from scnsim.execution.jax_backend import JaxBackend as _CourseBackend
+_course_original_native = _CourseBackend.execute_native
+_course_native_calls = {"attempted": 0, "completed": 0}
+def _course_native(self, *args, **kwargs):
+    _course_native_calls["attempted"] += 1
+    if _course_resolve_only:
+        raise RuntimeError("resolve-only course kernel forbids JaxBackend.execute_native")
+    outcome = _course_original_native(self, *args, **kwargs)
+    _course_native_calls["completed"] += 1
+    return outcome
+_CourseBackend.execute_native = _course_native
 '''
 
 
@@ -94,15 +88,16 @@ def _source_tree() -> dict[str, object]:
 
 def _binding() -> dict[str, object]:
     cells = _parse_cells(); sources = (CHAPTER / "chapter.qmd", *SOURCES, *WRAPPERS)
-    return {"generator_sha256": _hash(Path(__file__)), "sources": {str(path.relative_to(ROOT)): _hash(path) for path in sources}, "source_tree": _source_tree(), "cell_ids": list(EXPECTED_CELL_IDS), "cells": {cell_id: _hash_bytes(code.encode()) for cell_id, code in cells}}
+    return {"generator_sha256": _hash(Path(__file__)), "sources": {str(path.relative_to(ROOT)): _hash(path) for path in (*sources, ROOT / "scripts" / "engineer_publication_binding.py")}, "source_tree": _source_tree(), "cell_ids": list(EXPECTED_CELL_IDS), "cells": {cell_id: _hash_bytes(code.encode()) for cell_id, code in cells}}
 
 
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, object]:
+    runtime_binding = installed_course_runtime(ROOT)
     import scnsim
-    if Path(scnsim.__file__).resolve() != (ROOT / "src" / "scnsim" / "__init__.py").resolve(): raise RuntimeError("generation imported scnsim from outside this checkout")
-    values = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
+    scnsim.configure_runtime(cpu_threads=10)
+    values = {"python": sys.version.split()[0], "scnsim": runtime_binding["scnsim"]}
     for name in ("ipykernel", "jupyter_client", "kaleido", "matplotlib", "nbformat", "numpy", "pint", "plotly", "schemdraw"): values[name] = importlib.metadata.version(name)
-    return values
+    return values | {"runtime_binding": runtime_binding}
 
 
 def _workspace(requested: Path | None) -> Path:
@@ -117,6 +112,8 @@ def _tree_hashes(directory: Path) -> dict[str, str]:
     return {str(path.relative_to(directory)): _hash(path) for path in sorted(directory.rglob("*")) if path.is_file()}
 
 
+# Historical receipt verification below preserves earlier publication lineage only.
+# Current generation never resumes or reinterprets a Julia receipt.
 def _json_object_bytes(path: Path) -> tuple[dict[str, object], bytes]:
     if path.is_symlink() or not path.is_file():
         raise RuntimeError(f"required receipt evidence is not a regular file: {path}")
@@ -420,14 +417,24 @@ def _execute_message(client: Any, code: str, label: str) -> str:
         message_type = message["header"]["msg_type"]
         content = message["content"]
         if message_type == "stream": streams.append(content.get("text", ""))
-        elif message_type == "error": raise RuntimeError(f"{label}: {content.get('ename')}: {content.get('evalue')}")
+        elif message_type == "error":
+            error = RuntimeError(f"{label}: {content.get('ename')}: {content.get('evalue')}")
+            error.add_note("\n".join(content.get("traceback", ())))
+            raise error
         elif message_type == "status" and content.get("execution_state") == "idle": break
     return "".join(streams)
 
 
 def _kernel_identity(manager: Any) -> dict[str, object]:
-    provisioner = getattr(manager, "provisioner", None); process = getattr(provisioner, "process", None)
-    return {"kernel_id": manager.kernel_id, "pid": getattr(process, "pid", None), "connection_file": Path(manager.connection_file).name}
+    process = manager.provisioner.process
+    if process is None:
+        raise RuntimeError("Jupyter did not expose its owned kernel process")
+    identity = {"kernel_id": manager.kernel_id, "pid": process.pid,
+                "connection_file": Path(manager.connection_file).name}
+    if Path("/proc").is_dir():
+        fields = Path(f"/proc/{process.pid}/stat").read_text().rsplit(")", 1)[1].split()
+        identity.update(pgid=int(fields[2]), startticks=fields[19])
+    return identity
 
 
 def _payload(stream: str, marker: str) -> dict[str, object]:
@@ -438,17 +445,157 @@ def _payload(stream: str, marker: str) -> dict[str, object]:
     return value
 
 
-def _run_kernel(cells: tuple[tuple[str, str], ...], cwd: Path, final_code: str, marker: str) -> tuple[dict[str, object], dict[str, object]]:
-    from jupyter_client import KernelManager
+def _kernel_temporary_directory(environment):
+    """Keep per-kernel browser sockets under the inherited platform temp root."""
+    return tempfile.TemporaryDirectory(prefix="scnsim-c8-", dir=environment.get("TMPDIR"))
 
-    manager = KernelManager(kernel_name="python3"); manager.start_kernel(cwd=str(cwd)); client = manager.client(); client.start_channels()
+
+def _run_kernel(cells: tuple[tuple[str, str], ...], cwd: Path, final_code: str,
+                marker: str, *, resolve_only: bool) -> tuple[dict[str, object], dict[str, object]]:
+    from jupyter_client import KernelManager
+    from jupyter_client.kernelspec import KernelSpecManager
+
+    expected = installed_course_runtime(ROOT)
+    spec_root = cwd.parent / "kernel-specs"
+    spec_directory = spec_root / "scnsim-engineer-candidate"
+    spec_directory.mkdir(parents=True, exist_ok=True)
+    spec = {"argv": [sys.executable, "-m", "ipykernel_launcher", "-f", "{connection_file}"],
+            "display_name": "SCNSim installed candidate", "language": "python"}
+    spec_bytes = (json.dumps(spec, sort_keys=True) + "\n").encode()
+    spec_path = spec_directory / "kernel.json"
+    if spec_path.exists() and spec_path.read_bytes() != spec_bytes:
+        raise RuntimeError("private course kernelspec differs from candidate interpreter")
+    spec_path.write_bytes(spec_bytes)
+    manager = KernelManager(kernel_name="scnsim-engineer-candidate",
+                            kernel_spec_manager=KernelSpecManager(kernel_dirs=[str(spec_root)]))
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment.pop("SCNSIM_RUN_JULIA_TESTS", None)
+    for name in ("IPYTHONDIR", "JUPYTER_RUNTIME_DIR"):
+        path = cwd.parent / "kernel-runtime" / name.lower()
+        path.mkdir(parents=True, exist_ok=True)
+        environment[name] = str(path)
+    client = None
+    process = None
+    identity = {}
+    private_facts = {}
+    primary = None
+    cleanup_error = None
+    kernel_tmp = None
     try:
-        client.wait_for_ready(timeout=120); identity = _kernel_identity(manager)
-        for cell_id, code in cells: _execute_message(client, code, cell_id)
+        kernel_tmp = _kernel_temporary_directory(environment)
+        environment["TMPDIR"] = kernel_tmp.name
+        manager.start_kernel(cwd=str(cwd), env=environment)
+        process = manager.provisioner.process
+        identity = _kernel_identity(manager)
+        client = manager.client()
+        client.start_channels()
+        client.wait_for_ready(timeout=120)
+        bootstrap = f'''
+import json as _course_json, os as _course_os, sys as _course_sys, runpy as _course_runpy
+from pathlib import Path as _CoursePath
+_course_helper = _course_runpy.run_path({str(ROOT / 'scripts/engineer_publication_binding.py')!r})
+_course_binding = _course_helper['installed_course_runtime'](_CoursePath({str(ROOT)!r}))
+if _course_binding != {expected!r} or _course_sys.executable != {sys.executable!r} or _course_sys.prefix != {sys.prefix!r}:
+    raise RuntimeError('kernel differs from exact installed parent wheel/interpreter')
+import scnsim as _course_scnsim
+_course_scnsim.configure_runtime(cpu_threads=10)
+_course_resolve_only = {resolve_only!r}
+print('__SCNSIM_KERNEL_BINDING__' + _course_json.dumps(dict(
+    executable=_course_sys.executable, prefix=_course_sys.prefix,
+    module=_course_scnsim.__file__, binding=_course_binding), sort_keys=True))
+'''
+        private_facts = _payload(_execute_message(client, bootstrap, "installed kernel binding"),
+                                 "__SCNSIM_KERNEL_BINDING__")
+        _execute_message(client, NO_EXECUTION_GUARD_CODE, "JAX native execution guard")
+        for cell_id, code in cells:
+            _execute_message(client, code, cell_id)
         payload = _payload(_execute_message(client, final_code, marker), marker)
+        counts = _payload(_execute_message(client,
+            "print('__SCNSIM_NATIVE__' + _course_json.dumps(_course_native_calls, sort_keys=True))",
+            "same-call native dispatch counts"), "__SCNSIM_NATIVE__")
+        identity["native_dispatch"] = counts
+        identity["runtime_binding"] = expected
+        if resolve_only and (counts["attempted"] != 0 or counts["completed"] != 0):
+            raise RuntimeError("resolve-only kernel attempted native execution")
         return identity, payload
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        client.stop_channels(); manager.shutdown_kernel(now=True)
+        def cleanup(label, action):
+            nonlocal cleanup_error
+            try:
+                action()
+            except BaseException as error:
+                if primary is None and cleanup_error is None:
+                    cleanup_error = error
+                # Diagnostic formatting must not replace the owned failure.
+                try:
+                    message = label + ": " + repr(error)
+                    private_facts.setdefault("cleanup_errors", []).append(
+                        {"phase": label, "message": repr(error)})
+                    owner = primary if primary is not None else cleanup_error
+                    if owner is not error:
+                        owner.add_note(message)
+                except BaseException:
+                    pass
+        if client is not None and process is not None:
+            close_code = """
+_course_closed = []
+for _course_name in ('run', 'restart_run'):
+    if _course_name in globals():
+        globals()[_course_name].close()
+        _course_closed.append(_course_name)
+if '_course_original_native' in globals():
+    _CourseBackend.execute_native = _course_original_native
+print('__SCNSIM_CLOSED__' + _course_json.dumps({'closed_runs': _course_closed}))
+"""
+            def close_runs():
+                if process.poll() is not None:
+                    return
+                private_facts["closed_runs"] = _payload(
+                    _execute_message(client, close_code, "close owned Runs"), "__SCNSIM_CLOSED__")
+            cleanup("CircuitRun.close", close_runs)
+        if client is not None:
+            cleanup("stop kernel channels", client.stop_channels)
+        # Preserve the existing Jupyter shutdown policy; add explicit wait evidence.
+        cleanup("shutdown kernel", lambda: manager.shutdown_kernel(now=True))
+        if process is not None:
+            def wait():
+                private_facts["returncode"] = process.wait()
+                private_facts["waited"] = True
+            cleanup("wait/reap kernel", wait)
+            if hasattr(os, "getpgid") and identity.get("pgid") is not None:
+                def group_members():
+                    rows = []
+                    for path in Path("/proc").iterdir():
+                        if not path.name.isdecimal():
+                            continue
+                        try:
+                            fields = (path / "stat").read_text().rsplit(")", 1)[1].split()
+                        except (FileNotFoundError, ProcessLookupError):
+                            continue
+                        if int(fields[2]) == identity["pgid"]:
+                            rows.append(int(path.name))
+                    private_facts["owned_pgid_members_after_wait"] = rows
+                    if rows:
+                        raise RuntimeError("owned kernel group remains after wait")
+                cleanup("owned kernel group observation", group_members)
+        if kernel_tmp is not None:
+            private_facts["kernel_tmpdir"] = kernel_tmp.name
+            cleanup("kernel temporary directory", kernel_tmp.cleanup)
+        def persist():
+            private_facts["process"] = dict(identity)
+            private_facts["primary_error"] = None if primary is None else repr(primary)
+            path = cwd.parent / ("kernel-" + (manager.kernel_id or "not-started") + "-runtime.json")
+            with path.open("w") as output:
+                json.dump(private_facts, output, indent=2, sort_keys=True)
+                output.write("\n"); output.flush(); os.fsync(output.fileno())
+            identity["private_process_facts_sha256"] = _hash(path)
+        cleanup("persist private kernel facts", persist)
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _identity_code(name: str) -> str:
@@ -461,11 +608,11 @@ def generate(workspace: Path) -> None:
     report_path = output / "08-report.html"; figure_path = output / "08-direct-s11.svg"
     first_code = f'''\nimport json as _receipt_json, os as _receipt_os\nfrom pathlib import Path as _ReceiptPath\nreport.save(_ReceiptPath({str(report_path)!r}))\ndirect.s.plot(magnitude="db", theme=Theme.AUTO).write_image(_ReceiptPath({str(figure_path)!r}), format="svg")\n_receipt_payload = {{\n "pid": _receipt_os.getpid(),\n "direct_identity": {_identity_code("direct")},\n "root_identity": {_identity_code("root")},\n "root_frequency_GHz": float(root.frequency.to("gigahertz").magnitude),\n "root_linewidth_MHz": float(root.linewidth.to("megahertz").magnitude),\n "matrix_coordinates": list(direct.s.view.coordinates),\n}}\nprint("__SCNSIM_FIRST__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))\n'''
     first_cells = tuple((cell_id, cells[cell_id]) for cell_id in FIRST_KERNEL_IDS)
-    first_kernel, first = _run_kernel(first_cells, execution, first_code, "__SCNSIM_FIRST__")
+    first_kernel, first = _run_kernel(first_cells, execution, first_code, "__SCNSIM_FIRST__", resolve_only=False)
     shared = execution / "workspaces" / "engineer-chapter-08"; before = _tree_hashes(shared)
     second_code = f'''\nimport json as _receipt_json, os as _receipt_os\n_receipt_payload = {{\n "pid": _receipt_os.getpid(),\n "resolved_identity": {_identity_code("resolved_root")},\n "root_frequency_GHz": float(resolved_root.frequency.to("gigahertz").magnitude),\n "root_linewidth_MHz": float(resolved_root.linewidth.to("megahertz").magnitude),\n}}\nprint("__SCNSIM_SECOND__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))\n'''
     second_cells = tuple((cell_id, cells[cell_id]) for cell_id in SECOND_KERNEL_IDS)
-    second_kernel, second = _run_kernel(second_cells, execution, second_code, "__SCNSIM_SECOND__"); after = _tree_hashes(shared)
+    second_kernel, second = _run_kernel(second_cells, execution, second_code, "__SCNSIM_SECOND__", resolve_only=True); after = _tree_hashes(shared)
     if first_kernel["kernel_id"] == second_kernel["kernel_id"]: raise RuntimeError("Chapter 8 did not use two independent Jupyter kernels")
     if first["root_identity"] != second["resolved_identity"]: raise RuntimeError("resolved root identity differs from persisted root")
     if before != after: raise RuntimeError("resolve-only kernel changed the shared workspace")
@@ -475,7 +622,7 @@ def generate(workspace: Path) -> None:
     (output / "08-resolve-only.md").write_text(f"### Resolve-only restart outcome\n\nA second independent Jupyter kernel resolved the exact stored root: **{second['root_frequency_GHz']:.12g} GHz**, linewidth **{second['root_linewidth_MHz']:.12g} MHz**. Its Result identity matches Lesson 1, and the shared workspace bytes were unchanged.\n", encoding="utf-8")
     artifacts = {name: _hash(output / name) for name in ARTIFACT_NAMES}; binding = _binding()
     if _inventory(output) != set(ARTIFACT_NAMES): raise RuntimeError("Chapter 8 generated artifact inventory is not exact")
-    manifest = {"schema": "scnsim.engineer_chapter8_artifacts.v1", "binding": binding, "execution": {"generator_sha256": binding["generator_sha256"], "source_tree_sha256": binding["source_tree"]["sha256"], "cells": binding["cells"], "kernels": {"first": first_kernel, "second": second_kernel}, "first_kernel_cell_ids": list(FIRST_KERNEL_IDS), "second_kernel_cell_ids": list(SECOND_KERNEL_IDS), "second_kernel_operations": ["resolve"], "shared_workspace_unchanged_during_resolve": True}, "environment": environment, "results": public_results | {"resolved_identity": second["resolved_identity"]}, "artifacts": artifacts}
+    manifest = {"schema": "scnsim.engineer_chapter8_artifacts.v1", "binding": binding, "execution": {"generator_sha256": binding["generator_sha256"], "source_tree_sha256": binding["source_tree"]["sha256"], "cells": binding["cells"], "kernels": {"first": first_kernel, "second": second_kernel}, "first_kernel_cell_ids": list(FIRST_KERNEL_IDS), "second_kernel_cell_ids": list(SECOND_KERNEL_IDS), "second_kernel_operations": ["resolve"], "shared_workspace_unchanged_during_resolve": True, "native_execution_guard": "JaxBackend.execute_native.v1"}, "environment": environment, "results": public_results | {"resolved_identity": second["resolved_identity"]}, "artifacts": artifacts}
     FIGURES.mkdir(parents=True, exist_ok=True)
     unknown = _inventory(FIGURES) - set(ARTIFACT_NAMES)
     if unknown: raise RuntimeError(f"unknown Chapter 8 artifacts require review: {sorted(unknown)!r}")
@@ -484,170 +631,6 @@ def generate(workspace: Path) -> None:
     text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"; MANIFEST.write_text(text, encoding="utf-8"); receipt = workspace / "generation-receipt.json"; receipt.write_text(text, encoding="utf-8"); print(receipt)
 
 
-def resume(receipt_path: Path, expected_capture_sha256: str, workspace: Path) -> None:
-    receipt, binding, execution, shared = _resume_input(
-        receipt_path, expected_capture_sha256, workspace
-    )
-    environment = _environment()
-    cells = dict(_parse_cells())
-    prepare = _preparation_without_explain(cells["ch8-prepare-persisted-requests"])
-    rows = {str(row["operation"]): row for row in receipt["requests"]}  # type: ignore[index]
-    if set(rows) != {"solve_direct", "evaluate_direct"}:
-        raise RuntimeError("Chapter 8 resume receipt has the wrong operation inventory")
-    direct_row = rows["solve_direct"]
-    root_row = rows["evaluate_direct"]
-    output = workspace / "artifacts"
-    report_path = output / "08-report.html"
-    figure_path = output / "08-direct-s11.svg"
-    before = _tree_hashes(shared)
-    continuation_code = f'''
-direct = run.resolve(run.original, direct_spec, parameters=baseline_parameters)
-root = run.resolve(quantity_view, root_spec, parameters=baseline_parameters)
-_expected_direct = {direct_row!r}
-_expected_root = {root_row!r}
-if {_identity_code("direct")} != {{field: _expected_direct[field] for field in ("request_sha256", "attempt_sha256", "result_sha256")}} | {{"plan_sha256": {receipt["plan"]["plan_sha256"]!r}}}:
-    raise RuntimeError("resolved Direct identity differs from the failed-run receipt")
-if {_identity_code("root")} != {{field: _expected_root[field] for field in ("request_sha256", "attempt_sha256", "result_sha256")}} | {{"plan_sha256": {receipt["plan"]["plan_sha256"]!r}}}:
-    raise RuntimeError("resolved root identity differs from the failed-run receipt")
-display(direct.s.plot(magnitude="db", theme=Theme.AUTO))
-display(root.plot())
-'''
-    final_code = f'''
-import json as _receipt_json, os as _receipt_os
-from pathlib import Path as _ReceiptPath
-report.save(_ReceiptPath({str(report_path)!r}))
-direct.s.plot(magnitude="db", theme=Theme.AUTO).write_image(_ReceiptPath({str(figure_path)!r}), format="svg")
-_receipt_payload = {{
- "pid": _receipt_os.getpid(),
- "direct_identity": {_identity_code("direct")},
- "root_identity": {_identity_code("root")},
- "root_frequency_GHz": float(root.frequency.to("gigahertz").magnitude),
- "root_linewidth_MHz": float(root.linewidth.to("megahertz").magnitude),
- "matrix_coordinates": list(direct.s.view.coordinates),
- "forbidden_execution_calls": list(_forbidden_execution_calls),
-}}
-print("__SCNSIM_CONTINUATION__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))
-'''
-    continuation_cells = (
-        ("ch8-build-persisted-plan", cells["ch8-build-persisted-plan"]),
-        ("ch8-prepare-without-explain", prepare),
-        ("ch8-forbid-continuation-execution", NO_EXECUTION_GUARD_CODE),
-        ("ch8-resolve-existing-results", continuation_code),
-        ("ch8-build-result-report", cells["ch8-build-result-report"]),
-    )
-    continuation_kernel, first = _run_kernel(
-        continuation_cells, execution, final_code, "__SCNSIM_CONTINUATION__"
-    )
-    after_continuation = _tree_hashes(shared)
-    if before != after_continuation:
-        raise RuntimeError("receipt-bound continuation changed the preserved workspace")
-    if first.get("forbidden_execution_calls") != []:
-        raise RuntimeError("receipt-bound continuation attempted an execution entry point")
-
-    second_code = f'''
-import json as _receipt_json, os as _receipt_os
-_receipt_payload = {{
- "pid": _receipt_os.getpid(),
- "resolved_identity": {_identity_code("resolved_root")},
- "root_frequency_GHz": float(resolved_root.frequency.to("gigahertz").magnitude),
- "root_linewidth_MHz": float(resolved_root.linewidth.to("megahertz").magnitude),
- "forbidden_execution_calls": list(_forbidden_execution_calls),
-}}
-print("__SCNSIM_RESTART__" + _receipt_json.dumps(_receipt_payload, sort_keys=True))
-'''
-    restart_cells = (
-        *((cell_id, cells[cell_id]) for cell_id in SECOND_KERNEL_IDS[:2]),
-        ("ch8-forbid-restart-execution", NO_EXECUTION_GUARD_CODE),
-        (SECOND_KERNEL_IDS[2], cells[SECOND_KERNEL_IDS[2]]),
-    )
-    restart_kernel, second = _run_kernel(
-        restart_cells, execution, second_code, "__SCNSIM_RESTART__"
-    )
-    after_restart = _tree_hashes(shared)
-    if continuation_kernel["kernel_id"] == restart_kernel["kernel_id"]:
-        raise RuntimeError("Chapter 8 continuation and restart did not use independent kernels")
-    if first["root_identity"] != second["resolved_identity"]:
-        raise RuntimeError("restart root identity differs from the continued root")
-    if second.get("forbidden_execution_calls") != []:
-        raise RuntimeError("restart resolve attempted an execution entry point")
-    if before != after_restart:
-        raise RuntimeError("restart resolve changed the preserved workspace")
-
-    public_results = {
-        "direct_identity": first["direct_identity"],
-        "root_identity": first["root_identity"],
-        "root_frequency_GHz": first["root_frequency_GHz"],
-        "root_linewidth_MHz": first["root_linewidth_MHz"],
-        "matrix_coordinates": first["matrix_coordinates"],
-    }
-    (output / "08-persisted-results.json").write_text(
-        json.dumps(public_results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    (output / "08-persisted-results.md").write_text(
-        "### Persisted Result summary\n\n"
-        "The original fresh kernel sealed both Results, then stopped at its first Plotly display because the optional course-generation environment lacked `nbformat`. "
-        "A separately recorded continuation kernel used public `resolve()` for those exact Results and built this report without `solve()` or `evaluate()`.\n\n"
-        "| Result | value |\n|---|---:|\n"
-        f"| loaded root frequency | {first['root_frequency_GHz']:.12g} GHz |\n"
-        f"| loaded root linewidth | {first['root_linewidth_MHz']:.12g} MHz |\n\n"
-        "![The declared Direct S11 presentation.](../figures/08-direct-s11.svg)\n",
-        encoding="utf-8",
-    )
-    (output / "08-resolve-only.md").write_text(
-        "### Resolve-only restart outcome\n\n"
-        "After the report continuation, another independent Jupyter kernel resolved the exact stored root: "
-        f"**{second['root_frequency_GHz']:.12g} GHz**, linewidth **{second['root_linewidth_MHz']:.12g} MHz**. "
-        "Its Result identity matches the original successful root, and the shared workspace bytes were unchanged.\n",
-        encoding="utf-8",
-    )
-    artifacts = {name: _hash(output / name) for name in ARTIFACT_NAMES}
-    if _inventory(output) != set(ARTIFACT_NAMES):
-        raise RuntimeError("Chapter 8 resumed artifact inventory is not exact")
-    original_payload = _original_failed_run_payload(receipt, expected_capture_sha256)
-    manifest = {
-        "schema": "scnsim.engineer_chapter8_artifacts.v2",
-        "binding": binding,
-        "execution": {
-            "mode": "receipt_bound_resume",
-            "original_failed_run": {
-                "payload": original_payload,
-                "payload_sha256": _canonical_sha256(original_payload),
-            },
-            "continuation": {
-                "generator_sha256": binding["generator_sha256"],
-                "kernel": continuation_kernel,
-                "cell_ids": [cell_id for cell_id, _ in continuation_cells],
-                "operations": ["resolve_direct", "resolve_root", "display", "build_report", "save_report", "export_svg"],
-                "numerical_operations": [],
-                "forbidden_execution_calls": first["forbidden_execution_calls"],
-            },
-            "restart": {
-                "generator_sha256": binding["generator_sha256"],
-                "kernel": restart_kernel,
-                "cell_ids": [cell_id for cell_id, _ in restart_cells],
-                "teaching_cell_ids": list(SECOND_KERNEL_IDS),
-                "operations": ["resolve_root"],
-                "numerical_operations": [],
-                "forbidden_execution_calls": second["forbidden_execution_calls"],
-            },
-            "shared_workspace_unchanged_during_resume": True,
-        },
-        "environment": environment,
-        "results": public_results | {"resolved_identity": second["resolved_identity"]},
-        "artifacts": artifacts,
-    }
-    unknown = _inventory(FIGURES) - set(ARTIFACT_NAMES)
-    if unknown:
-        raise RuntimeError(f"unknown Chapter 8 artifacts require review: {sorted(unknown)!r}")
-    for name in ARTIFACT_NAMES:
-        shutil.copy2(output / name, FIGURES / name)
-    if _inventory(FIGURES) != set(ARTIFACT_NAMES):
-        raise RuntimeError("Chapter 8 published artifact inventory is not exact")
-    text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
-    MANIFEST.write_text(text, encoding="utf-8")
-    public_receipt = workspace / "continuation-receipt.json"
-    public_receipt.write_text(text, encoding="utf-8")
-    print(public_receipt)
 
 
 def validate_published_manifest(
@@ -724,6 +707,15 @@ def validate_published_manifest(
         kernels = execution.get("kernels", {})
         if kernels.get("first", {}).get("kernel_id") == kernels.get("second", {}).get("kernel_id"): raise RuntimeError("Chapter 8 kernel identities are not distinct")
         if execution.get("second_kernel_cell_ids") != list(SECOND_KERNEL_IDS) or execution.get("second_kernel_operations") != ["resolve"] or execution.get("shared_workspace_unchanged_during_resolve") is not True: raise RuntimeError("Chapter 8 restart evidence is malformed")
+    if binding.get("generator_sha256") == _hash(Path(__file__)):
+        kernels = execution.get("kernels", {})
+        first = kernels.get("first", {})
+        second = kernels.get("second", {})
+        if (execution.get("native_execution_guard") != "JaxBackend.execute_native.v1"
+                or second.get("native_dispatch") != {"attempted": 0, "completed": 0}
+                or first.get("runtime_binding") != second.get("runtime_binding")
+                or not second.get("runtime_binding")):
+            raise RuntimeError("Chapter 8 current installed JAX guard evidence is malformed")
     results = manifest.get("results")
     if not isinstance(results, dict) or set(results) != {
         "direct_identity", "matrix_coordinates", "resolved_identity",
@@ -768,24 +760,16 @@ def check() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--check", action="store_true"); parser.add_argument("--workspace", type=Path); parser.add_argument("--resume-receipt", type=Path); parser.add_argument("--resume-receipt-sha256"); parser.add_argument("--verify-resume-only", action="store_true"); args = parser.parse_args()
-    if args.verify_resume_only and args.resume_receipt is None:
-        parser.error("--verify-resume-only requires --resume-receipt")
-    if (args.resume_receipt is None) != (args.resume_receipt_sha256 is None):
-        parser.error("--resume-receipt and --resume-receipt-sha256 are required together")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--workspace", type=Path)
+    args = parser.parse_args()
     if args.check:
-        if args.workspace is not None or args.resume_receipt is not None or args.resume_receipt_sha256 is not None or args.verify_resume_only: parser.error("resume options cannot be used with --check")
+        if args.workspace is not None:
+            parser.error("--workspace cannot be used with --check")
         check()
-    elif args.resume_receipt is not None:
-        if args.workspace is None:
-            parser.error("--resume-receipt requires --workspace")
-        workspace = _resume_workspace(args.workspace)
-        if args.verify_resume_only:
-            _resume_input(args.resume_receipt, args.resume_receipt_sha256, workspace)
-            print("Chapter 8 resume evidence is ready; no workspace binding or kernel occurred")
-        else:
-            resume(args.resume_receipt, args.resume_receipt_sha256, workspace)
-    else: generate(_workspace(args.workspace))
+    else:
+        generate(_workspace(args.workspace))
 
 
 if __name__ == "__main__": main()

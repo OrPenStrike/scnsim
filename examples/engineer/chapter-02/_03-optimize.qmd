@@ -57,7 +57,7 @@ display(optimization.best.cost)
 
 The default history plot remains available. The comparison view uses the same
 verified Result to show objective settings, model-default bounds, the complete
-initial point and metrics, and the saved best ordinal's point and metrics. It
+initial point and metrics, and the returned best ordinal's point and metrics. It
 does not recalculate or reselect a winner.
 
 ```{python}

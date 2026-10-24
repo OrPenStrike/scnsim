@@ -157,8 +157,8 @@ is the independent clean-kernel execution unit.
 Rebuild the original physical four-Port probe circuit and inspect its
 certified explicit composition. The required core reads the raw four-Port
 feedline response, then applies PTC and retains the two feedline Ports for a
-separately labeled response. Transform, one scalar response element, and
-independent Direct and pump-off HB grids are optional continuations.
+separately labeled response. Transform and one scalar response element are
+optional continuations.
 
 :::: {.card .course-card}
 ::: {.card-body}
@@ -189,7 +189,7 @@ Result. This is the Chapter's core stopping point.
 ::: {.card-body}
 ### [Lessons 4–6 — Optional analysis](../examples/engineer/chapter-04/04-optional-transform.qmd) {.course-card-title .unlisted}
 Continue with the same Plan through paired-coordinate transformation, a direct
-6.2 GHz response-element lookup, and separate Direct and pump-off HB Results.
+6.2 GHz response-element lookup and a separate Direct Result.
 :::
 ::::
 
@@ -262,7 +262,7 @@ the same preserved workspace, and call only `resolve()` for the root.
 | 1. Coupled grounded LC | Build, diagram, S11, loaded root, selected C | Current five-Lesson Chapter |
 | 2. Sweep and Optimization | Inputs, bindings, points, spaces, and established Optimization workflow | Current four-Lesson Chapter |
 | 3. CPW feedline/readout S21 | Ordered two-section CPW, coupled readout, two-Port response | Current three-Lesson Chapter; retained original diagram outcome is a typed fixed-layout failure |
-| 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, and pump-off HB | Current six-Lesson Chapter |
+| 4. Four-Port capstone | Original physical Plan and PTC core, then optional transform, quantities, | Current five-Lesson Chapter |
 | 5. Library | Create, publish, instantiate, and reuse a Composite | Current three-Lesson Chapter |
 | 6. Diagram customization | Explicit layout declarations and actual-scene A/B review | Current four-Lesson Chapter |
 | 7. MTL | Ordered multi-conductor RLGC, explicit authoring layout and historical finite-pi evidence | Current four-Lesson Chapter; original diagram outcomes retain their execution identity |

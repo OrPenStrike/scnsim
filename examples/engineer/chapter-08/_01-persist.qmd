@@ -78,7 +78,7 @@ the same signal bus and creates no second electrical connection.
 ```{python}
 #| id: ch8-prepare-persisted-requests
 workspace = "workspaces/engineer-chapter-08"
-run = CircuitRun(backend="julia", plan=plan, workspace=workspace)
+run = CircuitRun(plan=plan, workspace=workspace)
 direct_spec = DirectSolveSpec(frequencies=[5.5, 6.0, 6.5, 7.0] * u.GHz)
 quantity_view = run.original.reduce(
     ReductionPipeline().retain(resonator_coordinate)
@@ -123,6 +123,7 @@ report = run.build_report(
     )
 )
 report.show()
+run.close()
 ```
 
 ::: {.content-visible when-format="html"}
@@ -139,4 +140,6 @@ the stored, named S channel and selects magnitude in dB; the second presents
 the loaded root summary. Because these panels name the exact Result objects in
 `inputs`, report assembly cannot silently substitute an identity-equal object.
 Building presentation does not choose another request or create a numerical
-attempt.
+attempt. Close the Run after the report is built; its saved Results keep their
+fixed readers for later presentation. The Plan leaf stores immutable evidence
+in `operations/operations.sqlite3`; reuse this same environment when reopening it.

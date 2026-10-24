@@ -501,43 +501,7 @@
         }
       ]
     },
-    "hbMatrixArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/zarrArtifact" },
-        {
-          "required": ["coordinate_ids", "probe_load_state", "output_channels", "input_channels"],
-          "properties": {
-            "dtype": { "const": "complex128" },
-            "chunk_policy": { "const": "frequency_slab_full_matrix_v1" },
-            "shape": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[F,N_out*M_out,N_in*M_in], with coordinate-major/mode-minor channel labels." },
-            "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024),N_out*M_out,N_in*M_in]; whole channel matrix per slab." },
-            "datasets": {
-              "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 }, "description": "[F, N_out*M_out, N_in*M_in]" },
-                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024), N_out*M_out, N_in*M_in]" }
-                } } } },
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1 }, "description": "[F, N_out*M_out, N_in*M_in]" },
-                  "chunks": { "type": "array", "minItems": 3, "maxItems": 3, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }, { "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false, "description": "[min(F,1024), N_out*M_out, N_in*M_in]" }
-                } } } }
-              ],
-              "items": false
-            },
-            "axes": {
-              "type": "array", "minItems": 3, "maxItems": 3,
-              "prefixItems": [
-                { "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "request_field": { "const": "spec.frequencies" } }, "required": ["id", "kind", "request_field"] },
-                { "properties": { "kind": { "const": "output_channel" } }, "required": ["kind", "values"] },
-                { "properties": { "kind": { "const": "input_channel" } }, "required": ["kind", "values"] }
-              ],
-              "items": false
-            }
-          }
-        }
-      ]
-    },
+
     "directSArtifact": {
       "allOf": [
         { "$ref": "#/$defs/directMatrixArtifact" },
@@ -565,21 +529,7 @@
         "sha256": { "$ref": "#/$defs/sha256" }
       }
     },
-    "hbArtifactReference": {
-      "description": "Operation-specific HB receipt/outcome artifact reference. case_id and id are semantic; path locates bytes within this exact attempt; sha256 proves those bytes.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["case_id", "id", "path", "sha256"],
-      "properties": {
-        "case_id": { "$ref": "#/$defs/identifier" },
-        "id": { "$ref": "#/$defs/identifier" },
-        "path": {
-          "type": "string",
-          "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z|states|effective_source_vectors)\\.zarr$|^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.zarr$"
-        },
-        "sha256": { "$ref": "#/$defs/sha256" }
-      }
-    },
+
     "artifactManifest": {
       "type": "object",
       "additionalProperties": false,
@@ -655,7 +605,7 @@
             "scnsim.residue_normalized_coupling.v2",
             "scnsim.response_element.v1",
             "scnsim.direct_operator.v1",
-            "scnsim.hb_response.josephsoncircuits.v1",
+
             "scnsim.direct_cmaes.cmaes_jl_0_2_6_state_replay.v9"
           ]
         },
@@ -778,6 +728,7 @@
       "required": [
         "schema",
         "schema_version",
+        "evidence_version",
         "kind",
         "workspace_instance_id",
         "plan_sha256"
@@ -785,6 +736,7 @@
       "properties": {
         "schema": { "const": "scnsim.workspace" },
         "schema_version": { "const": 1 },
+        "evidence_version": { "const": 3 },
         "kind": { "const": "plan_workspace" },
         "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
         "plan_sha256": { "$ref": "#/$defs/sha256" }
@@ -796,6 +748,7 @@
       "required": [
         "schema",
         "schema_version",
+        "evidence_version",
         "kind",
         "workspace_instance_id",
         "active_leaf"
@@ -803,6 +756,7 @@
       "properties": {
         "schema": { "const": "scnsim.workspace" },
         "schema_version": { "const": 1 },
+        "evidence_version": { "const": 3 },
         "kind": { "const": "replaceable_workspace" },
         "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
         "active_leaf": {
@@ -824,6 +778,7 @@
       "required": [
         "schema",
         "schema_version",
+        "evidence_version",
         "kind",
         "workspace_instance_id",
         "next_iteration",
@@ -832,6 +787,7 @@
       "properties": {
         "schema": { "const": "scnsim.workspace" },
         "schema_version": { "const": 1 },
+        "evidence_version": { "const": 3 },
         "kind": { "const": "versioned_workspace" },
         "workspace_instance_id": { "$ref": "#/$defs/workspaceInstanceId" },
         "next_iteration": { "type": "integer", "minimum": 1 },
@@ -1277,66 +1233,12 @@
         { "$ref": "#/$defs/quantityAbsolute" }
       ]
     },
-    "pumpAxis": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "frequency"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] }
-      }
-    },
-    "currentDrive": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "port_id", "mode", "orientation"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "port_id": { "$ref": "#/$defs/identifier" },
-        "mode": { "$ref": "#/$defs/modeTuple" },
-        "orientation": { "const": "port_node_to_reference" }
-      }
-    },
-    "hbCurrentBinding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["drive_id", "coefficient", "coefficient_convention"],
-      "properties": {
-        "drive_id": { "$ref": "#/$defs/identifier" },
-        "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
-        "coefficient_convention": { "const": "exp_minus_i_m_dot_omega_t_fourier_coefficient" }
-      }
-    },
-    "hbCaseSpec": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "currents"],
-      "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "currents": { "type": "array", "items": { "$ref": "#/$defs/hbCurrentBinding" } }
-      }
-    },
-    "hbTruncation": {
-      "type": "object", "additionalProperties": false,
-      "required": ["pump_harmonics", "modulation_harmonics", "max_intermodulation_order", "three_wave_mixing", "four_wave_mixing"],
-      "properties": {
-        "pump_harmonics": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
-        "modulation_harmonics": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
-        "max_intermodulation_order": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
-        "three_wave_mixing": { "type": "boolean" },
-        "four_wave_mixing": { "type": "boolean" }
-      }
-    },
-    "hbSolveSpec": {
-      "type": "object", "additionalProperties": false,
-      "required": ["type", "pump_axes", "drives", "frequencies", "cases", "truncation", "traces", "allow_driven_ptc"],
-      "properties": {
-        "type": { "const": "hb_solve" },
-        "pump_axes": { "type": "array", "items": { "$ref": "#/$defs/pumpAxis" } },
-        "drives": { "type": "array", "items": { "$ref": "#/$defs/currentDrive" } },
-        "frequencies": { "$ref": "#/$defs/frequencyGrid" },
-        "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbCaseSpec" } },
-        "truncation": { "$ref": "#/$defs/hbTruncation" },
-        "traces": { "type": "array", "items": { "$ref": "#/$defs/sParameterTrace" } },
-        "allow_driven_ptc": { "type": "boolean" }
-      }
-    },
+
+
+
+
+
+
     "refLineage": {
       "type": "object",
       "additionalProperties": false,
@@ -1601,7 +1503,6 @@
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
         "blas_vendor": { "type": "string", "minLength": 1 },
-        "fftw_threads": { "type": "integer", "minimum": 1 },
         "resume_ledger_sha256": { "$ref": "#/$defs/sha256" },
         "baseline_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
         "baseline_checkpoint_seal_sha256": { "$ref": "#/$defs/sha256" }
@@ -1639,8 +1540,7 @@
               "anyOf": [
                 { "required": ["julia_threads"] },
                 { "required": ["blas_threads"] },
-                { "required": ["blas_vendor"] },
-                { "required": ["fftw_threads"] }
+                { "required": ["blas_vendor"] }
               ]
             }
           }
@@ -1663,8 +1563,7 @@
         "julia_version": { "type": "string", "minLength": 1 },
         "julia_threads": { "type": "integer", "minimum": 1 },
         "blas_threads": { "type": "integer", "minimum": 1 },
-        "blas_vendor": { "type": "string", "minLength": 1 },
-        "fftw_threads": { "type": "integer", "minimum": 1 }
+        "blas_vendor": { "type": "string", "minLength": 1 }
       }
     },
     "launchAuthorization": {
@@ -1836,466 +1735,26 @@
         }
       ]
     },
-    "hbOperatingPointMode": {
-      "type": "object", "additionalProperties": false,
-      "required": ["mode", "signed_frequency", "order"],
-      "properties": {
-        "mode": { "$ref": "#/$defs/modeTuple" },
-        "signed_frequency": { "allOf": [{ "$ref": "#/$defs/quantity" }, { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }] },
-        "order": { "type": "integer", "minimum": 0 }
-      }
-    },
-    "hbResponseMode": {
-      "type": "object", "additionalProperties": false,
-      "required": ["mode", "signed_frequency_grid", "order"],
-      "properties": {
-        "mode": { "$ref": "#/$defs/modeTuple" },
-        "signed_frequency_grid": {
-          "type": "array", "minItems": 1,
-          "items": {
-            "allOf": [
-              { "$ref": "#/$defs/quantity" },
-              { "properties": { "si_unit": { "const": "hertz" }, "dimensionality": { "const": "inverse_time" } } }
-            ]
-          }
-        },
-        "order": { "type": "integer", "minimum": 0 }
-      }
-    },
-    "hbLattice": {
-      "type": "object", "additionalProperties": false,
-      "required": [
-        "pump_axes", "operating_point_modes", "input_modes", "output_modes",
-        "matrix_order", "tuple_frequency_collision_check_sha256"
-      ],
-      "properties": {
-        "pump_axes": { "type": "array", "items": { "$ref": "#/$defs/pumpAxis" } },
-        "operating_point_modes": { "type": "array", "items": { "$ref": "#/$defs/hbOperatingPointMode" } },
-        "input_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
-        "output_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/hbResponseMode" } },
-        "matrix_order": { "const": "port_major_mode_minor" },
-        "tuple_frequency_collision_check_sha256": { "$ref": "#/$defs/sha256" }
-      }
-    },
-    "hbEffectiveSource": {
-      "type": "object", "additionalProperties": false,
-      "required": ["drive_id", "mode", "coefficient", "generated_conjugate", "backend_binding", "injection_map_sha256"],
-      "properties": {
-        "drive_id": { "$ref": "#/$defs/identifier" },
-        "mode": { "$ref": "#/$defs/modeTuple" },
-        "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
-        "generated_conjugate": {
-          "type": "object", "additionalProperties": false,
-          "required": ["mode", "coefficient"],
-          "properties": {
-            "mode": { "$ref": "#/$defs/modeTuple" },
-            "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] }
-          }
-        },
-        "backend_binding": {
-          "type": "object", "additionalProperties": false,
-          "required": ["representative_mode", "representative_index", "coefficient", "coefficient_convention"],
-          "properties": {
-            "representative_mode": { "$ref": "#/$defs/modeTuple" },
-            "representative_index": { "type": "integer", "minimum": 0 },
-            "coefficient": { "allOf": [{ "$ref": "#/$defs/complexQuantity" }, { "properties": { "si_unit": { "const": "ampere" }, "dimensionality": { "const": "current" } } }] },
-            "coefficient_convention": { "const": "exp_plus_i_m_dot_omega_t_josephsoncircuits_source" }
-          }
-        },
-        "injection_map_sha256": { "$ref": "#/$defs/sha256" }
-      }
-    },
-    "hbTopologyEvidence": {
-      "type": "object", "additionalProperties": false,
-      "required": ["allow_driven_ptc", "intrinsic_compiled_graph_sha256", "nonlinear_balance", "response_linearization"],
-      "properties": {
-        "allow_driven_ptc": { "type": "boolean" },
-        "intrinsic_compiled_graph_sha256": { "$ref": "#/$defs/sha256" },
-        "nonlinear_balance": {
-          "type": "object", "additionalProperties": false,
-          "required": ["load_state", "lineage_sha256"],
-          "properties": {
-            "load_state": { "const": "loaded" },
-            "lineage_sha256": { "$ref": "#/$defs/sha256" }
-          }
-        },
-        "response_linearization": {
-          "type": "object", "additionalProperties": false,
-          "required": ["load_state", "lineage_sha256"],
-          "properties": {
-            "load_state": { "enum": ["raw", "compensated"] },
-            "lineage_sha256": { "$ref": "#/$defs/sha256" }
-          }
-        }
-      }
-    },
-    "hbOperatingPointClosure": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["status", "absolute_residual_f64", "relative_residual", "successful_disjunct"],
-          "properties": {
-            "status": { "const": "satisfied" },
-            "absolute_residual_f64": { "$ref": "#/$defs/f64" },
-            "relative_residual": {
-              "oneOf": [
-                {
-                  "type": "object", "additionalProperties": false,
-                  "required": ["status", "value_f64"],
-                  "properties": { "status": { "const": "value" }, "value_f64": { "$ref": "#/$defs/f64" } }
-                },
-                {
-                  "type": "object", "additionalProperties": false,
-                  "required": ["status", "reason"],
-                  "properties": { "status": { "const": "not_applicable" }, "reason": { "const": "zero_state_norm" } }
-                }
-              ]
-            },
-            "successful_disjunct": { "enum": ["absolute", "relative", "both"] }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["status", "reason"],
-          "properties": { "status": { "const": "not_applicable" }, "reason": { "const": "no_operating_point_lattice" } }
-        }
-      ]
-    },
-    "hbReconciliation": {
-      "type": "object", "additionalProperties": false,
-      "required": ["comparable", "reason", "last_comparable_ancestor", "normalization", "evidence_sha256"],
-      "properties": {
-        "comparable": { "type": "boolean" },
-        "reason": {
-          "oneOf": [
-            { "type": "null" },
-            { "enum": ["topology", "load_or_ptc", "reference_plane", "reference_matrix", "signed_frequency_grid", "channel_basis", "normalization"] }
-          ]
-        },
-        "last_comparable_ancestor": { "$ref": "#/$defs/sha256" },
-        "normalization": { "const": "backend_photon_flux_to_scnsim_power_wave" },
-        "residual_f64": { "$ref": "#/$defs/f64" },
-        "coordinate_projection": {
-          "type": "object", "additionalProperties": false,
-          "required": ["shape", "values_f64"],
-          "properties": {
-            "shape": {
-              "type": "array", "minItems": 2, "maxItems": 2,
-              "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }],
-              "items": false
-            },
-            "values_f64": { "type": "array", "items": { "$ref": "#/$defs/f64" } }
-          }
-        },
-        "evidence_sha256": { "$ref": "#/$defs/sha256" }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "comparable": { "const": true } }, "required": ["comparable"] },
-          "then": { "required": ["residual_f64", "coordinate_projection"], "properties": { "reason": { "type": "null" } } },
-          "else": { "not": { "anyOf": [{ "required": ["residual_f64"] }, { "required": ["coordinate_projection"] }] }, "properties": { "reason": { "type": "string" } } }
-        }
-      ]
-    },
-    "hbCaseMatrixArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbMatrixArtifact" },
-        {
-          "properties": {
-            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z)\\.zarr$" },
-            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/(?:s|y|z|backend_native_s|backend_native_z)\\.manifest\\.json$" }
-          }
-        }
-      ]
-    },
-    "hbCaseSArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
-        { "properties": {
-          "id": { "const": "s" },
-          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/s\\.zarr$" },
-          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/s\\.manifest\\.json$" },
-          "unit": { "const": "dimensionless" },
-          "dimensionality": { "const": "dimensionless" }
-        } }
-      ]
-    },
-    "hbCaseYArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
-        { "properties": {
-          "id": { "const": "y" },
-          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/y\\.zarr$" },
-          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/y\\.manifest\\.json$" },
-          "unit": { "const": "siemens" },
-          "dimensionality": { "const": "conductance" }
-        } }
-      ]
-    },
-    "hbCaseZArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
-        { "properties": {
-          "id": { "const": "z" },
-          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/z\\.zarr$" },
-          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/z\\.manifest\\.json$" },
-          "unit": { "const": "ohm" },
-          "dimensionality": { "const": "resistance" }
-        } }
-      ]
-    },
-    "hbBackendNativeSArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
-        { "properties": {
-          "id": { "const": "backend_native_s" },
-          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_s\\.zarr$" },
-          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_s\\.manifest\\.json$" },
-          "unit": { "const": "dimensionless" },
-          "dimensionality": { "const": "dimensionless" }
-        } }
-      ]
-    },
-    "hbBackendNativeZArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/hbCaseMatrixArtifact" },
-        { "properties": {
-          "id": { "const": "backend_native_z" },
-          "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_z\\.zarr$" },
-          "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/backend_native_z\\.manifest\\.json$" },
-          "unit": { "const": "ohm" },
-          "dimensionality": { "const": "resistance" }
-        } }
-      ]
-    },
-    "hbStateArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/zarrArtifact" },
-        {
-          "properties": {
-            "id": { "const": "states" },
-            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.zarr$" },
-            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/states\\.manifest\\.json$" },
-            "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-            "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
-            "chunk_policy": { "const": "single_complete_array_v1" },
-            "datasets": {
-              "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
-                  }
-                } } } },
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
-                  }
-                } } } }
-              ],
-              "items": false
-            },
-            "axes": {
-              "type": "array", "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
-                { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] }
-              ],
-              "items": false
-            },
-            "unit": { "const": "weber" },
-            "dimensionality": { "const": "magnetic_flux" }
-          }
-        }
-      ]
-    },
-    "hbEffectiveSourceArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/zarrArtifact" },
-        {
-          "properties": {
-            "id": { "const": "effective_source_vectors" },
-            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.zarr$" },
-            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/effective_source_vectors\\.manifest\\.json$" },
-            "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-            "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 1 }, { "type": "integer", "minimum": 1 }], "items": false },
-            "chunk_policy": { "const": "single_complete_array_v1" },
-            "datasets": {
-              "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
-                  }
-                } } } },
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 2, "maxItems": 2, "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 1 }], "items": false },
-                  "chunks": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 }
-                  }
-                } } } }
-              ],
-              "items": false
-            },
-            "axes": {
-              "type": "array", "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "kind": { "const": "pump_mode" } }, "required": ["kind", "values"] },
-                { "properties": { "kind": { "const": "node_coordinate" } }, "required": ["kind", "values"] }
-              ],
-              "items": false
-            },
-            "unit": { "const": "ampere" },
-            "dimensionality": { "const": "current" }
-          }
-        }
-      ]
-    },
-    "hbTraceArtifact": {
-      "allOf": [
-        { "$ref": "#/$defs/zarrArtifact" },
-        {
-          "properties": {
-            "path": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.zarr$" },
-            "file_manifest": { "pattern": "^artifacts/cases/(?:(?!000000/)[0-9]{6}|[1-9][0-9]{6,})/traces/[^/]+\\.manifest\\.json$" },
-            "dtype": { "const": "complex128" },
-            "shape": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1 }], "items": false },
-            "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false },
-            "chunk_policy": { "const": "frequency_capped_1024_v1" },
-            "datasets": {
-              "minItems": 2, "maxItems": 2,
-              "prefixItems": [
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
-                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false }
-                  }
-                } } },
-                { "properties": { "metadata": { "properties": {
-                  "shape": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "integer", "minimum": 1 } },
-                  "chunks": { "type": "array", "minItems": 1, "maxItems": 1, "prefixItems": [{ "type": "integer", "minimum": 1, "maximum": 1024 }], "items": false }
-                  }
-                } } }
-              ],
-              "items": false
-            },
-            "axes": {
-              "type": "array", "minItems": 1, "maxItems": 1,
-              "prefixItems": [{ "properties": { "id": { "const": "frequency" }, "kind": { "const": "frequency" }, "request_field": { "const": "spec.frequencies" } }, "required": ["id", "kind", "request_field"] }],
-              "items": false
-            },
-            "unit": { "const": "dimensionless" },
-            "dimensionality": { "const": "dimensionless" }
-          }
-        }
-      ]
-    },
-    "hbCaseArtifacts": {
-      "type": "object", "additionalProperties": false,
-      "required": ["states", "effective_source_vectors", "s", "y", "z", "backend_native_s", "backend_native_z"],
-      "properties": {
-        "states": { "$ref": "#/$defs/hbStateArtifact" },
-        "effective_source_vectors": { "$ref": "#/$defs/hbEffectiveSourceArtifact" },
-        "s": { "$ref": "#/$defs/hbCaseSArtifact" },
-        "y": { "$ref": "#/$defs/hbCaseYArtifact" },
-        "z": { "$ref": "#/$defs/hbCaseZArtifact" },
-        "backend_native_s": { "$ref": "#/$defs/hbBackendNativeSArtifact" },
-        "backend_native_z": { "$ref": "#/$defs/hbBackendNativeZArtifact" }
-      }
-    },
-    "hbCaseFailure": {
-      "type": "object", "additionalProperties": false,
-      "required": ["kind", "stage", "message", "evidence_sha256"],
-      "properties": {
-        "kind": { "const": "hb_case_failure" },
-        "stage": { "enum": ["operating_point", "linearization", "response_formation"] },
-        "message": { "type": "string", "minLength": 1 },
-        "evidence_sha256": { "$ref": "#/$defs/sha256" }
-      }
-    },
-    "hbStateNodeMapEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["state_index", "compiler_node_id", "source"],
-      "properties": {
-        "state_index": { "type": "integer", "minimum": 0 },
-        "compiler_node_id": { "$ref": "#/$defs/identifier" },
-        "source": {
-          "oneOf": [
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["kind", "plan_node_id", "visibility"],
-              "properties": {
-                "kind": { "const": "plan_node" },
-                "plan_node_id": { "$ref": "#/$defs/identifier" },
-                "visibility": { "enum": ["public", "port_promoted"] }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["kind", "component_path", "private_node_id"],
-              "properties": {
-                "kind": { "const": "component_private" },
-                "component_path": { "$ref": "#/$defs/componentPath" },
-                "private_node_id": { "$ref": "#/$defs/identifier" }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["kind", "internal_node_id"],
-              "properties": {
-                "kind": { "const": "anonymous_internal" },
-                "internal_node_id": { "type": "string", "pattern": "^internal-[0-9a-f]{64}$" }
-              }
-            }
-          ]
-        }
-      }
-    },
-    "hbCaseOutcome": {
-      "oneOf": [
-        {
-          "type": "object", "additionalProperties": false,
-          "required": [
-            "case_ordinal", "case_id", "status", "bias_state", "pump_state",
-            "effective_sources", "operating_point_closure", "artifacts", "traces", "reconciliation",
-            "backend_normalization_evidence_sha256", "state_node_map"
-          ],
-          "properties": {
-            "case_ordinal": { "type": "integer", "minimum": 1 },
-            "case_id": { "$ref": "#/$defs/identifier" },
-            "status": { "const": "success" },
-            "bias_state": { "enum": ["off", "on"] },
-            "pump_state": { "enum": ["off", "on"] },
-            "effective_sources": { "type": "array", "items": { "$ref": "#/$defs/hbEffectiveSource" } },
-            "operating_point_closure": { "$ref": "#/$defs/hbOperatingPointClosure" },
-            "artifacts": { "$ref": "#/$defs/hbCaseArtifacts" },
-            "traces": { "type": "array", "items": { "$ref": "#/$defs/hbTraceArtifact" } },
-            "reconciliation": { "$ref": "#/$defs/hbReconciliation" },
-            "backend_normalization_evidence_sha256": { "$ref": "#/$defs/sha256" },
-            "state_node_map": {
-              "type": "array",
-              "minItems": 1,
-              "items": { "$ref": "#/$defs/hbStateNodeMapEntry" }
-            }
-          }
-        },
-        {
-          "type": "object", "additionalProperties": false,
-          "required": ["case_ordinal", "case_id", "status", "effective_sources", "failure"],
-          "properties": {
-            "case_ordinal": { "type": "integer", "minimum": 1 },
-            "case_id": { "$ref": "#/$defs/identifier" },
-            "status": { "const": "failure" },
-            "effective_sources": { "type": "array", "items": { "$ref": "#/$defs/hbEffectiveSource" } },
-            "failure": { "$ref": "#/$defs/hbCaseFailure" }
-          }
-        }
-      ]
-    },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     "inventoryResult": {
       "type": "object", "additionalProperties": false,
       "required": ["schema", "schema_version", "workspace_instance_id", "plan_sha256", "requests", "maintenance"],
@@ -2311,7 +1770,7 @@
             "required": ["request_sha256", "operation", "status", "attempts"],
             "properties": {
               "request_sha256": { "$ref": "#/$defs/sha256" },
-              "operation": { "enum": ["solve_direct", "solve_hb", "evaluate_direct", "optimize_direct"] },
+              "operation": { "enum": ["solve_direct",  "evaluate_direct", "optimize_direct"] },
               "status": { "enum": ["succeeded", "failed", "interrupted", "partial_baseline"] },
               "attempts": { "type": "array", "items": { "$ref": "#/$defs/attemptOrdinalText" } },
               "baseline_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
@@ -2549,7 +2008,7 @@
             "runtime_prepare",
             "compile_preflight",
             "solve_direct",
-            "solve_hb",
+
             "evaluate_direct",
             "optimize_direct",
             "backend_protocol",
@@ -2560,7 +2019,7 @@
         "context_kind": {
           "enum": [
             "authoring", "workspace", "runtime", "compile", "direct_response",
-            "direct_quantity", "optimization_candidate", "hb_case", "protocol",
+            "direct_quantity", "optimization_candidate",  "protocol",
             "artifact", "resolution", "scaffold"
           ]
         },
@@ -2843,9 +2302,7 @@
               {
                 "$ref": "#/$defs/artifactLink"
               },
-              {
-                "$ref": "#/$defs/hbArtifactReference"
-              },
+
               {
                 "$ref": "#/$defs/parameterPointsManifestReference"
               }
@@ -3027,9 +2484,7 @@
               {
                 "$ref": "#/$defs/artifactLink"
               },
-              {
-                "$ref": "#/$defs/hbArtifactReference"
-              },
+
               {
                 "$ref": "#/$defs/parameterPointsManifestReference"
               }

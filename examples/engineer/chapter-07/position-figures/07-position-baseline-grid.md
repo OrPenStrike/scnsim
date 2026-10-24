@@ -1,6 +1,6 @@
 ### Baseline realized grid (M40, x = 4 mm)
 
-Read from the verified saved x = 4 mm M40 point.
+Read from the computed in-memory x = 4 mm M40 point.
 
 | body | length (mm) | modal velocities (m/s) | hmax (mm) | N | dx (mm) |
 |---|---:|---|---:|---:|---:|

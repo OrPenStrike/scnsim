@@ -5,8 +5,9 @@ from __future__ import annotations
 import math
 import re
 import struct
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
+from itertools import product
 
 from ...errors import EvidenceIntegrityError
 
@@ -382,3 +383,77 @@ def _f64_value(value: object) -> float:
     if not _finite_f64(value):
         raise _integrity("Expected one finite Float64 bit string.")
     return struct.unpack(">d", bytes.fromhex(str(value)))[0]
+
+
+def _plan_coordinates(plan: Mapping[str, object]) -> tuple[list[str], set[str]]:
+    """Return the snapshot-owned compiler basis and public subset."""
+
+    connectivity = plan.get("connectivity")
+    nodes = connectivity.get("node_coordinates") if isinstance(connectivity, Mapping) else None
+    if not isinstance(nodes, list) or not nodes:
+        raise _integrity("Sealed Plan coordinate inventory is malformed.")
+    order: list[str] = []
+    public: set[str] = set()
+    for node in nodes:
+        if (
+            not isinstance(node, Mapping)
+            or set(node) != {"final_net", "compiler_node_id", "visibility", "public_aliases"}
+            or not isinstance(node.get("compiler_node_id"), str)
+            or not node["compiler_node_id"]
+            or node.get("compiler_node_id") != node.get("final_net")
+            or node.get("visibility") not in {"public", "internal"}
+            or not isinstance(node.get("public_aliases"), list)
+        ):
+            raise _integrity("Sealed Plan node inventory is malformed.")
+        compiler_id = node["compiler_node_id"]
+        if compiler_id in order:
+            raise _integrity("Sealed Plan compiler coordinates are not unique.")
+        order.append(compiler_id)
+        if node["visibility"] == "public":
+            if not node["public_aliases"]:
+                raise _integrity("Public compiler coordinate has no public alias.")
+            public.add(compiler_id)
+        elif node["public_aliases"]:
+            raise _integrity("Internal compiler coordinate exposes a public alias.")
+    return order, public
+
+def _merge_parameter_records(
+    base: Mapping[str, object], overlay: Mapping[str, object]
+) -> dict[str, object]:
+    by_key = {
+        _parameter_key_integrity(row["parameter"]): dict(row)
+        for row in base["bindings"]
+    }
+    order = [_parameter_key_integrity(row["parameter"]) for row in base["bindings"]]
+    for row in overlay["bindings"]:
+        key = _parameter_key_integrity(row["parameter"])
+        if key not in by_key:
+            raise _integrity("Listed point references a parameter outside its baseline.")
+        by_key[key] = dict(row)
+    authorizations = {
+        _parameter_key_integrity(item): dict(item)
+        for item in (*base["allow_extrapolation"], *overlay["allow_extrapolation"])
+    }
+    return {
+        "type": "parameter_set_v2",
+        "bindings": [by_key[key] for key in order],
+        "allow_extrapolation": [authorizations[key] for key in sorted(authorizations)],
+    }
+
+def _parameter_source_points(source: Mapping[str, object]) -> Iterator[tuple[object, dict[str, object]]]:
+    if source["kind"] == "points":
+        for ordinal, overlay in enumerate(source["points"]):
+            yield ordinal, _merge_parameter_records(source["baseline_parameters"], overlay)
+        return
+    axes = source["axes"]
+    shape = source["shape"]
+    for indices in product(*(range(size) for size in shape)):
+        overlay = {
+            "type": "parameter_set_v2",
+            "bindings": [
+                {"parameter": axis["parameter"], "value": axis["values"][index]}
+                for axis, index in zip(axes, indices)
+            ],
+            "allow_extrapolation": [],
+        }
+        yield list(indices), _merge_parameter_records(source["base_parameters"], overlay)

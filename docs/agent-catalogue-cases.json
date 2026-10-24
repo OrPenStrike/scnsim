@@ -99,7 +99,7 @@
           }
         }
       },
-      "scope": "Declared case of the documented single-junction factory using documented literal field values; no response/HB claim."
+      "scope": "Declared case of the documented single-junction factory using documented literal field values; linear construction only; no numerical response is evaluated."
     },
     {
       "id": "floating_parallel_symmetric_squid_resonator-documented",
@@ -148,7 +148,7 @@
           }
         }
       },
-      "scope": "Declared finite-loop resonator construction using documented fields/values; the grounded case retains the documented loop ParameterRef. No pump/solver execution."
+      "scope": "Declared finite-loop resonator construction using documented fields/values; the grounded case retains the documented loop ParameterRef. No numerical execution."
     },
     {
       "id": "grounded_parallel_linear_lc_resonator-documented",
@@ -204,7 +204,7 @@
           }
         }
       },
-      "scope": "Declared case of the documented single-junction factory using documented literal field values; no response/HB claim."
+      "scope": "Declared case of the documented single-junction factory using documented literal field values; linear construction only; no numerical response is evaluated."
     },
     {
       "id": "grounded_parallel_symmetric_squid_resonator-documented",
@@ -248,7 +248,7 @@
           }
         }
       },
-      "scope": "Declared finite-loop resonator construction using documented fields/values; the grounded case retains the documented loop ParameterRef. No pump/solver execution."
+      "scope": "Declared finite-loop resonator construction using documented fields/values; the grounded case retains the documented loop ParameterRef. No numerical execution."
     },
     {
       "id": "inductor-documented",
@@ -323,7 +323,7 @@
           }
         }
       },
-      "scope": "Documented per-junction zero-bias LJ0 and independent Cj; no nonlinear/HB execution."
+      "scope": "Documented per-junction zero-bias LJ0 and independent Cj; linear construction only."
     },
     {
       "id": "resistor-documented",

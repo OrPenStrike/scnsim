@@ -21,14 +21,12 @@ from .base import (
     _valid_source_index,
 )
 from .diagram import CircuitDiagramAudit, CircuitDiagramResult
-from .derived import ExplanationResult, InventoryResult, ReportResult, TraceResult
+from .derived import ExplanationResult, ReportResult, TraceResult
 from .factory import _is_checked_report_input, _is_verified_analysis_result, _verified_result
-from .hb import HBCaseOutcome, HBBatchResult
 from .matrix import (
     DiagonalRootResult,
     DirectQuantityResult,
     DirectSolveResult,
-    HBScatteringMatrixResult,
     OperatorElementRootResult,
     OperatorPointResult,
     OperatorResult,
@@ -88,11 +86,7 @@ __all__ = [
     "DirectQuantityResult",
     "DirectSolveResult",
     "ExplanationResult",
-    "HBCaseOutcome",
-    "HBBatchResult",
-    "HBScatteringMatrixResult",
     "HtmlPresentation",
-    "InventoryResult",
     "InMemoryDirectSolveResult",
     "InMemoryAnalysisDependency",
     "InMemoryAnalysisPointOutcome",
@@ -172,7 +166,6 @@ for _public_result_type in (
     MatrixFamilyResult,
     ScatteringMatrixResult,
     ReconciliationEvidence,
-    HBScatteringMatrixResult,
     DirectSolveResult,
     InMemoryDirectSolveResult,
     InMemoryAnalysisDependency,
@@ -193,8 +186,6 @@ for _public_result_type in (
     OperatorResult,
     OptimizationBest,
     OptimizationResult,
-    HBCaseOutcome,
-    HBBatchResult,
     ParameterPointOutcome,
     ParameterPointAccessor,
     ParameterField,
@@ -202,7 +193,6 @@ for _public_result_type in (
     ParameterSweepResult,
     TraceResult,
     ExplanationResult,
-    InventoryResult,
     ReportResult,
     CircuitDiagramAudit,
     CircuitDiagramResult,

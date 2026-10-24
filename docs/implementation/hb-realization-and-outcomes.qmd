@@ -1,10 +1,16 @@
 ---
-title: "HB Realization and Case Outcomes"
+title: "History: HB V1 realization and case outcomes"
 subtitle: "How does one fixed nonlinear realization produce auditable selected-network cases?"
 toc-depth: 3
 ---
 
-**Status:** `STABILIZED` Full V1 implementation.
+**Status:** History — superseded; removed from 1.0.
+
+On 2026-10-18, the Human decided: 「確認：HB V1（JosephsonCircuits 0.5.4 綁定）移出 1.0 範圍，1.0 為純線性 JAX；HB 之後以 JAX 原生方式重新加入。」
+The sections below retain the retired JosephsonCircuits 0.5.4 contract.
+Use [Linear Direct realization](../concepts/direct-and-hb-realizations.qmd) for current analysis.
+
+**Successor scope:** JAX-native HB: not started, `CONVERGING` when opened, additive to 1.0.
 
 ## Bind one backend and one numerical policy
 

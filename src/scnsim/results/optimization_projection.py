@@ -8,7 +8,7 @@ import math
 from ..canonical import float64_from_hex
 from ..errors import EvidenceIntegrityError
 from .factory import _verified_result
-from .lazy_optimization import LazyOptimizationStageHistory
+from .lazy_optimization import LazyOptimizationStageHistory, _public_optimization_candidate
 from .optimization import OptimizationBest, OptimizationResult, OptimizationStage
 
 
@@ -52,6 +52,7 @@ def _candidate(decoder, record, model_identity, decode_discretization):
             "Optimization stage candidate lacks a complete saved occurrence",
             stage="result_decode",
         )
+    parameters = _public_optimization_candidate(record)["parameters"]
     return _verified_result(
         OptimizationBest,
         parameters=decoder._decode_parameter_set(parameters),

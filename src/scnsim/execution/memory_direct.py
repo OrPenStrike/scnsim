@@ -70,6 +70,10 @@ class InMemoryDirectSink:
             raise RuntimeError("in-memory Direct metadata was supplied more than once")
         self._metadata = dict(metadata)
 
+    def set_affine_evidence(self, rows):
+        """Attach the actual call's facts before the payload is detached at finish."""
+        self._metadata["affine_evidence"] = rows
+
     def prepare_direct_output(self, *, frequencies_hz, work_indices,
                               terminal_count, complex_dtype):
         if self._families is not None:

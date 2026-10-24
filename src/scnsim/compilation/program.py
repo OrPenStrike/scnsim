@@ -9,10 +9,42 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 import numpy as np
+import struct
 
 from ..canonical import canonical_json_bytes
 from .compiler import parameter_key
 from .mesh import quantity, matrix
+
+
+class _AffineEvidence:
+    """One host physical-check observation; never retained by a compiled core."""
+
+    def __init__(self, *, parameter_set=(), optimization_spec=()):
+        self.sources = tuple((name, frozenset(parameter_key(ref) for ref in refs))
+                             for name, refs in (("parameter_set", parameter_set),
+                                                ("optimization_spec", optimization_spec)))
+        self.rows = []
+
+    def observe(self, axis, target, argument, support, authorized, *, term_ordinal=None):
+        lower, upper = support
+        # Called only for an actually observed out-of-support host operand.
+        side = "lower" if argument < lower else "upper" if argument > upper else None
+        value = lambda x: {"si_unit": axis.si_unit, "si_value_f64": struct.pack(">d", float(x)).hex()}
+        # Evidence encoding adds no finite-value admission rule ahead of the
+        # existing physical validator. Unordered inputs have no invented side.
+        distance = (lower - argument if side == "lower" else
+                    argument - upper if side == "upper" else None)
+        consumer = {"path": list(target[0]), "field": target[1]}
+        if term_ordinal is not None:
+            consumer["term_ordinal"] = term_ordinal
+        self.rows.append({
+            "parameter": {"definitions_id": axis.key[0], "parameter_id": axis.key[1]},
+            "consumer_target": consumer, "input_value": value(argument),
+            "support": [value(lower), value(upper)], "side": side,
+            "distance": None if distance is None else value(distance),
+            "authorized": bool(authorized),
+            "authorization_sources": [name for name, keys in self.sources if axis.key in keys],
+        })
 
 
 def _indices(value):
@@ -121,7 +153,7 @@ class MaterialField:
         import jax.numpy as jnp
         return self.apply(theta, xp=jnp, check_support=False)
 
-    def apply(self, theta, *, xp, check_support=True):
+    def apply(self, theta, *, xp, check_support=True, affine_evidence=None, layout=None):
         """One field expression in the physical or selected numerical namespace."""
         jnp = xp
         result = [jnp.asarray(value, dtype=theta.dtype) for value in self.base]
@@ -129,12 +161,16 @@ class MaterialField:
             if operands:
                 result[index] = theta[jnp.asarray(operands)].reshape(result[index].shape)
         status = jnp.int32(0)
-        for term in self.terms:
+        for term_ordinal, term in enumerate(self.terms):
             argument = theta[term.source]
-            if check_support and term.support is not None and not term.authorized:
+            if check_support and term.support is not None and (not term.authorized or affine_evidence is not None):
                 outside = ~((argument >= jnp.asarray(term.support[0], dtype=theta.dtype)) & (
                     argument <= jnp.asarray(term.support[1], dtype=theta.dtype)))
-                status = jnp.where((status == 0) & outside, jnp.int32(1), status)
+                if affine_evidence is not None and bool(outside):
+                    affine_evidence.observe(layout.axes[term.source], self.key, argument,
+                                            term.support, term.authorized, term_ordinal=term_ordinal)
+                if not term.authorized:
+                    status = jnp.where((status == 0) & outside, jnp.int32(1), status)
             value = argument * jnp.asarray(term.slope, dtype=theta.dtype) + jnp.asarray(term.intercept, dtype=theta.dtype)
             result = [a + value * jnp.asarray(b, dtype=theta.dtype)
                       for a, b in zip(result, term.bases, strict=True)]
@@ -161,7 +197,7 @@ class FieldProgram:
         import jax.numpy as jnp
         return self.apply(theta, xp=jnp, check_support=False)
 
-    def apply(self, theta, *, xp, check_support=True):
+    def apply(self, theta, *, xp, check_support=True, affine_evidence=None):
         jnp = xp
         values = []
         status, failed = jnp.int32(0), jnp.int32(-1)
@@ -172,16 +208,21 @@ class FieldProgram:
             if source >= 0:
                 argument = theta[source]
                 value = jnp.asarray(slope, dtype=theta.dtype) * argument + value
-                if check_support and support is not None and not authorized:
+                if check_support and support is not None and (not authorized or affine_evidence is not None):
                     outside = ~((argument >= jnp.asarray(support[0], dtype=theta.dtype)) & (
                         argument <= jnp.asarray(support[1], dtype=theta.dtype)))
-                    first = (status == 0) & outside
-                    failed = jnp.where(first, jnp.int32(index), failed)
-                    status = jnp.where(first, jnp.int32(1), status)
+                    if affine_evidence is not None and bool(outside):
+                        affine_evidence.observe(self.layout.axes[source], self.keys[index],
+                                                argument, support, authorized)
+                    if not authorized:
+                        first = (status == 0) & outside
+                        failed = jnp.where(first, jnp.int32(index), failed)
+                        status = jnp.where(first, jnp.int32(1), status)
             values.append(value)
         materials = []
         for index, material in enumerate(self.structured):
-            result, code = material.apply(theta, xp=xp, check_support=check_support)
+            result, code = material.apply(theta, xp=xp, check_support=check_support,
+                                          affine_evidence=affine_evidence, layout=self.layout)
             first = (status == 0) & (code != 0)
             failed = jnp.where(first, jnp.int32(len(self.keys) + index), failed)
             status = jnp.where(first, code, status)

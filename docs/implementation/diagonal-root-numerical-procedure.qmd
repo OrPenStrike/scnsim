@@ -29,7 +29,7 @@ element-root extension. The physical quantities are defined by the
 [Runtime Contract](../v1-runtime-contract.qmd#typed-direct-quantity-catalog).
 
 The equations below describe the selected scalar residual and its existing
-certificates. Dense factor details describe the retained Julia realization;
+certificates. Dense factor details describe the historical Julia realization;
 current JAX uses the shared sparse native equation producer and its selected-dtype
 certificates. They are separate backend realizations, not selectable numerical
 fallbacks. For current Hint/search/branch semantics and the difference between a
@@ -170,7 +170,7 @@ the normalized slope must also satisfy $|g'_{ij}|/s_{g'}>\tau(n)$. The checked
 rows of $Q(\omega)x$ are recomputed from C/G/K and series-RL branches rather
 than reconstructed from the Schur residual. The generic element root has no imaginary-sign policy;
 the diagonal consumer separately requires $\operatorname{Im}\omega\le0$,
-including when it reuses a numerical root. In the retained legacy Julia
+including when it reuses a numerical root. In the retired historical Julia
 realization, these normalized checks are execution-time checks rather than
 additional durable Result or receipt fields. Current JAX projects the actual
 `RootPacket` certificate and performed equation facts into returned and saved

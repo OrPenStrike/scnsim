@@ -133,6 +133,11 @@ def _quantity_evidence(record, request):
     return evidence
 
 
+def _affine_evidence(record):
+    rows = record["evidence"].get("affine_evidence")
+    return {"affine_evidence": decode_record(rows)} if rows else {}
+
+
 def _coupling_branch_evidence(record, dependencies):
     branch_evidence = []
     for branch in record["evidence"]["branches"]:
@@ -181,6 +186,7 @@ def _point_result(identity, record, request):
             frequency=units.registry.Quantity(frequency, "hertz"),
             linewidth=units.registry.Quantity(linewidth, "hertz"),
             slope=_numeric_quantity(record, "root_slope", "siemens"),
+            evidence=_affine_evidence(record),
             _presentation=presentation,
         )
     if kind == "response_element":
@@ -191,6 +197,7 @@ def _point_result(identity, record, request):
             DirectQuantityResult, identity=identity, discretization=grid, family=family,
             value=units.registry.Quantity(value, unit), magnitude=units.registry.Quantity(np.abs(value), unit),
             real=units.registry.Quantity(value.real, unit), imag=units.registry.Quantity(value.imag, unit),
+            evidence=_affine_evidence(record),
             _presentation=presentation,
         )
     if kind == "operator_element_root":
@@ -273,7 +280,8 @@ def _point_result(identity, record, request):
             for frequency, matrix in zip(frequencies, values, strict=True)
         )
         return _verified_result(
-            OperatorResult, identity=identity, discretization=grid, points=points
+            OperatorResult, identity=identity, discretization=grid, points=points,
+            evidence=_affine_evidence(record)
         )
     if kind != "direct_solve":
         raise EvidenceIntegrityError("JAX result has an unsupported quantity family", stage="result_decode")
@@ -307,6 +315,7 @@ def _point_result(identity, record, request):
         s=family_result("S", "dimensionless", ScatteringMatrixResult),
         y=family_result("Y", "siemens", MatrixFamilyResult),
         z=family_result("Z", "ohm", MatrixFamilyResult), traces=traces,
+        evidence=_affine_evidence(record),
     )
 
 
@@ -423,6 +432,8 @@ def _direct_solve(identity, request, fixed_reader):
         y=family_result("Y", MatrixFamilyResult),
         z=family_result("Z", MatrixFamilyResult),
         traces=traces,
+        evidence=({"affine_evidence": decode_record(metadata["affine_evidence"])}
+                  if metadata.get("affine_evidence") else {}),
     )
 
 
@@ -508,7 +519,10 @@ def _candidate(record, spec):
         outcome["cost_f64"] = record["cost_f64"]
     else:
         outcome["failure"] = record["failure"]
-    return dict(record, dependencies=dependencies, outcome=outcome)
+    # Approval belongs to the request/check, not the candidate a caller reuses.
+    # Keep the verified stored body intact for exact cache/resume ownership.
+    parameters = dict(record["parameters"], allow_extrapolation=[])
+    return dict(record, parameters=parameters, dependencies=dependencies, outcome=outcome)
 
 
 def _optimization(decoder, identity, request, fixed_reader):
@@ -650,7 +664,7 @@ def _fixed_sweep(decoder, identity, request, projection, fixed_reader):
     direct_points = (
         operation == "solve_direct"
         and isinstance(source, Mapping)
-        and source.get("kind") == "points"
+        and source.get("kind") in {"grid", "points"}
         and isinstance(spec, Mapping)
         and spec.get("type") == "direct_solve"
     )
@@ -892,7 +906,7 @@ def decode_jax_operation(decoder, *, projection, request, plan_sha256, request_s
     if request["operation"] == "optimize_direct":
         return _optimization(decoder, identity, request, fixed_reader)
     if (request["operation"] == "solve_direct"
-            and request["parameter_source"]["kind"] == "points"):
+            and request["parameter_source"]["kind"] in {"grid", "points"}):
         return _fixed_sweep(decoder, identity, request, projection, fixed_reader)
     if request["operation"] == "solve_direct":
         return _direct_solve(identity, request, fixed_reader)

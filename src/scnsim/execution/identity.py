@@ -1,13 +1,12 @@
 """Static semantic runtime identity from installed SCNSim package bytes.
 
 Package-relative manifests cover shipped Python, compensated CPU kernel source,
-Julia, schemas, and static metadata. The historical python_source_sha256 key
+schemas, and static metadata. The historical python_source_sha256 key
 also binds packaged native kernel source, independent of platform binary bytes.
 Host runtime discovery and process launch do not participate."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from hashlib import sha256
 from pathlib import Path
@@ -31,22 +30,11 @@ def _runtime_identity_base() -> dict[str, object]:
             if not _excluded_source_path(path.relative_to(package).as_posix())
         ),
         *package.glob("_schemas/*.json"),
-        package / "_julia" / "runtime.json",
         package / "_native" / "compensated_cpu.cpp",
     ]
-    julia_files = list((package / "_julia").rglob("*.jl"))
-    project = package / "_julia" / "Project.toml"
-    julia_manifest = package / "_julia" / "Manifest.toml"
-    if not all(path.is_file() for path in (*python_files, *julia_files, project, julia_manifest)):
+    if not all(path.is_file() for path in python_files):
         raise RuntimeError("SCNSim packaged runtime resources are incomplete")
-    runtime = json.loads((package / "_julia" / "runtime.json").read_text(encoding="utf-8"))
-    return {
-        "python_source_sha256": manifest(python_files),
-        "julia_source_sha256": manifest(julia_files),
-        "julia_version": runtime["julia_version"],
-        "project_sha256": sha256(project.read_bytes()).hexdigest(),
-        "manifest_sha256": sha256(julia_manifest.read_bytes()).hexdigest(),
-    }
+    return {"python_source_sha256": manifest(python_files)}
 
 
 def _jax_runtime_identity(base: dict[str, object], *, precision: str) -> dict[str, object]:

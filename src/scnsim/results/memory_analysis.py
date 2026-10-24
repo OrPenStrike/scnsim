@@ -644,6 +644,9 @@ def _evaluation_result(
         "s": None, "y": None, "z": None, "traces": {}, "operator_points": (),
         "_benchmark": None,
     }
+    affine_rows = record_document(raw.evidence_bytes).get("affine_evidence")
+    if affine_rows:
+        fields["evidence"] = {"affine_evidence": decode_record(affine_rows)}
     if raw.failure is None:
         if kind in {"static_capacitance", "static_capacitance_element"}:
             evidence = decode_record(record_document(raw.evidence_bytes))

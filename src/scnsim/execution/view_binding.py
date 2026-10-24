@@ -74,9 +74,9 @@ def _original_lineage_document(
         "compiled_graph_sha256": sha256_hex(
             {
                 "schema": "scnsim.compiled_graph_identity",
-                "schema_version": 1,
+                "schema_version": 2,
                 "plan_sha256": plan_sha256,
-                "julia_source_sha256": runtime["julia_source_sha256"],
+                "python_source_sha256": runtime["python_source_sha256"],
             }
         ),
         "coordinate_order": list(coordinate_order),

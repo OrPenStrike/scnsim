@@ -75,6 +75,7 @@ def _compact_summary(candidate):
     return {'evaluation_ordinal': candidate['evaluation_ordinal'],
         'parameters':candidate['parameters'], 'cost_f64':candidate['cost_f64'],
         'status':candidate['status'],
+        **({'affine_evidence':candidate['affine_evidence']} if 'affine_evidence' in candidate else {}),
         **({'failure':candidate['failure']} if candidate.get('failure') is not None else {}),
         **({'optimizer_unavailability':candidate['optimizer_unavailability']}
            if candidate.get('optimizer_unavailability') is not None else {}),
@@ -124,7 +125,7 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                              commit_every_generations, publish_batch,
                              observe_progress, on_acknowledged, spool,
                              execution_policy, frame_owner, candidate_records=None,
-                             publication_mode="durable"):
+                             publication_mode="durable", parameter_authorizations=()):
     """Compute real stage batches; publication ACKs are supplied by the caller.
 
     ``resume_state`` contains exact checkpoint state and verified ``cache_records``
@@ -140,6 +141,10 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
         raise ValueError('in-memory optimization has no checkpoints or saved restart')
     records = candidate_records if candidate_records is not None else _SavedCandidateRecords()
     spec = request['spec']
+    from ..compilation.program import _AffineEvidence
+    def new_affine_evidence():
+        return _AffineEvidence(parameter_set=parameter_authorizations,
+                              optimization_spec=spec['allow_extrapolation'])
     controls = spec['optimizer']
     declarations = (controls['stages'] if controls['type'] == 'hybrid' else
         ({'id': 'main', 'optimizer': controls, 'discretization': spec.get('discretization'),
@@ -257,6 +262,7 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                 best_cost=None if best is None else unbits(best['cost_f64']), reused=reused)
 
         continuation_rows = {}
+        affine_observations = {}
 
         def continue_starts(point, error):
             # The original-point anchors and the existing continuation policy
@@ -309,6 +315,10 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
         def compute(point, *, gradient=False, prepared=None, anchor=False,
                     evaluation_role='candidate'):
             nonlocal root_search_metadata
+            point_key = point_identity(point).hex()
+            if prepared is None:
+                affine_observations[point_key] = new_affine_evidence()
+            affine_evidence = affine_observations[point_key]
             inputs = program.inputs(point, branch_starts_rad_s=starts)
             options = {'active_keys': tuple(parameter_key(row['parameter']) for row in variables)} if gradient else {'prepared': prepared}
             completed = None
@@ -330,7 +340,8 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                     from .physical_analysis import acquire_completed_root_frame
                     _,completed,_,searches = acquire_completed_root_frame(program.quantity_program,inputs,
                         backend=backend,program_owner=owner,operation_resources=operation_resource,
-                        compact_evidence=publication_mode == 'memory',discover=anchor)
+                        compact_evidence=publication_mode == 'memory',discover=anchor,
+                        affine_evidence=affine_evidence)
                     if anchor:
                         root_search_metadata = searches
                 with trace.span('physical_value_gradient' if gradient else 'physical_value',
@@ -342,6 +353,7 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                             native_executor=backend.execute_native,
                             program_owner=owner, device=backend.device,
                             native_ad_runner=native_ad_runner, compact_evidence=publication_mode == 'memory', completed=completed,
+                            affine_evidence=affine_evidence,
                         )
                     else:
                         result = program.value(
@@ -349,6 +361,7 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                             native_executor=backend.execute_native,
                             program_owner=owner, device=backend.device,
                             compact_evidence=publication_mode == 'memory', completed=completed,
+                            affine_evidence=affine_evidence,
                         )
             except SCNSimError as error:
                 if anchor:
@@ -368,12 +381,14 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                         native_executor=backend.execute_native,
                         program_owner=owner, device=backend.device,
                         native_ad_runner=native_ad_runner, compact_evidence=publication_mode == 'memory', completed=completed,
+                        affine_evidence=affine_evidence,
                     )
                 else:
                     result = program.value(
                         corrected_inputs, native_executor=backend.execute_native,
                         program_owner=owner, device=backend.device,
                         compact_evidence=publication_mode == 'memory', completed=completed,
+                        affine_evidence=affine_evidence,
                     )
             # These are the established objective-resolution conditions, not
             # controller acceptance or a new global finiteness policy.
@@ -394,10 +409,14 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
 
         def record(point, outcome=None, *, error=None, kind='evaluation', optimizer_unavailability=None):
             nonlocal next_ordinal, history_ordinal, best, evaluations
+            observation = affine_observations.get(point_identity(point).hex())
+            affine_rows = () if observation is None else tuple(observation.rows)
             candidate = (records.success(objective_program=program,
-                outcome=outcome, parameters=point, objective_records=spec['objectives'])
+                outcome=outcome, parameters=point, objective_records=spec['objectives'],
+                affine_evidence=affine_rows)
                 if error is None else records.failure(parameters=point,
-                    objective_records=spec['objectives'], error=error))
+                    objective_records=spec['objectives'], error=error, affine_evidence=affine_rows))
+            affine_observations.pop(point_identity(point).hex(), None)
             if optimizer_unavailability is not None:
                 candidate['optimizer_unavailability'] = {'kind':optimizer_unavailability.code,
                     'detail':optimizer_unavailability.message, 'role':'candidate_value_gradient',
@@ -541,6 +560,8 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                     index, point, packet = item
                     try:
                         with operation_resource.candidate_compute():
+                            if isinstance(packet, SCNSimError):
+                                raise packet
                             return index, point, compute(point, prepared=packet,
                                 evaluation_role='candidate_value'), None
                     except SCNSimError as error:
@@ -553,9 +574,24 @@ def run_physical_optimization(*, plan_document, request, effective_point, precis
                         wave = uncached[offset:offset + capacity]
                         with trace.span('physical_prepare_batch', details={'stage_id':stage_id}), operation_resource.exclusive_assembly():
                             with backend.jax.enable_x64(precision == 'float64'), backend.jax.default_device(backend.device):
-                                packets = program.prepare_batch(
-                                    tuple(program.inputs(point, branch_starts_rad_s=starts) for _,point in wave),
-                                    program_owner=owner)
+                                observations = tuple(new_affine_evidence() for _ in wave)
+                                for (_, point), observation in zip(wave, observations, strict=True):
+                                    affine_observations[point_identity(point).hex()] = observation
+                                packets = []
+                                for (_, point), observation in zip(wave, observations, strict=True):
+                                    try:
+                                        packet, = program.prepare_batch(
+                                            (program.inputs(point, branch_starts_rad_s=starts),),
+                                            program_owner=owner, affine_evidence=(observation,))
+                                    except SCNSimError as error:
+                                        # The documented rejected affine candidate still
+                                        # belongs to this population occurrence, not to
+                                        # operation-level failure or root continuation.
+                                        if (error.kind != 'invalid_candidate_physical_parameter'
+                                                or error.stage != 'affine_support'):
+                                            raise
+                                        packet = error
+                                    packets.append(packet)
                         try:
                             yield from operation_resource.map_ordered(worker,
                                 ((index,point,packet) for (index,point),packet in zip(wave,packets,strict=True)),

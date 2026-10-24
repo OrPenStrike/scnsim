@@ -92,7 +92,6 @@ unenumerated live authoring values.
 | Public owner | Detached values | Identity values retained exactly |
 |---|---|---|
 | `DirectSolveSpec`, `OperatorSpec`, and Direct quantity Specs | frequency grids, root hints, anchors, and evaluation frequencies | Coordinate handles |
-| `PumpAxis`, `HBCaseSpec`, and `HBSolveSpec` | pump frequencies, drive currents, and the shared response grid | drive, Port, and Coordinate handles |
 | `OptimizationVariable` and `CostObjective` | default/override bounds, target, weight, and optional scale | `ParameterRef`, selector, and bound View lineage |
 | catalog-created `ComponentInstance` literal fields | validated literal physical quantities | existing `ParameterRef` bindings and component/Pin identity |
 | `PortRef` | reference impedance | owning Plan and node identity |
@@ -260,12 +259,13 @@ Result. Supplying a `ParameterSpace` always returns
 binds the exact Plan, View, Spec, operation, parameter-space form and order,
 effective points, runtime, and dependency identities.
 
-One sweep or optimization attempt executes its remaining points in one Julia process.
+One sweep or optimization attempt executes its remaining points through the
+shared JAX physical program in the calling Python process.
 SCNSim may reuse compatible topology/index preparation and type
 specializations. It must rebind values and recompute every affected native
 assembly, factorization, transform weight, and reduction at every point. It may
 not reuse a nominal reduced matrix, create per-value generated types, or start
-one Julia process per point. A point is published atomically under its exact
+one process per point. A point is published atomically under its exact
 request and ordinal before the next point starts. A later attempt verifies and
 reuses published success or permitted numerical-failure evidence without
 recomputing or relabeling it. Missing or corrupt published evidence fails
@@ -314,7 +314,7 @@ Each immutable `ParameterPointOutcome` exposes:
 - `source_index: int | tuple[int, ...]`;
 - `succeeded: bool`;
 - `result`, discriminated on success as the operation's existing
-  `DirectSolveResult`, `HBBatchResult`, `DiagonalRootResult`,
+  `DirectSolveResult`, `DiagonalRootResult`,
   `DirectQuantityResult`, or `OperatorResult`; and
 - `failure`, discriminated on numerical non-success as the preserved typed
   point failure.
@@ -430,8 +430,7 @@ in declaration order; it supports the existing Result lineage envelope but is
 not the sole View of a multi-View optimization.
 
 Every bound View must belong to the same `CircuitRun` and captured Plan.
-Missing or foreign bindings and selector/View incompatibility fail before a
-Julia process starts. One candidate is one complete effective ParameterSet
+Missing or foreign bindings and selector/View incompatibility fail before numerical execution. One candidate is one complete effective ParameterSet
 shared by all bound Views; it is not a collection of independently optimized
 View-local points.
 
@@ -546,7 +545,7 @@ promised. Implementation integration does not accept this reopened scope.
 ## Performance and nonclaims {#parameter-system-nonclaims}
 
 Lazy Cartesian enumeration and chunked storage avoid constructing one enormous
-point list. Cold runtime preparation, Julia compilation, and per-point work are
+point list. Cold runtime preparation, JAX compilation, and per-point work are
 different costs. This contract promises no timing threshold, JIT elimination,
 daemon, distributed execution, or numerical-result cache across incompatible
 points.
@@ -569,3 +568,9 @@ Gate, success threshold, or release claim.
 - [Component Authoring Contract](../component-authoring.qmd)
 - [Structured Circuit Authoring and Certified Diagrams](automatic-semantic-circuit-diagram-layout.qmd)
 - [V1 Runtime Contract](../v1-runtime-contract.qmd)
+
+
+## History: retired HB parameter bindings
+
+| `PumpAxis`, `HBCaseSpec`, and `HBSolveSpec` | pump frequencies, drive currents, and the shared response grid | drive, Port, and Coordinate handles |
+

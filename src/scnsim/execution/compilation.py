@@ -1,47 +1,12 @@
 """Compiler-only realization of immutable captured Plan declarations.
 
 JAX explanations consume sparse Python lowering/View realization without a
-numerical backend. Explicit Julia preflight retains its native compiler.
-Neither route allocates an attempt or mutates analysis state."""
+numerical backend. This route allocates no attempt and mutates no analysis state."""
 
 from __future__ import annotations
 
-import tempfile
 from collections.abc import Mapping
-from pathlib import Path
 from ..canonical import canonical_json_bytes, sha256_hex
-from ..workspace.artifacts import _error_from_record, _validated_failure_record
-from .preparation import prepare_runtime, _native_supervisor_scope
-from .process import run_preflight
-
-
-def _run_preflight(
-    plan_document: Mapping[str, object],
-    plan_bytes: bytes,
-    request: Mapping[str, object],
-    *, native_supervisor=None,
-) -> Mapping[str, object]:
-    with _native_supervisor_scope(native_supervisor) as supervisor:
-        prepared = prepare_runtime(feature=f"CircuitRun.explain compiler preflight ({request['operation']})", native_supervisor=supervisor)
-        with tempfile.TemporaryDirectory(prefix="scnsim-preflight-") as temporary:
-            plan_path = Path(temporary) / "plan.json"
-            request_path = Path(temporary) / "request.json"
-            plan_path.write_bytes(plan_bytes)
-            request_path.write_bytes(canonical_json_bytes(request))
-            compiled = run_preflight(
-                prepared,
-                plan_path=plan_path.resolve(),
-                request_path=request_path.resolve(),
-                native_supervisor=supervisor,
-            )
-        if compiled.get("schema") == "scnsim.preflight_failure":
-            raise _error_from_record(
-                _validated_failure_record(
-                    compiled.get("failure"), request["operation"],
-                    request=request, plan=plan_document,
-                )
-            )
-        return compiled
 
 
 def _run_jax_preflight(
@@ -158,6 +123,5 @@ def _run_jax_preflight(
         "root_preflight": {"spec": spec, "view_id": primary_key,
                            "algorithm_id": request["runtime_semantic"]["algorithm_id"]},
         "optimization_preflight": {"objective_views": objective_views},
-        "direct_hb_capability": {"backend": "jax", "direct": "sparse_cpu_superlu",
-                                 "hb": "requires_explicit_julia"},
+        "direct_hb_capability": {"backend": "jax", "direct": "sparse_cpu_superlu"},
     }

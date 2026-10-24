@@ -162,8 +162,7 @@ def evaluate_notch(*, plan, view_pipeline, input_coordinate,
             tie="unavailable",
         ),
     )
-    run = CircuitRun(plan=plan, storage="memory", backend="jax",
-                     precision="float64")
+    run = CircuitRun(plan=plan, storage="memory", precision="float64")
     try:
         view = run.original.reduce(view_pipeline)
         result = run.evaluate(view, spec, parameters=point)

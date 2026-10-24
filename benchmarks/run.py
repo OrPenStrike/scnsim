@@ -501,7 +501,7 @@ def main(argv=None):
     parser.add_argument('--cma-evaluations',type=int,choices=(64,512),default=64)
     parser.add_argument('--tail-failure',action='store_true');parser.add_argument('--repetitions',type=int,default=5)
     parser.add_argument('--output',required=True);parser.add_argument('--source-commit',default='8346af0')
-    parser.add_argument('--cpu-threads',type=int);parser.add_argument('--worker',action='store_true')
+    parser.add_argument('--cpu-threads',type=int,default=10);parser.add_argument('--worker',action='store_true')
     parser.add_argument('--warm-repetitions',type=int,default=0);parser.add_argument('--capture-only',action='store_true')
     parser.add_argument('--jax-trace-output',help='JAX trace directory for this worker only')
     parser.add_argument('--installed-wheel-only',action='store_true',help='require an ordinary installed wheel and unset PYTHONPATH')

@@ -153,7 +153,7 @@ class LocalCoordinateDefaultTests(unittest.TestCase):
                     optimizer=optimizer_type(**LBFGSB_CONTROLS),
                 )
                 run = s.CircuitRun(
-                    plan=plan, storage="memory", backend="jax", precision="float64",
+                    plan=plan, storage="memory", precision="float64",
                 )
                 try:
                     view = run.original.reduce(

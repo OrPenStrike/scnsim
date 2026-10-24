@@ -1,6 +1,6 @@
 ### Named through-channel response
 
-Each figure is the exact saved `right_a ← left_a` channel at one position; phase is wrapped.
+Each figure is the exact in-memory `right_a ← left_a` channel at one position; phase is wrapped.
 
 ![x=2 mm, magnitude.](position-figures/07-position-2mm-magnitude.svg)
 

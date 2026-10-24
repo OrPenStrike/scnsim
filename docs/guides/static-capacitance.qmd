@@ -167,16 +167,12 @@ Use one fixed realized finite mesh for the sensitivity request. A valid PTC
 lineage is supported, but the PTC resistive/reference load mask has no
 numerical effect on C or transform weights; this static request does not apply
 RF/Port eligibility or normalization. The derivative
-does not differentiate an integer line-section choice. The initial
-static-capacitance backend is JAX; selecting Julia for this quantity reports an
-unsupported capability rather than rerunning the calculation through another
-backend.
+does not differentiate an integer line-section choice. Static capacitance uses the shared JAX physical program.
 
 Memory and Workspace results expose the same static matrix and element value
 interfaces. Memory results are detached; Workspace results use fixed selected
-readers and may be inspected after `run.close()`. Existing Julia operations
-and the current dynamic response, root, and residue-normalized-coupling
-contracts are unchanged.
+readers and may be inspected after `run.close()`. The dynamic response, root,
+and residue-normalized-coupling contracts remain separate.
 
 The dev36 retained-View static equation is newly integrated and its numerical
 use has not yet been observed. Prior dev35 static LC observations do not verify

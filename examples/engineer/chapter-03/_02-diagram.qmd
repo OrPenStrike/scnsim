@@ -1,6 +1,6 @@
 ## Lesson 2 — Review what the fixed diagram can show {#lesson-ch3-diagram}
 
-Current source cells use full explicit layouts bound to fresh preparation. Stored figures and Notebook outputs retain their original execution identities; this source-only update does not regenerate them.
+Prepare the complete Plan, declare its explicit layout, and inspect the resulting schematic before reviewing the two standalone illustrations.
 
 ### Preserve the complete-Plan layout outcome
 
@@ -30,10 +30,12 @@ complete_diagram = plan.render_schematic(
 display(complete_diagram.show())
 ```
 
-::: {.callout-note title="Historical complete-Plan observation"}
-The stored earlier automatic-layout attempt reported `fixed connector intersects
-occupied geometry`. Its original output remains historical; the explicit-layout
-source below has not regenerated a complete-Plan certificate.
+::: {.content-visible when-format="html"}
+
+![Complete feedline and readout Plan with its explicit layout.](../figures/03-complete-plan.svg){fig-alt="Complete two-Port feedline and capacitively coupled readout with explicit root and child geometry."}
+
+[Open the complete Plan SVG](../figures/03-complete-plan.svg)
+
 :::
 
 ### Use honest standalone illustrations

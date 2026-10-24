@@ -1,7 +1,71 @@
 ---
-title: "Run Operations and Read-only Benchmark"
-subtitle: "Execute with JAX or Julia, then inspect actual recorded work"
+title: "Run operations and read their Benchmark"
+subtitle: "Choose storage, then inspect the work that actually executed"
 ---
+
+Run the physical operation first, then inspect `run.benchmark()`. The Benchmark
+reports that operation's recorded costs and work; it does not start another
+solve or choose a performance workload.
+
+## Choose Result ownership
+
+```python
+from scnsim import CircuitRun
+
+run = CircuitRun(plan=plan, storage="memory")
+result = run.solve(run.original, direct_spec)
+benchmark = run.benchmark()
+run.close()
+```
+
+Use `CircuitRun(plan=plan, workspace="workspaces/example")` for saved evidence
+and exact `resolve()`. Memory and Workspace share the JAX producer for Direct,
+quantities, Sensitivity, sweeps and Optimization. Memory stores no operation
+history; its Benchmark is the last call's immutable aggregate summary.
+Memory timing accepts `aggregate` only. Workspace also supports detailed timing.
+
+## Configure before execution
+
+The base installation includes CPU JAX. `CircuitRun` has no backend keyword.
+Set an explicit process budget before numerical initialization when needed:
+
+```python
+from scnsim import configure_runtime
+
+configure_runtime(cpu_threads=10)
+```
+
+This is a declared budget, not proof that ten cores were used. Existing late or
+conflicting configuration errors retain their meaning.
+
+`explain()` reviews the selected request without solving. `prepare()` returns a
+detached numerical callable; `warmup()` compiles declared variants without
+running a baseline, sparse equation or optimizer evaluation. These are separate
+operations, not hidden warm-up solves.
+
+## Interpret the measurement
+
+Keep compilation, synchronized compute, readback and publication clocks separate.
+A cached Workspace success may return a saved Result without native dispatch;
+that is readback rather than warm compute. Report actual evaluation/iteration
+counts for Optimization, with elapsed time per actual evaluation when available.
+Zero current evaluations has no compute mean; historical stage counts are not
+newly executed work.
+
+Workspace Benchmark opening and `resolve()` are readonly. They do not migrate,
+repair or solve. If current evidence needs recovery, explicitly call
+`run.recover_workspace()`. Older evidence from pre-1.0 development builds is
+unsupported by 1.0: use a new Workspace and recompute.
+
+For clock, progress and resource ownership, see
+[Runtime and Benchmark](../implementation/benchmark-and-backends.qmd).
+For required result publication and exact stored arrays, see
+[Workspace evidence v3](../contracts/workspace-evidence-v3.qmd).
+
+## History: pre-1.0 runtime and storage
+
+<details>
+<summary>Earlier version-bound implementation record</summary>
 
 **Status:** 1.0.0a2 Alpha `CONVERGING` candidate. This guide describes the current
 implementation contract, not completed performance or numerical acceptance.
@@ -15,7 +79,7 @@ Workspace and choose memory storage explicitly:
 ```python
 from scnsim import CircuitRun
 
-run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+run = CircuitRun(plan=plan, storage="memory", precision="float64")
 view = run.original
 warm = run.warmup(view, direct_spec)
 result = run.solve(view, direct_spec)
@@ -52,8 +116,8 @@ result = run.solve(run.original, direct_spec)
 root = run.evaluate(run.original, root_spec)
 ```
 
-The Run defaults to `backend="jax", precision="float64"`. Per-call omitted
-backend/precision inherit the Run declaration; explicit values override it:
+The Run uses JAX with `precision="float64"` by default. An omitted per-call
+precision inherits the Run declaration; an explicit value overrides it:
 
 ```python
 result32 = run.solve(run.original, direct_spec, precision="float32")
@@ -86,24 +150,16 @@ parallel work; the average is not an individual candidate latency.
 Direct S/Y/Z, diagonal and operator-element roots, hybridized poles, S/Y/Z
 transfer zeros, residue-normalized coupling and loaded operators support JAX
 original, retained and transformed Views. Existing scalar selectors also serve
-Optimization; loaded operators remain matrix outputs. HB requires explicit Julia:
+Optimization; loaded operators remain matrix outputs.
 
-```python
-native = run.solve(run.original, hb_spec, backend="julia", precision="float64")
-```
-
-Install `scnsim[julia]` and manually provide Julia 1.12.6 on PATH or
-`PYTHON_JULIAPKG_EXE`. Missing support gives an actionable feature-specific error;
-there is no automatic acquisition or backend fallback. Explicit Julia compiler preflight also requires Julia. Caller-declared schematic preparation/rendering does not; automatic compiled drawing is retired.
-`run.explain(ref, spec, *, parameters=None, backend=None, precision=None)` inherits
+`run.explain(ref, spec, *, parameters=None, precision=None)` inherits
 the Run defaults, with per-call overrides. Its JAX route lowers the captured
 Plan and realizes the selected View and every Optimization objective View using
 the sparse Python compiler. It returns actual axes, sparse coefficient records,
 line grids and leaf evidence without initializing JAX, solving, creating an
 attempt or discovering Julia. Host SI lowering remains binary64; the declared
 execution precision is bound in the request, not a claim that a kernel ran.
-This backend-aware explanation is `CONVERGING`. See
-[Julia runtime preparation](../implementation/julia-runtime-preparation.qmd).
+This compiler explanation is `CONVERGING`.
 
 ## Present a saved scalar Quantity
 
@@ -229,12 +285,12 @@ from scnsim import BenchmarkResult
 
 record = run.benchmark()
 reopened = BenchmarkResult.open(record.workspace)
-optimization_record = run.benchmark(method="optimize", backend="jax")
+optimization_record = run.benchmark(method="optimize")
 html = record.to_html()
 record.write_html("operation-history.html")
 ```
 
-`run.benchmark(*, operations=None, method=None, backend=None, precision=None,
+`run.benchmark(*, operations=None, method=None, precision=None,
 status=None)` reads the current Plan leaf. It does not accept a Spec, launch
 another calculation, initialize JAX, choose a comparison arm or mutate records.
 `BenchmarkResult.workspace` is the exact operation-store directory containing
@@ -244,7 +300,7 @@ does not discover a leaf, scan the enclosing root or perform recovery. Reopening
 reads that store's recorded operations; filters on the original `run.benchmark()`
 call are not persisted as a new store.
 `run.resolve(...)` is likewise read-only and selects the exact verified numerical
-request using the Run defaults or explicit backend/precision overrides.
+request using the Run defaults or explicit precision overrides.
 
 A returned ParameterSweepResult may contain both successful and failed points.
 The operation status describes whether the public call completed; per-point
@@ -302,3 +358,5 @@ report = BenchmarkResult.open(benchmark.workspace)
 Native Julia result files retain their separate native ownership and readback
 contract. No GPU, automatic mesh choice, new CMA algorithm or
 numerical/performance acceptance condition is introduced.
+
+</details>

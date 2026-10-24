@@ -5,14 +5,12 @@ from dataclasses import MISSING, fields
 from types import MappingProxyType
 from typing import TypeVar
 
-from ..errors import HBCaseFailure
 from .base import (
     AnalysisResult, MatrixView, ParameterPointIdentity,
     Result, ResultIdentity, _VERIFIED_TOKEN, _freeze, _is_verified_result_identity,
     _is_verified_identity, _sha256, _valid_source_index,
 )
 from .derived import ReportResult
-from .hb import HBCaseOutcome, HBBatchResult
 from .matrix import (
     DiagonalRootResult, DirectQuantityResult, DirectSolveResult,
     OperatorElementRootResult, OperatorPointResult, OperatorResult,
@@ -47,54 +45,6 @@ def _verified_result(cls: type[T], /, **values: object) -> T:
 
     if not isinstance(cls, type) or not issubclass(cls, (Result, MatrixView, ResultIdentity, ParameterPointIdentity, ReconciliationEvidence, OptimizationBest, OptimizationStage, OperatorPointResult, SensitivityAxis, SensitivityAxisCoordinate, SensitivityJacobianBlock, SensitivityParameterBlock, SensitivityProjection, SensitivityQuantity, SensitivityResult, SensitivityValueBlock)):
         raise TypeError("_verified_result only constructs SCNSim result values")
-    if cls is HBCaseOutcome:
-        expected = {
-            "id", "failure", "effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map",
-        }
-        if set(values) != expected:
-            raise TypeError("verified HBCaseOutcome fields mismatch")
-        failure = values["failure"]
-        success = failure is None
-        if not isinstance(values["id"], str) or not values["id"]:
-            raise ValueError("HB case id must be nonempty")
-        if failure is not None and not isinstance(failure, HBCaseFailure):
-            raise TypeError("HB failure must be HBCaseFailure")
-        required = ("operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map")
-        if success != all(values[name] is not None for name in required):
-            raise ValueError("HB success must provide every success-only surface")
-        if not success and any(values[name] is not None for name in required):
-            raise ValueError("HB failure must not retain success-only surfaces")
-        if not isinstance(values["effective_sources"], (tuple, list)):
-            raise TypeError("HB outcome effective_sources must be an ordered sequence")
-        instance = object.__new__(cls)
-        object.__setattr__(instance, "_id", values["id"])
-        object.__setattr__(instance, "_failure", failure)
-        for name in ("effective_sources", "operating_point_closure", "bias_state", "pump_state", "s", "y", "z", "traces", "states", "state_node_map"):
-            object.__setattr__(instance, f"_{name}", _freeze(values[name]))
-        return instance
-    if cls is HBBatchResult:
-        if set(values) != {"identity", "discretization", "cases", "topology_evidence", "_presentation"}:
-            raise TypeError("verified HBBatchResult fields mismatch")
-        identity, cases = values["identity"], values["cases"]
-        if not _is_verified_result_identity(identity) or not isinstance(cases, Mapping) or not cases or not isinstance(values["topology_evidence"], Mapping):
-            raise TypeError("verified HBBatchResult requires identity and nonempty cases")
-        materialized = dict(cases)
-        if any(
-            not isinstance(identifier, str)
-            or not identifier
-            or not isinstance(outcome, HBCaseOutcome)
-            or outcome.id != identifier
-            for identifier, outcome in materialized.items()
-        ):
-            raise TypeError("verified HBBatchResult cases are malformed")
-        instance = object.__new__(cls)
-        object.__setattr__(instance, "identity", identity)
-        object.__setattr__(instance, "discretization", _freeze(values["discretization"]))
-        object.__setattr__(instance, "cases", MappingProxyType(materialized))
-        object.__setattr__(instance, "topology_evidence", _freeze(values["topology_evidence"]))
-        object.__setattr__(instance, "_presentation", _freeze(values["_presentation"]))
-        object.__setattr__(instance, "_verified_result_token", _VERIFIED_TOKEN)
-        return instance
     if cls is SensitivityResult:
         identity = values.get("identity")
         status = values.get("status")
@@ -235,7 +185,6 @@ def _is_verified_analysis_result(value: object) -> bool:
             StaticCapacitanceElementResult,
             OptimizationResult,
             SensitivityResult,
-            HBBatchResult,
             ParameterSweepResult,
         )
         and getattr(value, "_verified_result_token", None) is _VERIFIED_TOKEN

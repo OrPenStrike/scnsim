@@ -53,19 +53,14 @@
   description: "Trace physical objective evaluation and optimizer responsibilities."
   topic: numerical
   order: 10
-- title: "HB realization"
-  path: "hb-realization-and-outcomes.qmd"
-  description: "Follow HB normalization and per-case outcomes."
-  topic: numerical
-  order: 11
-- title: "Benchmark and backends"
+- title: "Runtime and Benchmark"
   path: "benchmark-and-backends.qmd"
   description: "Understand preparation, bounded execution, and measured clock scopes."
   topic: execution
   order: 12
 - title: "Workspace and artifacts"
   path: "workspace-attempts-and-artifacts.qmd"
-  description: "Trace attempts, receipts, arrays, and exact saved Result readback."
+  description: "Trace immutable binary objects, fixed completion and exact saved Result readback."
   topic: execution
   order: 13
 - title: "Results, reports, and diagrams"
@@ -73,16 +68,6 @@
   description: "Follow typed Results into detached plots, reports, and manual drawings."
   topic: execution
   order: 14
-- title: "Julia preparation"
-  path: "julia-runtime-preparation.qmd"
-  description: "Locate retained Julia installation and runtime preparation."
-  topic: execution
-  order: 15
-- title: "Python–Julia protocol"
-  path: "python-julia-protocol.qmd"
-  description: "Inspect the retained process boundary and failure transport."
-  topic: execution
-  order: 16
 - title: "External inputs and delivery"
   path: "external-inputs-and-delivery.qmd"
   description: "Locate provenance boundaries and implementation delivery slices."

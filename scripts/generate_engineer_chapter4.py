@@ -8,6 +8,7 @@ source-only and launches no solver.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import hashlib
 import importlib.metadata
@@ -22,7 +23,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 
-from engineer_publication_binding import check_publication_binding
+from engineer_publication_binding import check_publication_binding, installed_course_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +38,6 @@ SOURCES = tuple(
         "_03-ptc-core.qmd",
         "_04-optional-transform.qmd",
         "_05-optional-quantity.qmd",
-        "_06-optional-hb.qmd",
     )
 )
 WRAPPERS = tuple(
@@ -48,7 +48,6 @@ WRAPPERS = tuple(
         "03-ptc-core.qmd",
         "04-optional-transform.qmd",
         "05-optional-quantity.qmd",
-        "06-optional-hb.qmd",
     )
 )
 EXPECTED_CELL_IDS = (
@@ -61,9 +60,6 @@ EXPECTED_CELL_IDS = (
     "ch4-solve-ptc-direct",
     "ch4-derive-transformed-view",
     "ch4-evaluate-response-element",
-    "ch4-prepare-direct-and-hb",
-    "ch4-solve-direct-and-hb",
-    "ch4-show-independent-direct-and-hb",
 )
 BASE_ARTIFACT_NAMES = (
     "04-explicit-capstone.svg",
@@ -75,16 +71,12 @@ BASE_ARTIFACT_NAMES = (
     "04-ptc-direct-s21.md",
     "04-response-element.csv",
     "04-response-element.md",
-    "04-optional-direct-s21.svg",
-    "04-optional-direct-s21.csv",
-    "04-optional-direct-s21.md",
-    "04-independent-direct-hb.md",
 )
-HB_ARTIFACT_NAMES = (
-    "04-pump-off-hb.svg",
-    "04-pump-off-hb.csv",
+RETIRED_COMPARISON_ARTIFACT_NAMES = (
+    "04-optional-direct-s21.svg", "04-optional-direct-s21.csv", "04-optional-direct-s21.md",
+    "04-independent-direct-hb.md", "04-pump-off-hb.svg", "04-pump-off-hb.csv",
 )
-OWNED_ARTIFACT_NAMES = (*BASE_ARTIFACT_NAMES, *HB_ARTIFACT_NAMES)
+OWNED_ARTIFACT_NAMES = BASE_ARTIFACT_NAMES
 _DC = "{http://purl.org/dc/elements/1.1/}description"
 
 
@@ -96,72 +88,35 @@ def _hash(path: Path) -> str:
     return _hash_bytes(path.read_bytes())
 
 
-def _expected_artifact_names(status: str) -> tuple[str, ...]:
-    if status == "success":
-        return OWNED_ARTIFACT_NAMES
-    if status == "failure":
-        return BASE_ARTIFACT_NAMES
-    raise RuntimeError(f"Chapter 4 pump-off outcome has invalid status {status!r}")
-
-
 def _chapter_artifact_inventory(directory: Path) -> set[str]:
     return {path.name for path in directory.glob("04-*") if path.is_file()}
 
 
-def _publish_artifacts(output: Path, destination: Path, status: str) -> tuple[str, ...]:
-    expected = _expected_artifact_names(status)
-    produced = _chapter_artifact_inventory(output)
-    if produced != set(expected):
-        raise RuntimeError(
-            "Chapter 4 generated artifact inventory is not exact: "
-            f"expected {sorted(expected)!r}, found {sorted(produced)!r}"
-        )
-
+def _publish_artifacts(output: Path, destination: Path) -> None:
+    if _chapter_artifact_inventory(output) != set(OWNED_ARTIFACT_NAMES):
+        raise RuntimeError("Chapter 4 generated artifact inventory is not exact")
     destination.mkdir(parents=True, exist_ok=True)
     existing = _chapter_artifact_inventory(destination)
-    unknown = existing - set(OWNED_ARTIFACT_NAMES)
-    if unknown:
-        raise RuntimeError(f"unknown Chapter 4 artifacts require review: {sorted(unknown)!r}")
-    if status == "failure":
-        for name in HB_ARTIFACT_NAMES:
-            path = destination / name
-            if path.exists():
-                path.unlink()
-    for name in expected:
+    if existing - set((*OWNED_ARTIFACT_NAMES, *RETIRED_COMPARISON_ARTIFACT_NAMES)):
+        raise RuntimeError("unknown Chapter 4 artifacts require review")
+    # Only owning generation removes the explicitly retired comparison outputs.
+    for name in RETIRED_COMPARISON_ARTIFACT_NAMES:
+        path = destination / name
+        if path.exists():
+            path.unlink()
+    for name in OWNED_ARTIFACT_NAMES:
         shutil.copy2(output / name, destination / name)
-
-    published = _chapter_artifact_inventory(destination)
-    if published != set(expected):
-        raise RuntimeError(
-            "Chapter 4 published artifact inventory is not exact: "
-            f"expected {sorted(expected)!r}, found {sorted(published)!r}"
-        )
-    return expected
+    if _chapter_artifact_inventory(destination) != set(OWNED_ARTIFACT_NAMES):
+        raise RuntimeError("Chapter 4 published artifact inventory is not exact")
 
 
 def _verify_artifact_inventory(manifest: dict[str, object], directory: Path) -> None:
-    observations = manifest.get("observations")
-    pump_off = observations.get("pump_off") if isinstance(observations, dict) else None
-    status = pump_off.get("status") if isinstance(pump_off, dict) else None
-    if not isinstance(status, str):
-        raise RuntimeError("Chapter 4 pump-off outcome is malformed")
-    expected_names = _expected_artifact_names(status)
     artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, dict):
+    if not isinstance(artifacts, dict) or set(artifacts) != set(OWNED_ARTIFACT_NAMES):
         raise RuntimeError("Chapter 4 artifact inventory is malformed")
-    if set(artifacts) != set(expected_names):
-        raise RuntimeError(
-            "Chapter 4 manifest artifact inventory is not exact: "
-            f"expected {sorted(expected_names)!r}, found {sorted(artifacts)!r}"
-        )
-    published = _chapter_artifact_inventory(directory)
-    if published != set(expected_names):
-        raise RuntimeError(
-            "Chapter 4 published artifact inventory is not exact: "
-            f"expected {sorted(expected_names)!r}, found {sorted(published)!r}"
-        )
-    actual = {name: _hash(directory / name) for name in expected_names}
-    if artifacts != actual:
+    if _chapter_artifact_inventory(directory) != set(OWNED_ARTIFACT_NAMES):
+        raise RuntimeError("Chapter 4 published artifact inventory is not exact")
+    if artifacts != {name: _hash(directory / name) for name in OWNED_ARTIFACT_NAMES}:
         raise RuntimeError("Chapter 4 artifact hashes are stale")
 
 
@@ -218,7 +173,7 @@ def _binding() -> dict[str, object]:
     cells = _parse_cells()
     return {
         "generator_sha256": _hash(Path(__file__)),
-        "sources": {str(path.relative_to(ROOT)): _hash(path) for path in sources},
+        "sources": {str(path.relative_to(ROOT)): _hash(path) for path in (*sources, ROOT / "scripts" / "engineer_publication_binding.py")},
         "source_tree": _source_tree(),
         "cell_ids": list(EXPECTED_CELL_IDS),
         "cells": {
@@ -227,16 +182,14 @@ def _binding() -> dict[str, object]:
     }
 
 
-def _environment() -> dict[str, str]:
+def _environment() -> dict[str, object]:
+    runtime_binding = installed_course_runtime(ROOT)
     import scnsim
-
-    expected = (ROOT / "src" / "scnsim" / "__init__.py").resolve()
-    if Path(scnsim.__file__).resolve() != expected:
-        raise RuntimeError("generation imported scnsim from outside this checkout")
-    versions = {"python": sys.version.split()[0], "scnsim": scnsim.__version__}
+    scnsim.configure_runtime(cpu_threads=10)
+    versions = {"python": sys.version.split()[0], "scnsim": runtime_binding["scnsim"]}
     for name in ("kaleido", "matplotlib", "numpy", "pint", "plotly", "schemdraw"):
         versions[name] = importlib.metadata.version(name)
-    return versions
+    return versions | {"runtime_binding": runtime_binding}
 
 
 def _certificate(path: Path) -> dict[str, str]:
@@ -264,12 +217,8 @@ def _certificate(path: Path) -> dict[str, str]:
     return {field: identity[field] for field in required}
 
 
-def _identity(result: object) -> dict[str, str]:
-    identity = getattr(result, "identity")
-    return {
-        field: getattr(identity, field)
-        for field in ("plan_sha256", "request_sha256", "attempt_sha256", "result_sha256")
-    }
+def _memory_call(result: object) -> dict[str, str]:
+    return {"storage": result.persistence_kind, "execution_id": result.execution_id}
 
 
 def _workspace(requested: Path | None) -> Path:
@@ -284,23 +233,53 @@ def _workspace(requested: Path | None) -> Path:
     return workspace
 
 
-def _execute(cells: tuple[tuple[str, str], ...], workspace: Path) -> dict[str, object]:
+@contextmanager
+def _execute(cells: tuple[tuple[str, str], ...], workspace: Path):
     execution = workspace / "execution"
     execution.mkdir()
     namespace: dict[str, object] = {"__name__": "__main__"}
     previous = Path.cwd()
+    primary = None
     try:
-        os.chdir(execution)
-        for ordinal, (cell_id, code) in enumerate(cells, start=1):
-            path = execution / f"{ordinal:02d}-{cell_id}.py"
-            path.write_text(code, encoding="utf-8")
-            linecache.checkcache(str(path))
-            namespace["__file__"] = str(path)
-            exec(compile(code, str(path), "exec"), namespace)
-            print(f"completed {ordinal}/{len(cells)} {cell_id}", flush=True)
+        try:
+            os.chdir(execution)
+            for ordinal, (cell_id, code) in enumerate(cells, start=1):
+                path = execution / f"{ordinal:02d}-{cell_id}.py"
+                path.write_text(code, encoding="utf-8")
+                linecache.checkcache(str(path))
+                namespace["__file__"] = str(path)
+                exec(compile(code, str(path), "exec"), namespace)
+                print(f"completed {ordinal}/{len(cells)} {cell_id}", flush=True)
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            try:
+                os.chdir(previous)
+            except BaseException as error:
+                if primary is None:
+                    raise
+                primary.add_note("course working-directory cleanup: " + repr(error))
+        yield namespace
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        os.chdir(previous)
-    return namespace
+        cleanup_error = None
+        for name in ("run",):
+            run = namespace.get(name)
+            if run is None:
+                continue
+            try:
+                run.close()
+            except BaseException as error:
+                original = primary if primary is not None else cleanup_error
+                if original is None:
+                    cleanup_error = error
+                else:
+                    original.add_note("course Run.close: " + repr(error))
+        if primary is None and cleanup_error is not None:
+            raise cleanup_error
 
 
 def _write_trace(trace: object, stem: str, output: Path) -> dict[str, object]:
@@ -372,128 +351,53 @@ def _write_response_element(result: object, output: Path) -> dict[str, object]:
     return {"frequency_GHz": 6.2, "real": real, "imag": imag, "magnitude": magnitude}
 
 
-def _write_hb(namespace: dict[str, object], output: Path) -> tuple[dict[str, object], tuple[str, ...]]:
-    pump_off = namespace["pump_off"]
-    if not pump_off.succeeded:
-        failure = pump_off.failure
-        message = str(failure).replace("|", "\\|")
-        lines = [
-            "### Pump-off HB typed outcome",
-            "",
-            "| status | kind | stage | message |",
-            "|---|---|---|---|",
-            f"| failure | {failure.kind} | {failure.stage} | {message} |",
-        ]
-        (output / "04-independent-direct-hb.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return (
-            {
-                "status": "failure",
-                "kind": failure.kind,
-                "stage": failure.stage,
-                "message": str(failure),
-            },
-            (),
-        )
 
-    trace = pump_off.traces["transmission"]
-    frequencies = np.asarray(trace.frequencies.to("gigahertz").magnitude)
-    values = np.asarray(trace.value.to("dimensionless").magnitude)
-    trace.plot(component="magnitude", magnitude="db").write_image(
-        output / "04-pump-off-hb.svg", format="svg"
-    )
-    with (output / "04-pump-off-hb.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(("frequency_GHz", "real", "imag", "magnitude", "magnitude_dB"))
-        for frequency, value in zip(frequencies, values, strict=True):
-            writer.writerow(
-                (
-                    float(frequency),
-                    float(value.real),
-                    float(value.imag),
-                    float(abs(value)),
-                    float(20.0 * np.log10(abs(value))),
-                )
-            )
-    lines = [
-        "### Independent Result presentations",
-        "",
-        "The Direct and pump-off HB plots use separate declared grids and are not overlaid.",
-        "",
-        "![Optional Direct transmission magnitude.](../figures/04-optional-direct-s21.svg)",
-        "",
-        "![Pump-off HB transmission magnitude.](../figures/04-pump-off-hb.svg)",
-        "",
-        "[Download Direct samples](../figures/04-optional-direct-s21.csv) · "
-        "[Download pump-off HB samples](../figures/04-pump-off-hb.csv)",
-    ]
-    (output / "04-independent-direct-hb.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return (
-        {
-            "status": "success",
-            "samples": [
-                {
-                    "frequency_GHz": float(frequency),
-                    "real": float(value.real),
-                    "imag": float(value.imag),
-                    "magnitude": float(abs(value)),
-                }
-                for frequency, value in zip(frequencies, values, strict=True)
-            ],
-        },
-        ("04-pump-off-hb.svg", "04-pump-off-hb.csv"),
-    )
+
+def _write_capstone(namespace: dict[str, object], output: Path) -> dict[str, str]:
+    path = output / "04-explicit-capstone.svg"
+    namespace["capstone"].show().save(path)
+    return _certificate(path)
 
 
 def generate(workspace: Path) -> None:
     cells = _parse_cells()
-    namespace = _execute(cells, workspace)
-    output = workspace / "artifacts"
-    output.mkdir()
+    runtime_environment = _environment()
+    with _execute(cells, workspace) as namespace:
+        output = workspace / "artifacts"
+        output.mkdir()
 
-    namespace["capstone_diagram"].show().save(output / "04-explicit-capstone.svg")
-    certificate = _certificate(output / "04-explicit-capstone.svg")
-    observations = {
-        "raw_direct": _write_trace(namespace["raw_transmission"], "04-raw-direct-s21", output),
-        "ptc_direct": _write_trace(namespace["ptc_transmission"], "04-ptc-direct-s21", output),
-        "response_element": _write_response_element(namespace["transmission_at_6_2"], output),
-        "optional_direct": _write_trace(
-            namespace["optional_direct"].traces["transmission"],
-            "04-optional-direct-s21",
-            output,
-        ),
-    }
-    observations["pump_off"], hb_names = _write_hb(namespace, output)
-    status = observations["pump_off"]["status"]
-    artifact_names = _expected_artifact_names(status)
-    if tuple(hb_names) != tuple(name for name in artifact_names if name in HB_ARTIFACT_NAMES):
-        raise RuntimeError("Chapter 4 pump-off outcome and conditional artifacts disagree")
-    artifacts = {name: _hash(output / name) for name in artifact_names}
-    binding = _binding()
-    manifest = {
-        "schema": "scnsim.engineer_chapter4_artifacts.v1",
-        "binding": binding,
-        "execution": {
-            "generator_sha256": binding["generator_sha256"],
-            "source_tree_sha256": binding["source_tree"]["sha256"],
-            "cells": binding["cells"],
-        },
-        "environment": _environment(),
-        "certificate": certificate,
-        "results": {
-            "raw_direct": _identity(namespace["raw_direct"]),
-            "ptc_direct": _identity(namespace["ptc_direct"]),
-            "response_element": _identity(namespace["transmission_at_6_2"]),
-            "optional_direct": _identity(namespace["optional_direct"]),
-            "pump_off_hb": _identity(namespace["hb"]),
-        },
-        "observations": observations,
-        "artifacts": artifacts,
-    }
-    _publish_artifacts(output, FIGURES, status)
-    MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    receipt = workspace / "generation-receipt.json"
-    receipt.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(receipt)
+        certificate = _write_capstone(namespace, output)
+        observations = {
+            "raw_direct": _write_trace(namespace["raw_transmission"], "04-raw-direct-s21", output),
+            "ptc_direct": _write_trace(namespace["ptc_transmission"], "04-ptc-direct-s21", output),
+            "response_element": _write_response_element(namespace["transmission_at_6_2"], output),
+        }
+        artifact_names = OWNED_ARTIFACT_NAMES
+        artifacts = {name: _hash(output / name) for name in artifact_names}
+        binding = _binding()
+        manifest = {
+            "schema": "scnsim.engineer_chapter4_artifacts.v1",
+            "binding": binding,
+            "execution": {
+                "generator_sha256": binding["generator_sha256"],
+                "source_tree_sha256": binding["source_tree"]["sha256"],
+                "cells": binding["cells"],
+            },
+            "environment": runtime_environment,
+            "certificate": certificate,
+            "results": {
+                "raw_direct": _memory_call(namespace["raw_direct"]),
+                "ptc_direct": _memory_call(namespace["ptc_direct"]),
+                "response_element": _memory_call(namespace["transmission_at_6_2"]),
+            },
+            "observations": observations,
+            "artifacts": artifacts,
+        }
+        _publish_artifacts(output, FIGURES)
+        MANIFEST.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        receipt = workspace / "generation-receipt.json"
+        receipt.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(receipt)
 
 
 def check() -> None:

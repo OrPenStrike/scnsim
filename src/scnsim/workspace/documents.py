@@ -12,7 +12,7 @@ from .validation.common import _UUID4
 
 _DIRECT_RESULTS = frozenset({
     "direct_response", "diagonal_root", "operator_element_root", "hybridized_pole", "transfer_zero",
-    "residue_normalized_coupling", "response_element", "operator", "optimization", "hb_batch",
+    "residue_normalized_coupling", "response_element", "operator", "optimization",
 })
 
 
@@ -109,7 +109,7 @@ def versioned_workspace_document(
 
 
 def _workspace_document(fields: Mapping[str, object]) -> dict[str, object]:
-    return canonical_value({"schema": "scnsim.workspace", "schema_version": 1, **fields})  # type: ignore[return-value]
+    return canonical_value({"schema": "scnsim.workspace", "schema_version": 1, "evidence_version": 3, **fields})  # type: ignore[return-value]
 
 
 def _uuid(value: object) -> str:

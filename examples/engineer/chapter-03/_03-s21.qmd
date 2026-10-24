@@ -12,7 +12,7 @@ launch a separate solve.
 
 ```{python}
 #| id: ch3-prepare-direct-s21
-run = CircuitRun(backend="julia", plan=plan, workspace="workspaces/engineer-chapter-03")
+run = CircuitRun(plan=plan, storage="memory")
 view = run.original
 sample_frequencies = [5.5, 6.0, 6.5] * u.GHz
 transmission_trace = SParameterTrace(
@@ -26,8 +26,9 @@ direct_spec = DirectSolveSpec(
     frequencies=sample_frequencies,
     traces=(transmission_trace,),
 )
-run.explain(view, direct_spec).show()
 ```
+
+Compiler explanations are covered in the advanced [Workspace lesson](../chapter-08/chapter.qmd).
 
 The grid contains exactly three declared samples. Lines drawn between them are
 presentation only: this lesson does not infer a continuous resonance, locate a

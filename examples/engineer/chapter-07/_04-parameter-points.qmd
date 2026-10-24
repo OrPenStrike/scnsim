@@ -49,12 +49,11 @@ channel_traces = tuple(
     for output in port_ids
     for input_ in port_ids
 )
-run = CircuitRun(backend="julia", plan=plan, workspace="workspaces/engineer-chapter-07")
+run = CircuitRun(plan=plan, storage="memory")
 direct_spec = DirectSolveSpec(
     frequencies=[5.5, 6.0, 6.5] * u.GHz,
     traces=channel_traces,
 )
-run.explain(run.original, direct_spec, parameters=ParameterSet()).show()
 ```
 
 The three frequencies are declared samples. No curve between them is used to

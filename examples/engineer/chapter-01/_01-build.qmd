@@ -1,6 +1,6 @@
 ## Lesson 1 — Build the coupled resonator {#lesson-build}
 
-### Start from a clean engineer workspace
+### Start from a clean engineer kernel
 
 Clone the repository, install the locked development environment, and start
 Jupyter from the repository root:
@@ -20,9 +20,9 @@ Open `examples/engineer/chapter-01/chapter.ipynb`, select the project's
 `.venv` Python kernel, restart it, and use
 **Run All**. The Chapter is complete in one clean kernel; the individual web
 Lessons are reading views and deliberately share Chapter state. On a cold
-machine, the first numerical request may prepare the locked Julia runtime and
-take longer than later requests. Its workspace is evidence owned by this Run,
-not a cache to copy into another project.
+machine, the first numerical request initializes JAX and compiles its native
+program. It can take longer than later requests. This beginner lesson keeps
+its Results in memory; Chapter 8 introduces persistent Workspaces.
 
 ### Define the one value we will change
 

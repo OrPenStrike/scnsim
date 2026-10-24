@@ -132,17 +132,6 @@ def open_record(workspace):
     return _store().open_record(workspace)
 
 
-def read_native_result_artifact(*, binding_identity, directory, index_ref, artifact_ref):
-    from .store import read_native_result_artifact as read_artifact
-
-    return read_artifact(
-        binding_identity=binding_identity,
-        directory=directory,
-        index_ref=index_ref,
-        artifact_ref=artifact_ref,
-    )
-
-
 def operation_workspace(binding):
     return _store().operation_workspace(binding)
 
@@ -170,4 +159,3 @@ def __getattr__(name: str):
     if name not in allowed:
         raise AttributeError(name)
     return getattr(_store(), name)
-

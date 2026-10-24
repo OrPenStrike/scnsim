@@ -229,8 +229,8 @@ This page records the declared API; it does not construct this class or execute 
 
 ## Source provenance
 
-- `docs/agent-catalogue-cases.json` — SHA-256 `49f673acfba38cba1e854bd39feb4cbe52b66af92998aeda22ae349790746f66`
+- `docs/agent-catalogue-cases.json` — SHA-256 `32d37ca52c5b4560a6c4b76467e94078a73658d25343a379a904722f82be8413`
 - `scripts/generate_agent_catalogue.py` — SHA-256 `040d05273dc882d2f645ab1cac13e37e878901925ba234c67e1933b439d69c9d`
-- `src/scnsim/__init__.py` — SHA-256 `d63398709f6adf047b20887ec4a0081cdfe08a5d29ba1887ec946ff8e05081bd`
-- `src/scnsim/results/__init__.py` — SHA-256 `d9531c271d248d1b3c53c9a45536353f36eee780ad4a72eaf241e9e6fd46397d`
+- `src/scnsim/__init__.py` — SHA-256 `2b3523836e4152aa0a836a8df1081eaff945458a5df34adac42e08688b970438`
+- `src/scnsim/results/__init__.py` — SHA-256 `9d8d1d90e899ba46f231a29bbaa666ecde391759df30b3386e40aa7f68241c25`
 - `src/scnsim/results/sweep.py` — SHA-256 `0e2ac697d4bf211989a3bb6564e8f148f908957faf287af58e6241ea2af572b1`

@@ -107,7 +107,7 @@ class RootCertificateTests(unittest.TestCase):
     def test_hybrid_lossless_anchor_imaginary_sign_preserves_frequency_bits(self):
         plan, coordinates = _two_coordinate_plan()
         with ExitStack() as owners:
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             owners.callback(run.close)
             view = run.original.reduce(ReductionPipeline().retain(*coordinates))
             observed = []
@@ -131,7 +131,7 @@ class RootCertificateTests(unittest.TestCase):
             plan, coordinates, matrices, primitives = _high_q_plan(quality)
             expected, condition = _oracle_pole(*matrices, primitives)
             with ExitStack() as owners:
-                run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+                run = CircuitRun(plan=plan, storage="memory", precision="float64")
                 owners.callback(run.close)
                 for order in (coordinates, coordinates[::-1]):
                     with self.subTest(quality=quality, order=tuple(ref.id for ref in order)):
@@ -152,7 +152,7 @@ class RootCertificateTests(unittest.TestCase):
             plan.parallel(id=f"lc_{name}", start=node, branches=((c,), (l,)), end=plan.ground)
         coordinates = tuple(node.node for node in nodes)
         with ExitStack() as owners:
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             owners.callback(run.close)
             view = run.original.reduce(ReductionPipeline().retain(*coordinates))
             with self.assertRaises((NumericalResolutionUnresolved, RootSlopeUnresolved)) as caught:
@@ -173,7 +173,7 @@ class RootCertificateTests(unittest.TestCase):
         cross = constant_plan.add(components.inductor(id="cross", inductance=500 * u.nH))
         constant_plan.series(id="cross_branch", start=a, elements=(cross,), end=b)
         with ExitStack() as owners:
-            run = CircuitRun(plan=constant_plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=constant_plan, storage="memory", precision="float64")
             owners.callback(run.close)
             view = run.original.reduce(ReductionPipeline().retain(a.node, b.node))
             with self.assertRaises(RootSlopeUnresolved):
@@ -188,7 +188,7 @@ class RootCertificateTests(unittest.TestCase):
             l = plan.add(components.inductor(id=f"l_{name}", inductance=inductance * u.henry))
             plan.parallel(id=f"lc_{name}", start=node, branches=((c,), (l,)), end=plan.ground)
         with ExitStack() as owners:
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             owners.callback(run.close)
             view = run.original.reduce(ReductionPipeline().retain(a.node, b.node))
             with self.assertRaises(RootSlopeUnresolved) as caught:
@@ -202,7 +202,7 @@ class RootCertificateTests(unittest.TestCase):
     def test_diagonal_and_coupling_lossless_anchor_imaginary_sign_preserves_frequency_bits(self):
         plan, coordinates = _two_coordinate_plan()
         with ExitStack() as owners:
-            run = CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64")
+            run = CircuitRun(plan=plan, storage="memory", precision="float64")
             owners.callback(run.close)
             view = run.original.reduce(ReductionPipeline().retain(*coordinates))
             observed = {name: [] for name in ("diagonal", "coupling")}

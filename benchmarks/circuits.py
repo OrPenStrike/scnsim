@@ -252,12 +252,12 @@ def _failure_case(s, np, case_id, *, storage, workspace, chunk_size):
     if storage == "memory":
         if workspace is not None:
             raise ValueError("memory corpus does not accept a Workspace")
-        run = s.CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, storage="memory", precision="float64",
             execution_policy=_execution_policy(chunk_size))
     elif storage == "workspace":
         if workspace is None:
             raise ValueError("workspace corpus requires the executor's explicit path")
-        run = s.CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, workspace=Path(workspace), precision="float64",
             execution_policy=_execution_policy(chunk_size))
     else:
         raise ValueError("storage must be memory or workspace")
@@ -304,12 +304,12 @@ def _matched_lc_case(s, *, storage, workspace, chunk_size):
     if storage == "memory":
         if workspace is not None:
             raise ValueError("memory corpus does not accept a Workspace")
-        run = s.CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, storage="memory", precision="float64",
                            execution_policy=_execution_policy(chunk_size))
     elif storage == "workspace":
         if workspace is None:
             raise ValueError("workspace corpus requires the executor's explicit path")
-        run = s.CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, workspace=Path(workspace), precision="float64",
                            execution_policy=_execution_policy(chunk_size))
     else:
         raise ValueError("storage must be memory or workspace")
@@ -376,12 +376,12 @@ def build_case(case_id, *, storage, workspace=None, chunk_size=64, points=401,
     if storage == "memory":
         if workspace is not None:
             raise ValueError("memory corpus does not accept a Workspace")
-        run = s.CircuitRun(plan=plan, storage="memory", backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, storage="memory", precision="float64",
             execution_policy=ExecutionPolicy(frequency_chunk_size=chunk_size))
     elif storage == "workspace":
         if workspace is None:
             raise ValueError("workspace corpus requires the executor's explicit path")
-        run = s.CircuitRun(plan=plan, workspace=Path(workspace), backend="jax", precision="float64",
+        run = s.CircuitRun(plan=plan, workspace=Path(workspace), precision="float64",
             execution_policy=ExecutionPolicy(frequency_chunk_size=chunk_size))
     else:
         raise ValueError("storage must be memory or workspace")

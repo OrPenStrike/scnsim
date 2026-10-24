@@ -20,12 +20,10 @@ I/O, never numerical execution.
 `AnalysisResult` is the receipt-backed terminal subset and exposes immutable
 `ResultIdentity(plan_sha256, request_sha256, attempt_sha256, result_sha256)`.
 The attempt digest remains the canonical completed terminal attempt document;
-SCNSim operation-store schema v7 binds it through `terminal_attempt_ref`, not a running allocation.
-`DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and
-`HBBatchResult` derive from it. Each HB batch contains one `HBCaseOutcome` for
-every declared case. The outcome is a derived view of its parent receipt: a
-success exposes matrices and states; a numerical failure exposes its stored
-`HBCaseFailure`. `ExplanationResult`, `CircuitDiagramResult`, and
+SCNSim operation-store schema revision 8 binds it through `terminal_attempt_ref`, not a running allocation.
+Saved Direct, diagonal-root and Optimization Results derive from the
+analysis-result role. Memory Results retain detached values without fabricating
+saved request/attempt identities. `ExplanationResult`, `CircuitDiagramResult`, and
 `ReportResult` remain derived values and do not fabricate operation receipts.
 
 ## Reconstruct typed Results in Python
@@ -36,26 +34,12 @@ matrix payloads become labeled NumPy arrays with ordered coordinate, mode,
 frequency, unit, and load-state metadata. An Analysis Result retains request,
 attempt, artifact, and runtime identity even when its chunks load lazily.
 
-Direct matrix channels use `(coordinate, ())`. HB input and output channels use
-flattened `(coordinate, mode)` pairs in coordinate-major/mode-minor order.
-`MatrixView.input_channels` and `output_channels` expose those exact stored-axis
-labels; presentation never infers a reshape or relabels a mode.
-
-HB operating-point arrays use the separate structured axes
-`(pump_mode, node_coordinate)`. Each pump-mode label is an ordered integer tuple
-in request pump-axis order, and each node-coordinate label is the sealed
-compiler identity recorded by `state_node_map`. These labels are evidence, not
-new View selectors or Port aliases.
-
-The Result catalog describes artifact meaning: role, dtype, shape, axes, units,
-and channel order. HB links carry case-local `{case_id, id, path, sha256}`
-references. The manifest instead seals the byte tree. A repeated local ID or
-SHA-256 across cases is valid; only the complete receipt-bound reference has an
-addressable role.
-
-No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
-unit disagreement, forbidden non-finite values, or a real/imag manifest
-mismatch fails verification instead of returning a partial typed object.
+Direct matrix channels preserve their ordered coordinate/mode labels. Public
+matrix and trace projections use those saved axes; presentation does not infer
+connectivity, reshape a different physical boundary or execute a missing result.
+Direct and Operator readonly evidence belongs to the same numerical call and is
+also available for Sweep points and saved resolution. Conditional affine evidence
+is absent when unused. See [Workspace evidence v3](../contracts/workspace-evidence-v3.qmd).
 
 ## Scalar Quantity presentation
 
@@ -608,3 +592,37 @@ Suffix, missing-parent, and existing-target checks use `ValueError`,
 their ordinary `OSError` subtype. Export creates no operation receipt.
 
 [Next: External inputs and delivery](external-inputs-and-delivery.qmd)
+
+## History: HB Result and state axes
+
+<details>
+<summary>Retired pre-1.0 contract</summary>
+
+`DirectSolveResult`, `DiagonalRootResult`, `OptimizationResult`, and
+`HBBatchResult` derive from it. Each HB batch contains one `HBCaseOutcome` for
+every declared case. The outcome is a derived view of its parent receipt: a
+success exposes matrices and states; a numerical failure exposes its stored
+`HBCaseFailure`. 
+
+Direct matrix channels use `(coordinate, ())`. HB input and output channels use
+flattened `(coordinate, mode)` pairs in coordinate-major/mode-minor order.
+`MatrixView.input_channels` and `output_channels` expose those exact stored-axis
+labels; presentation never infers a reshape or relabels a mode.
+
+HB operating-point arrays use the separate structured axes
+`(pump_mode, node_coordinate)`. Each pump-mode label is an ordered integer tuple
+in request pump-axis order, and each node-coordinate label is the sealed
+compiler identity recorded by `state_node_map`. These labels are evidence, not
+new View selectors or Port aliases.
+
+The Result catalog describes artifact meaning: role, dtype, shape, axes, units,
+and channel order. HB links carry case-local `{case_id, id, path, sha256}`
+references. The manifest instead seals the byte tree. A repeated local ID or
+SHA-256 across cases is valid; only the complete receipt-bound reference has an
+addressable role.
+
+No Result unpickles arbitrary Python objects. Missing chunks, mismatched shape,
+unit disagreement, forbidden non-finite values, or a real/imag manifest
+mismatch fails verification instead of returning a partial typed object.
+
+</details>

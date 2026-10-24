@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..errors import EvidenceIntegrityError
-from ..numeric_encoding import record_bytes, record_document
+from .binary_blocks import record_bytes, record_document
 from ..diagnostics.identity import checkpoint_seal
 
 _JOURNAL_MARKER = '$scnsim_benchmark_journal'
@@ -391,8 +391,6 @@ def _project_python_observations(
     baseline_values_by_sequence: Mapping[int, Mapping[str, object]],
     checkpoint_sequences: Mapping[tuple[str, str], int],
 ) -> dict[str, object] | None:
-    if task.get("arm") == "original_julia":
-        return None
     payload = terminal_event.get("payload")
     if not isinstance(payload, Mapping):
         return None

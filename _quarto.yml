@@ -3,6 +3,7 @@ project:
   output-dir: _site
   resources:
     - src/scnsim/_schemas/identity-v2.schema.json
+    - src/scnsim/_schemas/identity-v3.schema.json
     - src/scnsim/_schemas/identity-common.schema.json
   render:
     - index.qmd
@@ -29,7 +30,6 @@ project:
     - examples/engineer/chapter-04/03-ptc-core.qmd
     - examples/engineer/chapter-04/04-optional-transform.qmd
     - examples/engineer/chapter-04/05-optional-quantity.qmd
-    - examples/engineer/chapter-04/06-optional-hb.qmd
     - examples/engineer/chapter-04/chapter.qmd
     - examples/engineer/chapter-05/01-library.qmd
     - examples/engineer/chapter-05/02-instance.qmd
@@ -63,8 +63,6 @@ project:
     - examples/tutorials/12_model_n_trace_line.qmd
     - examples/tutorials/13_compensate_probes.qmd
     - examples/tutorials/14_transform_retain.qmd
-    - examples/tutorials/15_prepare_hb.qmd
-    - examples/tutorials/16_compare_direct_hb.qmd
     - docs/concepts/index.qmd
     - docs/concepts/simulation-conventions.qmd
     - docs/concepts/physical-authority-and-reusable-composition.qmd
@@ -80,6 +78,7 @@ project:
     - docs/contracts/automatic-semantic-circuit-diagram-layout.qmd
     - docs/contracts/parameter-system.qmd
     - docs/contracts/static-capacitance.qmd
+    - docs/contracts/workspace-evidence-v3.qmd
     - docs/component-authoring.qmd
     - docs/v1-runtime-contract.qmd
     - docs/guides/benchmark.qmd
@@ -91,8 +90,6 @@ project:
     - docs/implementation/plan-sealing-and-identity.qmd
     - docs/implementation/canonical-identities-and-schemas.qmd
     - docs/implementation/catalog-and-runtime-identity.qmd
-    - docs/implementation/julia-runtime-preparation.qmd
-    - docs/implementation/python-julia-protocol.qmd
     - docs/implementation/workspace-attempts-and-artifacts.qmd
     - docs/implementation/composite-snapshots-and-recursive-expansion.qmd
     - docs/implementation/compilation-ports-and-views.qmd
@@ -189,8 +186,6 @@ website:
               href: examples/engineer/chapter-04/04-optional-transform.qmd
             - text: "Lesson 5 — Optional quantity"
               href: examples/engineer/chapter-04/05-optional-quantity.qmd
-            - text: "Lesson 6 — Optional HB"
-              href: examples/engineer/chapter-04/06-optional-hb.qmd
             - text: "Complete Chapter source"
               href: examples/engineer/chapter-04/chapter.qmd
         - section: "Optional Chapter 5 — Library"
@@ -252,7 +247,7 @@ website:
           href: docs/concepts/compilation-coordinates-and-network-views.qmd
         - text: "Requests, execution, and Results"
           href: docs/concepts/requests-execution-and-result-ownership.qmd
-        - text: "Direct and HB realizations"
+        - text: "Linear Direct realization"
           href: docs/concepts/direct-and-hb-realizations.qmd
         - text: "Units, parameters, and optimization"
           href: docs/concepts/units-parameters-and-optimization.qmd
@@ -285,6 +280,8 @@ website:
               href: docs/guides/static-capacitance.qmd
             - text: "CPU Benchmark guide"
               href: docs/guides/benchmark.qmd
+            - text: "Workspace evidence v3"
+              href: docs/contracts/workspace-evidence-v3.qmd
             - text: "V1 Runtime Contract"
               href: docs/v1-runtime-contract.qmd
         - text: "Implementation overview"
@@ -317,20 +314,14 @@ website:
               href: docs/implementation/direct-poles-zeros-and-operators.qmd
             - text: "Direct quantities and optimization"
               href: docs/implementation/direct-quantities-and-optimization.qmd
-            - text: "HB realization"
-              href: docs/implementation/hb-realization-and-outcomes.qmd
         - section: "Execution, storage, and presentation"
           contents:
-            - text: "Benchmark and backends"
+            - text: "Runtime and Benchmark"
               href: docs/implementation/benchmark-and-backends.qmd
             - text: "Workspace and artifacts"
               href: docs/implementation/workspace-attempts-and-artifacts.qmd
             - text: "Results, reports, and diagrams"
               href: docs/implementation/results-reports-and-diagrams.qmd
-            - text: "Julia preparation"
-              href: docs/implementation/julia-runtime-preparation.qmd
-            - text: "Python–Julia protocol"
-              href: docs/implementation/python-julia-protocol.qmd
             - text: "External inputs and delivery"
               href: docs/implementation/external-inputs-and-delivery.qmd
             - text: "Engineer course map"

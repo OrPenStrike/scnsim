@@ -1,4 +1,4 @@
-"""Workspace binding, locking, attempt transactions, and receipt lifecycle."""
+"""Plan-bound Workspace roots, leaves, locking and publication lifecycle."""
 
 from __future__ import annotations
 
@@ -8,80 +8,85 @@ import shutil
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace as _dataclass_replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, cast
 
 from ..canonical import canonical_json_bytes as _canonical_bytes, sha256_hex as _sha256
-from ..errors import (
-    EvidenceIntegrityError,
-    ResultUnavailableError,
-    WorkspaceCommitIndeterminateError,
-    WorkspacePlanReplacedError,
-    WorkspaceVersioningDowngradeForbidden,
-)
+from ..errors import UnsupportedEvidenceVersionError, WorkspaceCommitIndeterminateError, WorkspacePlanReplacedError, WorkspaceVersioningDowngradeForbidden
 from .documents import (
     plan_workspace_document,
     replaceable_workspace_document,
     versioned_workspace_document,
 )
 from ._os_io import lock_fd, unlock_fd, replace_path, require_workspace_platform
-from .primitives import _inside, _relative_path
-from .records import (
-    AttemptAllocation,
-    BaselineCheckpoint,
-    PointCheckpoint,
-    VerifiedSuccess,
-    _IncomingCheckpointEvidenceError,
-)
-from .storage import (
-    _ATTEMPT,
-    _LEAF_STAGING,
-    _STAGING,
-    _operation_staging_matches,
-    _WorkspacePublishIndeterminate,
-    _atomic_write,
-    _decode_bytes,
-    _fsync_directory,
-    _fsync_tree,
-    _load_canonical,
-    _path_entry_exists,
-    _publish_workspace_state,
-    _remove_leaf,
-)
-from .operation_lease import _exclusive_activity_lease, _idle_operation_lease
-from .validation.common import (
-    _SHA256,
-    _UUID4,
-    _integrity,
-    _required_extrapolation_rows,
-    _valid_sha,
-    _valid_uuid,
-    _verify_extrapolation_evidence,
-)
-from .validation.inventory import _compare_artifacts, _verify_artifact_inventory
-from .validation.optimization import (
-    _verify_attempt_checkpoint_consumption,
-    _verify_baseline_checkpoint_directory,
-    _verify_baseline_checkpoint_document,
-    _verify_generation_artifacts,
-    _verify_terminal_optimization_failure,
-)
-from .validation.requests import (
-    _is_current_native_optimization_request,
-    _verify_failure_document,
-    _verify_request_document,
-)
-from .validation.results import _verify_result_document
-from .validation.sweeps import (
-    _parameter_source_points,
-    _verify_point_checkpoint_record,
-    _verify_point_checkpoints,
-)
+from .primitives import _relative_path, _inside
+from .storage import _LEAF_STAGING, _WorkspacePublishIndeterminate, _atomic_write, _decode_bytes, _fsync_directory, _fsync_tree, _load_canonical, _publish_workspace_state, _remove_leaf
+from .operation_lease import _exclusive_activity_lease
+from .validation.common import _UUID4, _integrity, _valid_sha, _valid_uuid
 
-_NATIVE_SELECTION = re.compile(r"^selection-([0-9a-f]{64})\.json$")
-_OPERATION_STAGING = ".scnsim-workspace-staging"
+
+def _old_evidence(path, found=None):
+    return UnsupportedEvidenceVersionError(
+        "Workspace evidence was written by a pre-1.0 development build that 1.0 does not support; use a new Workspace and recompute.",
+        stage="workspace", evidence={"path": str(path), "found_evidence_version": found,
+                                     "supported_evidence_version": 3,
+                                     "action": "use a new Workspace and recompute"})
+
+
+def _preflight_workspace(root: Path) -> None:
+    """Admit only v3 evidence before creating directories, locks or databases."""
+    from .operation_store import preflight_operation_store
+
+    if not root.exists():
+        return
+    if root.is_symlink() or not root.is_dir():
+        raise _integrity("Workspace root is missing or symlinked.", path=str(root))
+    for name in ("requests", ".zgroup", ".zarray", "zarr.json", "benchmark.json"):
+        path = root / name
+        if path.exists() or path.is_symlink():
+            raise _old_evidence(path)
+    state_path = root / "workspace.json"
+    if not state_path.exists() and not state_path.is_symlink():
+        for parent in (root / "leaves", root):
+            if parent.is_symlink():
+                raise _integrity("Workspace leaf directory must not be symlinked.", path=str(parent))
+            if not parent.is_dir():
+                continue
+            for child in parent.iterdir():
+                if ((parent == root / "leaves" or child.name.startswith("iteration"))
+                        and child.is_dir()):
+                    if child.is_symlink():
+                        raise _integrity("Workspace leaf must not be symlinked.", path=str(child))
+                    document = _load_canonical(child / "workspace.json")
+                    if document.get("evidence_version") != 3:
+                        raise _old_evidence(child, document.get("evidence_version"))
+                    preflight_operation_store(child / "operations")
+        return
+    state = _load_canonical(state_path)
+    _assert_root_envelope(state)
+    if state["kind"] == "replaceable_workspace":
+        directories = [state["active_leaf"]["directory"]]
+    else:
+        iterations = state["iterations"]
+        if (not isinstance(iterations, list)
+                or any(not isinstance(item, dict) or not isinstance(item.get("directory"), str)
+                       for item in iterations)):
+            raise _integrity("Versioned workspace iterations are malformed.")
+        directories = [item["directory"] for item in iterations]
+    for directory in directories:
+        leaf = _inside(root, directory)
+        if leaf.is_symlink():
+            raise _integrity("Workspace leaf must not be symlinked.", path=str(leaf))
+        document = _load_canonical(leaf / "workspace.json")
+        if document.get("evidence_version") != 3:
+            raise _old_evidence(leaf, document.get("evidence_version"))
+        for name in ("requests", ".zgroup", ".zarray", "zarr.json", "benchmark.json"):
+            legacy = leaf / name
+            if legacy.exists() or legacy.is_symlink():
+                raise _old_evidence(legacy)
+        preflight_operation_store(leaf / "operations")
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -93,298 +98,6 @@ def _new_uuid(*, excluding: str | None = None) -> str:
     return value
 
 
-def _native_index_file_ref(
-    directory: Path,
-    reference: object,
-    *,
-    role: str,
-    verify_file: bool = True,
-) -> dict[str, object]:
-    """Check one JSON index reference and, when selected, its owned file."""
-    if not isinstance(reference, Mapping) or set(reference) != {
-        "id", "path", "sha256", "byte_length", "media_type", "role"
-    }:
-        raise _integrity("Native index contains a malformed artifact reference.")
-    if (
-        not isinstance(reference.get("id"), str)
-        or not reference["id"]
-        or not isinstance(reference.get("path"), str)
-        or not isinstance(reference.get("sha256"), str)
-        or _SHA256.fullmatch(reference["sha256"]) is None
-        or not isinstance(reference.get("byte_length"), int)
-        or isinstance(reference.get("byte_length"), bool)
-        or reference["byte_length"] < 1
-        or reference.get("media_type") != "application/json"
-        or reference.get("role") != role
-    ):
-        raise _integrity("Native index artifact reference has invalid fields.", role=role)
-    path = _inside(directory, reference["path"])
-    if verify_file and (
-        not path.is_file() or path.is_symlink() or path.stat().st_size != reference["byte_length"]
-    ):
-        raise _integrity("Native index artifact is missing or has the wrong size.", path=reference["path"])
-    return dict(reference)
-
-
-def _verify_native_index_selection(
-    directory: Path,
-    *,
-    workspace_instance_id: str,
-    plan_sha256: str,
-    request: Mapping[str, object],
-    request_sha256: str,
-    attempt: Mapping[str, object],
-    receipt: Mapping[str, object],
-    result: Mapping[str, object],
-) -> tuple[dict[str, object], dict[str, object]]:
-    """Verify the Workspace completion sidecar and native index root only.
-
-    Generation summaries and Julia ledgers remain lazy. Their exact references
-    and directory entries are sealed here; selected bytes are rechecked by the
-    short-read API when a Result asks for them.
-    """
-    index_directory = _inside(directory, "artifacts/native-index")
-    if index_directory.is_symlink() or not index_directory.is_dir():
-        raise _integrity("Native Optimization lacks its Workspace index directory.")
-    selections = [
-        (child, match.group(1))
-        for child in index_directory.iterdir()
-        if (match := _NATIVE_SELECTION.fullmatch(child.name)) is not None
-    ]
-    if len(selections) != 1:
-        raise _integrity("Native Optimization must have one content-addressed completion sidecar.")
-    selection_path, selection_sha256 = selections[0]
-    if selection_path.is_symlink() or not selection_path.is_file():
-        raise _integrity("Native completion sidecar is not a regular file.")
-    selection_raw = selection_path.read_bytes()
-    if _sha256(selection_raw) != selection_sha256:
-        raise _integrity("Native completion sidecar filename does not match its content.")
-    selection = _decode_bytes(selection_raw, "Workspace native completion")
-
-    attempt_sha256 = _sha256(_canonical_bytes(dict(attempt)))
-    result_sha256 = _sha256(_canonical_bytes(dict(result)))
-    expected_selection_fields = {
-        "schema", "schema_version", "workspace_instance_id", "plan_sha256",
-        "request_sha256", "attempt_sha256", "attempt_directory",
-        "result_sha256", "index_root_ref",
-    }
-    if (
-        set(selection) != expected_selection_fields
-        or selection.get("schema") != "scnsim.workspace_native_completion"
-        or selection.get("schema_version") != 1
-        or selection.get("workspace_instance_id") != workspace_instance_id
-        or selection.get("plan_sha256") != plan_sha256
-        or selection.get("request_sha256") != request_sha256
-        or selection.get("attempt_sha256") != attempt_sha256
-        or selection.get("attempt_directory") != attempt.get("directory")
-        or selection.get("result_sha256") != result_sha256
-        or receipt.get("request_sha256") != request_sha256
-        or receipt.get("attempt_sha256") != attempt_sha256
-        or receipt.get("result_sha256") != result_sha256
-        or receipt.get("outcome") != "success"
-        or result.get("request_sha256") != request_sha256
-        or result.get("attempt_sha256") != attempt_sha256
-        or result.get("result_kind") != "optimization"
-    ):
-        raise _integrity("Native completion sidecar differs from the selected attempt and Result.")
-
-    root_path = _inside(directory, "artifacts/native-index/root.json")
-    if root_path.is_symlink() or not root_path.is_file():
-        raise _integrity("Native index root is missing or unsafe.")
-    root_raw = root_path.read_bytes()
-    root_ref = selection.get("index_root_ref")
-    expected_root_ref = {
-        "id": "native_result_index",
-        "path": "artifacts/native-index/root.json",
-        "sha256": _sha256(root_raw),
-        "byte_length": len(root_raw),
-        "media_type": "application/json",
-        "role": "native_result_index",
-    }
-    if not isinstance(root_ref, Mapping) or dict(root_ref) != expected_root_ref:
-        raise _integrity("Native completion sidecar does not bind the actual index root.")
-    root = _decode_bytes(root_raw, "native result index")
-    root_fields = {
-        "schema", "schema_version", "workspace_instance_id", "plan_sha256",
-        "request_sha256", "attempt_identity", "native_result_ref",
-        "generation_index_refs", "generation_count", "population_candidate_count",
-        "baseline_locator", "best_locator",
-    }
-    attempt_identity = {
-        "sha256": attempt_sha256,
-        "ordinal": attempt.get("ordinal"),
-        "directory": attempt.get("directory"),
-    }
-    native_result_ref = {
-        "id": "native_result", "path": "result.json", "sha256": result_sha256,
-        "byte_length": len(_canonical_bytes(dict(result))),
-        "media_type": "application/json", "role": "native_result",
-    }
-    optimizer = request.get("spec", {}).get("optimizer", {})
-    population = optimizer.get("resolved_population_size") if isinstance(optimizer, Mapping) else None
-    generation_refs = root.get("generation_index_refs")
-    ledger_refs = result.get("ledger_artifacts")
-    generation_count = result.get("completed_generations")
-    if (
-        set(root) != root_fields
-        or root.get("schema") != "scnsim.native_result_index"
-        or root.get("schema_version") != 1
-        or root.get("workspace_instance_id") != workspace_instance_id
-        or root.get("plan_sha256") != plan_sha256
-        or root.get("request_sha256") != request_sha256
-        or root.get("attempt_identity") != attempt_identity
-        or root.get("native_result_ref") != native_result_ref
-        or not isinstance(population, int)
-        or isinstance(population, bool)
-        or not isinstance(generation_refs, list)
-        or not isinstance(ledger_refs, list)
-        or not isinstance(generation_count, int)
-        or isinstance(generation_count, bool)
-        or generation_count != len(generation_refs)
-        or generation_count != len(ledger_refs)
-        or root.get("generation_count") != generation_count
-        or root.get("population_candidate_count") != generation_count * population
-    ):
-        raise _integrity("Native index root differs from its bound request, attempt, or Result.")
-
-    baseline = root.get("baseline_locator")
-    if (
-        not isinstance(baseline, Mapping)
-        or baseline.get("member") != "baseline"
-        or baseline.get("evaluation_ordinal") != 0
-        or baseline.get("generation") != 0
-        or baseline.get("native_result_ref") != native_result_ref
-    ):
-        raise _integrity("Native index baseline locator is malformed.")
-    baseline_ref = _native_index_file_ref(
-        directory, baseline.get("summary_ref"), role="native_baseline_index",
-        verify_file=False,
-    )
-    if baseline_ref.get("path") != "artifacts/native-index/baseline.json":
-        raise _integrity("Native baseline index reference has an unexpected path.")
-
-    expected_names = {"root.json", "baseline.json", selection_path.name}
-    best_ordinal = result.get("best", {}).get("evaluation_ordinal")
-    best_locator = root.get("best_locator")
-    if not isinstance(best_locator, Mapping) or best_locator.get("evaluation_ordinal") != best_ordinal:
-        raise _integrity("Native index best locator differs from the terminal Result.")
-    if best_ordinal == 0 and dict(best_locator) != dict(baseline):
-        raise _integrity("Native baseline winner differs from the sealed baseline locator.")
-
-    for generation, (entry, ledger_ref) in enumerate(zip(generation_refs, ledger_refs, strict=True), 1):
-        if (
-            not isinstance(entry, Mapping)
-            or entry.get("generation") != generation
-            or entry.get("native_ledger_ref") != ledger_ref
-        ):
-            raise _integrity("Native generation index does not bind its Result ledger.", generation=generation)
-        summary_ref = _native_index_file_ref(
-            directory, entry.get("summary_ref"), role="native_generation_index",
-            verify_file=False,
-        )
-        if (
-            summary_ref.get("path") != f"artifacts/native-index/generation-{generation:06d}.json"
-            or entry.get("first_ordinal") != (generation - 1) * population + 1
-            or entry.get("row_count") != population
-        ):
-            raise _integrity("Native generation index entry is malformed.", generation=generation)
-        expected_names.add(Path(summary_ref["path"]).name)
-    names = {child.name for child in index_directory.iterdir()}
-    if names != expected_names:
-        raise _integrity("Native index directory contains undeclared entries.", entries=sorted(names - expected_names))
-    return dict(root_ref), root
-
-
-def read_native_result_artifact(
-    *,
-    binding_identity: Mapping[str, object],
-    directory: Path,
-    index_ref: Mapping[str, object],
-    artifact_ref: Mapping[str, object],
-) -> dict[str, Any]:
-    """Read one selected native index/ledger file from its fixed success.
-
-    The short Workspace reader revalidates the current leaf and success seal,
-    then hashes only the root or body explicitly selected by the caller. It
-    never scans every generation ledger to serve an unrelated projection.
-    """
-    try:
-        binding = WorkspaceBinding(
-            Path(binding_identity["root"]),
-            Path(binding_identity["leaf"]),
-            str(binding_identity["plan_sha256"]),
-            str(binding_identity["workspace_instance_id"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise _integrity("Native result read lacks its bound Workspace identity.") from error
-
-    attempt_directory = Path(directory)
-    try:
-        relative_directory = attempt_directory.relative_to(binding.leaf)
-    except ValueError as error:
-        raise _integrity("Native result attempt is outside its bound Workspace leaf.") from error
-    parts = relative_directory.parts
-    if (
-        len(parts) != 4
-        or parts[0] != "requests"
-        or _SHA256.fullmatch(parts[1]) is None
-        or parts[2] != "attempts"
-        or _ATTEMPT.fullmatch(parts[3]) is None
-    ):
-        raise _integrity("Native result path is not a canonical final attempt directory.")
-
-    with binding.reader():
-        attempt, receipt, result, actual_index_ref, index_metadata = binding._verify_attempt(
-            attempt_directory,
-            parts[1],
-            parts[3],
-            require_final_name=True,
-            metadata_only_native_success=True,
-        )
-        if (
-            receipt.get("outcome") != "success"
-            or result is None
-            or actual_index_ref is None
-            or index_metadata is None
-            or dict(index_ref) != actual_index_ref
-        ):
-            raise _integrity("Native result read no longer matches its fixed success and index root.")
-
-        allowed: list[Mapping[str, object]] = [actual_index_ref]
-        baseline = index_metadata.get("baseline_locator")
-        if isinstance(baseline, Mapping) and isinstance(baseline.get("summary_ref"), Mapping):
-            allowed.append(baseline["summary_ref"])
-        generations = index_metadata.get("generation_index_refs")
-        if isinstance(generations, list):
-            for entry in generations:
-                if not isinstance(entry, Mapping):
-                    continue
-                for field in ("summary_ref", "native_ledger_ref"):
-                    reference = entry.get(field)
-                    if isinstance(reference, Mapping):
-                        allowed.append(reference)
-        if not any(dict(reference) == dict(artifact_ref) for reference in allowed):
-            raise _integrity("Requested native result artifact is not selected by the sealed index.")
-
-        relative_path = artifact_ref.get("path")
-        digest = artifact_ref.get("sha256")
-        length = artifact_ref.get("byte_length")
-        if (
-            not isinstance(relative_path, str)
-            or _SHA256.fullmatch(str(digest)) is None
-            or not isinstance(length, int)
-            or isinstance(length, bool)
-            or length < 1
-        ):
-            raise _integrity("Selected native result artifact reference is malformed.")
-        path = _inside(attempt_directory, relative_path)
-        if path.is_symlink() or not path.is_file() or path.stat().st_size != length:
-            raise _integrity("Selected native result artifact is missing or has the wrong size.", path=relative_path)
-        raw = path.read_bytes()
-        if _sha256(raw) != digest:
-            raise _integrity("Selected native result artifact hash does not match its reference.", path=relative_path)
-        return _decode_bytes(raw, "selected native result artifact")
-
 @dataclass(frozen=True)
 class WorkspaceBinding:
     """One Run's concrete, Plan-bound leaf beneath a stable workspace root."""
@@ -393,17 +106,10 @@ class WorkspaceBinding:
     leaf: Path
     plan_sha256: str
     workspace_instance_id: str
-    _expected_julia_threads: int = field(default=1, repr=False, compare=False)
-    _expected_blas_threads: int = field(default=1, repr=False, compare=False)
 
     @contextmanager
-    def writer(self, *, cleanup_staging: bool = True) -> Iterator[WorkspaceBinding]:
-        """Hold the root's exclusive lock for one Workspace mutation.
-
-        Staging cleanup is an entry-time recovery action, not part of each
-        publication transaction. Callers that already completed that recovery
-        for the active operation can omit it on subsequent short mutations.
-        """
+    def writer(self) -> Iterator[WorkspaceBinding]:
+        """Hold the root's exclusive lock for one Workspace mutation."""
 
         with _workspace_lock(self.root, exclusive=True):
             state = _load_canonical(self.root / "workspace.json")
@@ -412,8 +118,6 @@ class WorkspaceBinding:
             _validate_active_evidence(self.root, state)
             _finish_root_maintenance(self.root, state)
             self.assert_current()
-            if cleanup_staging:
-                self._cleanup_staging()
             yield self
 
     @contextmanager
@@ -513,10 +217,11 @@ class WorkspaceBinding:
             raise _integrity("Workspace leaf path is missing or symlinked.", leaf=str(self.leaf))
         leaf = _load_canonical(self.leaf / "workspace.json")
         if (
-            set(leaf) != {"schema", "schema_version", "kind", "workspace_instance_id", "plan_sha256"}
+            set(leaf) != {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "plan_sha256"}
             or
             leaf.get("schema") != "scnsim.workspace"
             or leaf.get("schema_version") != 1
+            or leaf.get("evidence_version") != 3
             or leaf.get("kind") != "plan_workspace"
             or leaf.get("workspace_instance_id") != self.workspace_instance_id
             or leaf.get("plan_sha256") != self.plan_sha256
@@ -529,1098 +234,10 @@ class WorkspaceBinding:
         if requests.is_symlink() or (requests.exists() and not requests.is_dir()):
             raise _integrity("Workspace requests path is unsafe.", path=str(requests))
 
-    def ensure_request(self, request_sha256: str, request_bytes: bytes) -> Path:
-        """Store one immutable canonical request or verify its existing bytes."""
-
-        _valid_sha(request_sha256)
-        if _sha256(request_bytes) != request_sha256:
-            raise _integrity("Request bytes do not match the supplied request identity.")
-        request = _decode_bytes(request_bytes, "request")
-        _verify_request_document(request, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
-        if request.get("plan_sha256") != self.plan_sha256:
-            raise _integrity("Request Plan identity does not match the bound workspace leaf.")
-        requests = self.leaf / "requests"
-        if requests.exists() and (requests.is_symlink() or not requests.is_dir()):
-            raise _integrity("Workspace requests path is unsafe.", path=str(requests))
-        directory = requests / request_sha256
-        path = directory / "request.json"
-        if path.exists():
-            if directory.is_symlink() or not directory.is_dir() or path.is_symlink() or not path.is_file() or path.read_bytes() != request_bytes:
-                raise _integrity("Existing request directory contains different evidence.", request_sha256=request_sha256)
-            return directory
-        directory.mkdir(parents=True, exist_ok=False)
-        _atomic_write(path, request_bytes)
-        if request["parameter_source"]["kind"] in {"grid", "points"}:
-            _atomic_write(directory / "point-checkpoint-anchor.json", _canonical_bytes({
-                "schema": "scnsim.point_checkpoint_anchor", "schema_version": 1,
-                "request_sha256": request_sha256}))
-            point_root = directory / "point-checkpoints"
-            point_root.mkdir()
-            _atomic_write(point_root / "index.json", _canonical_bytes({
-                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
-                "request_sha256": request_sha256, "entries": []}))
-            _fsync_directory(point_root)
-        _fsync_directory(directory)
-        return directory
-
-    def baseline_checkpoint(self, request_sha256: str) -> BaselineCheckpoint | None:
-        """Verify and return one request-owned baseline checkpoint, if present."""
-
-        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
-        checkpoint_directory = request_directory / "baseline-checkpoint"
-        if not _path_entry_exists(checkpoint_directory):
-            return None
-        request = _load_canonical(request_directory / "request.json")
-        plan = _load_canonical(self.leaf / "plan.json")
-        return _verify_baseline_checkpoint_directory(
-            checkpoint_directory, request_sha256=request_sha256,
-            request=request, plan=plan,
-            expected_julia_threads=self._expected_julia_threads,
-            expected_blas_threads=self._expected_blas_threads,
-        )
-
-    def point_checkpoints(self, request_sha256: str) -> tuple[PointCheckpoint, ...]:
-        return cast(
-            tuple[PointCheckpoint, ...],
-            self._verified_point_checkpoints(request_sha256),
-        )
-
-    def _verified_point_checkpoints(
-        self, request_sha256: str, *, include_payloads: bool = False,
-    ) -> tuple[PointCheckpoint | tuple[PointCheckpoint, Mapping[str, object] | None], ...]:
-        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
-        return _verify_point_checkpoints(request_directory,
-            _load_canonical(request_directory / "request.json"),
-            _load_canonical(self.leaf / "plan.json"),
-            include_payloads=include_payloads,
-        )
-
-    def _point_checkpoints_with_payloads(
-        self, request_sha256: str,
-    ) -> tuple[tuple[PointCheckpoint, Mapping[str, object] | None], ...]:
-        return cast(
-            tuple[tuple[PointCheckpoint, Mapping[str, object] | None], ...],
-            self._verified_point_checkpoints(request_sha256, include_payloads=True),
-        )
-
-    def publish_point_checkpoint(self, request_sha256: str, attempt_sha256: str,
-            staging: Path, ready: Mapping[str, object]) -> PointCheckpoint:
-        request_directory = self.leaf / "requests" / _valid_sha(request_sha256)
-        request = _load_canonical(request_directory / "request.json")
-        plan = _load_canonical(self.leaf / "plan.json")
-        previous = _verify_point_checkpoints(request_directory, request, plan)
-        ordinal = len(previous)
-        if ready.get("ordinal") != ordinal:
-            raise _integrity("Point checkpoint publication is not in request order.")
-        ready_path = staging / "point-ready.json"
-        if ready_path.is_symlink() or not ready_path.is_file():
-            raise _integrity("Point checkpoint record is absent from child staging.")
-        raw = ready_path.read_bytes()
-        if len(raw) != ready.get("byte_length") or _sha256(raw) != ready.get("record_sha256"):
-            raise _integrity("Point checkpoint ready frame does not bind its bytes.")
-        record = _decode_bytes(raw, "point checkpoint record")
-        point_root = staging / "artifacts" / "parameter_points" / "points" / f"{ordinal:06d}"
-        attempt_path = staging / "attempt.json"
-        if attempt_path.is_symlink() or not attempt_path.is_file() or _sha256(attempt_path.read_bytes()) != attempt_sha256:
-            raise _integrity("Point checkpoint source attempt is absent or changed.")
-        source_attempt = attempt_path.read_bytes()
-        _verify_point_checkpoint_record(record, point_root, request, plan, ordinal, attempt_sha256)
-        root = request_directory / "point-checkpoints"
-        if not root.exists():
-            root.mkdir()
-            _atomic_write(root / "index.json", _canonical_bytes({
-                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
-                "request_sha256": request_sha256, "entries": []}))
-            _fsync_directory(request_directory)
-        stage = staging / f".staging-point-checkpoint-{uuid.uuid4()}"
-        stage.mkdir()
-        try:
-            _atomic_write(stage / "record.json", raw)
-            _atomic_write(stage / "source-attempt.json", source_attempt)
-            shutil.copytree(point_root, stage / "point")
-            seal = {"schema": "scnsim.point_checkpoint_seal", "schema_version": 1,
-                "request_sha256": request_sha256, "ordinal": ordinal,
-                "record_sha256": _sha256(raw), "source_attempt_sha256": attempt_sha256,
-                "published_at_utc": _utc_now()}
-            _atomic_write(stage / "seal.json", _canonical_bytes(seal))
-            _fsync_tree(stage)
-            final = root / f"{ordinal:06d}"
-            if _path_entry_exists(final):
-                raise _integrity("Point checkpoint publication target already exists.")
-            replace_path(stage, final)
-            _fsync_directory(stage.parent)
-            _fsync_directory(root)
-            entries = [{"ordinal": index, "seal_sha256": item.seal_sha256}
-                for index, item in enumerate(previous)]
-            entries.append({"ordinal": ordinal, "seal_sha256": _sha256(_canonical_bytes(seal))})
-            _atomic_write(root / "index.json", _canonical_bytes({
-                "schema": "scnsim.point_checkpoint_index", "schema_version": 1,
-                "request_sha256": request_sha256, "entries": entries}))
-            return _verify_point_checkpoints(request_directory, request, plan)[-1]
-        finally:
-            if stage.exists():
-                shutil.rmtree(stage)
-
-    def publish_baseline_checkpoint(
-        self,
-        request_sha256: str,
-        attempt_sha256: str,
-        producer_path: Path,
-        *,
-        expected_sha256: str,
-        expected_byte_length: int,
-    ) -> BaselineCheckpoint:
-        """Own, validate, seal, and atomically publish exact producer bytes."""
-
-        request_sha256 = _valid_sha(request_sha256)
-        attempt_sha256 = _valid_sha(attempt_sha256)
-        request_directory = self.leaf / "requests" / request_sha256
-        request = _load_canonical(request_directory / "request.json")
-        plan = _load_canonical(self.leaf / "plan.json")
-        if request.get("operation") != "optimize_direct":
-            raise _integrity("Only optimization may publish a baseline checkpoint.")
-        try:
-            if (
-                producer_path.is_symlink() or not producer_path.is_file()
-                or producer_path.parent.is_symlink()
-            ):
-                raise _integrity("Producer checkpoint is not a regular staged file.")
-            # One read creates the bytes that are both validated and published.
-            checkpoint_bytes = producer_path.read_bytes()
-            if len(checkpoint_bytes) != expected_byte_length or _sha256(checkpoint_bytes) != expected_sha256:
-                raise _integrity("Producer checkpoint bytes disagree with the ready frame.")
-            checkpoint = _decode_bytes(checkpoint_bytes, "baseline checkpoint")
-            _verify_baseline_checkpoint_document(
-                checkpoint, request_sha256=request_sha256, request=request, plan=plan,
-            )
-            attempt_path = producer_path.parent / "attempt.json"
-            if attempt_path.is_symlink() or not attempt_path.is_file():
-                raise _integrity("Baseline checkpoint source attempt is not a regular file.")
-            source_attempt_bytes = attempt_path.read_bytes()
-            if _sha256(source_attempt_bytes) != attempt_sha256:
-                raise _integrity("Baseline checkpoint source attempt identity is invalid.")
-            source_attempt = _decode_bytes(source_attempt_bytes, "source attempt")
-            if source_attempt.get("request_sha256") != request_sha256 or source_attempt.get("schema_version") != 2:
-                raise _integrity("Baseline checkpoint source attempt is not optimization attempt v2.")
-        except (EvidenceIntegrityError, OSError) as error:
-            raise _IncomingCheckpointEvidenceError(
-                "Incoming baseline checkpoint evidence is invalid.",
-                stage="optimization_checkpoint",
-                evidence={"source": "child_staging"},
-            ) from error
-
-        final = request_directory / "baseline-checkpoint"
-        if _path_entry_exists(final):
-            existing = _verify_baseline_checkpoint_directory(
-                final, request_sha256=request_sha256, request=request, plan=plan,
-                expected_julia_threads=self._expected_julia_threads,
-                expected_blas_threads=self._expected_blas_threads,
-            )
-            if existing.checkpoint_sha256 != expected_sha256:
-                raise _integrity("A different baseline checkpoint is already published.")
-            producer_path.unlink()
-            _fsync_directory(producer_path.parent)
-            return existing
-
-        staging = producer_path.parent / f".staging-baseline-checkpoint-{uuid.uuid4()}"
-        staging.mkdir()
-        try:
-            _atomic_write(staging / "checkpoint.json", checkpoint_bytes)
-            _atomic_write(staging / "source-attempt.json", source_attempt_bytes)
-            seal = {
-                "schema": "scnsim.optimization_checkpoint_seal",
-                "schema_version": 1,
-                "request_sha256": request_sha256,
-                "checkpoint_sha256": expected_sha256,
-                "checkpoint_byte_length": len(checkpoint_bytes),
-                "source_attempt_sha256": attempt_sha256,
-                "source_attempt_byte_length": len(source_attempt_bytes),
-                "published_at_utc": _utc_now(),
-            }
-            _atomic_write(staging / "seal.json", _canonical_bytes(seal))
-            _fsync_tree(staging)
-            verified = _verify_baseline_checkpoint_directory(
-                staging, request_sha256=request_sha256, request=request, plan=plan,
-                expected_julia_threads=self._expected_julia_threads,
-                expected_blas_threads=self._expected_blas_threads,
-            )
-            if _path_entry_exists(final):
-                raise _integrity(
-                    "Baseline checkpoint publication target appeared during publication."
-                )
-            replace_path(staging, final)
-            _fsync_directory(staging.parent)
-            _fsync_directory(request_directory)
-            published = _verify_baseline_checkpoint_directory(
-                final, request_sha256=request_sha256, request=request, plan=plan,
-                expected_julia_threads=self._expected_julia_threads,
-                expected_blas_threads=self._expected_blas_threads,
-            )
-            producer_path.unlink()
-            _fsync_directory(producer_path.parent)
-            return published
-        finally:
-            if staging.exists():
-                shutil.rmtree(staging)
-
-    def allocate_attempt(
-        self, request_sha256: str, *, operation_id: str, operation_lease,
-    ) -> AttemptAllocation:
-        """Reserve one operation-owned attempt staging directory.
-
-        The child remains blocked until bootstrap observation seals truthful
-        allocated/launched evidence. Scratch lives under the operation UUID,
-        so cleanup can use its stable OS lease without scanning request history.
-        """
-
-        operation_id = _valid_uuid(operation_id)
-        try:
-            lease_operation_id = operation_lease.operation_id
-            lease_root = Path(operation_lease.root)
-            operation_lease.descriptors
-        except (AttributeError, RuntimeError, TypeError) as error:
-            raise _integrity("Attempt allocation requires an active operation lease.") from error
-        if lease_operation_id != operation_id or lease_root != self.root:
-            raise _integrity("Attempt allocation lease differs from its Workspace operation.")
-
-        request_directory = self.leaf / "requests" / request_sha256
-        if request_directory.is_symlink() or not request_directory.is_dir():
-            raise _integrity("Request directory is missing or symlinked.", path=str(request_directory))
-        request = request_directory / "request.json"
-        if request.is_symlink() or not request.is_file() or _sha256(request.read_bytes()) != request_sha256:
-            raise _integrity("Attempt allocation requires an exact stored request.", request_sha256=request_sha256)
-        attempts = request_directory / "attempts"
-        if attempts.exists() and (attempts.is_symlink() or not attempts.is_dir()):
-            raise _integrity("Request attempts path is unsafe.", path=str(attempts))
-        attempts.mkdir(exist_ok=True)
-        ordinal = self._next_attempt_ordinal(attempts)
-        text = str(ordinal).zfill(6)
-        final = attempts / text
-        staging_root = self.leaf / _OPERATION_STAGING
-        if staging_root.is_symlink():
-            raise _integrity("Workspace operation-staging directory is symlinked.")
-        staging_root.mkdir(mode=0o700, exist_ok=True)
-        operation_directory = staging_root / operation_id
-        if operation_directory.is_symlink():
-            raise _integrity("Operation staging directory is symlinked.", operation_id=operation_id)
-        operation_directory.mkdir(mode=0o700, exist_ok=True)
-        if operation_directory.is_symlink() or not operation_directory.is_dir():
-            raise _integrity("Operation staging directory is unsafe.", operation_id=operation_id)
-        request_staging = operation_directory / request_sha256
-        if request_staging.is_symlink():
-            raise _integrity("Operation request-staging directory is symlinked.")
-        request_staging.mkdir(mode=0o700, exist_ok=True)
-        if request_staging.is_symlink() or not request_staging.is_dir():
-            raise _integrity("Operation request-staging directory is unsafe.")
-        staging = request_staging / f".staging-{text}-{uuid.uuid4()}"
-        staging.mkdir()
-        _fsync_directory(request_staging)
-        _fsync_directory(operation_directory)
-        _fsync_directory(staging_root)
-        _fsync_directory(attempts)
-        return AttemptAllocation(
-            request_sha256=request_sha256,
-            ordinal=ordinal,
-            ordinal_text=text,
-            staging_directory=staging,
-            final_directory=final,
-            operation_id=operation_id,
-            operation_lease=operation_lease,
-        )
-
-    def seal_attempt(self, allocation: AttemptAllocation, attempt: Mapping[str, object]) -> str:
-        """Seal the one allocated/launched attempt envelope before authorization."""
-
-        self._require_allocation(allocation)
-        request = _load_canonical(
-            self.leaf / "requests" / allocation.request_sha256 / "request.json"
-        )
-        expected = {
-            "schema": "scnsim.attempt",
-            "schema_version": 2 if request.get("operation") == "optimize_direct" else 1,
-            "request_sha256": allocation.request_sha256,
-            "ordinal": allocation.ordinal,
-            "ordinal_text": allocation.ordinal_text,
-            "directory": allocation.attempt_directory_text,
-            "staging_directory": allocation.staging_directory_text,
-        }
-        for key, value in expected.items():
-            if attempt.get(key) != value:
-                raise _integrity("Attempt envelope disagrees with its allocated path.", field=key)
-        if attempt.get("attempt_state") not in {"allocated", "launched"}:
-            raise _integrity("Attempt envelope has an invalid state.")
-        path = allocation.staging_directory / "attempt.json"
-        if path.exists():
-            raise _integrity("Attempt envelope is immutable once sealed.", path=str(path))
-        raw = _canonical_bytes(dict(attempt))
-        _atomic_write(path, raw)
-        return _sha256(raw)
-
-    def seal_native_result_index(
-        self,
-        allocation: AttemptAllocation,
-        receipt: Mapping[str, object],
-    ) -> None:
-        """Build and seal the Workspace index for a successful native Optimization.
-
-        The Julia Result and receipt remain untouched. The native index builder
-        writes its compact summaries into the allocated attempt; this method
-        then adds one content-addressed Workspace completion record that binds
-        the index root to the exact terminal attempt and Result.
-        """
-        self._require_allocation(allocation)
-        request_path = self.leaf / "requests" / allocation.request_sha256 / "request.json"
-        request = _load_canonical(request_path)
-        attempt_path = allocation.staging_directory / "attempt.json"
-        attempt = _load_canonical(attempt_path)
-        result_path = allocation.staging_directory / "result.json"
-        result = _load_canonical(result_path)
-        if (
-            not _is_current_native_optimization_request(request)
-            or receipt.get("outcome") != "success"
-            or result.get("result_kind") != "optimization"
-        ):
-            raise _integrity("Native index sealing requires one successful native Optimization.")
-
-        from .native_result_index import build_native_result_index
-
-        index = build_native_result_index(
-            binding_identity={
-                "workspace_instance_id": self.workspace_instance_id,
-                "plan_sha256": self.plan_sha256,
-            },
-            request=request,
-            attempt=attempt,
-            receipt=receipt,
-            result=result,
-            directory=allocation.staging_directory,
-        )
-        index_directory = allocation.staging_directory / "artifacts" / "native-index"
-        root_path = index_directory / "root.json"
-        root_ref = dict(index.root_ref)
-        if (
-            root_ref.get("path") != "artifacts/native-index/root.json"
-            or root_ref.get("role") != "native_result_index"
-            or not root_path.is_file()
-            or root_path.is_symlink()
-        ):
-            raise _integrity("Native index builder returned no owned root artifact.")
-        root_raw = root_path.read_bytes()
-        if (
-            len(root_raw) != root_ref.get("byte_length")
-            or _sha256(root_raw) != root_ref.get("sha256")
-        ):
-            raise _integrity("Native index root reference differs from its staged bytes.")
-        selection = {
-            "schema": "scnsim.workspace_native_completion",
-            "schema_version": 1,
-            "workspace_instance_id": self.workspace_instance_id,
-            "plan_sha256": self.plan_sha256,
-            "request_sha256": allocation.request_sha256,
-            "attempt_sha256": _sha256(_canonical_bytes(attempt)),
-            "attempt_directory": attempt.get("directory"),
-            "result_sha256": receipt.get("result_sha256"),
-            "index_root_ref": root_ref,
-        }
-        raw = _canonical_bytes(selection)
-        digest = _sha256(raw)
-        selection_path = index_directory / f"selection-{digest}.json"
-        if selection_path.exists() or selection_path.is_symlink():
-            raise _integrity("Native completion selection would overwrite existing evidence.")
-        _atomic_write(selection_path, raw)
-
-    def promote_attempt(self, allocation: AttemptAllocation, receipt: Mapping[str, object]) -> None:
-        """Write ``receipt.json`` last, fsync, and atomically publish one attempt."""
-
-        self._require_allocation(allocation)
-        attempt_path = allocation.staging_directory / "attempt.json"
-        attempt_sha256 = _sha256(_canonical_bytes(_load_canonical(attempt_path)))
-        if (
-            receipt.get("schema") != "scnsim.receipt"
-            or receipt.get("schema_version") != 1
-            or receipt.get("request_sha256") != allocation.request_sha256
-            or receipt.get("attempt_sha256") != attempt_sha256
-            or receipt.get("outcome") not in {"success", "failure", "interrupted"}
-        ):
-            raise _integrity("Receipt does not bind the sealed attempt.")
-        receipt_path = allocation.staging_directory / "receipt.json"
-        if receipt_path.exists():
-            raise _integrity("Receipt is immutable and must be written last.", path=str(receipt_path))
-        _atomic_write(receipt_path, _canonical_bytes(dict(receipt)))
-        self._verify_attempt(
-            allocation.staging_directory,
-            allocation.request_sha256,
-            allocation.ordinal_text,
-            require_final_name=False,
-        )
-        _fsync_tree(allocation.staging_directory)
-        if allocation.final_directory.exists():
-            raise _integrity("Attempt promotion would overwrite final evidence.")
-        replace_path(allocation.staging_directory, allocation.final_directory)
-        _fsync_directory(allocation.staging_directory.parent)
-        _fsync_directory(allocation.final_directory.parent)
-        self._verify_attempt(
-            allocation.final_directory,
-            allocation.request_sha256,
-            allocation.ordinal_text,
-            require_final_name=True,
-        )
-
-    def find_success(self, request_sha256: str) -> VerifiedSuccess | None:
-        """Verify every final attempt and return its sole reusable success."""
-
-        requests = self.leaf / "requests"
-        request_directory = requests / request_sha256
-        request = request_directory / "request.json"
-        if requests.is_symlink() or request_directory.is_symlink() or request.is_symlink():
-            raise _integrity("Request evidence is symlinked.", path=str(request))
-        if not request.is_file():
-            if request.exists() or request_directory.exists() and not request_directory.is_dir():
-                raise _integrity("Request evidence is not a regular file.", path=str(request))
-            return None
-        if _sha256(request.read_bytes()) != request_sha256:
-            raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
-        request_document = _load_canonical(request)
-        if request_document.get("plan_sha256") != self.plan_sha256:
-            raise _integrity("Request belongs to another Plan leaf.", request_sha256=request_sha256)
-        attempts = request.parent / "attempts"
-        if attempts.is_symlink():
-            raise _integrity("Request attempts path is symlinked.", path=str(attempts))
-        if not attempts.exists():
-            return None
-        if not attempts.is_dir():
-            raise _integrity("Request attempts path is unsafe.", path=str(attempts))
-        successful: list[VerifiedSuccess] = []
-        for final in self._final_attempt_directories(attempts):
-            attempt, receipt, result, native_index_ref, native_index_metadata = self._verify_attempt(
-                final, request_sha256, final.name, require_final_name=True,
-                metadata_only_native_success=True,
-            )
-            if receipt["outcome"] == "success":
-                if result is None:
-                    raise _integrity("Successful receipt lacks a Result.", attempt=str(final))
-                successful.append(VerifiedSuccess(
-                    request_document, attempt, receipt, result, final,
-                    native_index_ref, native_index_metadata,
-                ))
-        if len(successful) > 1:
-            raise _integrity("One request has competing verified successes.", request_sha256=request_sha256)
-        return successful[0] if successful else None
-
-    def resolve_success(self, request_sha256: str) -> VerifiedSuccess:
-        """Return exact verified evidence; never start, retry, or select latest."""
-
-        success = self.find_success(request_sha256)
-        if success is None:
-            raise ResultUnavailableError(
-                "No verified success exists for this exact request.",
-                stage="resolve",
-                evidence={"request_sha256": request_sha256, "workspace": str(self.root)},
-            )
-        return success
-
-    def inventory_document(self) -> dict[str, object]:
-        """Verify and summarize only this Run's bound immutable leaf.
-
-        This is intentionally a leaf-local reader: callers must already hold
-        :meth:`reader`, so it neither cleans staging nor chooses a result for
-        any later operation.
-        """
-
-        self.assert_current()
-        requests = self.leaf / "requests"
-        if requests.is_symlink() or (requests.exists() and not requests.is_dir()):
-            raise _integrity("Workspace requests path is unsafe.", path=str(requests))
-        rows: list[dict[str, object]] = []
-        if requests.exists():
-            for request_directory in sorted(requests.iterdir(), key=lambda item: item.name):
-                if (
-                    request_directory.is_symlink()
-                    or not request_directory.is_dir()
-                    or _SHA256.fullmatch(request_directory.name) is None
-                ):
-                    raise _integrity("Workspace contains a malformed request directory.", path=str(request_directory))
-                request_sha256 = request_directory.name
-                request_path = request_directory / "request.json"
-                if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
-                    raise _integrity("Request file hash does not match its directory.", request_sha256=request_sha256)
-                request = _load_canonical(request_path)
-                _verify_request_document(request, self.plan_sha256, _load_canonical(self.leaf / "plan.json"))
-                checkpoint = self.baseline_checkpoint(request_sha256)
-                point_checkpoints = (self.point_checkpoints(request_sha256)
-                    if request["parameter_source"]["kind"] in {"grid", "points"} else ())
-                point_counts = None
-                if request["parameter_source"]["kind"] in {"grid", "points"}:
-                    total = len(list(_parameter_source_points(request["parameter_source"])))
-                    point_counts = {"published_points": len(point_checkpoints),
-                        "successful_points": sum(item.record["metadata"]["status"] == "success" for item in point_checkpoints),
-                        "failed_points": sum(item.record["metadata"]["status"] == "failure" for item in point_checkpoints),
-                        "remaining_points": total - len(point_checkpoints)}
-                attempts = request_directory / "attempts"
-                if attempts.is_symlink() or (attempts.exists() and not attempts.is_dir()):
-                    raise _integrity("Inventory request attempts path is unsafe.", request_sha256=request_sha256)
-                if not attempts.exists():
-                    if checkpoint is None and not point_checkpoints:
-                        raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
-                    rows.append({
-                        "request_sha256": request_sha256,
-                        "operation": request["operation"],
-                        "status": "partial_points" if point_checkpoints else "partial_baseline",
-                        "attempts": [],
-                        **({"baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
-                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256} if checkpoint else {}),
-                        **(point_counts or {}),
-                    })
-                    continue
-                finals = self._final_attempt_directories(attempts)
-                if not finals:
-                    if checkpoint is None and not point_checkpoints:
-                        raise _integrity("Inventory request has no final attempts.", request_sha256=request_sha256)
-                    rows.append({
-                        "request_sha256": request_sha256,
-                        "operation": request["operation"],
-                        "status": "partial_points" if point_checkpoints else "partial_baseline",
-                        "attempts": [],
-                        **({"baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
-                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256} if checkpoint else {}),
-                        **(point_counts or {}),
-                    })
-                    continue
-                outcomes: list[str] = []
-                for final in finals:
-                    _attempt, receipt, _result, _native_ref, _native_metadata = self._verify_attempt(
-                        final, request_sha256, final.name, require_final_name=True
-                    )
-                    outcome = receipt.get("outcome")
-                    if outcome not in {"success", "failure", "interrupted"}:
-                        raise _integrity("Inventory final attempt lacks a terminal outcome.", attempt=str(final))
-                    outcomes.append(outcome)
-                status = "succeeded" if "success" in outcomes else "failed" if outcomes[-1] == "failure" else "interrupted"
-                if status not in {"succeeded", "failed", "interrupted"}:
-                    raise _integrity("Inventory status cannot be determined.", request_sha256=request_sha256)
-                row: dict[str, object] = {
-                    "request_sha256": request_sha256,
-                    "operation": request["operation"],
-                    "status": status,
-                    "attempts": [final.name for final in finals],
-                }
-                if checkpoint is not None:
-                    row.update({
-                        "baseline_checkpoint_sha256": checkpoint.checkpoint_sha256,
-                        "baseline_checkpoint_seal_sha256": checkpoint.seal_sha256,
-                    })
-                if point_counts is not None:
-                    row.update(point_counts)
-                rows.append(row)
-        root_state = _load_canonical(self.root / "workspace.json")
-        _assert_root_envelope(root_state)
-        maintenance = root_state.get("maintenance")
-        return {
-            "schema": "scnsim.inventory",
-            "schema_version": 3,
-            "workspace_instance_id": self.workspace_instance_id,
-            "plan_sha256": self.plan_sha256,
-            "requests": rows,
-            "maintenance": [] if maintenance is None else [dict(maintenance)],
-        }
-
-    def resume_ledger_sha256(self, request_sha256: str) -> str | None:
-        """Return the latest attempt's highest verified CMA generation ledger."""
-
-        attempts = self.leaf / "requests" / request_sha256 / "attempts"
-        if attempts.is_symlink():
-            raise _integrity("Request attempts path is symlinked.", path=str(attempts))
-        if not attempts.exists():
-            return None
-        if not attempts.is_dir():
-            raise _integrity("Request attempts path is unsafe.", path=str(attempts))
-        candidates: list[tuple[int, str]] = []
-        for final in self._final_attempt_directories(attempts):
-            attempt, receipt, _, _, _ = self._verify_attempt(
-                final, request_sha256, final.name, require_final_name=True
-            )
-            if receipt["outcome"] == "success":
-                continue
-            ledgers = _verify_generation_artifacts(
-                final,
-                receipt["artifacts"],
-                request_path=self.leaf / "requests" / request_sha256 / "request.json",
-                request_sha256=request_sha256,
-                attempt_sha256=_sha256(_canonical_bytes(attempt)),
-                expected_julia_threads=self._expected_julia_threads,
-                expected_blas_threads=self._expected_blas_threads,
-            )
-            if ledgers:
-                generation, digest = ledgers[-1]
-                candidates.append((generation, digest))
-        if not candidates:
-            return None
-        highest = max(generation for generation, _ in candidates)
-        digests = {digest for generation, digest in candidates if generation == highest}
-        if len(digests) != 1:
-            raise _integrity(
-                "Equal-generation resume ledgers have different identities.",
-                generation=highest,
-            )
-        return digests.pop()
-
-    def _cleanup_staging(self) -> None:
-        """Prune only operation-owned staging proven inactive by its OS lease."""
-
-        staging_root = self.leaf / _OPERATION_STAGING
-        if staging_root.is_symlink():
-            raise _integrity("Workspace operation-staging directory is symlinked.")
-        if not staging_root.exists():
-            return
-        if not staging_root.is_dir():
-            raise _integrity("Workspace operation-staging path is not a directory.")
-        for operation_directory in tuple(staging_root.iterdir()):
-            if operation_directory.is_symlink() or not operation_directory.is_dir():
-                raise _integrity(
-                    "Workspace operation-staging entry is unsafe.",
-                    path=str(operation_directory),
-                )
-            operation_id = _valid_uuid(operation_directory.name)
-            with _idle_operation_lease(self.root, operation_id) as lease:
-                if not lease.acquired:
-                    continue
-                if operation_directory.exists() and not operation_directory.is_symlink():
-                    shutil.rmtree(operation_directory)
-                    _fsync_directory(staging_root)
-        if staging_root.exists() and not any(staging_root.iterdir()):
-            staging_root.rmdir()
-            _fsync_directory(self.leaf)
-
-    def _next_attempt_ordinal(self, attempts: Path) -> int:
-        ordinals: list[int] = []
-        for child in attempts.iterdir():
-            if child.name.startswith(".staging-"):
-                raise _integrity("Staging cleanup must run before attempt allocation.", path=str(child))
-            if child.is_symlink() or not child.is_dir() or _ATTEMPT.fullmatch(child.name) is None:
-                raise _integrity("Workspace contains malformed final attempt evidence.", path=str(child))
-            ordinals.append(int(child.name))
-        if sorted(ordinals) != list(range(1, len(ordinals) + 1)):
-            raise _integrity("Attempt ordinals are not a contiguous append-only sequence.")
-        return len(ordinals) + 1
-
-    def _require_allocation(self, allocation: AttemptAllocation) -> None:
-        expected_final_parent = self.leaf / "requests" / allocation.request_sha256 / "attempts"
-        expected_staging_parent = (
-            self.leaf / _OPERATION_STAGING / allocation.operation_id / allocation.request_sha256
-        )
-        if (
-            allocation.request_sha256 == ""
-            or _valid_uuid(allocation.operation_id) != allocation.operation_id
-            or allocation.final_directory.parent != expected_final_parent
-            or allocation.staging_directory.parent != expected_staging_parent
-        ):
-            raise _integrity("Attempt allocation belongs to another workspace leaf.")
-        try:
-            if (
-                allocation.operation_lease.operation_id != allocation.operation_id
-                or Path(allocation.operation_lease.root) != self.root
-            ):
-                raise _integrity("Attempt allocation operation lease has changed.")
-            allocation.operation_lease.descriptors
-        except (AttributeError, RuntimeError, TypeError) as error:
-            raise _integrity("Attempt allocation operation lease is no longer active.") from error
-        staging_ancestors = (
-            expected_staging_parent,
-            expected_staging_parent.parent,
-            expected_staging_parent.parent.parent,
-        )
-        if any(parent.is_symlink() or not parent.is_dir() for parent in staging_ancestors):
-            raise _integrity("Attempt allocation operation-staging path is unsafe.")
-        if (
-            allocation.staging_directory.is_symlink()
-            or not allocation.staging_directory.is_dir()
-            or allocation.final_directory.is_symlink()
-            or allocation.final_directory.exists()
-        ):
-            raise _integrity("Attempt allocation is no longer a writable staging directory.")
-
-    def _final_attempt_directories(self, attempts: Path) -> list[Path]:
-        if attempts.is_symlink() or not attempts.is_dir():
-            raise _integrity("Request attempts path is unsafe.", path=str(attempts))
-        result: list[Path] = []
-        for child in attempts.iterdir():
-            if child.name.startswith(".staging-"):
-                if _STAGING.fullmatch(child.name) is None:
-                    raise _integrity("Workspace contains malformed staging evidence.", path=str(child))
-                continue
-            if not child.is_dir() or child.is_symlink() or _ATTEMPT.fullmatch(child.name) is None:
-                raise _integrity("Workspace contains malformed final attempt evidence.", path=str(child))
-            result.append(child)
-        result.sort(key=lambda path: int(path.name))
-        if [int(path.name) for path in result] != list(range(1, len(result) + 1)):
-            raise _integrity("Attempt ordinals are not a contiguous append-only sequence.")
-        return result
-
-    def _verify_attempt(
-        self,
-        directory: Path,
-        request_sha256: str,
-        ordinal_text: str,
-        *,
-        require_final_name: bool,
-        metadata_only_native_success: bool = False,
-    ) -> tuple[
-        dict[str, Any],
-        dict[str, Any],
-        dict[str, Any] | None,
-        dict[str, object] | None,
-        dict[str, object] | None,
-    ]:
-        if directory.is_symlink() or not directory.is_dir() or directory.parent.is_symlink() or directory.parent.parent.is_symlink():
-            raise _integrity("Attempt path traverses a symlink.", path=str(directory))
-        if require_final_name and directory.name != ordinal_text:
-            raise _integrity("Final attempt directory does not match its ordinal.", path=str(directory))
-        request_path = self.leaf / "requests" / request_sha256 / "request.json"
-        if request_path.is_symlink() or not request_path.is_file() or _sha256(request_path.read_bytes()) != request_sha256:
-            raise _integrity("Attempt request bytes do not match their identity.", attempt=str(directory))
-        request_document = _load_canonical(request_path)
-        plan_document = _load_canonical(self.leaf / "plan.json")
-        _verify_request_document(request_document, self.plan_sha256, plan_document)
-        is_hb = request_document.get("operation") == "solve_hb"
-        attempt_path = directory / "attempt.json"
-        receipt_path = directory / "receipt.json"
-        attempt = _load_canonical(attempt_path)
-        receipt = _load_canonical(receipt_path)
-        native_success_index = (
-            metadata_only_native_success
-            and _is_current_native_optimization_request(request_document)
-            and receipt.get("outcome") == "success"
-        )
-        expected_directory = f"requests/{request_sha256}/attempts/{ordinal_text}"
-        staging_directory = attempt.get("staging_directory")
-        expected_attempt_version = 2 if request_document.get("operation") == "optimize_direct" else 1
-        if (
-            attempt.get("schema") != "scnsim.attempt"
-            or attempt.get("schema_version") != expected_attempt_version
-            or attempt.get("request_sha256") != request_sha256
-            or attempt.get("ordinal_text") != ordinal_text
-            or attempt.get("ordinal") != int(ordinal_text)
-            or attempt.get("directory") != expected_directory
-            or not _operation_staging_matches(
-                staging_directory, request_sha256, ordinal_text
-            )
-        ):
-            raise _integrity("Attempt envelope has inconsistent path evidence.", attempt=str(directory))
-        state = attempt.get("attempt_state")
-        attempt_fields = {
-            "schema", "schema_version", "request_sha256", "ordinal", "ordinal_text",
-            "directory", "staging_directory", "attempt_state", "started_at_utc",
-            "julia_executable_sha256", "os", "architecture", "cpu",
-        }
-        if state == "launched":
-            attempt_fields.update({"julia_threads", "blas_threads", "blas_vendor"})
-            if is_hb:
-                attempt_fields.add("fftw_threads")
-        if attempt.get("resume_ledger_sha256") is not None:
-            attempt_fields.add("resume_ledger_sha256")
-        checkpoint_sha = attempt.get("baseline_checkpoint_sha256")
-        checkpoint_seal_sha = attempt.get("baseline_checkpoint_seal_sha256")
-        if checkpoint_sha is not None or checkpoint_seal_sha is not None:
-            attempt_fields.update({"baseline_checkpoint_sha256", "baseline_checkpoint_seal_sha256"})
-        if set(attempt) != attempt_fields:
-            raise _integrity("Attempt envelope is open or has state-incompatible fields.", attempt=str(directory))
-        if (
-            state not in {"allocated", "launched"}
-            or not isinstance(attempt.get("started_at_utc"), str)
-            or not str(attempt["started_at_utc"]).endswith("Z")
-            or _SHA256.fullmatch(str(attempt.get("julia_executable_sha256", ""))) is None
-            or any(not isinstance(attempt.get(key), str) or not attempt[key] for key in ("os", "architecture", "cpu"))
-        ):
-            raise _integrity("Attempt envelope lacks required machine evidence.", attempt=str(directory))
-        if state == "launched":
-            if any(not isinstance(attempt.get(key), int) or attempt[key] < 1 for key in ("julia_threads", "blas_threads")) or not isinstance(attempt.get("blas_vendor"), str) or not attempt["blas_vendor"]:
-                raise _integrity("Launched attempt lacks child runtime evidence.", attempt=str(directory))
-            if is_hb and attempt.get("fftw_threads") != 1:
-                raise _integrity("HB launched attempt lacks fixed FFTW thread evidence.", attempt=str(directory))
-            if not is_hb and "fftw_threads" in attempt:
-                raise _integrity("Direct launched attempt must not claim HB FFTW evidence.", attempt=str(directory))
-        elif any(key in attempt for key in ("julia_threads", "blas_threads", "blas_vendor", "fftw_threads")):
-            raise _integrity("Allocated attempt must not claim child runtime evidence.", attempt=str(directory))
-        attempt_sha256 = _sha256(_canonical_bytes(attempt))
-        checkpoint: BaselineCheckpoint | None = None
-        if checkpoint_sha is not None or checkpoint_seal_sha is not None:
-            checkpoint = self.baseline_checkpoint(request_sha256)
-            if (
-                checkpoint is None
-                or _valid_sha(checkpoint_sha) != checkpoint.checkpoint_sha256
-                or _valid_sha(checkpoint_seal_sha) != checkpoint.seal_sha256
-            ):
-                raise _integrity("Attempt baseline checkpoint reference is absent or corrupt.")
-        resume = attempt.get("resume_ledger_sha256")
-        if resume is not None and not native_success_index:
-            resume = _valid_sha(resume)
-            found = False
-            attempts_directory = self.leaf / "requests" / request_sha256 / "attempts"
-            for sibling in self._final_attempt_directories(attempts_directory):
-                if int(sibling.name) >= int(ordinal_text):
-                    continue
-                producer_attempt, producer_receipt, _, _, _ = self._verify_attempt(
-                    sibling,
-                    request_sha256,
-                    sibling.name,
-                    require_final_name=True,
-                )
-                ledgers = _verify_generation_artifacts(
-                    sibling,
-                    producer_receipt["artifacts"],
-                    request_path=self.leaf / "requests" / request_sha256 / "request.json",
-                    request_sha256=request_sha256,
-                    attempt_sha256=_sha256(_canonical_bytes(producer_attempt)),
-                    expected_julia_threads=self._expected_julia_threads,
-                    expected_blas_threads=self._expected_blas_threads,
-                )
-                if any(digest == resume for _, digest in ledgers):
-                    found = True
-                    break
-            if not found:
-                raise _integrity("Attempt resume ledger is absent from prior finalized evidence.")
-        if (
-            receipt.get("schema") != "scnsim.receipt"
-            or receipt.get("schema_version") != 1
-            or receipt.get("request_sha256") != request_sha256
-            or receipt.get("attempt_sha256") != attempt_sha256
-        ):
-            raise _integrity("Receipt does not bind its request and attempt.", attempt=str(directory))
-        outcome = receipt.get("outcome")
-        if outcome not in {"success", "failure", "interrupted"}:
-            raise _integrity("Receipt has no terminal outcome.", attempt=str(directory))
-        if not isinstance(receipt.get("sealed_at_utc"), str) or not str(receipt["sealed_at_utc"]).endswith("Z") or not isinstance(receipt.get("artifacts"), list) or not isinstance(receipt.get("evidence"), dict):
-            raise _integrity("Receipt lacks required terminal evidence.", attempt=str(directory))
-        receipt_fields = {
-            "schema", "schema_version", "request_sha256", "attempt_sha256", "outcome",
-            "artifacts", "evidence", "sealed_at_utc",
-        }
-        if outcome == "success":
-            receipt_fields.update({"outcome_sha256", "result_sha256"})
-        elif outcome == "failure":
-            receipt_fields.add("failure")
-            if receipt.get("outcome_sha256") is not None:
-                receipt_fields.add("outcome_sha256")
-        else:
-            receipt_fields.add("interruption")
-            if receipt.get("outcome_sha256") is not None:
-                receipt_fields.add("outcome_sha256")
-        if set(receipt) != receipt_fields:
-            if not (set(receipt) == receipt_fields | {"point_checkpoint_count"} and
-                    request_document.get("parameter_source", {}).get("kind") in {"grid", "points"}):
-                raise _integrity("Receipt envelope is open or has outcome-incompatible fields.", attempt=str(directory))
-        if "point_checkpoint_count" in receipt:
-            count = receipt["point_checkpoint_count"]
-            checkpoints = self.point_checkpoints(request_sha256)
-            if not isinstance(count, int) or isinstance(count, bool) or count < 0 or count > len(checkpoints):
-                raise _integrity("Sweep receipt references missing point checkpoints.")
-        if request_document.get("operation") == "optimize_direct":
-            if checkpoint is None:
-                checkpoint = self.baseline_checkpoint(request_sha256)
-            _verify_attempt_checkpoint_consumption(
-                attempt,
-                receipt,
-                attempt_sha256=attempt_sha256,
-                checkpoint=checkpoint,
-            )
-        evidence = receipt["evidence"]
-        if set(evidence) != {"runtime_semantic_sha256", "source_units", "extrapolation_evidence", "provenance_sha256", "evidence_sha256"}:
-            raise _integrity("Receipt evidence envelope is open.", attempt=str(directory))
-        evidence_without_hash = {key: value for key, value in evidence.items() if key != "evidence_sha256"}
-        source_units = evidence.get("source_units")
-        if not isinstance(source_units, list) or any(
-            not isinstance(item, dict)
-            or set(item) != {"identity", "source_unit", "canonical_si_unit", "canonical_dimensionality"}
-            or any(not isinstance(item[field], str) or not item[field] for field in item)
-            for item in source_units
-        ):
-            raise _integrity("Receipt source-unit evidence is malformed.", attempt=str(directory))
-        if [item["identity"] for item in source_units] != sorted({item["identity"] for item in source_units}):
-            raise _integrity("Receipt source-unit evidence is not sorted and unique.", attempt=str(directory))
-        parameter_source = request_document.get("parameter_source")
-        point_parameters = (
-            parameter_source.get("parameters")
-            if isinstance(parameter_source, Mapping) and parameter_source.get("kind") == "point"
-            else None
-        )
-        required_extrapolation = (
-            []
-            if request_document.get("operation") == "optimize_direct" or point_parameters is None
-            else _required_extrapolation_rows(
-                plan_document, point_parameters,
-                authorization_source="parameter_set", require_authorized=outcome == "success",
-            )
-        )
-        _verify_extrapolation_evidence(
-            evidence.get("extrapolation_evidence"),
-            allowed_sources={"parameter_set"},
-            required_rows=required_extrapolation,
-        )
-        expected_provenance = _sha256(_canonical_bytes({"schema": "scnsim.receipt_provenance", "source_units": source_units}))
-        if (
-            evidence.get("runtime_semantic_sha256") != _sha256(_canonical_bytes(request_document.get("runtime_semantic")))
-            or not isinstance(source_units, list)
-            or evidence.get("provenance_sha256") != expected_provenance
-            or evidence.get("evidence_sha256") != _sha256(_canonical_bytes(evidence_without_hash))
-        ):
-            raise _integrity("Receipt evidence hashes do not match their exact sources.", attempt=str(directory))
-        result: dict[str, Any] | None = None
-        native_index_ref: dict[str, object] | None = None
-        native_index_metadata: dict[str, object] | None = None
-        completed_generation_count = 0
-        outcome_document: dict[str, Any] | None = None
-        outcome_path = directory / "outcome.json"
-        outcome_sha = receipt.get("outcome_sha256")
-        if outcome_sha is not None:
-            _valid_sha(outcome_sha)
-            outcome_document = _load_canonical(outcome_path)
-            if _sha256(_canonical_bytes(outcome_document)) != outcome_sha:
-                raise _integrity("Receipt outcome hash does not match outcome bytes.", attempt=str(directory))
-            outcome_fields = {
-                "schema", "schema_version", "request_sha256", "attempt_sha256",
-                "runtime_semantic", "status", "artifacts",
-                "result_sha256" if outcome == "success" else "failure" if outcome == "failure" else "interruption",
-            }
-            if (
-                outcome_document.get("schema") != "scnsim.outcome"
-                or outcome_document.get("schema_version") != 1
-                or set(outcome_document) != outcome_fields
-                or outcome_document.get("request_sha256") != request_sha256
-                or outcome_document.get("attempt_sha256") != attempt_sha256
-                or outcome_document.get("status") != outcome
-                or outcome_document.get("runtime_semantic") != request_document.get("runtime_semantic")
-            ):
-                raise _integrity("Outcome envelope does not match its receipt.", attempt=str(directory))
-            _compare_artifacts(
-                outcome_document.get("artifacts"),
-                receipt.get("artifacts"),
-                operation=request_document.get("operation"),
-            )
-        elif outcome_path.exists():
-            raise _integrity("An unlinked outcome.json is not authoritative evidence.", attempt=str(directory))
-        if outcome == "success":
-            if outcome_document is None:
-                raise _integrity("Successful receipt lacks its authoritative outcome.", attempt=str(directory))
-            result_path = directory / "result.json"
-            result_sha = receipt.get("result_sha256")
-            if not isinstance(result_sha, str):
-                raise _integrity("Success receipt result hash does not match result bytes.", attempt=str(directory))
-            result = _load_canonical(result_path)
-            if _sha256(_canonical_bytes(result)) != result_sha:
-                raise _integrity("Success receipt result hash does not match result bytes.", attempt=str(directory))
-            parameter_source = request_document.get("parameter_source")
-            is_parameter_sweep = (
-                isinstance(parameter_source, Mapping)
-                and parameter_source.get("kind") in {"grid", "points"}
-            )
-            expected_result_kind = (
-                "parameter_sweep" if is_parameter_sweep
-                else "direct_response" if request_document.get("operation") == "solve_direct"
-                else "hb_batch" if request_document.get("operation") == "solve_hb"
-                else "optimization" if request_document.get("operation") == "optimize_direct"
-                else request_document.get("spec", {}).get("type") if request_document.get("operation") == "evaluate_direct" and isinstance(request_document.get("spec"), dict)
-                else None
-            )
-            if (
-                result.get("schema") != "scnsim.result"
-                or result.get("request_sha256") != request_sha256
-                or result.get("attempt_sha256") != attempt_sha256
-                or result.get("result_kind") != expected_result_kind
-            ):
-                raise _integrity("Result envelope does not match its success receipt.", attempt=str(directory))
-            if outcome_document.get("result_sha256") != result_sha:
-                raise _integrity("Outcome and receipt bind different Result identities.", attempt=str(directory))
-            _verify_result_document(
-                result,
-                request_document,
-                request_sha256,
-                attempt_sha256,
-                plan_document,
-                optimization_checkpoint=checkpoint,
-            )
-            native_optimization = (
-                _is_current_native_optimization_request(request_document)
-            )
-            if native_optimization:
-                native_index_ref, native_index_metadata = _verify_native_index_selection(
-                    directory,
-                    workspace_instance_id=self.workspace_instance_id,
-                    plan_sha256=self.plan_sha256,
-                    request=request_document,
-                    request_sha256=request_sha256,
-                    attempt=attempt,
-                    receipt=receipt,
-                    result=result,
-                )
-            _verify_artifact_inventory(
-                directory, result, receipt,
-                request_path=self.leaf / "requests" / request_sha256 / "request.json",
-                workspace_native_index=native_index_ref is not None,
-                defer_native_optimization_ledgers=native_success_index,
-            )
-            if result.get("result_kind") == "optimization":
-                if native_success_index:
-                    completed_generation_count = int(native_index_metadata["generation_count"])
-                else:
-                    verified_generations = _verify_generation_artifacts(
-                        directory,
-                        receipt["artifacts"],
-                        request_path=self.leaf / "requests" / request_sha256 / "request.json",
-                        request_sha256=request_sha256,
-                        attempt_sha256=attempt_sha256,
-                        expected_julia_threads=self._expected_julia_threads,
-                        expected_blas_threads=self._expected_blas_threads,
-                        allow_other_artifacts=native_index_ref is not None,
-                    )
-                    completed_generation_count = len(verified_generations)
-        elif receipt.get("result_sha256") is not None or (directory / "result.json").exists():
-            raise _integrity("Non-success evidence must not retain a Result.", attempt=str(directory))
-        else:
-            verified_generations = _verify_generation_artifacts(
-                directory,
-                receipt["artifacts"],
-                request_path=self.leaf / "requests" / request_sha256 / "request.json",
-                request_sha256=request_sha256,
-                attempt_sha256=attempt_sha256,
-                expected_julia_threads=self._expected_julia_threads,
-                expected_blas_threads=self._expected_blas_threads,
-            )
-            completed_generation_count = len(verified_generations)
-            if outcome_sha is not None:
-                linked = "failure" if outcome == "failure" else "interruption"
-                if receipt.get(linked) != outcome_document.get(linked):
-                    raise _integrity(
-                        f"{linked.capitalize()} receipt does not match its authoritative outcome.",
-                        attempt=str(directory),
-                    )
-        if outcome == "failure":
-            _verify_failure_document(receipt.get("failure"), request_document.get("operation"))
-            failure_evidence = receipt.get("failure", {}).get("evidence") if isinstance(receipt.get("failure"), Mapping) else None
-            if request_document.get("operation") == "optimize_direct" and isinstance(failure_evidence, Mapping) and failure_evidence.get("optimization_context") is not None:
-                _verify_terminal_optimization_failure(
-                    receipt["failure"], request_document.get("spec"), plan_document,
-                    completed_generations=completed_generation_count,
-                )
-        elif outcome == "interrupted":
-            interruption = receipt.get("interruption")
-            if (
-                not isinstance(interruption, dict)
-                or set(interruption) != {"kind", "termination", "interrupted_at_utc"}
-                or interruption.get("kind") != "keyboard_interrupt"
-                or interruption.get("termination") not in {"terminated", "killed_after_grace"}
-                or not isinstance(interruption.get("interrupted_at_utc"), str)
-                or not interruption["interrupted_at_utc"].endswith("Z")
-            ):
-                raise _integrity("Interruption evidence is open or malformed.", attempt=str(directory))
-        if outcome in {"success", "failure"} and outcome_sha is None:
-            failure = receipt.get("failure")
-            if not (outcome == "failure" and isinstance(failure, dict) and failure.get("kind") in {"backend_protocol", "optimization_progress_callback"}):
-                raise _integrity("Completed terminal evidence requires a valid outcome envelope.", attempt=str(directory))
-        _verify_attempt_layout(directory, outcome=outcome, has_authoritative_outcome=outcome_sha is not None)
-        return attempt, receipt, result, native_index_ref, native_index_metadata
 
 @contextmanager
 def _workspace_lock(root: Path, *, exclusive: bool) -> Iterator[None]:
+    _preflight_workspace(root)
     require_workspace_platform(stage="workspace")
     if root.is_symlink() or not root.is_dir():
         raise _integrity("Workspace root is missing or symlinked.", path=str(root))
@@ -1637,6 +254,7 @@ def _workspace_lock(root: Path, *, exclusive: bool) -> Iterator[None]:
     try:
         lock_fd(descriptor, exclusive=exclusive)
         acquired = True
+        _preflight_workspace(root)
         yield
     except BaseException as error:
         primary = error
@@ -1670,8 +288,6 @@ def bind_workspace(
     plan_bytes: bytes,
     versioned: bool,
     commit: Callable[[], None],
-    _expected_julia_threads: int = 1,
-    _expected_blas_threads: int = 1,
 ) -> WorkspaceBinding:
     """Bind prepared Plan evidence, then invoke its non-failing seal commit."""
 
@@ -1685,8 +301,10 @@ def bind_workspace(
     if not callable(commit):
         raise TypeError("workspace commit must be callable")
     root = Path(workspace).expanduser().resolve(strict=False)
+    _preflight_workspace(root)
     root.mkdir(parents=True, exist_ok=True)
     with _exclusive_activity_lease(root), _workspace_lock(root, exclusive=True):
+        _preflight_workspace(root)
         try:
             state_path = root / "workspace.json"
             if not state_path.exists():
@@ -1757,11 +375,7 @@ def bind_workspace(
             # Publication and Plan sealing are already committed. Exact pending
             # cleanup remains visible in the root inventory for the next lock.
             pass
-        return _dataclass_replace(
-            binding,
-            _expected_julia_threads=_expected_julia_threads,
-            _expected_blas_threads=_expected_blas_threads,
-        )
+        return binding
 
 def _retired_leaf_maintenance(binding: WorkspaceBinding, root: Path) -> dict[str, object]:
     pointer = _leaf_pointer(binding, root)
@@ -1865,9 +479,10 @@ def _recover_leaf(root: Path, leaf_path: Path, plan_sha256: str, *, expected_dir
         raise _integrity("Interrupted workspace leaf is unsafe.", leaf=str(leaf_path))
     leaf = _load_canonical(leaf_path / "workspace.json")
     if (
-        set(leaf) != {"schema", "schema_version", "kind", "workspace_instance_id", "plan_sha256"}
+        set(leaf) != {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "plan_sha256"}
         or leaf.get("schema") != "scnsim.workspace"
         or leaf.get("schema_version") != 1
+            or leaf.get("evidence_version") != 3
         or leaf.get("kind") != "plan_workspace"
         or leaf.get("plan_sha256") != plan_sha256
     ):
@@ -2019,6 +634,8 @@ def _verified_unbound_leaf(root: Path, path: Path, expected_directory: str) -> W
     )
 
 def _assert_root_envelope(state: Mapping[str, object]) -> None:
+    if state.get("evidence_version") != 3:
+        raise _old_evidence("workspace.json", state.get("evidence_version"))
     root_id = state.get("workspace_instance_id")
     kind = state.get("kind")
     if (
@@ -2032,8 +649,8 @@ def _assert_root_envelope(state: Mapping[str, object]) -> None:
     if kind == "replaceable_workspace":
         active = state.get("active_leaf")
         if set(state) not in (
-            {"schema", "schema_version", "kind", "workspace_instance_id", "active_leaf"},
-            {"schema", "schema_version", "kind", "workspace_instance_id", "active_leaf", "maintenance"},
+            {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "active_leaf"},
+            {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "active_leaf", "maintenance"},
         ) or not isinstance(active, dict) or set(active) != {"directory", "workspace_instance_id", "plan_sha256"}:
             raise _integrity("Replaceable workspace envelope is open or malformed.")
         leaf_id = _valid_uuid(active.get("workspace_instance_id"))
@@ -2042,8 +659,8 @@ def _assert_root_envelope(state: Mapping[str, object]) -> None:
         _valid_sha(active.get("plan_sha256"))
     else:
         if set(state) not in (
-            {"schema", "schema_version", "kind", "workspace_instance_id", "next_iteration", "iterations"},
-            {"schema", "schema_version", "kind", "workspace_instance_id", "next_iteration", "iterations", "maintenance"},
+            {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "next_iteration", "iterations"},
+            {"schema", "schema_version", "evidence_version", "kind", "workspace_instance_id", "next_iteration", "iterations", "maintenance"},
         ):
             raise _integrity("Versioned workspace envelope is open or malformed.")
     maintenance = state.get("maintenance")
@@ -2224,25 +841,3 @@ def _cleanup_versioned_staging(root: Path, indexed: set[str]) -> None:
         elif iteration and child.name not in indexed:
             raise _integrity("Versioned workspace has unindexed iteration evidence.", path=str(child))
     _fsync_directory(root)
-
-def _verify_attempt_layout(directory: Path, *, outcome: str, has_authoritative_outcome: bool) -> None:
-    allowed = {"attempt.json", "receipt.json"}
-    if has_authoritative_outcome:
-        allowed.add("outcome.json")
-    if outcome == "success":
-        allowed.add("result.json")
-    if (directory / "logs").exists():
-        allowed.add("logs")
-        logs = directory / "logs"
-        if logs.is_symlink() or not logs.is_dir():
-            raise _integrity("Attempt log directory is open or unsafe.")
-        names = {path.name for path in logs.iterdir()}
-        if not names or not names.issubset({"stdout.log", "stderr.log", "untrusted-outcome.json"}):
-            raise _integrity("Attempt log directory is open or unsafe.")
-        if any(path.is_symlink() or not path.is_file() for path in logs.iterdir()):
-            raise _integrity("Attempt log entry is unsafe.")
-    if (directory / "artifacts").exists():
-        allowed.add("artifacts")
-    children = {path.name for path in directory.iterdir()}
-    if children != allowed:
-        raise _integrity("Attempt directory contains undeclared entries.", entries=sorted(children - allowed))

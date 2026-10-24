@@ -359,7 +359,10 @@ def _make_trial(
             raise TypeError("in-memory optimizer unavailability is malformed")
     if not isinstance(row["kind"], str) or not row["kind"]:
         raise TypeError("in-memory Optimization trial kind is malformed")
-    point = _parameter_set(row["parameters"], parameter_lookup)
+    # Detach public approval without changing the execution-owned trial record.
+    point = _parameter_set(
+        dict(row["parameters"], allow_extrapolation=[]), parameter_lookup
+    )
 
     discretization = None
     if status == "success":

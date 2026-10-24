@@ -158,10 +158,7 @@ View, a valid PTC lineage, or one of those Views followed by an existing
 supported `retain()`. PTC preserves its existing lineage and compensation
 meaning, but its resistive/reference load mask does not affect static C or
 transform weights. Static C also bypasses RF/Port eligibility and normalization
-rules; this does not change their use by response operations. The initial
-backend support is JAX. Explicit Julia static-capacitance requests fail as
-unsupported; this does not change the capabilities of existing Julia
-operations.
+rules; this does not change their use by response operations. Static capacitance uses the shared JAX physical program.
 
 The same physical couplings and existing residue-normalized-coupling
 definition, including its RF branch inputs and meaning, continue to govern
